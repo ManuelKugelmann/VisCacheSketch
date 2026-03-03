@@ -107,7 +107,7 @@ _Paper §15 — all configurations and metric targets_
 - Reference: 1024 spp path tracer, same scene, same camera
 - Scenes: Bistro_Interior.pyscene, Sponza.pyscene
 
-See `implementation/scripts/MLVHF_Ablation.py` for automated capture.
+See `scripts/MLVHF_Ablation.py` for automated capture.
 
 ---
 

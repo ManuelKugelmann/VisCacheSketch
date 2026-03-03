@@ -1,13 +1,12 @@
 # setup.ps1  —  MLVHF Falcor 8.0 integration setup script
-# Run from the MLVHF package root: .\setup.ps1 -FalcorRoot "C:\path\to\Falcor"
+# Run from the MLVHF package root: .\setup.ps1
 #
 # What this script does:
-#   1. Verifies Falcor 8.0 is present and at the correct commit
-#   2. Clones DQLin/ReSTIR_PT and applies the Falcor 8 port patch
-#   3. Copies MLVHF source files into the Falcor tree
-#   4. Patches CMakeLists.txt to register the new plugin
-#   5. Runs the Python unit tests
-#   6. Optionally invokes CMake to configure the build
+#   1. Locates Falcor (external/Falcor subtree or -FalcorRoot override)
+#   2. Copies MLVHF source files into the Falcor tree
+#   3. Patches CMakeLists.txt to register the plugins
+#   4. Runs the Python unit tests
+#   5. Optionally invokes CMake to configure the build
 #
 # Requirements:
 #   - Git, CMake 3.21+, Python 3.9+, Visual Studio 2022
@@ -15,11 +14,9 @@
 #   - Windows 10 SDK 10.0.19041+ (for SM 6.5 / DXR 1.1)
 
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$FalcorRoot,
+    [string]$FalcorRoot,          # Override: use external Falcor instead of submodule
 
-    [switch]$SkipReSTIRGIPort,   # Skip DQLin/ReSTIR_PT clone (manual port)
-    [switch]$SkipCMake,          # Skip CMake configure step
+    [switch]$SkipCMake,           # Skip CMake configure step
     [switch]$Verbose
 )
 
@@ -53,31 +50,29 @@ Require "cmake"
 Require "python"
 
 # ---------------------------------------------------------------------------
-# Step 1: Verify Falcor 8.0
+# Step 1: Resolve Falcor root (subtree or external override)
 # ---------------------------------------------------------------------------
-Log "Step 1: Verifying Falcor 8.0 at: $FalcorRoot"
+if (-not $FalcorRoot) {
+    $FalcorRoot = "$ScriptDir\external\Falcor"
+    Log "Step 1: Using Falcor subtree at: $FalcorRoot"
+} else {
+    Log "Step 1: Using external Falcor at: $FalcorRoot"
+}
 
 if (-not (Test-Path "$FalcorRoot\CMakeLists.txt")) {
     Fail "CMakeLists.txt not found in $FalcorRoot. Is this a valid Falcor root?"
 }
 
-# Check version string in top-level CMakeLists
+# Verify Falcor version
 $cmake_content = Get-Content "$FalcorRoot\CMakeLists.txt" -Raw
 if ($cmake_content -notmatch "falcor_8|Falcor 8|version.*8\.") {
     Write-Host "[MLVHF] WARNING: Could not confirm Falcor 8.x from CMakeLists.txt." -ForegroundColor Yellow
     Write-Host "         Proceeding — verify manually if the build fails." -ForegroundColor Yellow
 }
 
-# Pin commit check (Falcor 8.0 release tag)
 Push-Location $FalcorRoot
-$gitTag = git describe --tags --exact-match 2>$null
-if ($gitTag -eq "v8.0" -or $gitTag -eq "8.0") {
-    Log "Confirmed Falcor tag: $gitTag" "Green"
-} else {
-    $gitCommit = git rev-parse --short HEAD
-    Write-Host "[MLVHF] WARNING: Not on a tagged 8.0 release (HEAD=$gitCommit, tag=$gitTag)." -ForegroundColor Yellow
-    Write-Host "         Pass semantics may differ. Pin to a known-good commit if builds fail." -ForegroundColor Yellow
-}
+$gitCommit = git rev-parse --short HEAD 2>$null
+Log "  Falcor commit: $gitCommit" "Green"
 Pop-Location
 
 # ---------------------------------------------------------------------------
@@ -85,23 +80,23 @@ Pop-Location
 # ---------------------------------------------------------------------------
 Log "Step 2: Copying MLVHF RenderPass sources..."
 
+# VisHashFilter plugin
 $vhfDst = "$FalcorRoot\Source\RenderPasses\VisHashFilter"
 if (-not (Test-Path $vhfDst)) {
     New-Item -ItemType Directory -Path $vhfDst | Out-Null
 }
-
 $vhfSrc = "$ScriptDir\Source\RenderPasses\VisHashFilter"
 Copy-Item "$vhfSrc\*" $vhfDst -Recurse -Force
-Log "  Copied: $vhfSrc -> $vhfDst" "Green"
+Log "  Copied: VisHashFilter -> $vhfDst" "Green"
 
-# ReSTIRGI pass delta files (user must apply manually — see docs/PORTING.md)
+# ReSTIRGIPass (MLVHF integration files)
 $giDst = "$FalcorRoot\Source\RenderPasses\ReSTIRGIPass"
 if (-not (Test-Path $giDst)) {
     New-Item -ItemType Directory -Path $giDst | Out-Null
 }
 $giSrc = "$ScriptDir\Source\RenderPasses\ReSTIRGIPass"
 Copy-Item "$giSrc\*" $giDst -Recurse -Force
-Log "  Copied: ReSTIRGIPass delta files -> $giDst"
+Log "  Copied: ReSTIRGIPass -> $giDst" "Green"
 
 # Scripts
 $scriptDst = "$FalcorRoot\scripts\MLVHF"
@@ -111,8 +106,16 @@ if (-not (Test-Path $scriptDst)) {
 Copy-Item "$ScriptDir\scripts\*" $scriptDst -Recurse -Force
 Log "  Copied: scripts -> $scriptDst" "Green"
 
+# Tests
+$testDst = "$FalcorRoot\scripts\MLVHF\tests"
+if (-not (Test-Path $testDst)) {
+    New-Item -ItemType Directory -Path $testDst | Out-Null
+}
+Copy-Item "$ScriptDir\tests\*" $testDst -Recurse -Force
+Log "  Copied: tests -> $testDst" "Green"
+
 # ---------------------------------------------------------------------------
-# Step 3: Patch CMakeLists.txt to register VisHashFilter plugin
+# Step 3: Patch CMakeLists.txt to register plugins
 # ---------------------------------------------------------------------------
 Log "Step 3: Patching Source/RenderPasses/CMakeLists.txt..."
 
@@ -122,58 +125,40 @@ if (-not (Test-Path $rpCmake)) {
 }
 
 $rpContent = Get-Content $rpCmake -Raw
-$marker    = "add_subdirectory(VisHashFilter)"
 
-if ($rpContent -notmatch [regex]::Escape($marker)) {
-    Add-Content $rpCmake "`n$marker`n"
-    Log "  Added: $marker to RenderPasses/CMakeLists.txt" "Green"
+# VisHashFilter
+$vhfMarker = "add_subdirectory(VisHashFilter)"
+if ($rpContent -notmatch [regex]::Escape($vhfMarker)) {
+    Add-Content $rpCmake "`n$vhfMarker"
+    Log "  Added: $vhfMarker" "Green"
 } else {
-    Log "  Already present: $marker (skipped)" "Yellow"
+    Log "  Already present: $vhfMarker (skipped)" "Yellow"
+}
+
+# ReSTIRGIPass
+$giMarker = "add_subdirectory(ReSTIRGIPass)"
+if ($rpContent -notmatch [regex]::Escape($giMarker)) {
+    Add-Content $rpCmake "`n$giMarker`n"
+    Log "  Added: $giMarker" "Green"
+} else {
+    Log "  Already present: $giMarker (skipped)" "Yellow"
 }
 
 # ---------------------------------------------------------------------------
-# Step 4: Clone and port DQLin/ReSTIR_PT (optional)
+# Step 4: Python unit tests
 # ---------------------------------------------------------------------------
-if (-not $SkipReSTIRGIPort) {
-    Log "Step 4: Cloning DQLin/ReSTIR_PT for Falcor 8.0 port..."
-
-    $restirDir = "$FalcorRoot\Source\RenderPasses\ReSTIRGIPass\upstream"
-    if (-not (Test-Path $restirDir)) {
-        git clone --depth 1 https://github.com/DQLin/ReSTIR_PT.git $restirDir
-        Log "  Cloned DQLin/ReSTIR_PT to: $restirDir" "Green"
-    } else {
-        Log "  Already cloned at $restirDir (skipped)" "Yellow"
-    }
-
-    Write-Host ""
-    Write-Host "[MLVHF] Manual port required for DQLin/ReSTIR_PT → Falcor 8.0:" -ForegroundColor Yellow
-    Write-Host "  See docs/PORTING.md for the step-by-step port checklist." -ForegroundColor Yellow
-    Write-Host "  Key changes:" -ForegroundColor Yellow
-    Write-Host "    SharedPtr<X>     → ref<X>" -ForegroundColor Yellow
-    Write-Host "    Program::Desc    → ProgramDesc" -ForegroundColor Yellow
-    Write-Host "    Shader::DefineList → DefineList" -ForegroundColor Yellow
-    Write-Host "    Dictionary       → InternalDictionary (in RenderData)" -ForegroundColor Yellow
-    Write-Host "    RenderPass::compile() signature updated" -ForegroundColor Yellow
-    Write-Host ""
-} else {
-    Log "Step 4: Skipped (--SkipReSTIRGIPort)" "Yellow"
-}
-
-# ---------------------------------------------------------------------------
-# Step 5: Python unit tests
-# ---------------------------------------------------------------------------
-Log "Step 5: Running CPU unit tests..."
-python "$scriptDst\test_vhf_convergence.py"
+Log "Step 4: Running CPU unit tests..."
+python "$testDst\test_vhf_convergence.py"
 if ($LASTEXITCODE -ne 0) {
     Fail "Unit tests failed. Fix issues before building."
 }
 Log "  All unit tests passed." "Green"
 
 # ---------------------------------------------------------------------------
-# Step 6: CMake configure (optional)
+# Step 5: CMake configure (optional)
 # ---------------------------------------------------------------------------
 if (-not $SkipCMake) {
-    Log "Step 6: Configuring CMake build..."
+    Log "Step 5: Configuring CMake build..."
 
     $buildDir = "$FalcorRoot\build\windows-vs2022-Release"
     if (-not (Test-Path $buildDir)) {
@@ -190,9 +175,9 @@ if (-not $SkipCMake) {
     Pop-Location
 
     Log "  CMake configured. Open $buildDir\Falcor.sln in Visual Studio." "Green"
-    Log "  Build target: Mogwai (builds VisHashFilter plugin automatically)" "Green"
+    Log "  Build target: Mogwai (builds both plugins automatically)" "Green"
 } else {
-    Log "Step 6: Skipped (--SkipCMake)" "Yellow"
+    Log "Step 5: Skipped (--SkipCMake)" "Yellow"
 }
 
 # ---------------------------------------------------------------------------
@@ -203,8 +188,7 @@ Log "Setup complete." "Green"
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Build Mogwai in Visual Studio (Release, x64)"
-Write-Host "  2. (If not skipped) Apply DQLin/ReSTIR_PT port — see docs/PORTING.md"
-Write-Host "  3. Run unit tests: python scripts/MLVHF/test_vhf_convergence.py"
-Write-Host "  4. Launch: Mogwai.exe --script scripts/MLVHF/MLVHF_Graph.py --scene Bistro_Interior.pyscene"
-Write-Host "  5. Ablation: Mogwai.exe --script scripts/MLVHF/MLVHF_Ablation.py --scene Bistro_Interior.pyscene"
+Write-Host "  2. Run unit tests: python scripts/MLVHF/tests/test_vhf_convergence.py"
+Write-Host "  3. Launch: Mogwai.exe --script scripts/MLVHF/MLVHF_Graph.py --scene Bistro_Interior.pyscene"
+Write-Host "  4. Ablation: Mogwai.exe --script scripts/MLVHF/MLVHF_Ablation.py --scene Bistro_Interior.pyscene"
 Write-Host ""
