@@ -1,21 +1,27 @@
 /***************************************************************************
- * ReSTIRGIPass.h  (patched delta — port of DQLin/ReSTIR_PT to Falcor 8.0)
+ * ReSTIRGIPass.h
  *
- * This file shows ONLY the additions required to integrate MLVHF.
- * Start from the full DQLin/ReSTIR_PT source and apply these changes.
+ * Falcor 8.0 RenderPass — ReSTIR GI with MLVHF CV+RRR revalidation.
+ *
+ * Port of DQLin/ReSTIR_PT (Falcor 5.2) to Falcor 8.0 with integrated
+ * multilevel visibility hash filter for revalidation ray gating (§11.3).
  *
  * Port checklist (Falcor 5.2 → 8.0):
- *   [ ] SharedPtr<X>  → ref<X>       (global search-replace)
- *   [ ] Program::Desc → ProgramDesc  (constructor syntax changed)
- *   [ ] Shader::DefineList → DefineList (moved namespace)
- *   [ ] Scene::SharedPtr → ref<Scene>
- *   [ ] Buffer::createStructured() signature updated (see Falcor 8 docs)
- *   [ ] RenderPass::compile() signature now takes const CompileData&
- *   [ ] Dictionary → InternalDictionary in RenderData
+ *   [x] SharedPtr<X>  → ref<X>
+ *   [x] Program::Desc → ProgramDesc
+ *   [x] Shader::DefineList → DefineList
+ *   [x] Scene::SharedPtr → ref<Scene>
+ *   [x] Buffer::createStructured() → device->createStructuredBuffer()
+ *   [x] RenderPass::compile() takes const CompileData&
+ *   [x] Dictionary → InternalDictionary
+ *   [x] Gui::Window → Gui::Widgets
+ *   [x] flush() → submit(false)
+ *   [x] Plugin registration: FALCOR_PLUGIN_CLASS + registerPlugin
  ***************************************************************************/
 
 #pragma once
 #include "Falcor.h"
+
 using namespace Falcor;
 
 class ReSTIRGIPass : public RenderPass
@@ -26,14 +32,29 @@ public:
 
     static ref<ReSTIRGIPass> create(ref<Device> pDevice, const Properties& props);
 
-    Properties      getProperties()                                    const override;
-    RenderPassReflection reflect(const CompileData& compileData)             override;
-    void            execute(RenderContext* pCtx, const RenderData& rd)       override;
-    void            renderUI(Gui::Widgets& widget)                           override;
-    void            setScene(RenderContext* pCtx, const ref<Scene>& pScene)  override;
+    // RenderPass interface (Falcor 8.0 signatures)
+    Properties           getProperties() const override;
+    RenderPassReflection reflect(const CompileData& compileData) override;
+    void                 compile(RenderContext* pCtx, const CompileData& compileData) override;
+    void                 execute(RenderContext* pCtx, const RenderData& rd) override;
+    void                 renderUI(Gui::Widgets& widget) override;
+    void                 setScene(RenderContext* pCtx, const ref<Scene>& pScene) override;
 
     // -----------------------------------------------------------------------
-    // MLVHF additions (all other members unchanged from DQLin/ReSTIR_PT)
+    // ReSTIR GI parameters (ported from DQLin/ReSTIR_PT)
+    // -----------------------------------------------------------------------
+    struct ReSTIRParams
+    {
+        uint32_t numSpatialNeighbors = 5;      ///< k in spatial reuse
+        float    spatialRadius       = 30.0f;   ///< Screen-space pixel radius
+        uint32_t numTemporalSamples  = 1;       ///< Temporal reuse candidates
+        bool     enableTemporalReuse = true;
+        bool     enableSpatialReuse  = true;
+        bool     enableMIS           = true;    ///< Talbot MIS for spatial
+    };
+
+    // -----------------------------------------------------------------------
+    // MLVHF integration parameters (§11.3 / §12)
     // -----------------------------------------------------------------------
     struct MLVHFParams
     {
@@ -46,13 +67,36 @@ public:
 private:
     ReSTIRGIPass(ref<Device> pDevice, const Properties& props);
 
-    // Original DQLin members (keep as-is) ...
-
-    // MLVHF: retrieved from InternalDictionary each frame
-    ref<Buffer>  mpVHFTable;
-    uint32_t     mVHFCapacity = 0u;
-
-    MLVHFParams  mMLVHFParams;
-
+    void createPasses();
     void retrieveVHFBuffers(const RenderData& rd);
+
+    // -----------------------------------------------------------------------
+    // Compute passes
+    // -----------------------------------------------------------------------
+    ref<ComputePass>  mpInitialSamplingPass;
+    ref<ComputePass>  mpTemporalReusePass;
+    ref<ComputePass>  mpSpatialReusePass;
+    ref<ComputePass>  mpFinalShadingPass;
+
+    // -----------------------------------------------------------------------
+    // Reservoir buffers
+    // -----------------------------------------------------------------------
+    ref<Buffer>       mpReservoirBuffer;       ///< Current-frame reservoirs
+    ref<Buffer>       mpPrevReservoirBuffer;   ///< Previous-frame (temporal)
+    ref<Buffer>       mpSecondaryHitBuffer;    ///< Secondary hit data (Lo, posW, N)
+
+    // -----------------------------------------------------------------------
+    // MLVHF: retrieved from InternalDictionary each frame
+    // -----------------------------------------------------------------------
+    ref<Buffer>       mpVHFTable;
+    uint32_t          mVHFCapacity = 0u;
+
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+    ref<Scene>        mpScene;
+    ReSTIRParams      mReSTIRParams;
+    MLVHFParams       mMLVHFParams;
+    uint2             mFrameDim = { 0, 0 };
+    uint32_t          mFrameCount = 0u;
 };

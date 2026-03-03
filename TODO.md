@@ -27,18 +27,25 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [x] CPU unit tests (5 tests, `tests/test_vhf_convergence.py`)
 
 ### 1.2 ReSTIR GI Integration
-- [x] Delta header for DQLin/ReSTIR_PT port (`ReSTIRGIPass.h`)
-- [x] CV+RRR revalidation loop replacement (`SpatialReuse_MLVHF_delta.slang`)
-- [ ] **CRITICAL** Port DQLin/ReSTIR_PT to Falcor 8.0 (~2 days, see `docs/PORTING.md`)
+- [x] Full ReSTIRGIPass host code sketch (`ReSTIRGIPass.h/.cpp`)
+- [x] Spatial reuse shader with MLVHF integration (`SpatialReuse.cs.slang`)
+- [x] ReSTIRGIPass CMakeLists.txt
+- [x] CV+RRR revalidation loop delta reference (`SpatialReuse_MLVHF_delta.slang`)
+- [ ] **CRITICAL** Port DQLin/ReSTIR_PT into Falcor fork (`external/Falcor`)
+  - Fork NVIDIAGameWorks/Falcor → ManuelKugelmann/Falcor
+  - Apply API migration (see `docs/PORTING.md`)
+  - Merge full DQLin reservoir logic into sketch files
 - [ ] Verify ported pass matches DQLin reference images on Bistro (FLIP < 0.01)
 - [ ] Verify k=5.0 traces/pixel with MLVHF disabled
 - [ ] Enable MLVHF, verify traces/pixel drops to ~0.5–1.0 at steady state
 
 ### 1.3 Build & Setup
 - [x] Windows setup script (`setup.ps1`)
-- [ ] Test setup.ps1 end-to-end on clean Falcor 8.0 checkout
+- [x] Falcor fork as git submodule (`external/Falcor`)
+- [ ] Create ManuelKugelmann/Falcor fork on GitHub
+- [ ] Port DQLin/ReSTIR_PT into the fork (commit series on `mlvhf` branch)
+- [ ] Test setup.ps1 end-to-end on clean clone with `--recurse-submodules`
 - [ ] Add Linux/Mac build notes (or document Windows-only status)
-- [ ] Pin Falcor commit hash for reproducible builds
 
 ### 1.4 Open Implementation Questions
 - [ ] **HIGH** ABA race in inline decay: quantify error rate empirically or replace with 64-bit CAS

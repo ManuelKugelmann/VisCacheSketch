@@ -49,6 +49,10 @@ A single shared hash table serves three integration points:
 ## Repository structure
 
 ```
+external/
+  Falcor/                    Git submodule — ManuelKugelmann/Falcor fork
+                             (Falcor 8.0 + ported DQLin/ReSTIR_PT)
+
 Source/RenderPasses/
   VisHashFilter/             Complete Falcor 8.0 RenderPass plugin
     VisHashFilter.slang      Hash table: PCG3D addressing, lookup, insert, decay
@@ -57,9 +61,11 @@ Source/RenderPasses/
     ShadingCV.slang          CV+RRR estimator — all three integration points
     VisHashFilter.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
     CMakeLists.txt           Plugin build target
-  ReSTIRGIPass/
-    ReSTIRGIPass.h           Patched header (delta — apply to DQLin/ReSTIR_PT port)
-    SpatialReuse_MLVHF_delta.slang  CV+RRR revalidation loop replacement
+  ReSTIRGIPass/              ReSTIR GI with MLVHF revalidation
+    ReSTIRGIPass.h/.cpp      Falcor 8.0 host code (full port sketch)
+    SpatialReuse.cs.slang    Spatial reuse kernel with CV+RRR integration
+    SpatialReuse_MLVHF_delta.slang  Original delta reference
+    CMakeLists.txt           Plugin build target
 
 scripts/
   MLVHF_Graph.py             Mogwai render graph
@@ -80,7 +86,7 @@ docs/
   ThesisMK.pdf               2006 Diplomarbeit
   multilevel-visibility-hash-filter-paper.pdf
 
-setup.ps1                    Windows setup script
+setup.ps1                    Windows setup script (uses submodule by default)
 TODO.md                      Global task tracker
 ```
 
@@ -150,11 +156,25 @@ Finest-only tests the central architectural claim: without coarse levels, within
 
 ## Build instructions
 
+```powershell
+# Clone with submodule
+git clone --recurse-submodules https://github.com/ManuelKugelmann/VisCacheSketch.git
+cd VisCacheSketch
+
+# Setup (copies plugins into Falcor tree, patches CMake, runs tests)
+.\setup.ps1
+
+# Or with external Falcor:
+.\setup.ps1 -FalcorRoot "C:\path\to\your\Falcor"
+```
+
+The Falcor submodule at `external/Falcor` is a fork of NVIDIAGameWorks/Falcor 8.0
+with DQLin/ReSTIR_PT already ported in. `setup.ps1` copies the VisHashFilter and
+ReSTIRGIPass plugins into the Falcor tree and registers them with CMake.
+
 See `tests/test_vhf_convergence.py` for CPU unit tests (no GPU required).
 
-For full build: see `setup.ps1` and `docs/PORTING.md`.
-
-Requirements: Falcor 8.0, Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
+Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
 
 ---
 
