@@ -109,6 +109,14 @@ if (-not (Test-Path $scriptDst)) {
     New-Item -ItemType Directory -Path $scriptDst | Out-Null
 }
 Copy-Item "$ScriptDir\scripts\*" $scriptDst -Recurse -Force
+
+# Tests
+$testDst = "$FalcorRoot\scripts\MLVHF\tests"
+if (-not (Test-Path $testDst)) {
+    New-Item -ItemType Directory -Path $testDst | Out-Null
+}
+Copy-Item "$ScriptDir\tests\*" $testDst -Recurse -Force
+Log "  Copied: tests -> $testDst" "Green"
 Log "  Copied: scripts -> $scriptDst" "Green"
 
 # ---------------------------------------------------------------------------
@@ -163,7 +171,7 @@ if (-not $SkipReSTIRGIPort) {
 # Step 5: Python unit tests
 # ---------------------------------------------------------------------------
 Log "Step 5: Running CPU unit tests..."
-python "$scriptDst\test_vhf_convergence.py"
+python "$testDst\test_vhf_convergence.py"
 if ($LASTEXITCODE -ne 0) {
     Fail "Unit tests failed. Fix issues before building."
 }

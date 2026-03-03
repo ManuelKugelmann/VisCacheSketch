@@ -1,0 +1,30 @@
+# Build
+build/
+out/
+*.exe
+*.dll
+*.pdb
+*.obj
+*.lib
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Capture output
+captures/
+*.exr
+*.hdr
