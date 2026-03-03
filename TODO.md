@@ -41,10 +41,10 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ### 1.3 Build & Setup
 - [x] Windows setup script (`setup.ps1`)
-- [x] Falcor fork as git submodule (`external/Falcor`)
-- [ ] Create ManuelKugelmann/Falcor fork on GitHub
-- [ ] Port DQLin/ReSTIR_PT into the fork (commit series on `mlvhf` branch)
-- [ ] Test setup.ps1 end-to-end on clean clone with `--recurse-submodules`
+- [x] Falcor fork as git subtree (`external/Falcor`)
+- [x] Create ManuelKugelmann/Falcor fork on GitHub
+- [ ] Port DQLin/ReSTIR_PT into the fork, pull back via `git subtree pull`
+- [ ] Test setup.ps1 end-to-end on clean clone
 - [ ] Add Linux/Mac build notes (or document Windows-only status)
 
 ### 1.4 Open Implementation Questions

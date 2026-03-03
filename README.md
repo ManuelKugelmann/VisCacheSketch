@@ -50,7 +50,7 @@ A single shared hash table serves three integration points:
 
 ```
 external/
-  Falcor/                    Git submodule — ManuelKugelmann/Falcor fork
+  Falcor/                    Git subtree — ManuelKugelmann/Falcor fork
                              (Falcor 8.0 + ported DQLin/ReSTIR_PT)
 
 Source/RenderPasses/
@@ -157,8 +157,8 @@ Finest-only tests the central architectural claim: without coarse levels, within
 ## Build instructions
 
 ```powershell
-# Clone with submodule
-git clone --recurse-submodules https://github.com/ManuelKugelmann/VisCacheSketch.git
+# Clone (Falcor is included as a subtree — no extra flags needed)
+git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
 cd VisCacheSketch
 
 # Setup (copies plugins into Falcor tree, patches CMake, runs tests)
@@ -166,11 +166,15 @@ cd VisCacheSketch
 
 # Or with external Falcor:
 .\setup.ps1 -FalcorRoot "C:\path\to\your\Falcor"
+
+# Pull upstream Falcor changes:
+git subtree pull --prefix=external/Falcor falcor master --squash
 ```
 
-The Falcor submodule at `external/Falcor` is a fork of NVIDIAGameWorks/Falcor 8.0
-with DQLin/ReSTIR_PT already ported in. `setup.ps1` copies the VisHashFilter and
-ReSTIRGIPass plugins into the Falcor tree and registers them with CMake.
+`external/Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
+with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
+init required. `setup.ps1` copies the VisHashFilter and ReSTIRGIPass plugins
+into the Falcor tree and registers them with CMake.
 
 See `tests/test_vhf_convergence.py` for CPU unit tests (no GPU required).
 
