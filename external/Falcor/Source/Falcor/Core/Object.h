@@ -32,6 +32,7 @@
 #include <fmt/core.h>
 
 #include <atomic>
+#include <functional>
 #include <utility>
 #include <cstdint>
 

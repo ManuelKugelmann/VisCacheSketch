@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "master", "claude/**"]
+    branches: ["main", "master"]
     tags: ["v*"]
   pull_request:
     branches: ["main", "master"]
@@ -10,7 +10,7 @@ on:
 
 # Cancel redundant builds on the same branch/PR
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
