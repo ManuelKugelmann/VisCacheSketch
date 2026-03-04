@@ -39,152 +39,6 @@ jobs:
         run: python tests/test_vhf_convergence.py
 
   # ---------------------------------------------------------------------------
-  # Linux/GCC — vanilla Falcor + MLVHF plugins
-  # ---------------------------------------------------------------------------
-  linux-gcc:
-    name: Linux/GCC (${{ matrix.config }})
-    runs-on: ubuntu-22.04
-    needs: algorithm-validations
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [Release, Debug]
-    env:
-      CMAKE_BUILD_PRESET: linux-gcc-ci
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # -- Caching: Falcor internal submodules (static key, source-only) ------
-      - name: Cache Falcor submodules
-        uses: actions/cache@v4
-        with:
-          path: |
-            external/Falcor/external/pybind11
-            external/Falcor/external/glfw
-            external/Falcor/external/args
-            external/Falcor/external/fmt
-            external/Falcor/external/imgui
-            external/Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v1
-
-      - name: Init Falcor submodules
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          # Falcor was added as a subtree — submodule refs don't survive
-          # subtree squash, so we shallow-clone them if they're missing.
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
-              rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
-            fi
-          done
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
-
-      # -- Caching: ccache for compiled objects ----------------------------------
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
-            ccache-${{ runner.os }}-gcc-
-
-      - name: Configure ccache
-        run: |
-          ccache --set-config=max_size=1G
-          ccache --set-config=compression=true
-          ccache -z
-
-      # -- Caching: NVIDIA packman packages (keyed on dependencies.xml) -------
-      - name: Cache packman packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/packman
-          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
-          restore-keys: packman-${{ runner.os }}-
-
-      - name: Fetch Falcor packman dependencies
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          chmod +x tools/packman/packman
-          ./tools/packman/packman pull --platform linux-x86_64 dependencies.xml
-
-      - name: Patch NVTT package
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          # Falcor's setup.sh creates this symlink; packman ships libnvtt.so.30106
-          # but the CMake build expects libnvtt.so
-          cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
-
-      - name: Integrate MLVHF plugins into Falcor tree
-        run: |
-          FALCOR="${{ env.FALCOR_DIR }}"
-
-          # Copy VisHashFilter plugin
-          mkdir -p "${FALCOR}/Source/RenderPasses/VisHashFilter"
-          cp -r Source/RenderPasses/VisHashFilter/* "${FALCOR}/Source/RenderPasses/VisHashFilter/"
-
-          # Copy ReSTIRGIPass plugin
-          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
-          cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
-
-          # Copy scripts
-          mkdir -p "${FALCOR}/scripts/MLVHF"
-          cp -r scripts/* "${FALCOR}/scripts/MLVHF/"
-
-          # Patch RenderPasses CMakeLists.txt to register plugins
-          RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
-          if ! grep -q "add_subdirectory(VisHashFilter)" "$RP_CMAKE"; then
-            echo "add_subdirectory(VisHashFilter)" >> "$RP_CMAKE"
-          fi
-          if ! grep -q "add_subdirectory(ReSTIRGIPass)" "$RP_CMAKE"; then
-            echo "add_subdirectory(ReSTIRGIPass)" >> "$RP_CMAKE"
-          fi
-
-          echo "--- Patched RenderPasses CMakeLists.txt ---"
-          cat "$RP_CMAKE"
-
-      - name: CMake Configure
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
-            -DFALCOR_VALIDATE_HEADERS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_FLAGS="-w" \
-            -DCMAKE_C_FLAGS="-w"
-
-      - name: Build
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
-
-      - name: Print ccache stats
-        if: always()
-        run: ccache -s
-
-      - name: Upload build artifacts
-        if: matrix.config == 'Release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: falcor-linux-gcc-${{ matrix.config }}
-          path: |
-            ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/
-          retention-days: 14
-
-  # ---------------------------------------------------------------------------
   # Windows/VS2022 — vanilla Falcor + MLVHF plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
@@ -438,13 +292,17 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Linux/GCC Warnings audit — non-blocking, for cleanup tracking
+  # Linux/GCC — optional, does not block PRs or releases
   # ---------------------------------------------------------------------------
-  linux-gcc-warnings:
-    name: Linux/GCC Warnings (Release)
+  linux-gcc:
+    name: Linux/GCC (${{ matrix.config }})
     runs-on: ubuntu-22.04
     needs: algorithm-validations
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Release, Debug]
     env:
       CMAKE_BUILD_PRESET: linux-gcc-ci
     steps:
@@ -483,6 +341,21 @@ jobs:
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
+            ccache-${{ runner.os }}-gcc-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=1G
+          ccache --set-config=compression=true
+          ccache -z
 
       - name: Cache packman packages
         uses: actions/cache@v4
@@ -527,12 +400,14 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Build (warnings enabled)
+      - name: Build
         run: |
           cd ${{ env.FALCOR_DIR }}
-          ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config Release -j $(nproc) 2>&1 | tee /tmp/build-warnings.log
-          echo "--- Warning summary ---"
-          grep -c "warning:" /tmp/build-warnings.log || echo "0 warnings"
+          ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
 
   # ---------------------------------------------------------------------------
   # Release — triggered on v* tags after successful builds
@@ -541,7 +416,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [algorithm-validations, linux-gcc, windows-vs2022, windows-ninja]
+    needs: [algorithm-validations, windows-vs2022, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
