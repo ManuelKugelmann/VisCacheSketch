@@ -8,6 +8,11 @@ on:
     branches: ["main", "master"]
   workflow_dispatch:
 
+# Cancel redundant builds on the same branch/PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -45,18 +50,29 @@ jobs:
       matrix:
         config: [Release, Debug]
     env:
-      CMAKE_BUILD_PRESET: linux-gcc
+      CMAKE_BUILD_PRESET: linux-gcc-ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # -- Caching: Falcor internal submodules (static key, source-only) ------
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/Falcor/external/pybind11
+            external/Falcor/external/glfw
+            external/Falcor/external/args
+            external/Falcor/external/fmt
+            external/Falcor/external/imgui
+            external/Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v1
+
       - name: Init Falcor submodules
         run: |
           cd ${{ env.FALCOR_DIR }}
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || true
-          # Falcor was added as a subtree — populate its internal submodule
-          # directories if they are empty (submodule refs don't survive subtree squash)
+          # Falcor was added as a subtree — submodule refs don't survive
+          # subtree squash, so we shallow-clone them if they're missing.
           for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
                      glfw:https://github.com/glfw/glfw.git \
                      args:https://github.com/Taywee/args.git \
@@ -74,6 +90,14 @@ jobs:
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev
+
+      # -- Caching: NVIDIA packman packages (keyed on dependencies.xml) -------
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/packman
+          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          restore-keys: packman-${{ runner.os }}-
 
       - name: Fetch Falcor packman dependencies
         run: |
@@ -112,14 +136,12 @@ jobs:
       - name: CMake Configure
         run: |
           cd ${{ env.FALCOR_DIR }}
-          CMAKE_EXE=./tools/.packman/cmake/bin/cmake
-          ${CMAKE_EXE} --preset ${{ env.CMAKE_BUILD_PRESET }}
+          ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }}
 
       - name: Build
         run: |
           cd ${{ env.FALCOR_DIR }}
-          CMAKE_EXE=./tools/.packman/cmake/bin/cmake
-          ${CMAKE_EXE} --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
+          ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -141,16 +163,31 @@ jobs:
       fail-fast: false
       matrix:
         config: [Release, Debug]
+    env:
+      CMAKE_BUILD_PRESET: windows-vs2022-ci
+      # Pin packman cache location for reproducible caching on Windows
+      PM_PACKAGES_ROOT: C:\packman-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # -- Caching: Falcor internal submodules --------------------------------
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/Falcor/external/pybind11
+            external/Falcor/external/glfw
+            external/Falcor/external/args
+            external/Falcor/external/fmt
+            external/Falcor/external/imgui
+            external/Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v1
 
       - name: Init Falcor submodules
         shell: bash
         run: |
           cd ${{ env.FALCOR_DIR }}
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || true
           for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
                      glfw:https://github.com/glfw/glfw.git \
                      args:https://github.com/Taywee/args.git \
@@ -171,6 +208,14 @@ jobs:
         with:
           arch: x64
           sdk: 10.0.19041.0
+
+      # -- Caching: NVIDIA packman packages -----------------------------------
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: C:\packman-cache
+          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          restore-keys: packman-${{ runner.os }}-
 
       - name: Fetch Falcor packman dependencies
         shell: cmd
@@ -208,15 +253,17 @@ jobs:
           Write-Host "--- Patched RenderPasses CMakeLists.txt ---"
           Get-Content $rpCmake
 
-      - name: CMake Configure (VS2022)
+      - name: CMake Configure
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          call setup_vs2022.bat
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
 
       - name: Build
         shell: cmd
-        run: msbuild.exe ${{ env.FALCOR_DIR }}\build\windows-vs2022\Falcor.sln /p:Configuration=${{ matrix.config }} /m
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }} -- /m
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -224,7 +271,7 @@ jobs:
         with:
           name: falcor-windows-vs2022-${{ matrix.config }}
           path: |
-            ${{ env.FALCOR_DIR }}/build/windows-vs2022/bin/Release/
+            ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ matrix.config }}/
           retention-days: 14
 
   # ---------------------------------------------------------------------------
@@ -239,17 +286,29 @@ jobs:
       matrix:
         config: [Release]
     env:
-      CMAKE_BUILD_PRESET: windows-ninja-msvc
+      CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
+      PM_PACKAGES_ROOT: C:\packman-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # -- Caching: Falcor internal submodules --------------------------------
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/Falcor/external/pybind11
+            external/Falcor/external/glfw
+            external/Falcor/external/args
+            external/Falcor/external/fmt
+            external/Falcor/external/imgui
+            external/Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v1
 
       - name: Init Falcor submodules
         shell: bash
         run: |
           cd ${{ env.FALCOR_DIR }}
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || true
           for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
                      glfw:https://github.com/glfw/glfw.git \
                      args:https://github.com/Taywee/args.git \
@@ -270,6 +329,14 @@ jobs:
         with:
           arch: x64
           sdk: 10.0.19041.0
+
+      # -- Caching: NVIDIA packman packages -----------------------------------
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: C:\packman-cache
+          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          restore-keys: packman-${{ runner.os }}-
 
       - name: Fetch Falcor packman dependencies
         shell: cmd
@@ -304,14 +371,13 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          call setup.bat
           tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
 
       - name: Build
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build/%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
+          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
