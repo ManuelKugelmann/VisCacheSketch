@@ -105,6 +105,13 @@ jobs:
           chmod +x tools/packman/packman
           ./tools/packman/packman pull --platform linux-x86_64 dependencies.xml
 
+      - name: Patch NVTT package
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          # Falcor's setup.sh creates this symlink; packman ships libnvtt.so.30106
+          # but the CMake build expects libnvtt.so
+          cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
+
       - name: Integrate MLVHF plugins into Falcor tree
         run: |
           FALCOR="${{ env.FALCOR_DIR }}"
@@ -157,7 +164,7 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022 (${{ matrix.config }})
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: unit-tests
     strategy:
       fail-fast: false
@@ -279,7 +286,7 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC (${{ matrix.config }})
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: unit-tests
     strategy:
       fail-fast: false
