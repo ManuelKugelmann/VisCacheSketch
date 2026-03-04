@@ -243,15 +243,6 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
 
-      - name: Cache sccache
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\Mozilla\sccache
-          key: sccache-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ github.sha }}
-          restore-keys: |
-            sccache-${{ runner.os }}-vs2022-${{ matrix.config }}-
-            sccache-${{ runner.os }}-vs2022-
-
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
         uses: actions/cache@v4
@@ -381,15 +372,6 @@ jobs:
       # -- Caching: sccache for compiled objects --------------------------------
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
-
-      - name: Cache sccache
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\Mozilla\sccache
-          key: sccache-${{ runner.os }}-ninja-${{ matrix.config }}-${{ github.sha }}
-          restore-keys: |
-            sccache-${{ runner.os }}-ninja-${{ matrix.config }}-
-            sccache-${{ runner.os }}-ninja-
 
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
