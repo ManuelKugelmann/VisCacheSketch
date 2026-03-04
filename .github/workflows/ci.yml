@@ -162,7 +162,9 @@ jobs:
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
             -DFALCOR_VALIDATE_HEADERS=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_FLAGS="-w" \
+            -DCMAKE_C_FLAGS="-w"
 
       - name: Build
         run: |
@@ -434,6 +436,103 @@ jobs:
           path: |
             ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ matrix.config }}/
           retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Linux/GCC Warnings audit — non-blocking, for cleanup tracking
+  # ---------------------------------------------------------------------------
+  linux-gcc-warnings:
+    name: Linux/GCC Warnings (Release)
+    runs-on: ubuntu-22.04
+    needs: unit-tests
+    continue-on-error: true
+    env:
+      CMAKE_BUILD_PRESET: linux-gcc-ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/Falcor/external/pybind11
+            external/Falcor/external/glfw
+            external/Falcor/external/args
+            external/Falcor/external/fmt
+            external/Falcor/external/imgui
+            external/Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v1
+
+      - name: Init Falcor submodules
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
+                     glfw:https://github.com/glfw/glfw.git \
+                     args:https://github.com/Taywee/args.git \
+                     fmt:https://github.com/fmtlib/fmt.git \
+                     imgui:https://github.com/ocornut/imgui.git \
+                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
+            dir="external/${mod%%:*}"
+            url="${mod#*:}"
+            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
+              echo "Cloning $url -> $dir"
+              rm -rf "$dir"
+              git clone --depth 1 "$url" "$dir"
+            fi
+          done
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
+
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/packman
+          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          restore-keys: packman-${{ runner.os }}-
+
+      - name: Fetch Falcor packman dependencies
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          chmod +x tools/packman/packman
+          ./tools/packman/packman pull --platform linux-x86_64 dependencies.xml
+
+      - name: Patch NVTT package
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
+
+      - name: Integrate MLVHF plugins into Falcor tree
+        run: |
+          FALCOR="${{ env.FALCOR_DIR }}"
+          mkdir -p "${FALCOR}/Source/RenderPasses/VisHashFilter"
+          cp -r Source/RenderPasses/VisHashFilter/* "${FALCOR}/Source/RenderPasses/VisHashFilter/"
+          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
+          cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
+          mkdir -p "${FALCOR}/scripts/MLVHF"
+          cp -r scripts/* "${FALCOR}/scripts/MLVHF/"
+          RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
+          if ! grep -q "add_subdirectory(VisHashFilter)" "$RP_CMAKE"; then
+            echo "add_subdirectory(VisHashFilter)" >> "$RP_CMAKE"
+          fi
+          if ! grep -q "add_subdirectory(ReSTIRGIPass)" "$RP_CMAKE"; then
+            echo "add_subdirectory(ReSTIRGIPass)" >> "$RP_CMAKE"
+          fi
+
+      - name: CMake Configure
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
+            -DFALCOR_VALIDATE_HEADERS=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build (warnings enabled)
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config Release -j $(nproc) 2>&1 | tee /tmp/build-warnings.log
+          echo "--- Warning summary ---"
+          grep -c "warning:" /tmp/build-warnings.log || echo "0 warnings"
 
   # ---------------------------------------------------------------------------
   # Release — triggered on v* tags after successful builds

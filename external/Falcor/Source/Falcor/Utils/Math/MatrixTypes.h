@@ -31,6 +31,7 @@
 #include "VectorTypes.h"
 #include "Core/Error.h"
 
+#include <cstring>
 #include <limits>
 
 namespace Falcor
