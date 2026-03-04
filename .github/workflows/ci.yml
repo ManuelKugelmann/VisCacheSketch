@@ -89,7 +89,23 @@ jobs:
           done
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
+
+      # -- Caching: ccache for compiled objects ----------------------------------
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
+            ccache-${{ runner.os }}-gcc-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=1G
+          ccache --set-config=compression=true
+          ccache -z
 
       # -- Caching: NVIDIA packman packages (keyed on dependencies.xml) -------
       - name: Cache packman packages
@@ -144,12 +160,18 @@ jobs:
         run: |
           cd ${{ env.FALCOR_DIR }}
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
-            -DFALCOR_VALIDATE_HEADERS=OFF
+            -DFALCOR_VALIDATE_HEADERS=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: |
           cd ${{ env.FALCOR_DIR }}
           ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -217,6 +239,19 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
+      # -- Caching: sccache for compiled objects --------------------------------
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Mozilla\sccache
+          key: sccache-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-vs2022-${{ matrix.config }}-
+            sccache-${{ runner.os }}-vs2022-
+
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
         uses: actions/cache@v4
@@ -265,13 +300,18 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }} -- /m
+
+      - name: Print sccache stats
+        if: always()
+        shell: cmd
+        run: sccache --show-stats
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -338,6 +378,19 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
+      # -- Caching: sccache for compiled objects --------------------------------
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Mozilla\sccache
+          key: sccache-${{ runner.os }}-ninja-${{ matrix.config }}-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-ninja-${{ matrix.config }}-
+            sccache-${{ runner.os }}-ninja-
+
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
         uses: actions/cache@v4
@@ -379,13 +432,18 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
+
+      - name: Print sccache stats
+        if: always()
+        shell: cmd
+        run: sccache --show-stats
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
