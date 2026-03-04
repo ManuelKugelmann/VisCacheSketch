@@ -48,7 +48,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: [Release, Debug]
+        # PRs: Debug only; pushes to main/tags: Debug + Release
+        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-vs2022-ci
       # Pin packman cache location for reproducible caching on Windows
@@ -69,6 +70,7 @@ jobs:
             external/Falcor/external/imgui
             external/Falcor/external/vulkan-headers
           key: falcor-submodules-${{ runner.os }}-v1
+          restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         shell: bash
@@ -105,7 +107,7 @@ jobs:
         with:
           path: C:\packman-cache
           key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
-          restore-keys: packman-${{ runner.os }}-
+          restore-keys: packman-
 
       - name: Fetch Falcor packman dependencies
         shell: cmd
@@ -174,6 +176,7 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC (${{ matrix.config }})
+    if: github.event_name != 'pull_request'
     runs-on: windows-2022
     needs: algorithm-validations
     strategy:
@@ -187,7 +190,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # -- Caching: Falcor internal submodules --------------------------------
       - name: Cache Falcor submodules
         uses: actions/cache@v4
         with:
@@ -199,6 +201,7 @@ jobs:
             external/Falcor/external/imgui
             external/Falcor/external/vulkan-headers
           key: falcor-submodules-${{ runner.os }}-v1
+          restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         shell: bash
@@ -235,7 +238,7 @@ jobs:
         with:
           path: C:\packman-cache
           key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
-          restore-keys: packman-${{ runner.os }}-
+          restore-keys: packman-
 
       - name: Fetch Falcor packman dependencies
         shell: cmd
@@ -296,6 +299,7 @@ jobs:
   # ---------------------------------------------------------------------------
   linux-gcc:
     name: Linux/GCC (${{ matrix.config }})
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     needs: algorithm-validations
     continue-on-error: true
@@ -320,6 +324,7 @@ jobs:
             external/Falcor/external/imgui
             external/Falcor/external/vulkan-headers
           key: falcor-submodules-${{ runner.os }}-v1
+          restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         run: |
@@ -362,7 +367,7 @@ jobs:
         with:
           path: ~/.cache/packman
           key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
-          restore-keys: packman-${{ runner.os }}-
+          restore-keys: packman-
 
       - name: Fetch Falcor packman dependencies
         run: |
