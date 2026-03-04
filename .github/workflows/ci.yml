@@ -8,10 +8,10 @@ on:
     branches: ["main", "master"]
   workflow_dispatch:
 
-# Cancel redundant builds on the same branch/PR
+# Queue new runs behind in-progress ones (won't cancel running builds)
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
