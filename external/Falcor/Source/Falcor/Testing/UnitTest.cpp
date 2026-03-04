@@ -46,8 +46,9 @@
 
 #include <algorithm>
 #include <chrono>
-#include <regex>
 #include <cstdint>
+#include <iostream>
+#include <regex>
 
 namespace Falcor
 {

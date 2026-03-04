@@ -35,6 +35,8 @@
 #include "Utils/Timing/Profiler.h"
 
 #include <fstream>
+#include <iomanip>
+#include <iostream>
 
 namespace Falcor
 {

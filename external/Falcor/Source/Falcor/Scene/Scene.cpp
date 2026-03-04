@@ -49,11 +49,13 @@
 #include "Utils/Scripting/ScriptWriter.h"
 #include "Utils/NumericRange.h"
 
-#include <fstream>
-#include <numeric>
-#include <sstream>
 #include <algorithm>
 #include <execution>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <numeric>
+#include <sstream>
 
 namespace Falcor
 {

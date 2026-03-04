@@ -27,6 +27,7 @@
  **************************************************************************/
 #include "Falcor.h"
 #include "TimingCapture.h"
+#include <iostream>
 
 namespace Mogwai
 {

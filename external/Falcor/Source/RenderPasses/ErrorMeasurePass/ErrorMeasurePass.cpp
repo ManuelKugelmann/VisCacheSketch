@@ -27,6 +27,7 @@
  **************************************************************************/
 #include "ErrorMeasurePass.h"
 #include "Core/AssetResolver.h"
+#include <iostream>
 #include <sstream>
 
 namespace

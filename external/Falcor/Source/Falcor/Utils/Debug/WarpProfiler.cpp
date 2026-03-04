@@ -30,6 +30,7 @@
 #include "Core/API/RenderContext.h"
 #include "Core/Program/ShaderVar.h"
 #include <fstream>
+#include <iostream>
 
 namespace Falcor
 {

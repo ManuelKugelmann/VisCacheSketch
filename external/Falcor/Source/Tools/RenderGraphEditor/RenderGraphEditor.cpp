@@ -36,6 +36,7 @@
 
 #include <fstream>
 #include <filesystem>
+#include <iostream>
 
 #if FALCOR_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN

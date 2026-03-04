@@ -48,6 +48,7 @@
 
 #include <execution>
 #include <fstream>
+#include <iostream>
 
 namespace Falcor
 {

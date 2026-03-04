@@ -34,6 +34,8 @@
 #include "Utils/Scripting/ScriptBindings.h"
 #include "Utils/Scripting/ScriptWriter.h"
 
+#include <iostream>
+
 namespace Falcor
 {
     namespace

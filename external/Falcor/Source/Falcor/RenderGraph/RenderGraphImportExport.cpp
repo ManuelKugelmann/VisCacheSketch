@@ -30,6 +30,7 @@
 #include "Core/AssetResolver.h"
 #include "Utils/Scripting/Scripting.h"
 #include <fstream>
+#include <iostream>
 
 namespace Falcor
 {

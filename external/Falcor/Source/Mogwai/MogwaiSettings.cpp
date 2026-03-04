@@ -31,6 +31,7 @@
 #include "Utils/Scripting/Console.h"
 #include "Utils/Settings/Settings.h"
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 
 namespace Mogwai

@@ -41,6 +41,7 @@
 
 #include <filesystem>
 #include <algorithm>
+#include <iostream>
 
 FALCOR_EXPORT_D3D12_AGILITY_SDK
 
