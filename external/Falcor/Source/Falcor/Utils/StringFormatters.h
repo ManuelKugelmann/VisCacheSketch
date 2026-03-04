@@ -35,7 +35,7 @@ template<>
 struct fmt::formatter<std::filesystem::path> : formatter<std::string>
 {
     template<typename FormatContext>
-    auto format(const std::filesystem::path& p, FormatContext& ctx)
+    auto format(const std::filesystem::path& p, FormatContext& ctx) const
     {
         return formatter<std::string>::format(p.string(), ctx);
     }
@@ -45,7 +45,7 @@ template<typename T>
 struct fmt::formatter<std::optional<T>> : formatter<T>
 {
     template<typename FormatContext>
-    auto format(const std::optional<T>& opt, FormatContext& ctx)
+    auto format(const std::optional<T>& opt, FormatContext& ctx) const
     {
         if (opt)
         {

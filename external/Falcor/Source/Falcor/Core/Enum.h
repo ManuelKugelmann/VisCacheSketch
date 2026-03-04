@@ -181,7 +181,7 @@ template<typename T>
 struct fmt::formatter<T, std::enable_if_t<Falcor::has_enum_info_v<T>, char>> : formatter<std::string>
 {
     template<typename FormatContext>
-    auto format(const T& e, FormatContext& ctx)
+    auto format(const T& e, FormatContext& ctx) const
     {
         return formatter<std::string>::format(Falcor::enumToString(e), ctx);
     }

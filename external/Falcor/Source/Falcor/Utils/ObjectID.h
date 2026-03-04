@@ -197,7 +197,7 @@ struct fmt::formatter<Falcor::ObjectID<TKindEnum, TKind, TIntType>>
     }
 
     template<typename FormatContext>
-    auto format(const ObjectID& id, FormatContext& ctx)
+    auto format(const ObjectID& id, FormatContext& ctx) const
     {
         return fmt::format_to(ctx.out(), "{0}", id.get());
     }

@@ -80,7 +80,7 @@ template<>
 struct fmt::formatter<Falcor::PropertiesTest::TestStruct> : formatter<std::string>
 {
     template<typename FormatContext>
-    auto format(const Falcor::PropertiesTest::TestStruct& t, FormatContext& ctx)
+    auto format(const Falcor::PropertiesTest::TestStruct& t, FormatContext& ctx) const
     {
         return format_to(ctx.out(), "TestStruct{{a={}, b={}, c={}}}", t.a, t.b, t.c);
     }

@@ -70,7 +70,7 @@ struct fmt::formatter<Falcor::MaterialType>
     }
 
     template<typename FormatContext>
-    auto format(Falcor::MaterialType materialType, FormatContext& ctx)
+    auto format(Falcor::MaterialType materialType, FormatContext& ctx) const
     {
         return fmt::format_to(ctx.out(), "{0}", Falcor::to_string(materialType));
     }
