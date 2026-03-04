@@ -42,7 +42,7 @@ jobs:
   # Windows/VS2022 — vanilla Falcor + MLVHF plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
-    name: Windows VS2022 (${{ matrix.config }})
+    name: Windows VS2022
     runs-on: windows-2022
     needs: algorithm-validations
     strategy:
@@ -175,7 +175,7 @@ jobs:
   # Windows Ninja/MSVC — alternative build path
   # ---------------------------------------------------------------------------
   windows-ninja:
-    name: Windows Ninja/MSVC (${{ matrix.config }})
+    name: Windows Ninja/MSVC
     if: github.event_name != 'pull_request'
     runs-on: windows-2022
     needs: algorithm-validations
@@ -298,7 +298,7 @@ jobs:
   # Linux/GCC — optional, does not block PRs or releases
   # ---------------------------------------------------------------------------
   linux-gcc:
-    name: Linux/GCC (${{ matrix.config }})
+    name: Linux/GCC
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     needs: algorithm-validations
