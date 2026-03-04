@@ -21,10 +21,10 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Unit tests (no GPU required)
+  # Algorithm validations (no GPU required)
   # ---------------------------------------------------------------------------
-  unit-tests:
-    name: Unit Tests
+  algorithm-validations:
+    name: Algorithm Validations
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run VHF convergence tests
+      - name: Run VHF algorithm validations
         run: python tests/test_vhf_convergence.py
 
   # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ jobs:
   linux-gcc:
     name: Linux/GCC (${{ matrix.config }})
     runs-on: ubuntu-22.04
-    needs: unit-tests
+    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
@@ -190,7 +190,7 @@ jobs:
   windows-vs2022:
     name: Windows VS2022 (${{ matrix.config }})
     runs-on: windows-2022
-    needs: unit-tests
+    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
@@ -321,7 +321,7 @@ jobs:
   windows-ninja:
     name: Windows Ninja/MSVC (${{ matrix.config }})
     runs-on: windows-2022
-    needs: unit-tests
+    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
@@ -443,7 +443,7 @@ jobs:
   linux-gcc-warnings:
     name: Linux/GCC Warnings (Release)
     runs-on: ubuntu-22.04
-    needs: unit-tests
+    needs: algorithm-validations
     continue-on-error: true
     env:
       CMAKE_BUILD_PRESET: linux-gcc-ci
@@ -541,7 +541,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unit-tests, linux-gcc, windows-vs2022, windows-ninja]
+    needs: [algorithm-validations, linux-gcc, windows-vs2022, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
