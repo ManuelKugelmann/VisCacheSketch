@@ -47,11 +47,13 @@ jobs:
           SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
           echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
 
-          # Fetch gh-pages or create it
-          git fetch origin gh-pages:gh-pages 2>/dev/null || true
-          git worktree add _pages gh-pages 2>/dev/null || {
-            git worktree add --orphan _pages gh-pages
-          }
+          # Fetch gh-pages or create orphan branch
+          if git fetch origin gh-pages:gh-pages 2>/dev/null; then
+            git worktree add _pages gh-pages
+          else
+            git worktree add _pages --detach HEAD
+            cd _pages && git checkout --orphan gh-pages && git rm -rf . && cd ..
+          fi
 
           # Always update latest/
           mkdir -p _pages/latest
