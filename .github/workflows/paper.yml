@@ -56,6 +56,8 @@ jobs:
         run: pip install reportlab
 
       - name: Generate paper PDF
+        env:
+          GITHUB_SHA: ${{ github.sha }}
         run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
 
       - name: Set PDF size
@@ -68,6 +70,7 @@ jobs:
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/latest
           cp viscachepaper/paper-draft.pdf _site/latest/paper-draft.pdf
+          cp viscachepaper/index.html _site/index.html
 
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             # Main: update stable root PDF
