@@ -9,10 +9,6 @@ on:
       - '.github/workflows/validate.yml'
   pull_request:
     branches: ["main", "master"]
-    paths:
-      - 'tests/**'
-      - 'Source/RenderPasses/**'
-      - '.github/workflows/validate.yml'
   workflow_dispatch:
 
 concurrency:
@@ -20,8 +16,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Fast check — always visible in PR, skips tests if no relevant changes
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      algo: ${{ steps.filter.outputs.algo }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            algo:
+              - 'tests/**'
+              - 'Source/RenderPasses/**'
+              - '.github/workflows/validate.yml'
+
   algorithm-validations:
     name: Algorithm Validations
+    needs: [changes]
+    if: always() && (needs.changes.outputs.algo == 'true' || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -8,9 +8,6 @@ on:
       - '.github/workflows/paper.yml'
   pull_request:
     branches: ["main", "master"]
-    paths:
-      - 'viscachepaper/**'
-      - '.github/workflows/paper.yml'
   workflow_dispatch:
 
 concurrency:
@@ -21,8 +18,27 @@ permissions:
   contents: write
 
 jobs:
+  # Fast check — always visible in PR, skips build if no paper changes
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      paper: ${{ steps.filter.outputs.paper }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            paper:
+              - 'viscachepaper/**'
+              - '.github/workflows/paper.yml'
+
   paper:
     name: Build Paper PDF
+    needs: [changes]
+    if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -13,13 +13,6 @@ on:
       - '.github/workflows/build.yml'
   pull_request:
     branches: ["main", "master"]
-    paths:
-      - 'Source/**'
-      - 'Falcor/**'
-      - 'scripts/**'
-      - 'CMakeLists.txt'
-      - 'setup.*'
-      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 # Queue new runs behind in-progress ones (won't cancel running builds)
@@ -34,11 +27,34 @@ env:
   FALCOR_DIR: Falcor
 
 jobs:
+  # Fast check — always visible in PR, skips builds if no source changes
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      source: ${{ steps.filter.outputs.source }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            source:
+              - 'Source/**'
+              - 'Falcor/**'
+              - 'scripts/**'
+              - 'CMakeLists.txt'
+              - 'setup.*'
+              - '.github/workflows/build.yml'
+
   # ---------------------------------------------------------------------------
   # Windows/VS2022 — vanilla Falcor + VisCache plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
+    needs: [changes]
+    if: always() && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
     runs-on: windows-2022
     strategy:
       fail-fast: false
