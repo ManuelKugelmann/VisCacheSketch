@@ -1,6 +1,6 @@
 # Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
 
-**[Paper draft (PDF)](viscachepaper/multilevel-visibility-hash-filter-paper.pdf)** | **[2006 Diplomarbeit](docs/ThesisMK.pdf)** | **[Build paper](viscachepaper/generate_paper.py):** `pip install reportlab && python viscachepaper/generate_paper.py`
+**[Paper draft (PDF)](https://ManuelKugelmann.github.io/VisCacheSketch/paper-draft.pdf)** | **[2006 Diplomarbeit](docs/ThesisMK.pdf)** | **[Build paper](viscachepaper/generate_paper.py):** `pip install reportlab && python viscachepaper/generate_paper.py`
 
 **Author:** Manuel Kugelmann
 **Target venue:** EGSR / HPG 2026

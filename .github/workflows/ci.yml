@@ -90,11 +90,7 @@ jobs:
         with:
           script: |
             const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
-            const body = [
-              `**Paper draft built** (${process.env.PDF_SIZE})`,
-              `- [Latest PDF](${pagesUrl}/latest/paper-draft.pdf)`,
-              `- [Stable PDF (main)](${pagesUrl}/paper-draft.pdf)`,
-            ].join('\n');
+            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [download PDF](${pagesUrl}/latest/paper-draft.pdf)`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
