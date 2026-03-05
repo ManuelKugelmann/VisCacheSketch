@@ -106,7 +106,7 @@ def build(output_path=None):
     doc = BaseDocTemplate(out, pagesize=letter, topMargin=MARGIN_TOP,
                           bottomMargin=MARGIN_BOT, leftMargin=MARGIN_LR, rightMargin=MARGIN_LR)
 
-    TITLE_H = 183
+    TITLE_H = 258
     GAP = 2
     COL_H_P1 = BODY_H - TITLE_H - GAP
     title_frame = Frame(MARGIN_LR, MARGIN_BOT + COL_H_P1 + GAP,
