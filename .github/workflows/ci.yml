@@ -21,6 +21,99 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Paper PDF (fast, no dependencies — runs immediately)
+  # ---------------------------------------------------------------------------
+  paper:
+    name: Build Paper PDF
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install reportlab
+
+      - name: Generate paper PDF
+        run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
+
+      - name: Upload paper PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-draft
+          path: viscachepaper/paper-draft.pdf
+          retention-days: 90
+
+      - name: Job summary
+        run: |
+          SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
+          echo "Built successfully (${SIZE})." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[Download PDF](${RUN_URL}#artifacts)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `**Paper draft built** — [download PDF](${runUrl}#artifacts)`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.startsWith('**Paper draft built**'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  # ---------------------------------------------------------------------------
+  # Detect what changed (skip C++ builds for paper/docs-only changes)
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      source: ${{ steps.filter.outputs.source }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            source:
+              - 'Source/**'
+              - 'Falcor/**'
+              - 'scripts/**'
+              - 'CMakeLists.txt'
+              - '.github/workflows/ci.yml'
+              - 'setup.*'
+
+  # ---------------------------------------------------------------------------
   # Algorithm validations (no GPU required)
   # ---------------------------------------------------------------------------
   algorithm-validations:
@@ -44,7 +137,8 @@ jobs:
   windows-vs2022:
     name: Windows VS2022
     runs-on: windows-2022
-    needs: algorithm-validations
+    needs: [algorithm-validations, changes]
+    if: needs.changes.outputs.source == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -218,9 +312,9 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.source == 'true'
     runs-on: windows-2022
-    needs: algorithm-validations
+    needs: [algorithm-validations, changes]
     strategy:
       fail-fast: false
       matrix:
@@ -383,9 +477,9 @@ jobs:
   # ---------------------------------------------------------------------------
   linux-gcc:
     name: Linux/GCC
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.changes.outputs.source == 'true'
     runs-on: ubuntu-22.04
-    needs: algorithm-validations
+    needs: [algorithm-validations, changes]
     continue-on-error: true
     strategy:
       fail-fast: false
