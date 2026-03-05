@@ -91,7 +91,8 @@ docs/
 .gitmodules                  Root submodule config (mirrors Falcor/.gitmodules)
 .githooks/pre-commit         Blocks commits if .gitmodules files are out of sync
 sync-submodules.sh           Bidirectional sync between root and Falcor .gitmodules
-setup.sh                     Setup (submodules, packman, hooks, plugin copy)
+setup.sh                     Linux setup: calls Falcor/setup.sh + MLVHF plugin copy
+setup.bat                    Windows setup: calls Falcor/setup_vs2022.bat + MLVHF plugin copy
 TODO.md                      Global task tracker
 ```
 
@@ -166,25 +167,23 @@ Finest-only tests the central architectural claim: without coarse levels, within
 git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
 cd VisCacheSketch
 
-# Setup (copies plugins into Falcor tree, patches CMake, runs tests, enables hooks)
+# Linux:
 ./setup.sh
 
-# Fetch Falcor dependencies (packman: CUDA, slang, nvtt, etc.)
-# Linux:
-Falcor/setup.sh
 # Windows:
-Falcor/setup_vs2022.bat          # deps + generates VS2022 .sln
-# or just deps without VS solution:
-Falcor/setup.bat
+.\setup.bat
 ```
+
+Each root setup script:
+1. Calls Falcor's own setup (submodule init, packman deps, git hooks;
+   Windows also generates VS2022 `.sln`)
+2. Copies VisHashFilter and ReSTIRGIPass plugins into the Falcor tree
+3. Patches CMake to register the plugins
+4. Runs CPU unit tests
 
 `Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
 with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
-init required. `setup.sh` copies the VisHashFilter and ReSTIRGIPass plugins
-into the Falcor tree, registers them with CMake, and enables the pre-commit
-hook for submodule sync checking. Falcor's own setup scripts (`Falcor/setup.bat`,
-`Falcor/setup.sh`, `Falcor/setup_vs2022.bat`) handle submodule init and
-packman dependency fetching — these are original NVIDIA scripts.
+init required.
 
 See `tests/test_vhf_convergence.py` for CPU unit tests (no GPU required).
 

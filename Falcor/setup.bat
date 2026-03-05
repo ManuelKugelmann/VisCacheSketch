@@ -16,12 +16,6 @@ if errorlevel 1 (
     git -C %~dp0\..\.. submodule update --init --depth 1
 )
 
-: Enable git hooks (pre-commit: submodule sync check)
-if exist %~dp0\..\.githooks\ (
-    echo Enabling git hooks ...
-    git -C %~dp0\..\.. config core.hooksPath .githooks
-)
-
 echo Fetching dependencies ...
 
 call %PACKMAN% pull --platform %PLATFORM% %~dp0\dependencies.xml

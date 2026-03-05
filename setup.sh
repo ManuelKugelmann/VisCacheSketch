@@ -1,10 +1,10 @@
 #!/bin/bash
-# setup.sh — MLVHF Falcor 8.0 integration setup script (Linux)
+# setup.sh — MLVHF Falcor 8.0 integration setup script
 # Run from the MLVHF package root: ./setup.sh
 #
 # What this script does:
 #   1. Locates Falcor (Falcor subtree or FALCOR_ROOT override)
-#   2. Populates Falcor internal submodules (if empty after subtree squash)
+#   2. Calls Falcor's setup.sh (submodule init, packman deps, git hooks)
 #   3. Copies MLVHF source files into the Falcor tree
 #   4. Patches CMakeLists.txt to register the plugins
 #   5. Runs the Python unit tests
@@ -36,31 +36,18 @@ if [ -d "${SCRIPT_DIR}/.githooks" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: Populate Falcor internal submodules (subtree fixup)
+# Step 2: Run Falcor's own setup (submodules + packman deps)
 # ---------------------------------------------------------------------------
-log "Step 2: Checking Falcor internal submodules..."
+log "Step 2: Running Falcor setup (submodules + packman)..."
 
-declare -A SUBMODS=(
-    [pybind11]="https://github.com/skallweitNV/pybind11.git"
-    [glfw]="https://github.com/glfw/glfw.git"
-    [args]="https://github.com/Taywee/args.git"
-    [fmt]="https://github.com/fmtlib/fmt.git"
-    [imgui]="https://github.com/ocornut/imgui.git"
-    [vulkan-headers]="https://github.com/KhronosGroup/Vulkan-Headers.git"
-)
-
-for name in "${!SUBMODS[@]}"; do
-    dir="${FALCOR_ROOT}/external/${name}"
-    url="${SUBMODS[$name]}"
-    # Check if directory is empty or missing key files
-    if [ ! -f "${dir}/CMakeLists.txt" ] && [ ! -f "${dir}/imgui.h" ]; then
-        log "  Cloning ${name}..."
-        rm -rf "${dir}"
-        git clone --depth 1 "${url}" "${dir}"
-    else
-        log "  ${name}: already populated"
-    fi
-done
+FALCOR_SETUP="${FALCOR_ROOT}/setup.sh"
+if [ -x "${FALCOR_SETUP}" ] || [ -f "${FALCOR_SETUP}" ]; then
+    bash "${FALCOR_SETUP}"
+    log "  Falcor setup complete."
+else
+    log "  WARNING: ${FALCOR_SETUP} not found, skipping Falcor setup."
+    log "  You may need to init submodules and fetch packman deps manually."
+fi
 
 # ---------------------------------------------------------------------------
 # Step 3: Copy MLVHF sources into Falcor tree
@@ -127,7 +114,6 @@ echo ""
 log "Setup complete."
 echo ""
 echo "Next steps:"
-echo "  1. Fetch packman deps: cd ${FALCOR_ROOT} && ./tools/packman/packman pull --platform linux-x86_64 dependencies.xml"
-echo "  2. Configure:  cd ${FALCOR_ROOT} && ./tools/.packman/cmake/bin/cmake --preset linux-gcc"
-echo "  3. Build:      cd ${FALCOR_ROOT} && ./tools/.packman/cmake/bin/cmake --build build/linux-gcc --config Release"
+echo "  1. Configure:  cmake --preset linux-gcc-ci -S ${FALCOR_ROOT}"
+echo "  2. Build:      cmake --build ${FALCOR_ROOT}/build/linux-gcc-ci --config Release"
 echo ""

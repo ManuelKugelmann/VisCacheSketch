@@ -20,12 +20,6 @@ else
     git -C "${BASE_DIR}/../.." submodule update --init --depth 1
 fi
 
-# Enable git hooks (pre-commit: submodule sync check)
-if [ -d "${BASE_DIR}/../.githooks" ]; then
-    echo "Enabling git hooks ..."
-    git -C "${BASE_DIR}/../.." config core.hooksPath .githooks
-fi
-
 echo "Fetching dependencies ..."
 
 ${PACKMAN} pull --platform ${PLATFORM} ${BASE_DIR}/dependencies.xml
