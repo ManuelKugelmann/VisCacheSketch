@@ -56,12 +56,12 @@ Falcor/                      Git subtree — ManuelKugelmann/Falcor fork
   setup_vs2022.bat           Falcor's original: setup.bat + CMake VS2022 configure
 
 Source/RenderPasses/
-  VisHashFilter/             Complete Falcor 8.0 RenderPass plugin
-    VisHashFilter.slang      Hash table: PCG3D addressing, lookup, insert, decay
-    VisHashInsert.cs.slang   Batched insert with SM6.5 WaveMatch coalescing
-    VisHashDecay.cs.slang    Background decay sweep
+  VisCache/             Complete Falcor 8.0 RenderPass plugin
+    VisCache.slang      Hash table: PCG3D addressing, lookup, insert, decay
+    VisCacheInsert.cs.slang   Batched insert with SM6.5 WaveMatch coalescing
+    VisCacheDecay.cs.slang    Background decay sweep
     ShadingCV.slang          CV+RRR estimator — all three integration points
-    VisHashFilter.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
+    VisCache.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
     CMakeLists.txt           Plugin build target
   ReSTIRGIPass/              ReSTIR GI with VisCache revalidation
     ReSTIRGIPass.h/.cpp      Falcor 8.0 host code (full port sketch)
@@ -177,7 +177,7 @@ cd VisCacheSketch
 Each root setup script:
 1. Calls Falcor's own setup (submodule init, packman deps, git hooks;
    Windows also generates VS2022 `.sln`)
-2. Copies VisHashFilter and ReSTIRGIPass plugins into the Falcor tree
+2. Copies VisCache and ReSTIRGIPass plugins into the Falcor tree
 3. Patches CMake to register the plugins
 4. Runs CPU unit tests
 

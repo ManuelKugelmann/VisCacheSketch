@@ -113,7 +113,7 @@ most will compile without changes. Known issues:
 
 Once the base port compiles and produces correct output on Bistro:
 
-1. Add `#import "../VisHashFilter/VisHashFilter"` at the top of `SpatialReuse.cs.slang`
+1. Add `#import "../VisCache/VisCache"` at the top of `SpatialReuse.cs.slang`
 2. Replace the visibility ray block with `evalRevalidationCV()` — see
    `Source/RenderPasses/ReSTIRGIPass/SpatialReuse_VisCache_delta.slang`
 3. In `ReSTIRGIPass::execute()`, call `retrieveVisCacheBuffers(renderData)` before

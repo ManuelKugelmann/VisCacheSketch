@@ -24,8 +24,8 @@ import Utils.Sampling.SampleGenerator;
 
 // VisCache integration
 #if USE_VISCACHE
-import RenderPasses.VisHashFilter.VisHashFilter;
-import RenderPasses.VisHashFilter.ShadingCV;
+import RenderPasses.VisCache.VisCache;
+import RenderPasses.VisCache.ShadingCV;
 #endif
 
 // ---------------------------------------------------------------------------

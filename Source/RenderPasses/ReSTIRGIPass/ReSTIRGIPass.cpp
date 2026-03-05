@@ -187,7 +187,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
 
     // ----------------------------------------------------------------
     // Retrieve VisCache buffers from InternalDictionary (if available)
-    // VisHashFilter must run before this pass in the render graph.
+    // VisCache must run before this pass in the render graph.
     // ----------------------------------------------------------------
     retrieveVisCacheBuffers(rd);
 
@@ -295,7 +295,7 @@ void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
         mVisCacheCapacity = 0u;
         if (mVisCacheParams.enabled)
             logWarning("ReSTIRGIPass: VisCache buffers not found in dictionary. "
-                       "Ensure VisHashFilter runs before ReSTIRGIPass in the render graph.");
+                       "Ensure VisCache runs before ReSTIRGIPass in the render graph.");
     }
 }
 

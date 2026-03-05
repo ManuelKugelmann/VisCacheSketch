@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-VisCacheSketch (VisCache) — Visual Hash Filter for real-time path tracing denoising, built as Falcor render passes.
+VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denoising, built as Falcor render passes.
 
 ## Falcor Subtree Policy
 
@@ -76,6 +76,6 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/
 
 ## Render Passes
 
-- `Source/RenderPasses/VisHashFilter/` — Visual Hash Filter pass
+- `Source/RenderPasses/VisCache/` — Visibility Cache pass
 - `Source/RenderPasses/ReSTIRGIPass/` — ReSTIR GI integration pass
 - These get copied into Falcor's source tree during CI build

@@ -20,8 +20,8 @@
  ***************************************************************************/
 
 // Paste this block at the top of SpatialReuse.cs.slang, after existing imports:
-#import "../VisHashFilter/VisHashFilter"
-#import "../VisHashFilter/ShadingCV"
+#import "../VisCache/VisCache"
+#import "../VisCache/ShadingCV"
 
 // ---------------------------------------------------------------------------
 // REPLACE the existing spatial reuse loop body with this version.
@@ -85,7 +85,7 @@ void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
         mVisCacheCapacity = 0u;
         if (mVisCacheParams.enabled)
             logWarning("ReSTIRGIPass: VisCache buffers not found in dictionary. "
-                       "Ensure VisHashFilter pass runs before ReSTIRGIPass.");
+                       "Ensure VisCache pass runs before ReSTIRGIPass.");
     }
 
     // Upload to shader

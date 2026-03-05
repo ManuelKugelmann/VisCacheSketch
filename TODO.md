@@ -17,12 +17,12 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ## 1. Implementation
 
-### 1.1 Core (VisHashFilter)
-- [x] Hash table: PCG3D addressing, lookup, insert, decay (`VisHashFilter.slang`)
-- [x] Batched insert with SM6.5 WaveMatch coalescing (`VisHashInsert.cs.slang`)
-- [x] Background decay sweep (`VisHashDecay.cs.slang`)
+### 1.1 Core (VisCache)
+- [x] Hash table: PCG3D addressing, lookup, insert, decay (`VisCache.slang`)
+- [x] Batched insert with SM6.5 WaveMatch coalescing (`VisCacheInsert.cs.slang`)
+- [x] Background decay sweep (`VisCacheDecay.cs.slang`)
 - [x] CV+RRR estimator for all three integration points (`ShadingCV.slang`)
-- [x] Falcor 8.0 host code: buffer management, PI auto-tuner, UI (`VisHashFilter.h/.cpp`)
+- [x] Falcor 8.0 host code: buffer management, PI auto-tuner, UI (`VisCache.h/.cpp`)
 - [x] CMake plugin build target
 - [x] CPU unit tests (5 tests, `tests/test_viscache_convergence.py`)
 
@@ -87,7 +87,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 ## 3. Paper Revision (detail in `paper/TODO.md`)
 
 ### 3.1 CRITICAL — Blocks Submission
-- [x] **CRITICAL** Rename paper — drop "Multilevel Visibility Hash Filter"
+- [x] **CRITICAL** Rename paper — drop "Multilevel Visibility Cache"
 - [ ] **CRITICAL** Remove "TODO: experimental validation" from abstract
 - [ ] **CRITICAL** §13 Table 4: "~60% benefit at ~5% cost" — add supporting data or mark as projected
 - [ ] **CRITICAL** §15 Results is entirely TODO — add at minimum one profiling data point
@@ -160,7 +160,7 @@ At least one profiling data point ───────────────�
 
 | Week | Target | Status |
 |------|--------|--------|
-| 1 | VisHashFilter standalone, CPU unit tests | done |
+| 1 | VisCache standalone, CPU unit tests | done |
 | 2 | CV+RRR in PathTracer (§11.2), validate on Sponza | pending |
 | 3 | Port DQLin/ReSTIR_PT to Falcor 8, verify Bistro | pending |
 | 4 | GI revalidation (§11.3), measure traces/px | pending |

@@ -6,7 +6,7 @@
  *
  * USAGE in PathTracer.slang (or ShadingPass.cs.slang):
  *
- *   #import "VisHashFilter"
+ *   #import "VisCache"
  *   #import "ShadingCV"
  *
  *   // Replace:
@@ -20,7 +20,7 @@
  ***************************************************************************/
 
 #pragma once
-#import "VisHashFilter"
+#import "VisCache"
 
 // Assumed to be provided by the host PathTracer:
 //   float traceShadowRay(float3 origin, float3 target);

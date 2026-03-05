@@ -1,5 +1,5 @@
 /***************************************************************************
- * VisHashInsert.cs.slang
+ * VisCacheInsert.cs.slang
  *
  * Batched insert pass — called once per frame to flush deferred inserts.
  * SM 6.5: WaveMatch coalesces threads targeting the same L0 cell into
@@ -9,7 +9,7 @@
  * pass via the vhfInsertImmediate() inline function below.
  ***************************************************************************/
 
-import VisHashFilter;
+import VisCache;
 
 // Structured buffer of pending (posA, posB, V) triples from the shading pass.
 // Filled by path tracer, consumed here.
@@ -68,7 +68,7 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
                 uint prev;
                 InterlockedAdd(gVHFTable[slot].packed, delta, prev);
 
-                // Inline overflow decay (see VisHashFilter.slang §8)
+                // Inline overflow decay (see VisCache.slang §8)
                 uint cur = prev + delta;
                 if ((cur & 0xFFFFu) > 0xE000u)
                 {

@@ -54,11 +54,11 @@ fi
 # ---------------------------------------------------------------------------
 log "Step 3: Copying VisCache RenderPass sources..."
 
-# VisHashFilter
-VISCACHE_DST="${FALCOR_ROOT}/Source/RenderPasses/VisHashFilter"
+# VisCache
+VISCACHE_DST="${FALCOR_ROOT}/Source/RenderPasses/VisCache"
 mkdir -p "${VISCACHE_DST}"
-cp -r "${SCRIPT_DIR}/Source/RenderPasses/VisHashFilter/"* "${VISCACHE_DST}/"
-log "  Copied: VisHashFilter"
+cp -r "${SCRIPT_DIR}/Source/RenderPasses/VisCache/"* "${VISCACHE_DST}/"
+log "  Copied: VisCache"
 
 # ReSTIRGIPass
 GI_DST="${FALCOR_ROOT}/Source/RenderPasses/ReSTIRGIPass"
@@ -86,11 +86,11 @@ log "Step 4: Patching Source/RenderPasses/CMakeLists.txt..."
 RP_CMAKE="${FALCOR_ROOT}/Source/RenderPasses/CMakeLists.txt"
 [ -f "${RP_CMAKE}" ] || fail "Could not find ${RP_CMAKE}"
 
-if ! grep -q "add_subdirectory(VisHashFilter)" "${RP_CMAKE}"; then
-    echo "add_subdirectory(VisHashFilter)" >> "${RP_CMAKE}"
-    log "  Added: add_subdirectory(VisHashFilter)"
+if ! grep -q "add_subdirectory(VisCache)" "${RP_CMAKE}"; then
+    echo "add_subdirectory(VisCache)" >> "${RP_CMAKE}"
+    log "  Added: add_subdirectory(VisCache)"
 else
-    log "  Already present: VisHashFilter (skipped)"
+    log "  Already present: VisCache (skipped)"
 fi
 
 if ! grep -q "add_subdirectory(ReSTIRGIPass)" "${RP_CMAKE}"; then

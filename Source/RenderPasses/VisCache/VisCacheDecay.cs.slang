@@ -1,5 +1,5 @@
 /***************************************************************************
- * VisHashDecay.cs.slang
+ * VisCacheDecay.cs.slang
  *
  * Background decay pass — traverses 1/N of the table per frame.
  * Needed only for animated scenes with moving lights/geometry.
@@ -9,12 +9,12 @@
  *   Fast action scenes:        15 frames
  *   Architectural walkthrough: 300 frames
  *
- * The PI controller in VisHashFilter.cpp auto-tunes decayPeriod based
+ * The PI controller in VisCache.cpp auto-tunes decayPeriod based
  * on smoothed load pressure (eviction/insert ratio).
  * Quality knobs (gVarThreshold, gPMin) are never auto-tuned.
  ***************************************************************************/
 
-import VisHashFilter;
+import VisCache;
 
 cbuffer DecayCB
 {

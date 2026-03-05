@@ -1,5 +1,5 @@
 """
-VisCache_Graph.py  —  Mogwai render graph for VisCache (Visibility Hash Filter)
+VisCache_Graph.py  —  Mogwai render graph for VisCache (Visibility Cache)
 Run from Mogwai: File > Load Script, or pass as --script argument.
 
 Usage:
@@ -12,7 +12,7 @@ Ablation configs are at the bottom — uncomment to switch.
 # Helper
 # ---------------------------------------------------------------------------
 def set_ablation(visCache, cfg):
-    """Apply an ablation configuration dict to the VisHashFilter pass."""
+    """Apply an ablation configuration dict to the VisCache pass."""
     for k, v in cfg.items():
         setattr(visCache, k, v)
 
@@ -66,9 +66,9 @@ def render_graph_VisCache():
     })
     g.addPass(gbuf, "GBufferRT")
 
-    # Visibility Hash Filter
+    # Visibility Cache
     # Owns the hash table; exposes it via InternalDictionary.
-    visCache = createPass("VisHashFilter", {
+    visCache = createPass("VisCache", {
         "tableCapacity":   1 << 22,   # 4M entries = 32 MB
         "bootThreshold":   32,
         "varThreshold":    0.10,
@@ -87,7 +87,7 @@ def render_graph_VisCache():
         "enablePressureEvict":  True,
     })
     set_ablation(visCache, ACTIVE_ABLATION)
-    g.addPass(visCache, "VisHashFilter")
+    g.addPass(visCache, "VisCache")
 
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
     rtxdi = createPass("RTXDIPass", {
@@ -96,7 +96,7 @@ def render_graph_VisCache():
             numPrimaryLocalLightCandidates = 8,
             numPrimaryInfiniteLightCandidates = 1,
         ),
-        "useVisHashForSelection": True,   # §11.1 — replace V=1 with cached mu
+        "useVisCacheForSelection": True,   # §11.1 — replace V=1 with cached mu
         "explorationFraction":    0.10,   # epsilon-greedy; §11.1 "1/M budget"
     })
     g.addPass(rtxdi, "RTXDIPass")
@@ -105,7 +105,7 @@ def render_graph_VisCache():
     pt = createPass("PathTracer", {
         "samplesPerPixel":    1,
         "maxBounces":         3,
-        "useVisHashFilter":   True,
+        "useVisCache":   True,
         "colorFormat":        ColorFormat.LogLuvHDR,
     })
     g.addPass(pt, "PathTracer")
@@ -160,7 +160,7 @@ def render_graph_VisCache():
     g.markOutput("ToneMapper.dst")
 
     # Secondary outputs for analysis
-    g.markOutput("VisHashFilter.hitRate")    # scalar stats texture (if implemented)
+    g.markOutput("VisCache.hitRate")    # scalar stats texture (if implemented)
     g.markOutput("ReSTIRGIPass.debugVis")   # optional per-pixel V visualisation
 
     return g

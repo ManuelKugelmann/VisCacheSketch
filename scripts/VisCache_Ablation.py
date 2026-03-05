@@ -30,7 +30,7 @@ ABLATION_CONFIGS = [
 
 
 def build_base_graph():
-    """Construct and return the base render graph (VisHashFilter + all passes)."""
+    """Construct and return the base render graph (VisCache + all passes)."""
     # Import VisCache_Graph without re-adding to Mogwai
     import importlib.util, sys
     spec = importlib.util.spec_from_file_location(
@@ -43,7 +43,7 @@ def build_base_graph():
 
 
 def apply_ablation(graph, config_dict):
-    visCache = graph.getPass("VisHashFilter")
+    visCache = graph.getPass("VisCache")
     # Reset to full config first
     for attr in ["enableDistanceLOD", "enableVarianceGate", "enableWarpReduction",
                  "enableDecay", "enablePressureEvict", "enableGIRevalidation",

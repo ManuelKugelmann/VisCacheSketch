@@ -53,11 +53,11 @@ if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
 : ---------------------------------------------------------------------------
 echo [VisCache] Step 3: Copying VisCache RenderPass sources...
 
-: VisHashFilter
-set VISCACHE_DST=%FALCOR_ROOT%\Source\RenderPasses\VisHashFilter
+: VisCache
+set VISCACHE_DST=%FALCOR_ROOT%\Source\RenderPasses\VisCache
 if not exist "%VISCACHE_DST%" mkdir "%VISCACHE_DST%"
-xcopy "%SCRIPT_DIR%Source\RenderPasses\VisHashFilter\*" "%VISCACHE_DST%\" /s /y /q
-echo [VisCache]   Copied: VisHashFilter
+xcopy "%SCRIPT_DIR%Source\RenderPasses\VisCache\*" "%VISCACHE_DST%\" /s /y /q
+echo [VisCache]   Copied: VisCache
 
 : ReSTIRGIPass
 set GI_DST=%FALCOR_ROOT%\Source\RenderPasses\ReSTIRGIPass
@@ -88,12 +88,12 @@ if not exist "%RP_CMAKE%" (
     exit /b 1
 )
 
-findstr /c:"add_subdirectory(VisHashFilter)" "%RP_CMAKE%" >nul 2>&1
+findstr /c:"add_subdirectory(VisCache)" "%RP_CMAKE%" >nul 2>&1
 if errorlevel 1 (
-    echo add_subdirectory(VisHashFilter)>> "%RP_CMAKE%"
-    echo [VisCache]   Added: add_subdirectory(VisHashFilter)
+    echo add_subdirectory(VisCache)>> "%RP_CMAKE%"
+    echo [VisCache]   Added: add_subdirectory(VisCache)
 ) else (
-    echo [VisCache]   Already present: VisHashFilter (skipped)
+    echo [VisCache]   Already present: VisCache (skipped)
 )
 
 findstr /c:"add_subdirectory(ReSTIRGIPass)" "%RP_CMAKE%" >nul 2>&1

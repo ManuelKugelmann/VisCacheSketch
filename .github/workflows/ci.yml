@@ -105,9 +105,9 @@ jobs:
         run: |
           $Falcor = "${{ env.FALCOR_DIR }}"
 
-          # Copy VisHashFilter plugin
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisHashFilter" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/VisHashFilter/*" "$Falcor/Source/RenderPasses/VisHashFilter/" -Recurse -Force
+          # Copy VisCache plugin
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
           # Copy ReSTIRGIPass plugin
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
@@ -120,8 +120,8 @@ jobs:
           # Patch RenderPasses CMakeLists.txt
           $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
           $content = Get-Content $rpCmake -Raw
-          if ($content -notmatch "add_subdirectory\(VisHashFilter\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(VisHashFilter)"
+          if ($content -notmatch "add_subdirectory\(VisCache\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
           if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
@@ -221,8 +221,8 @@ jobs:
         run: |
           $Falcor = "${{ env.FALCOR_DIR }}"
 
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisHashFilter" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/VisHashFilter/*" "$Falcor/Source/RenderPasses/VisHashFilter/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
           Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
@@ -232,8 +232,8 @@ jobs:
 
           $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
           $content = Get-Content $rpCmake -Raw
-          if ($content -notmatch "add_subdirectory\(VisHashFilter\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(VisHashFilter)"
+          if ($content -notmatch "add_subdirectory\(VisCache\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
           if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
@@ -338,15 +338,15 @@ jobs:
       - name: Integrate VisCache plugins into Falcor tree
         run: |
           FALCOR="${{ env.FALCOR_DIR }}"
-          mkdir -p "${FALCOR}/Source/RenderPasses/VisHashFilter"
-          cp -r Source/RenderPasses/VisHashFilter/* "${FALCOR}/Source/RenderPasses/VisHashFilter/"
+          mkdir -p "${FALCOR}/Source/RenderPasses/VisCache"
+          cp -r Source/RenderPasses/VisCache/* "${FALCOR}/Source/RenderPasses/VisCache/"
           mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
           cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
           mkdir -p "${FALCOR}/scripts/VisCache"
           cp -r scripts/* "${FALCOR}/scripts/VisCache/"
           RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
-          if ! grep -q "add_subdirectory(VisHashFilter)" "$RP_CMAKE"; then
-            echo "add_subdirectory(VisHashFilter)" >> "$RP_CMAKE"
+          if ! grep -q "add_subdirectory(VisCache)" "$RP_CMAKE"; then
+            echo "add_subdirectory(VisCache)" >> "$RP_CMAKE"
           fi
           if ! grep -q "add_subdirectory(ReSTIRGIPass)" "$RP_CMAKE"; then
             echo "add_subdirectory(ReSTIRGIPass)" >> "$RP_CMAKE"

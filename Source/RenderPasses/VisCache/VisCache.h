@@ -1,7 +1,7 @@
 /***************************************************************************
- * VisHashFilter.h
+ * VisCache.h
  *
- * Falcor 8.0 RenderPass — Visibility Hash Filter
+ * Falcor 8.0 RenderPass — Visibility Cache
  *
  * Owns the hash table buffer and stats buffer.
  * Exposes both to downstream passes via InternalDictionary.
@@ -17,13 +17,13 @@
 
 using namespace Falcor;
 
-class VisHashFilter : public RenderPass
+class VisCache : public RenderPass
 {
 public:
-    FALCOR_PLUGIN_CLASS(VisHashFilter, "VisHashFilter",
-                        "Visibility Hash Filter (Kugelmann 2026)");
+    FALCOR_PLUGIN_CLASS(VisCache, "VisCache",
+                        "Visibility Cache (Kugelmann 2026)");
 
-    static ref<VisHashFilter> create(ref<Device> pDevice,
+    static ref<VisCache> create(ref<Device> pDevice,
                                      const Properties& props);
 
     // RenderPass interface
@@ -63,7 +63,7 @@ public:
     const Params& getParams() const { return mParams; }
 
 private:
-    VisHashFilter(ref<Device> pDevice, const Properties& props);
+    VisCache(ref<Device> pDevice, const Properties& props);
 
     void allocateBuffers();
     void runDecayPass(RenderContext* pCtx);

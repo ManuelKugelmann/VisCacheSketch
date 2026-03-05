@@ -1,12 +1,12 @@
 /***************************************************************************
- * VisHashFilter.cpp
+ * VisCache.cpp
  *
  * Falcor 8.0 RenderPass implementation.
  * All GPU resources allocated here; hash table exposed to downstream
  * passes (PathTracer, RTXDIPass, ReSTIRGIPass) via InternalDictionary.
  ***************************************************************************/
 
-#include "VisHashFilter.h"
+#include "VisCache.h"
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
@@ -14,11 +14,11 @@ static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay,
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
-    registry.registerClass<RenderPass, VisHashFilter>();
+    registry.registerClass<RenderPass, VisCache>();
 }
 
 // ---------------------------------------------------------------------------
-VisHashFilter::VisHashFilter(ref<Device> pDevice, const Properties& props)
+VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     : RenderPass(pDevice)
 {
     // Deserialise properties (from Python script or saved graph)
@@ -32,14 +32,14 @@ VisHashFilter::VisHashFilter(ref<Device> pDevice, const Properties& props)
     if (props.has("maxLevel"))       mParams.maxLevel       = props["maxLevel"];
 }
 
-ref<VisHashFilter> VisHashFilter::create(ref<Device> pDevice,
+ref<VisCache> VisCache::create(ref<Device> pDevice,
                                           const Properties& props)
 {
-    return make_ref<VisHashFilter>(pDevice, props);
+    return make_ref<VisCache>(pDevice, props);
 }
 
 // ---------------------------------------------------------------------------
-Properties VisHashFilter::getProperties() const
+Properties VisCache::getProperties() const
 {
     Properties p;
     p["tableCapacity"] = mParams.tableCapacity;
@@ -54,7 +54,7 @@ Properties VisHashFilter::getProperties() const
 }
 
 // ---------------------------------------------------------------------------
-RenderPassReflection VisHashFilter::reflect(const CompileData&)
+RenderPassReflection VisCache::reflect(const CompileData&)
 {
     // No texture inputs or outputs — the hash table is passed via
     // InternalDictionary, not through the render graph edge system.
@@ -63,21 +63,21 @@ RenderPassReflection VisHashFilter::reflect(const CompileData&)
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::compile(RenderContext*, const CompileData&)
+void VisCache::compile(RenderContext*, const CompileData&)
 {
     allocateBuffers();
 
     // Decay pass
     {
         ProgramDesc desc;
-        desc.addShaderLibrary("RenderPasses/VisHashFilter/VisHashDecay.cs.slang")
+        desc.addShaderLibrary("RenderPasses/VisCache/VisCacheDecay.cs.slang")
             .csEntry("csDecay");
         mpDecayPass = ComputePass::create(mpDevice, desc);
     }
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::allocateBuffers()
+void VisCache::allocateBuffers()
 {
     // Ensure capacity is power-of-two
     uint32_t cap = 1u;
@@ -110,7 +110,7 @@ void VisHashFilter::allocateBuffers()
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
+void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 {
     // Nothing scene-specific needed — hash table is world-space.
     // Trigger a re-allocation if scene changes require table resize.
@@ -118,7 +118,7 @@ void VisHashFilter::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::execute(RenderContext* pCtx, const RenderData& renderData)
+void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 {
     // ----------------------------------------------------------------
     // Expose hash table to downstream passes via InternalDictionary.
@@ -156,7 +156,7 @@ void VisHashFilter::execute(RenderContext* pCtx, const RenderData& renderData)
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::runDecayPass(RenderContext* pCtx)
+void VisCache::runDecayPass(RenderContext* pCtx)
 {
     uint32_t stride = std::max(1u, mParams.tableCapacity / mParams.decayPeriod);
     uint32_t offset = (mFrameCount % mParams.decayPeriod) * stride;
@@ -172,7 +172,7 @@ void VisHashFilter::runDecayPass(RenderContext* pCtx)
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::readbackStats(RenderContext* pCtx)
+void VisCache::readbackStats(RenderContext* pCtx)
 {
     // Copy GPU counters → staging → CPU (4-frame latency is acceptable)
     pCtx->copyResource(mpStagingBuffer.get(), mpStatsBuffer.get());
@@ -198,7 +198,7 @@ void VisHashFilter::readbackStats(RenderContext* pCtx)
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::autoTuneDecayPeriod()
+void VisCache::autoTuneDecayPeriod()
 {
     // PI controller: target eviction/insert ratio = mTargetLoadPressure
     // One-sided: only speeds up decay under load, never slows past user max.
@@ -213,7 +213,7 @@ void VisHashFilter::autoTuneDecayPeriod()
 }
 
 // ---------------------------------------------------------------------------
-void VisHashFilter::renderUI(Gui::Widgets& widget)
+void VisCache::renderUI(Gui::Widgets& widget)
 {
     widget.text(fmt::format("Hit rate:        {:.1f}%", mStats.hitRate * 100.f));
     widget.text(fmt::format("Ray savings:     {:.1f}%", mStats.raySavings * 100.f));

@@ -24,7 +24,7 @@ import math
 import sys
 
 # ---------------------------------------------------------------------------
-# Python mirror of VisHashFilter.slang (integer arithmetic)
+# Python mirror of VisCache.slang (integer arithmetic)
 # ---------------------------------------------------------------------------
 TABLE_CAP   = 1 << 14   # 16K entries for test (full: 4M)
 BOOT_THR    = 32
@@ -127,13 +127,13 @@ def lookup(table, posA, posB, lvl=0):
     return mu, mu * (1.0 - mu)
 
 def distance_gated_lod(d):
-    """Mirror of VisHashFilter.slang LOD selection."""
+    """Mirror of VisCache.slang LOD selection."""
     lo = max(0, min(2, int(math.floor(math.log2(max(d, 1e-6) / K_FOOT_MAX)))))
     hi = max(0, min(2, int(math.floor(math.log2(max(d, 1e-6) / K_FOOT_MIN)))))
     return lo, hi
 
 def background_decay(table, frame, decay_period):
-    """Mirror of VisHashDecay.cs.slang stride-based sweep."""
+    """Mirror of VisCacheDecay.cs.slang stride-based sweep."""
     stride = TABLE_CAP // decay_period
     offset = (frame % decay_period) * stride
     cleared = 0

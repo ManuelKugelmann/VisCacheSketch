@@ -1,7 +1,7 @@
 /***************************************************************************
- * VisHashFilter.slang
+ * VisCache.slang
  *
- * Visibility Hash Filter — Core Data Structure
+ * Visibility Cache — Core Data Structure
  * Kugelmann 2026, extending Kugelmann 2006
  *
  * Three-level spatial hash table caching pairwise visibility between
