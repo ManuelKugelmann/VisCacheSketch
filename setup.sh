@@ -28,6 +28,14 @@ log "Step 1: Using Falcor at: ${FALCOR_ROOT}"
 [ -f "${FALCOR_ROOT}/CMakeLists.txt" ] || fail "CMakeLists.txt not found in ${FALCOR_ROOT}"
 
 # ---------------------------------------------------------------------------
+# Step 1b: Enable git hooks
+# ---------------------------------------------------------------------------
+if [ -d "${SCRIPT_DIR}/.githooks" ]; then
+    git -C "${SCRIPT_DIR}" config core.hooksPath .githooks
+    log "Step 1b: Enabled .githooks (pre-commit: submodule sync check)"
+fi
+
+# ---------------------------------------------------------------------------
 # Step 2: Populate Falcor internal submodules (subtree fixup)
 # ---------------------------------------------------------------------------
 log "Step 2: Checking Falcor internal submodules..."

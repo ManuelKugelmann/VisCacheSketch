@@ -76,6 +76,14 @@ Log "  Falcor commit: $gitCommit" "Green"
 Pop-Location
 
 # ---------------------------------------------------------------------------
+# Step 1b: Enable git hooks
+# ---------------------------------------------------------------------------
+if (Test-Path "$ScriptDir\.githooks") {
+    git -C $ScriptDir config core.hooksPath .githooks
+    Log "Step 1b: Enabled .githooks (pre-commit: submodule sync check)" "Green"
+}
+
+# ---------------------------------------------------------------------------
 # Step 2: Copy MLVHF source into Falcor tree
 # ---------------------------------------------------------------------------
 Log "Step 2: Copying MLVHF RenderPass sources..."
