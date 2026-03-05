@@ -1,11 +1,11 @@
 #!/bin/bash
-# setup.sh — MLVHF Falcor 8.0 integration setup script
-# Run from the MLVHF package root: ./setup.sh
+# setup.sh — VisCache Falcor 8.0 integration setup script
+# Run from the VisCache package root: ./setup.sh
 #
 # What this script does:
 #   1. Locates Falcor (Falcor subtree or FALCOR_ROOT override)
 #   2. Calls Falcor's setup.sh (submodule init, packman deps, git hooks)
-#   3. Copies MLVHF source files into the Falcor tree
+#   3. Copies VisCache source files into the Falcor tree
 #   4. Patches CMakeLists.txt to register the plugins
 #   5. Runs the Python unit tests
 #
@@ -16,8 +16,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-log()  { echo -e "\033[36m[MLVHF]\033[0m $1"; }
-fail() { echo -e "\033[31m[MLVHF] ERROR:\033[0m $1"; exit 1; }
+log()  { echo -e "\033[36m[VisCache]\033[0m $1"; }
+fail() { echo -e "\033[31m[VisCache] ERROR:\033[0m $1"; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Step 1: Resolve Falcor root
@@ -50,14 +50,14 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3: Copy MLVHF sources into Falcor tree
+# Step 3: Copy VisCache sources into Falcor tree
 # ---------------------------------------------------------------------------
-log "Step 3: Copying MLVHF RenderPass sources..."
+log "Step 3: Copying VisCache RenderPass sources..."
 
 # VisHashFilter
-VHF_DST="${FALCOR_ROOT}/Source/RenderPasses/VisHashFilter"
-mkdir -p "${VHF_DST}"
-cp -r "${SCRIPT_DIR}/Source/RenderPasses/VisHashFilter/"* "${VHF_DST}/"
+VISCACHE_DST="${FALCOR_ROOT}/Source/RenderPasses/VisHashFilter"
+mkdir -p "${VISCACHE_DST}"
+cp -r "${SCRIPT_DIR}/Source/RenderPasses/VisHashFilter/"* "${VISCACHE_DST}/"
 log "  Copied: VisHashFilter"
 
 # ReSTIRGIPass
@@ -67,13 +67,13 @@ cp -r "${SCRIPT_DIR}/Source/RenderPasses/ReSTIRGIPass/"* "${GI_DST}/"
 log "  Copied: ReSTIRGIPass"
 
 # Scripts
-SCRIPT_DST="${FALCOR_ROOT}/scripts/MLVHF"
+SCRIPT_DST="${FALCOR_ROOT}/scripts/VisCache"
 mkdir -p "${SCRIPT_DST}"
 cp -r "${SCRIPT_DIR}/scripts/"* "${SCRIPT_DST}/"
 log "  Copied: scripts"
 
 # Tests
-TEST_DST="${FALCOR_ROOT}/scripts/MLVHF/tests"
+TEST_DST="${FALCOR_ROOT}/scripts/VisCache/tests"
 mkdir -p "${TEST_DST}"
 cp -r "${SCRIPT_DIR}/tests/"* "${TEST_DST}/"
 log "  Copied: tests"
@@ -104,7 +104,7 @@ fi
 # Step 5: Run Python unit tests
 # ---------------------------------------------------------------------------
 log "Step 5: Running CPU unit tests..."
-python3 "${SCRIPT_DIR}/tests/test_vhf_convergence.py"
+python3 "${SCRIPT_DIR}/tests/test_viscache_convergence.py"
 log "  All unit tests passed."
 
 # ---------------------------------------------------------------------------

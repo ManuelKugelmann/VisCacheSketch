@@ -33,7 +33,7 @@
 //   float contrib = EvalContrib(P, neighbor) * V;
 //   UpdateReservoir(reservoir, neighbor, contrib);
 //
-// PATCHED (MLVHF):
+// PATCHED (VisCache):
 // ---------------------------------------------------------------------------
 
 /*
@@ -64,36 +64,36 @@ for (int i = 0; i < gNumSpatialNeighbors; i++)
 */
 
 // ---------------------------------------------------------------------------
-// execute() patch: retrieve VHF buffers from InternalDictionary
+// execute() patch: retrieve VisCache buffers from InternalDictionary
 // Add at the top of ReSTIRGIPass::execute() before the spatial reuse dispatch:
 // ---------------------------------------------------------------------------
 
 /*
-void ReSTIRGIPass::retrieveVHFBuffers(const RenderData& rd)
+void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
 {
     const auto& dict = rd.getDictionary();
 
-    if (mMLVHFParams.enabled &&
-        dict.keyExists("vhfTable") && dict.keyExists("vhfCapacity"))
+    if (mVisCacheParams.enabled &&
+        dict.keyExists("visCacheTable") && dict.keyExists("visCacheCapacity"))
     {
-        mpVHFTable  = dict["vhfTable"].get<ref<Buffer>>();
-        mVHFCapacity = dict["vhfCapacity"].get<uint32_t>();
+        mpVisCacheTable  = dict["visCacheTable"].get<ref<Buffer>>();
+        mVisCacheCapacity = dict["visCacheCapacity"].get<uint32_t>();
     }
     else
     {
-        mpVHFTable   = nullptr;
-        mVHFCapacity = 0u;
-        if (mMLVHFParams.enabled)
-            logWarning("ReSTIRGIPass: VHF buffers not found in dictionary. "
+        mpVisCacheTable   = nullptr;
+        mVisCacheCapacity = 0u;
+        if (mVisCacheParams.enabled)
+            logWarning("ReSTIRGIPass: VisCache buffers not found in dictionary. "
                        "Ensure VisHashFilter pass runs before ReSTIRGIPass.");
     }
 
     // Upload to shader
     auto vars = mpSpatialReusePass->getRootVar();
-    vars["gVHFTable"]          = mpVHFTable;
-    vars["gTableCapacity"]     = mVHFCapacity;
-    vars["gVarThreshold"]      = mMLVHFParams.pMin;  // re-use VHF threshold
-    vars["gPMin"]              = mMLVHFParams.pMin;
-    vars["gFireflyBudget"]     = mMLVHFParams.contribThreshold;
+    vars["gVHFTable"]          = mpVisCacheTable;
+    vars["gTableCapacity"]     = mVisCacheCapacity;
+    vars["gVarThreshold"]      = mVisCacheParams.pMin;  // re-use VisCache threshold
+    vars["gPMin"]              = mVisCacheParams.pMin;
+    vars["gFireflyBudget"]     = mVisCacheParams.contribThreshold;
 }
 */

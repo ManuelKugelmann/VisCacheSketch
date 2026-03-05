@@ -24,20 +24,20 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [x] CV+RRR estimator for all three integration points (`ShadingCV.slang`)
 - [x] Falcor 8.0 host code: buffer management, PI auto-tuner, UI (`VisHashFilter.h/.cpp`)
 - [x] CMake plugin build target
-- [x] CPU unit tests (5 tests, `tests/test_vhf_convergence.py`)
+- [x] CPU unit tests (5 tests, `tests/test_viscache_convergence.py`)
 
 ### 1.2 ReSTIR GI Integration
 - [x] Full ReSTIRGIPass host code sketch (`ReSTIRGIPass.h/.cpp`)
-- [x] Spatial reuse shader with MLVHF integration (`SpatialReuse.cs.slang`)
+- [x] Spatial reuse shader with VisCache integration (`SpatialReuse.cs.slang`)
 - [x] ReSTIRGIPass CMakeLists.txt
-- [x] CV+RRR revalidation loop delta reference (`SpatialReuse_MLVHF_delta.slang`)
+- [x] CV+RRR revalidation loop delta reference (`SpatialReuse_VisCache_delta.slang`)
 - [ ] **CRITICAL** Port DQLin/ReSTIR_PT into Falcor fork (`Falcor`)
   - Fork NVIDIAGameWorks/Falcor → ManuelKugelmann/Falcor
   - Apply API migration (see `docs/PORTING.md`)
   - Merge full DQLin reservoir logic into sketch files
 - [ ] Verify ported pass matches DQLin reference images on Bistro (FLIP < 0.01)
-- [ ] Verify k=5.0 traces/pixel with MLVHF disabled
-- [ ] Enable MLVHF, verify traces/pixel drops to ~0.5–1.0 at steady state
+- [ ] Verify k=5.0 traces/pixel with VisCache disabled
+- [ ] Enable VisCache, verify traces/pixel drops to ~0.5–1.0 at steady state
 
 ### 1.3 Build & Setup
 - [x] Setup script (`setup.sh`)
@@ -87,7 +87,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 ## 3. Paper Revision (detail in `paper/TODO.md`)
 
 ### 3.1 CRITICAL — Blocks Submission
-- [ ] **CRITICAL** Rename paper — drop "Multilevel Visibility Hash Filter"
+- [x] **CRITICAL** Rename paper — drop "Multilevel Visibility Hash Filter"
 - [ ] **CRITICAL** Remove "TODO: experimental validation" from abstract
 - [ ] **CRITICAL** §13 Table 4: "~60% benefit at ~5% cost" — add supporting data or mark as projected
 - [ ] **CRITICAL** §15 Results is entirely TODO — add at minimum one profiling data point

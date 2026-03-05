@@ -1,5 +1,5 @@
 """
-test_vhf_convergence.py  —  CPU-side algorithm validation for VHF correctness.
+test_viscache_convergence.py  —  CPU-side algorithm validation for VisCache correctness.
 
 Simulates the hash table insert/lookup logic in Python to verify:
 1.  Mean converges to ground-truth visibility fraction
@@ -15,7 +15,7 @@ Simulates the hash table insert/lookup logic in Python to verify:
 11. Firefly-suppressed RR clamps high-contribution traces
 12. Background decay sweep clears stale entries
 
-Run standalone:  python tests/test_vhf_convergence.py
+Run standalone:  python tests/test_viscache_convergence.py
 No GPU required — validates algorithm logic before shader compilation.
 """
 

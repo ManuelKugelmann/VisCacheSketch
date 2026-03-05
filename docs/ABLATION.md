@@ -14,7 +14,7 @@ _Paper §15 — all configurations and metric targets_
 | E | `enablePressureEvict` | Evict from step 0 | −E |
 | — | `minLevel=maxLevel=2` | Finest level only | Finest-only |
 | — | `minLevel=maxLevel=0` | Coarsest level only | Coarsest-only |
-| — | VHF disabled entirely | Full retrace baseline | No-cache |
+| — | VisCache disabled entirely | Full retrace baseline | No-cache |
 
 ---
 
@@ -107,7 +107,7 @@ _Paper §15 — all configurations and metric targets_
 - Reference: 1024 spp path tracer, same scene, same camera
 - Scenes: Bistro_Interior.pyscene, Sponza.pyscene
 
-See `scripts/MLVHF_Ablation.py` for automated capture.
+See `scripts/VisCache_Ablation.py` for automated capture.
 
 ---
 

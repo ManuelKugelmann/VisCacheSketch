@@ -1,9 +1,9 @@
 """
-MLVHF_Ablation.py  —  Automated ablation capture script
+VisCache_Ablation.py  —  Automated ablation capture script
 Runs all ablation configurations and captures reference frames.
 
 Usage:
-    Mogwai.exe --script scripts/MLVHF_Ablation.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --script scripts/VisCache_Ablation.py --scene Bistro_Interior.pyscene
 
 Outputs to: captures/ablation/<config_name>/frame_NNNN.exr
 Each config captures kWarmupFrames then kCaptureFrames EXR frames.
@@ -31,29 +31,29 @@ ABLATION_CONFIGS = [
 
 def build_base_graph():
     """Construct and return the base render graph (VisHashFilter + all passes)."""
-    # Import MLVHF_Graph without re-adding to Mogwai
+    # Import VisCache_Graph without re-adding to Mogwai
     import importlib.util, sys
     spec = importlib.util.spec_from_file_location(
-        "MLVHF_Graph",
-        os.path.join(os.path.dirname(__file__), "MLVHF_Graph.py")
+        "VisCache_Graph",
+        os.path.join(os.path.dirname(__file__), "VisCache_Graph.py")
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.render_graph_MLVHF()
+    return mod.render_graph_VisCache()
 
 
 def apply_ablation(graph, config_dict):
-    vhf = graph.getPass("VisHashFilter")
+    visCache = graph.getPass("VisHashFilter")
     # Reset to full config first
     for attr in ["enableDistanceLOD", "enableVarianceGate", "enableWarpReduction",
                  "enableDecay", "enablePressureEvict", "enableGIRevalidation",
                  "enableLightSelection"]:
-        setattr(vhf, attr, True)
-    vhf.minLevel = 0
-    vhf.maxLevel = 2
+        setattr(visCache, attr, True)
+    visCache.minLevel = 0
+    visCache.maxLevel = 2
     # Apply delta
     for k, v in config_dict.items():
-        setattr(vhf, k, v)
+        setattr(visCache, k, v)
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ g = build_base_graph()
 m.addGraph(g)
 
 for (name, cfg) in ABLATION_CONFIGS:
-    print(f"[MLVHF Ablation] Running config: {name}")
+    print(f"[VisCache Ablation] Running config: {name}")
     apply_ablation(g, cfg)
 
     outdir = os.path.join(kCaptureDir, name)
@@ -80,6 +80,6 @@ for (name, cfg) in ABLATION_CONFIGS:
         m.frameCapture.capture()
         renderFrame()
 
-    print(f"[MLVHF Ablation] {name} done — {kCaptureFrames} frames saved to {outdir}")
+    print(f"[VisCache Ablation] {name} done — {kCaptureFrames} frames saved to {outdir}")
 
-print("[MLVHF Ablation] All configs complete.")
+print("[VisCache Ablation] All configs complete.")

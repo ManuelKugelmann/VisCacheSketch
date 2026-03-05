@@ -1,7 +1,7 @@
 # DQLin/ReSTIR_PT → Falcor 8.0 Port Guide
 
 Estimated time: **1–2 days** (mechanical changes, no algorithmic changes).
-The Slang shaders require only MLVHF-specific additions (see delta files).
+The Slang shaders require only VisCache-specific additions (see delta files).
 The C++ host code requires Falcor API migration.
 
 ---
@@ -109,16 +109,16 @@ most will compile without changes. Known issues:
 
 ---
 
-## 5. MLVHF integration (after port compiles)
+## 5. VisCache integration (after port compiles)
 
 Once the base port compiles and produces correct output on Bistro:
 
 1. Add `#import "../VisHashFilter/VisHashFilter"` at the top of `SpatialReuse.cs.slang`
 2. Replace the visibility ray block with `evalRevalidationCV()` — see
-   `Source/RenderPasses/ReSTIRGIPass/SpatialReuse_MLVHF_delta.slang`
-3. In `ReSTIRGIPass::execute()`, call `retrieveVHFBuffers(renderData)` before
+   `Source/RenderPasses/ReSTIRGIPass/SpatialReuse_VisCache_delta.slang`
+3. In `ReSTIRGIPass::execute()`, call `retrieveVisCacheBuffers(renderData)` before
    dispatching the spatial reuse compute shader — see delta file.
-4. Verify ground truth: disable MLVHF (`useMLVHFRevalidation = false`) and
+4. Verify ground truth: disable VisCache (`useVisCacheRevalidation = false`) and
    confirm the ported pass matches DQLin paper figures on Bistro.
 
 ---
@@ -126,7 +126,7 @@ Once the base port compiles and produces correct output on Bistro:
 ## 6. Verification checklist
 
 - [ ] Unmodified port matches DQLin reference images on Bistro (FLIP < 0.01)
-- [ ] ReSTIR GI produces k=5.0 traces/pixel with revalidation, MLVHF disabled
-- [ ] After MLVHF enable: traces/pixel drops to ~0.5–1.0 at steady state
+- [ ] ReSTIR GI produces k=5.0 traces/pixel with revalidation, VisCache disabled
+- [ ] After VisCache enable: traces/pixel drops to ~0.5–1.0 at steady state
 - [ ] MSE vs. reference within 5% of full-retrace baseline at equal time
 - [ ] No NaN or Inf in output (check via `pCtx->clearDebugCounters()`)

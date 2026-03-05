@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-VisCacheSketch (MLVHF) — Visual Hash Filter for real-time path tracing denoising, built as Falcor render passes.
+VisCacheSketch (VisCache) — Visual Hash Filter for real-time path tracing denoising, built as Falcor render passes.
 
 ## Falcor Subtree Policy
 
 - Falcor is in `Falcor/` (added as a git subtree, not a submodule)
-- **Keep Falcor files as close to the NVIDIA original as possible.** Do not add project-specific logic (hooks, MLVHF paths, etc.) into Falcor's own scripts or source files. All MLVHF-specific setup belongs in our root scripts (`setup.sh`, `setup.bat`). This makes subtree pulls/pushes clean and avoids merge conflicts with upstream.
+- **Keep Falcor files as close to the NVIDIA original as possible.** Do not add project-specific logic (hooks, VisCache paths, etc.) into Falcor's own scripts or source files. All VisCache-specific setup belongs in our root scripts (`setup.sh`, `setup.bat`). This makes subtree pulls/pushes clean and avoids merge conflicts with upstream.
 - The only acceptable Falcor modifications are upstream bug fixes or changes needed for the Falcor fork itself (ManuelKugelmann/Falcor)
 - Two `.gitmodules` files exist (root and `Falcor/.gitmodules`) — use `sync-submodules.sh` to keep them in sync (see README)
 
@@ -16,7 +16,7 @@ VisCacheSketch (MLVHF) — Visual Hash Filter for real-time path tracing denoisi
 - Falcor's internal submodules must be shallow-cloned since subtree squash strips `.gitmodules`
 - NVIDIA packman fetches binary dependencies (CUDA, D3D12 Agility SDK, nvtt, slang, etc.)
 - After packman pull on Linux, `libnvtt.so.30106` must be copied to `libnvtt.so` (see `Falcor/setup.sh`)
-- Root setup scripts (`setup.sh`, `setup.bat`) call Falcor's own setup, then copy MLVHF plugins
+- Root setup scripts (`setup.sh`, `setup.bat`) call Falcor's own setup, then copy VisCache plugins
 - CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
 - Windows builds require SDK 10.0.19041.0 (available on `windows-2022` runner, NOT `windows-latest`)
 

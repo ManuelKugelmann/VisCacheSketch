@@ -1,7 +1,7 @@
 /***************************************************************************
  * VisHashFilter.slang
  *
- * Multilevel Visibility Hash Filter — Core Data Structure
+ * Visibility Hash Filter — Core Data Structure
  * Kugelmann 2026, extending Kugelmann 2006
  *
  * Three-level spatial hash table caching pairwise visibility between
@@ -52,7 +52,7 @@ struct VHFResult
 // ---------------------------------------------------------------------------
 // Parameters (uploaded as cbuffer each frame)
 // ---------------------------------------------------------------------------
-cbuffer VHFParams
+cbuffer VisCacheParams
 {
     uint  gTableCapacity;   ///< Power-of-two entry count
     uint  gBootThreshold;   ///< Min total_count before entry is trusted (32)

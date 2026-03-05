@@ -1,7 +1,7 @@
 /***************************************************************************
  * VisHashFilter.h
  *
- * Falcor 8.0 RenderPass — Multilevel Visibility Hash Filter
+ * Falcor 8.0 RenderPass — Visibility Hash Filter
  *
  * Owns the hash table buffer and stats buffer.
  * Exposes both to downstream passes via InternalDictionary.
@@ -21,7 +21,7 @@ class VisHashFilter : public RenderPass
 {
 public:
     FALCOR_PLUGIN_CLASS(VisHashFilter, "VisHashFilter",
-                        "Multilevel Visibility Hash Filter (Kugelmann 2026)");
+                        "Visibility Hash Filter (Kugelmann 2026)");
 
     static ref<VisHashFilter> create(ref<Device> pDevice,
                                      const Properties& props);

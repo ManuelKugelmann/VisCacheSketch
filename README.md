@@ -63,18 +63,18 @@ Source/RenderPasses/
     ShadingCV.slang          CV+RRR estimator — all three integration points
     VisHashFilter.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
     CMakeLists.txt           Plugin build target
-  ReSTIRGIPass/              ReSTIR GI with MLVHF revalidation
+  ReSTIRGIPass/              ReSTIR GI with VisCache revalidation
     ReSTIRGIPass.h/.cpp      Falcor 8.0 host code (full port sketch)
     SpatialReuse.cs.slang    Spatial reuse kernel with CV+RRR integration
-    SpatialReuse_MLVHF_delta.slang  Original delta reference
+    SpatialReuse_VisCache_delta.slang  Original delta reference
     CMakeLists.txt           Plugin build target
 
 scripts/
-  MLVHF_Graph.py             Mogwai render graph
-  MLVHF_Ablation.py          Automated ablation capture (10 configs)
+  VisCache_Graph.py             Mogwai render graph
+  VisCache_Ablation.py          Automated ablation capture (10 configs)
 
 tests/
-  test_vhf_convergence.py    CPU unit tests (5 tests, no GPU required)
+  test_viscache_convergence.py    CPU unit tests (5 tests, no GPU required)
 
 paper/
   TODO.md                    Revision checklist (28 items, 4 critical)
@@ -91,8 +91,8 @@ docs/
 .gitmodules                  Root submodule config (mirrors Falcor/.gitmodules)
 .githooks/pre-commit         Blocks commits if .gitmodules files are out of sync
 sync-submodules.sh           Bidirectional sync between root and Falcor .gitmodules
-setup.sh                     Linux setup: calls Falcor/setup.sh + MLVHF plugin copy
-setup.bat                    Windows setup: calls Falcor/setup_vs2022.bat + MLVHF plugin copy
+setup.sh                     Linux setup: calls Falcor/setup.sh + VisCache plugin copy
+setup.bat                    Windows setup: calls Falcor/setup_vs2022.bat + VisCache plugin copy
 TODO.md                      Global task tracker
 ```
 
@@ -152,7 +152,7 @@ Cell sizes calibrated for primary viewing distances 2–20 m (Bistro, Sponza). C
 | −AB | Both A and B off | Maximum table pressure stress |
 | Finest-only | minLevel=maxLevel=2 | Multilevel necessary for GI amortization |
 | Coarsest-only | minLevel=maxLevel=0 | Coarse level insufficient for shadow boundaries |
-| No-cache | VHF disabled | Full-retrace baseline |
+| No-cache | VisCache disabled | Full-retrace baseline |
 
 Ablation −B (variance gate) is the most important: must show negligible MSE gain at measurable insert cost increase.
 
@@ -185,7 +185,7 @@ Each root setup script:
 with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
 init required.
 
-See `tests/test_vhf_convergence.py` for CPU unit tests (no GPU required).
+See `tests/test_viscache_convergence.py` for CPU unit tests (no GPU required).
 
 Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
 

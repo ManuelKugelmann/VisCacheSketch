@@ -2,10 +2,10 @@
  * SpatialReuse.cs.slang
  *
  * Spatial reuse pass for ReSTIR GI — Falcor 8.0 port of DQLin/ReSTIR_PT
- * with MLVHF CV+RRR revalidation replacing unconditional V(P,Q) rays.
+ * with VisCache CV+RRR revalidation replacing unconditional V(P,Q) rays.
  *
  * At k=5 spatial neighbors, DQLin traces 5 shadow rays per pixel.
- * With MLVHF enabled, evalRevalidationCV() gates these via cached
+ * With VisCache enabled, evalRevalidationCV() gates these via cached
  * visibility, reducing to ~0.5–1.0 rays/pixel at steady state (§12).
  *
  * Unbiased: E[mu + (V - mu) / p] = E[V] for any cache quality.
@@ -13,7 +13,7 @@
  * TODO: Merge full DQLin spatial reuse logic (neighbor selection,
  *       reservoir streaming, Talbot MIS weights) from the ported
  *       Falcor fork. This file contains the complete skeleton with
- *       MLVHF integration points marked.
+ *       VisCache integration points marked.
  ***************************************************************************/
 
 import Scene.Scene;
@@ -22,8 +22,8 @@ import Scene.HitInfo;
 import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 
-// MLVHF integration
-#if USE_MLVHF
+// VisCache integration
+#if USE_VISCACHE
 import RenderPasses.VisHashFilter.VisHashFilter;
 import RenderPasses.VisHashFilter.ShadingCV;
 #endif
@@ -75,12 +75,12 @@ uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 }
 
 // ---------------------------------------------------------------------------
-// Visibility evaluation — two paths controlled by USE_MLVHF
+// Visibility evaluation — two paths controlled by USE_VISCACHE
 // ---------------------------------------------------------------------------
 float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
                           float G, inout SampleGenerator sg)
 {
-#if USE_MLVHF
+#if USE_VISCACHE
     // CV+RRR revalidation (§12)
     // Replaces unconditional TraceVisibilityRay with cached + gated trace.
     return evalRevalidationCV(P, Q, bsdf, Lo, G, gCamPos, sg);
@@ -153,9 +153,9 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         float3 C = bsdf * Lo * G;
 
-        // ----- MLVHF integration point -----
-        // evaluateVisibility() calls evalRevalidationCV() when USE_MLVHF=1,
-        // or unconditional trace when USE_MLVHF=0.
+        // ----- VisCache integration point -----
+        // evaluateVisibility() calls evalRevalidationCV() when USE_VISCACHE=1,
+        // or unconditional trace when USE_VISCACHE=0.
         float Vest = evaluateVisibility(P, Q, bsdf, Lo, G, sg);
 
         // Contribution for reservoir update

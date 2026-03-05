@@ -35,11 +35,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run VHF algorithm validations
-        run: python tests/test_vhf_convergence.py
+      - name: Run VisCache algorithm validations
+        run: python tests/test_viscache_convergence.py
 
   # ---------------------------------------------------------------------------
-  # Windows/VS2022 — vanilla Falcor + MLVHF plugins
+  # Windows/VS2022 — vanilla Falcor + VisCache plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
@@ -100,7 +100,7 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
-      - name: Integrate MLVHF plugins into Falcor tree
+      - name: Integrate VisCache plugins into Falcor tree
         shell: pwsh
         run: |
           $Falcor = "${{ env.FALCOR_DIR }}"
@@ -114,8 +114,8 @@ jobs:
           Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
 
           # Copy scripts
-          New-Item -ItemType Directory -Path "$Falcor/scripts/MLVHF" -Force | Out-Null
-          Copy-Item "scripts/*" "$Falcor/scripts/MLVHF/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
+          Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
 
           # Patch RenderPasses CMakeLists.txt
           $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
@@ -216,7 +216,7 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
-      - name: Integrate MLVHF plugins into Falcor tree
+      - name: Integrate VisCache plugins into Falcor tree
         shell: pwsh
         run: |
           $Falcor = "${{ env.FALCOR_DIR }}"
@@ -227,8 +227,8 @@ jobs:
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
           Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
 
-          New-Item -ItemType Directory -Path "$Falcor/scripts/MLVHF" -Force | Out-Null
-          Copy-Item "scripts/*" "$Falcor/scripts/MLVHF/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
+          Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
 
           $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
           $content = Get-Content $rpCmake -Raw
@@ -335,15 +335,15 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
 
-      - name: Integrate MLVHF plugins into Falcor tree
+      - name: Integrate VisCache plugins into Falcor tree
         run: |
           FALCOR="${{ env.FALCOR_DIR }}"
           mkdir -p "${FALCOR}/Source/RenderPasses/VisHashFilter"
           cp -r Source/RenderPasses/VisHashFilter/* "${FALCOR}/Source/RenderPasses/VisHashFilter/"
           mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
           cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
-          mkdir -p "${FALCOR}/scripts/MLVHF"
-          cp -r scripts/* "${FALCOR}/scripts/MLVHF/"
+          mkdir -p "${FALCOR}/scripts/VisCache"
+          cp -r scripts/* "${FALCOR}/scripts/VisCache/"
           RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
           if ! grep -q "add_subdirectory(VisHashFilter)" "$RP_CMAKE"; then
             echo "add_subdirectory(VisHashFilter)" >> "$RP_CMAKE"

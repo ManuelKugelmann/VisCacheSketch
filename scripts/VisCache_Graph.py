@@ -1,9 +1,9 @@
 """
-MLVHF_Graph.py  —  Mogwai render graph for Multilevel Visibility Hash Filter
+VisCache_Graph.py  —  Mogwai render graph for VisCache (Visibility Hash Filter)
 Run from Mogwai: File > Load Script, or pass as --script argument.
 
 Usage:
-    Mogwai.exe --script scripts/MLVHF_Graph.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --script scripts/VisCache_Graph.py --scene Bistro_Interior.pyscene
 
 Ablation configs are at the bottom — uncomment to switch.
 """
@@ -11,10 +11,10 @@ Ablation configs are at the bottom — uncomment to switch.
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
-def set_ablation(vhf, cfg):
+def set_ablation(visCache, cfg):
     """Apply an ablation configuration dict to the VisHashFilter pass."""
     for k, v in cfg.items():
-        setattr(vhf, k, v)
+        setattr(visCache, k, v)
 
 
 # ---------------------------------------------------------------------------
@@ -54,8 +54,8 @@ ACTIVE_ABLATION = ABLATION_FULL   # <-- CHANGE THIS LINE
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
-def render_graph_MLVHF():
-    g = RenderGraph("MLVHF")
+def render_graph_VisCache():
+    g = RenderGraph("VisCache")
 
     # G-Buffer
     gbuf = createPass("GBufferRT", {
@@ -66,9 +66,9 @@ def render_graph_MLVHF():
     })
     g.addPass(gbuf, "GBufferRT")
 
-    # Multilevel Visibility Hash Filter
+    # Visibility Hash Filter
     # Owns the hash table; exposes it via InternalDictionary.
-    vhf = createPass("VisHashFilter", {
+    visCache = createPass("VisHashFilter", {
         "tableCapacity":   1 << 22,   # 4M entries = 32 MB
         "bootThreshold":   32,
         "varThreshold":    0.10,
@@ -86,8 +86,8 @@ def render_graph_MLVHF():
         "enableDecay":          True,
         "enablePressureEvict":  True,
     })
-    set_ablation(vhf, ACTIVE_ABLATION)
-    g.addPass(vhf, "VisHashFilter")
+    set_ablation(visCache, ACTIVE_ABLATION)
+    g.addPass(visCache, "VisHashFilter")
 
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
     rtxdi = createPass("RTXDIPass", {
@@ -116,7 +116,7 @@ def render_graph_MLVHF():
         "numSpatialNeighbors":     5,
         "spatialRadius":           30,
         "numInitialSamples":       1,
-        "useMLVHFRevalidation":    True,
+        "useVisCacheRevalidation":    True,
         "contribThreshold":        0.01,
         "revalidationPMin":        0.05,
     })
@@ -169,7 +169,7 @@ def render_graph_MLVHF():
 # ---------------------------------------------------------------------------
 # Load graph + scene
 # ---------------------------------------------------------------------------
-m.addGraph(render_graph_MLVHF())
+m.addGraph(render_graph_VisCache())
 
 # Default scene — override via command line --scene argument
 # m.loadScene("Bistro_Interior.pyscene")
@@ -177,4 +177,4 @@ m.addGraph(render_graph_MLVHF())
 
 # Capture settings (uncomment for automated batch capture)
 # m.frameCapture.outputDir = "captures/"
-# m.frameCapture.baseFilename = "mlvhf_full"
+# m.frameCapture.baseFilename = "viscache_full"
