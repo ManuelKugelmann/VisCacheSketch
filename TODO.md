@@ -40,11 +40,11 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Enable MLVHF, verify traces/pixel drops to ~0.5–1.0 at steady state
 
 ### 1.3 Build & Setup
-- [x] Windows setup script (`setup.ps1`)
+- [x] Setup script (`setup.sh`)
 - [x] Falcor fork as git subtree (`Falcor`)
 - [x] Create ManuelKugelmann/Falcor fork on GitHub
 - [ ] Port DQLin/ReSTIR_PT into the fork, pull back via `git subtree pull`
-- [ ] Test setup.ps1 end-to-end on clean clone
+- [ ] Test setup.sh end-to-end on clean clone
 - [ ] Add Linux/Mac build notes (or document Windows-only status)
 
 ### 1.4 Open Implementation Questions
