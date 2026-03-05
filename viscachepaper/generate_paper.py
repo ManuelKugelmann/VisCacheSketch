@@ -106,7 +106,7 @@ def build(output_path=None):
     doc = BaseDocTemplate(out, pagesize=letter, topMargin=MARGIN_TOP,
                           bottomMargin=MARGIN_BOT, leftMargin=MARGIN_LR, rightMargin=MARGIN_LR)
 
-    TITLE_H = 193
+    TITLE_H = 183
     GAP = 2
     COL_H_P1 = BODY_H - TITLE_H - GAP
     title_frame = Frame(MARGIN_LR, MARGIN_BOT + COL_H_P1 + GAP,
@@ -298,7 +298,6 @@ def build(output_path=None):
         sB))
 
     # ── 3 DATA STRUCTURE ────────────────────────────────────────────
-    S.append(FrameBreak())
     S.append(Paragraph("3&nbsp;&nbsp;Data Structure", sH1))
 
     S.append(Paragraph("3.1&nbsp;&nbsp;Entry", sH2))
