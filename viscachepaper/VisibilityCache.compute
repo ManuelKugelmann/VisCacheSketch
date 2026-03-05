@@ -1,0 +1,39 @@
+// ═══════════════════════════════════════════════════════════════════
+// VisibilityCache.compute — Management kernels (clear, decay, stats)
+// Dispatched by VisibilityCache.cs. Place next to VisibilityCache.hlsl.
+// ═══════════════════════════════════════════════════════════════════
+
+#pragma kernel CSVCClear
+#pragma kernel CSVCDecay
+#pragma kernel CSVCStatsClear
+
+#include "VisibilityCache.hlsl"
+
+// ── Clear entire table ──────────────────────────────────────────
+[numthreads(64, 1, 1)]
+void CSVCClear(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _VCTableSize) return;
+    vc_clear_entry(id.x);
+    // Also clear stats on first thread.
+    if (id.x < 6u)
+        _VCStats[id.x] = 0u;
+}
+
+// ── Background decay: process 1/N of table per frame ────────────
+[numthreads(64, 1, 1)]
+void CSVCDecay(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _VCDecayCount) return;
+    uint slot = _VCDecayOffset + id.x;
+    if (slot >= _VCTableSize) return;
+    vc_decay_entry(slot);
+}
+
+// ── Reset stats counters (call at frame start) ──────────────────
+[numthreads(1, 1, 1)]
+void CSVCStatsClear(uint3 id : SV_DispatchThreadID)
+{
+    [unroll] for (uint i = 0; i < 6u; i++)
+        _VCStats[i] = 0u;
+}
