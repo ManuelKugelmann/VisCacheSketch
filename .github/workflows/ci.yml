@@ -69,25 +69,24 @@ jobs:
             external/Falcor/external/fmt
             external/Falcor/external/imgui
             external/Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v1
+          key: falcor-submodules-${{ runner.os }}-v2
           restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         shell: bash
         run: |
           cd ${{ env.FALCOR_DIR }}
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
+          grep -v '^#' external/submodules.txt | while read -r name url sha; do
+            [ -z "$name" ] && continue
+            dir="external/$name"
             if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
+              echo "Fetching $name @ ${sha:0:10}"
               rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
+              mkdir -p "$dir"
+              git -C "$dir" init -q
+              git -C "$dir" remote add origin "$url"
+              git -C "$dir" fetch --depth 1 origin "$sha"
+              git -C "$dir" checkout FETCH_HEAD -q
             fi
           done
 
@@ -200,25 +199,24 @@ jobs:
             external/Falcor/external/fmt
             external/Falcor/external/imgui
             external/Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v1
+          key: falcor-submodules-${{ runner.os }}-v2
           restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         shell: bash
         run: |
           cd ${{ env.FALCOR_DIR }}
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
+          grep -v '^#' external/submodules.txt | while read -r name url sha; do
+            [ -z "$name" ] && continue
+            dir="external/$name"
             if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
+              echo "Fetching $name @ ${sha:0:10}"
               rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
+              mkdir -p "$dir"
+              git -C "$dir" init -q
+              git -C "$dir" remote add origin "$url"
+              git -C "$dir" fetch --depth 1 origin "$sha"
+              git -C "$dir" checkout FETCH_HEAD -q
             fi
           done
 
@@ -323,24 +321,23 @@ jobs:
             external/Falcor/external/fmt
             external/Falcor/external/imgui
             external/Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v1
+          key: falcor-submodules-${{ runner.os }}-v2
           restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         run: |
           cd ${{ env.FALCOR_DIR }}
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
+          grep -v '^#' external/submodules.txt | while read -r name url sha; do
+            [ -z "$name" ] && continue
+            dir="external/$name"
             if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
+              echo "Fetching $name @ ${sha:0:10}"
               rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
+              mkdir -p "$dir"
+              git -C "$dir" init -q
+              git -C "$dir" remote add origin "$url"
+              git -C "$dir" fetch --depth 1 origin "$sha"
+              git -C "$dir" checkout FETCH_HEAD -q
             fi
           done
 

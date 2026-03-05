@@ -1,0 +1,8 @@
+# Falcor submodule pins — matches original Falcor commit eb540f67
+# Format: name url commit-sha
+pybind11 https://github.com/skallweitNV/pybind11.git 7071735dbfc4be70dfb1b6bc312cd09f54e32c62
+glfw https://github.com/glfw/glfw.git 45ce5ddd197d5c58f50fdd3296a5131c894e5527
+args https://github.com/Taywee/args.git a48e1f880813b367d2354963a58dedbf2b708584
+fmt https://github.com/fmtlib/fmt.git a0b8a92e3d1532361c2f7feb63babc5c18d00ef2
+imgui https://github.com/ocornut/imgui.git aceab9a877de0258d19d29a5d87a51b63a8999bf
+vulkan-headers https://github.com/KhronosGroup/Vulkan-Headers.git 6ea9413be28455ab172af63d14927f8453cb25f1
