@@ -3,8 +3,10 @@
 #
 # Falcor is added as a git subtree. Its internal .gitmodules (with paths like
 # "external/fmt") is NOT used by git — only the root .gitmodules matters.
-# This hook ensures every submodule declared in Falcor/.gitmodules has a
-# corresponding entry in the root .gitmodules with the "Falcor/" prefix.
+# This hook checks both directions:
+#   1. Every submodule in Falcor/.gitmodules has a matching entry in root .gitmodules
+#   2. Every Falcor/ entry in root .gitmodules exists in Falcor/.gitmodules
+#   3. URLs match between the two files
 #
 # Enable: git config core.hooksPath .githooks
 
@@ -17,30 +19,71 @@ ROOT_GITMODULES=".gitmodules"
 [ -f "$FALCOR_GITMODULES" ] || exit 0
 [ -f "$ROOT_GITMODULES" ] || { echo "ERROR: $ROOT_GITMODULES missing but $FALCOR_GITMODULES exists"; exit 1; }
 
-errors=0
+# Parse .gitmodules into path→url mappings
+# Usage: parse_gitmodules <file> <prefix_to_strip>
+# Outputs lines of: path<TAB>url
+parse_gitmodules() {
+    local file="$1"
+    local strip="$2"
+    local current_path="" current_url=""
+    while IFS= read -r line; do
+        case "$line" in
+            *"path = "*)
+                current_path="${line#*path = }"
+                # Strip prefix if provided
+                [ -n "$strip" ] && current_path="${current_path#"$strip"}"
+                ;;
+            *"url = "*)
+                current_url="${line#*url = }"
+                ;;
+        esac
+        if [ -n "$current_path" ] && [ -n "$current_url" ]; then
+            printf '%s\t%s\n' "$current_path" "$current_url"
+            current_path="" current_url=""
+        fi
+    done < "$file"
+}
 
-# Extract submodule paths from Falcor's .gitmodules and check root has them
-grep '^\s*path = ' "$FALCOR_GITMODULES" | sed 's/.*path = //' | while read -r falcor_path; do
-    root_path="Falcor/${falcor_path}"
-    if ! grep -q "path = ${root_path}$" "$ROOT_GITMODULES"; then
-        echo "SYNC ERROR: Falcor submodule '${falcor_path}' not found in root .gitmodules as '${root_path}'"
-        # Signal error via a temp file since we're in a subshell
-        touch /tmp/.githook_sync_error
+# Normalize URL: strip trailing .git for comparison (both resolve the same)
+normalize_url() { echo "${1%.git}"; }
+
+errfile=$(mktemp)
+trap 'rm -f "$errfile"' EXIT
+
+# Build associative lookups via temp files
+falcor_map=$(mktemp)
+root_map=$(mktemp)
+trap 'rm -f "$errfile" "$falcor_map" "$root_map"' EXIT
+
+parse_gitmodules "$FALCOR_GITMODULES" "" > "$falcor_map"
+parse_gitmodules "$ROOT_GITMODULES" "Falcor/" > "$root_map"
+
+# Check: every Falcor submodule must exist in root with matching URL
+while IFS=$'\t' read -r path url; do
+    root_url=$(grep "^${path}"$'\t' "$root_map" | cut -f2)
+    if [ -z "$root_url" ]; then
+        echo "MISSING in root: Falcor submodule '${path}' not in $ROOT_GITMODULES (expected as 'Falcor/${path}')" >> "$errfile"
+    elif [ "$(normalize_url "$url")" != "$(normalize_url "$root_url")" ]; then
+        echo "URL MISMATCH: '${path}'" >> "$errfile"
+        echo "  Falcor/.gitmodules: $url" >> "$errfile"
+        echo "  .gitmodules:        $root_url" >> "$errfile"
     fi
-done
+done < "$falcor_map"
 
-# Check root .gitmodules doesn't have stale Falcor/ entries
-grep '^\s*path = Falcor/' "$ROOT_GITMODULES" | sed 's/.*path = //' | while read -r root_path; do
-    falcor_path="${root_path#Falcor/}"
-    if ! grep -q "path = ${falcor_path}$" "$FALCOR_GITMODULES"; then
-        echo "SYNC ERROR: Root .gitmodules has '${root_path}' but Falcor/.gitmodules has no '${falcor_path}'"
-        touch /tmp/.githook_sync_error
+# Check: every Falcor/ entry in root must exist in Falcor's .gitmodules
+while IFS=$'\t' read -r path url; do
+    falcor_url=$(grep "^${path}"$'\t' "$falcor_map" | cut -f2)
+    if [ -z "$falcor_url" ]; then
+        echo "STALE in root: $ROOT_GITMODULES has 'Falcor/${path}' but $FALCOR_GITMODULES has no '${path}'" >> "$errfile"
     fi
-done
+    # URL mismatch already caught above
+done < "$root_map"
 
-if [ -f /tmp/.githook_sync_error ]; then
-    rm -f /tmp/.githook_sync_error
+if [ -s "$errfile" ]; then
+    echo "=== .gitmodules sync check FAILED ==="
+    cat "$errfile"
     echo ""
-    echo "Fix: update $ROOT_GITMODULES to match $FALCOR_GITMODULES (prefixed with Falcor/)"
+    echo "The root .gitmodules must mirror Falcor/.gitmodules (paths prefixed with Falcor/, same URLs)."
+    echo "Fix both files to match, then retry the commit."
     exit 1
 fi
