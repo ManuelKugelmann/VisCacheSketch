@@ -231,31 +231,70 @@ def build(output_path=None):
         "in a 6D domain with bidirectional symmetry and RR "
         "rejection, reporting 80% shadow ray reduction. Their "
         "approach uses a dense D<super>3</super>&#215;D<super>3</super> matrix "
-        "(16<super>3</super> voxels, ~32 MB, single resolution, offline). "
-        "Bok&#353;ansk&#253; and Meister [2025] use a neural network for visibility "
-        "caching, noting point-to-point mutual visibility as future work.",
+        "(16<super>3</super> voxels, ~32&nbsp;MB, single resolution, offline).",
         sB0))
+    S.append(Paragraph(
+        "<b>Kugelmann [2006]</b> explored three independent cache experiments "
+        "within a spatial hash grid [Teschner et al. 2003]: "
+        "(1)&nbsp;irradiance (point,&nbsp;direction)&nbsp;&#8594;&nbsp;&#8477;, "
+        "(2)&nbsp;binary visibility "
+        "(point,&nbsp;point)&nbsp;&#8594;&nbsp;{0,1}, and "
+        "(3)&nbsp;free-path distance "
+        "(point,&nbsp;direction)&nbsp;&#8594;&nbsp;&#8477;<sub>&#8805;0</sub> "
+        "&#8212; each with CV+RRR correction rates driven by their respective "
+        "variances, in a fixed-resolution single-level hash applied to "
+        "shadow-test reduction in robust instant global illumination. "
+        "The binary visibility experiment is the direct ancestor of this work. "
+        "Two decades of hardware evolution &#8212; GPU ray tracing, wave "
+        "intrinsics &#8212; and the ReSTIR framework provide the context that "
+        "makes the 2006 experiment practical as a real-time system.",
+        sB))
+    S.append(Paragraph(
+        "Concurrent with this work, Bok&#353;ansk&#253; and Meister [2025] "
+        "feed neural visibility estimates into weighted reservoir sampling "
+        "for light selection &#8212; the same visibility-weighted selection idea "
+        "as our Sec.&nbsp;8.1. Their approach uses an Instant-NGP backbone "
+        "[M&#252;ller et al. 2022] and operates in biased mode by default, "
+        "using network output directly for shading when confident. "
+        "CV+RRR (Sec.&nbsp;4) would make their biased mode unbiased by "
+        "construction. "
+        "Reservoir Splatting [Liu et al. 2025] improves temporal path reuse "
+        "robustness under camera motion via forward projection with Jacobian "
+        "correction; our cache addresses the orthogonal problem of spatial "
+        "revalidation cost.",
+        sB))
     S.append(Paragraph(
         "<b>Spatial hashing.</b> Teschner et al. [2003] established spatial "
         "hashing for collision detection. Binder et al. [2018] applied fingerprint-"
         "based hashing to path-space filtering with jitter before "
         "quantization. M&#252;ller et al. [2022] (Instant-NGP) store multi-resolution "
         "features in hash tables combined via MLP. Stotko et al. [2025] (MrHash) "
-        "use variance-driven adaptation in flat hash for TSDF reconstruction.",
+        "use variance-driven adaptation in flat hash for TSDF reconstruction. "
+        "Gautron [2020, 2021] used LOD index in the hash function with "
+        "viewing-distance-based cell size selection for real-time ray-traced AO.",
         sB))
     S.append(Paragraph(
         "<b>ReSTIR.</b> Bitterli et al. [2020] introduced resampled importance "
         "sampling for direct lighting. Ouyang et al. [2021] and "
         "Lin et al. [2022] extended this to path reuse, where "
         "revalidation rays test visibility from the current "
-        "shading point to a neighbor's secondary hit. The biased/unbiased "
+        "shading point to a neighbor&#8217;s secondary hit. The biased/unbiased "
         "tradeoff &#8212; skip revalidation (light leaks) vs. always retrace "
-        "(expensive) &#8212; motivates our approach.",
+        "(expensive) &#8212; motivates our approach. "
+        "CV+RRR integrates with Area ReSTIR [Zhang et al. 2024] without "
+        "modification: the final shadow-ray structure is identical to "
+        "standard RTXDI.",
         sB))
     S.append(Paragraph(
-        "<b>Control variates.</b> Szirmay-Kalos et al. described the \"go with "
-        "the winners\" estimator: returning a control variate value on RR "
-        "termination instead of zero. We apply this to cached visibility.",
+        "<b>Control variates and hashing.</b> Szirmay-Kalos et al. described "
+        "the &#8220;go with the winners&#8221; estimator: returning a control "
+        "variate value on RR termination instead of zero. "
+        "[Kugelmann 2006] developed CV+RRR independently for the same purpose. "
+        "We apply this classical technique to cached visibility "
+        "and advocate for its wider adoption. "
+        "For hash noise we use pcg3d [Jarzynski and Olano 2020], a GPU hash "
+        "function that passes all but one BigCrush test at ~12&nbsp;ALU with "
+        "no lookup table.",
         sB))
 
     # ── 3 DATA STRUCTURE ────────────────────────────────────────────
@@ -293,16 +332,49 @@ def build(output_path=None):
         sB0))
 
     t_lod = make_table(
-        ["Level", "Cell A", "Cell B"],
-        [["L0", "10 m", "10 m"],
-         ["L1", "1.25 m", "2.5 m"],
-         ["L2", "8 cm", "62 cm"]],
-        [34, 62, 62])
+        ["Level", "Cell A", "Cell B", "&#8776; px @ 5 m"],
+        [["L0", "10 m", "10 m", "~107"],
+         ["L1", "1.25 m", "2.5 m", "~13 / ~27"],
+         ["L2", "8 cm", "62 cm", "~0.9 / ~6.7"]],
+        [28, 46, 46, 46])
     S += [Spacer(1, 4), t_lod]
     S.append(Paragraph(
         "<b>Table 1.</b> Asymmetric cell sizes (default). Symmetric variant uses "
-        "Cell A for both endpoints.",
+        "Cell A for both endpoints. Pixel column shows projected Cell&nbsp;A / "
+        "Cell&nbsp;B side length at 5&nbsp;m distance, 90&#176; HFoV, 1080p. "
+        "L2 Cell&nbsp;A is subpixel at 5&nbsp;m because L2 is only active at "
+        "close range (distance-gated, Sec.&nbsp;5).",
         sCap))
+    S.append(Paragraph(
+        "Cell sizes are calibrated for primary viewing distances of "
+        "2&#8211;20&nbsp;m in mixed exterior/interior scenes (Bistro, Sponza). "
+        "Scenes at substantially different scales (tabletop close-ups, "
+        "city-scale flyovers) would benefit from camera-adaptive cell sizing "
+        "via FoV and circle of confusion &#8212; deferred to future work.",
+        sB))
+    S.append(Paragraph(
+        "<b>LOD asymmetry.</b> Cell sizes are asymmetric: endpoint&nbsp;A "
+        "(shading point) is quantized more finely than endpoint&nbsp;B "
+        "(light source or secondary hit). This is justified for direct "
+        "illumination where the shading point exhibits more spatial variation "
+        "(view-dependent BRDF, geometric normal) than the light source "
+        "(spatially coherent emission). For GI revalidation (Sec.&nbsp;9), "
+        "where B is also a surface point, symmetric cells may be more "
+        "appropriate &#8212; we defer this investigation, noting that at L2 "
+        "both endpoints are typically close spatially, limiting the impact.",
+        sB))
+    S.append(Paragraph(
+        "<b>Explicit vs.&nbsp;neural.</b> Compared to neural visibility caches "
+        "[Bok&#353;ansk&#253; and Meister 2025], the explicit hash table offers "
+        "inspectable entries (cached &#956; and sample count are directly "
+        "readable), zero inference latency (one hash + one memory read vs. "
+        "MLP evaluation), predictable cold-start behavior (first sample "
+        "populates an entry immediately), and tunable parameters with clear "
+        "semantics. The neural approach offers automatic spatial adaptation "
+        "without explicit LOD configuration and potentially better "
+        "generalization. CV+RRR (Sec.&nbsp;8) applies identically to either "
+        "data structure.",
+        sB))
 
     # ── 4 ADDRESSING ────────────────────────────────────────────────
     S.append(Paragraph("4&nbsp;&nbsp;Addressing", sH1))
@@ -348,12 +420,14 @@ def build(output_path=None):
     S.append(Paragraph(
         "L0 is read to decide write depth. During bootstrap, all levels are "
         "written. Once L0 matures, fine levels are written only where L0 variance "
-        "exceeds a threshold. A distance interval gates the LOD range by "
+        "exceeds a threshold &#8212; the same variance signal that drives RR "
+        "survival probability in Sec.&nbsp;8 (see coupled variance adaptation). "
+        "A distance interval gates the LOD range by "
         "target square pixel footprint: skip levels where the cell is below "
         "4&#215;4 pixels or above 64&#215;64 pixels. "
         "Clipmap-like: L0 far field, L2 near field, L1 bridges. "
         "Both-endpoint jitter is in the addressing step "
-        "(Sec. 4). Single InterlockedAdd on packed uint ensures "
+        "(Sec.&nbsp;4). Single InterlockedAdd on packed uint ensures "
         "counters stay in sync.",
         sB0))
 
@@ -377,9 +451,15 @@ def build(output_path=None):
     S.append(Paragraph(
         "The cache is live during the frame (not double-buffered). At L0 "
         "(4<super>3</super>), each cell spans thousands of pixels. After ~1K "
-        "shadow rays, L0 is substantially populated. An ABA race exists in the "
-        "CAS (two threads reading fp=0 simultaneously) but only wastes a traced "
-        "sample, not correctness. "
+        "shadow rays, L0 is substantially populated. An ABA race exists when "
+        "two threads simultaneously find an empty slot (fp=0) and both claim it "
+        "via CompareExchange &#8212; the second overwrites the first, wasting one "
+        "traced sample. At L0 with warp reduction (~16 atomics/cell/frame), "
+        "the collision rate is negligible. At L2 without warp reduction, the "
+        "rate is approximately 1/waveSize&nbsp;&#8776;&nbsp;3% of inserts per "
+        "contested cell. The wasted sample does not affect the surviving "
+        "entry&#8217;s mean. A 64-bit CAS on a combined {fingerprint,&nbsp;packed} "
+        "entry would eliminate the race at the cost of doubling entry size. "
         "On SM6.5+, warp-level reduction via WaveMatch coalesces threads "
         "targeting the same cell into a single atomic (~16&#215; reduction at L0). "
         "The packed format enables this directly &#8212; merging N samples is one "
@@ -397,9 +477,14 @@ def build(output_path=None):
         "samples dominate. Integer shift-truncation preserves the mean ratio "
         "within ~0.003% at trigger counts. "
         "For dynamic scenes, an optional background decay pass traverses 1/N of "
-        "the table per frame with a user-tunable half-life (DECAY_PERIOD frames). "
-        "Fast action: 15 frames. Architectural walkthrough: 300. Not needed "
-        "for single-frame rendering.",
+        "the table per frame, halving counts on each visit. The effective "
+        "half-life is DECAY_PERIOD frames. "
+        "At DECAY_PERIOD=60 (~1&nbsp;s at 60&nbsp;fps): an entry not refreshed "
+        "decays to 1/1024 of its original count in 10&nbsp;s (10&nbsp;half-lives). "
+        "At DECAY_PERIOD=300 (~5&nbsp;s): the same decay takes 50&nbsp;s. "
+        "Active entries resist decay because their sample rate (hundreds of "
+        "inserts/frame at L0) far exceeds the decay rate (one halving per "
+        "DECAY_PERIOD frames). Not needed for single-frame rendering.",
         sB0))
 
     # ── 7 LOOKUP ────────────────────────────────────────────────────
@@ -451,30 +536,101 @@ def build(output_path=None):
     S += [Spacer(1, 4), algo_cv, Spacer(1, 4)]
 
     S.append(Paragraph(
-        "Unbiased: E[&#956; + (V &#8722; &#956;)/p] = E[V]. Cache quality affects only "
-        "efficiency (residual variance), never correctness. Only traced values "
-        "are inserted &#8212; returning &#956; without tracing does not update the cache, "
-        "preventing positive feedback. P<sub>min</sub> &#8776; 0.05 ensures at least "
-        "5% of pixels always trace.",
+        "<b>Unbiasedness proof.</b> "
+        "The estimator V&#770; equals &#956;&nbsp;+&nbsp;(V&nbsp;&#8722;&nbsp;&#956;)/p "
+        "with probability p, and &#956; with probability (1&#8722;p). "
+        "E[V&#770;] = p&#183;(&#956;&nbsp;+&nbsp;(E[V]&#8722;&#956;)/p) "
+        "+ (1&#8722;p)&#183;&#956; = E[V]. "
+        "The residual variance is Var[V&#770;]&nbsp;=&nbsp;(1/p&nbsp;&#8722;&nbsp;1)"
+        "&#183;Var[V&nbsp;&#8722;&nbsp;&#956;]. "
+        "When &#956;&nbsp;=&nbsp;E[V], the residual is zero &#8212; a perfect cache "
+        "needs no correction rays. Cache quality affects only efficiency "
+        "(residual variance), never correctness. Only traced values are "
+        "inserted &#8212; returning &#956; without tracing does not update the "
+        "cache, preventing positive feedback.",
+        sB))
+    S.append(Paragraph(
+        "<b>Generality.</b> CV+RRR converts any visibility estimate &#956; &#8212; "
+        "whether from a spatial hash (this work), a neural network "
+        "[Bok&#353;ansk&#253; and Meister 2025], temporal reprojection, or spatial "
+        "neighbor polling &#8212; into an unbiased estimator wherever a mean "
+        "estimate is available. The technique is agnostic to the source of "
+        "&#956;; cache quality affects only efficiency, never correctness.",
+        sB))
+    S.append(Paragraph(
+        "<b>Why binary visibility.</b> "
+        "[Kugelmann 2006] explored three cached quantities; we choose "
+        "binary visibility for three reasons: "
+        "(1)&nbsp;binary is sufficient for shadow-ray decisions &#8212; the ray "
+        "either hits or misses; "
+        "(2)&nbsp;Bernoulli structure gives variance for free from &#956; alone "
+        "(var&nbsp;=&nbsp;&#956;(1&#8722;&#956;)), requiring no separate variance "
+        "estimator; "
+        "(3)&nbsp;the (point,&nbsp;point)&nbsp;&#8594;&nbsp;{0,1} domain aligns "
+        "naturally with ReSTIR&#8217;s pairwise queries where each reservoir "
+        "stores a specific source&#8211;target pair. "
+        "Free-path distance [Kugelmann 2006, experiment&nbsp;3] is a richer "
+        "representation but requires a separate variance estimator and is not "
+        "pursued here.",
+        sB))
+    S.append(Paragraph(
+        "<b>Coupled variance adaptation.</b> "
+        "The same Bernoulli variance var&nbsp;=&nbsp;&#956;(1&#8722;&#956;) drives "
+        "two reinforcing mechanisms simultaneously: "
+        "(1)&nbsp;RR survival probability "
+        "p&nbsp;=&nbsp;clamp(var/&#964;, p<sub>min</sub>,&nbsp;1) governs the "
+        "correction rate &#8212; how often shadow rays are traced; "
+        "(2)&nbsp;the write-depth gate (Sec.&nbsp;5.2) governs spatial resolution "
+        "&#8212; whether fine-level cache entries are updated. "
+        "High-variance regions trace more often <i>and</i> update fine levels; "
+        "low-variance regions trace rarely <i>and</i> only update the coarsest "
+        "level. This coupling is self-regulating: no per-scene tuning is needed "
+        "because the variance signal adapts to local shadow structure "
+        "automatically. The coupling only becomes possible with a multilevel "
+        "cache &#8212; [Kugelmann 2006] had fixed resolution, so only the "
+        "correction rate was variance-driven.",
         sB))
     S.append(Paragraph(
         "Self-regulating: low &#963;<super>2</super> &#8594; aggressive RR &#8594; "
         "few traces. High &#963;<super>2</super> &#8594; always trace &#8594; cache "
         "updates &#8594; &#963;<super>2</super> drops. Lighting change &#8594; "
-        "&#963;<super>2</super> rises &#8594; traces reallocated.",
+        "&#963;<super>2</super> rises &#8594; traces reallocated. "
+        "P<sub>min</sub>&nbsp;&#8776;&nbsp;0.05 ensures at least 5% of pixels "
+        "always trace.",
         sB))
 
     S.append(Paragraph("8.1&nbsp;&nbsp;Firefly Mitigation", sH2))
     S.append(Paragraph(
-        "At P<sub>min</sub>=0.05, surviving samples are amplified 20&#215;. "
+        "At P<sub>min</sub>=0.05, surviving samples are amplified up to "
+        "1/P<sub>min</sub>&nbsp;=&nbsp;20&#215;. "
+        "Worst case: &#956;&#8776;0, V=1, p=0.05 &#8594; "
+        "V&#770;&nbsp;=&nbsp;0&nbsp;+&nbsp;(1&#8722;0)/0.05&nbsp;=&nbsp;20. "
         "At shadow edges where &#956;&#8776;0.5, fireflies are spatially correlated "
-        "and temporal denoisers integrate them into persistent bright bands. "
-        "Adaptive P<sub>min</sub> scales the survival floor by contribution: "
-        "p<sub>floor</sub> = clamp(contribution / firefly_budget, P<sub>min</sub>, 1). "
-        "High-contribution pixels trace more often, low-contribution pixels stay "
-        "aggressive. Unbiased. An output clamp V<sub>est</sub> &#8804; C provides "
-        "a biased safety net (bounded by C &#215; p per clamped sample).",
+        "&#8212; adjacent pixels share similar p<sub>survive</sub>, producing "
+        "bright clusters that temporal denoisers integrate into persistent "
+        "bright bands.",
         sB0))
+    S.append(Paragraph(
+        "<b>Adaptive P<sub>min</sub>.</b> Scale the survival floor by shading "
+        "contribution: p<sub>floor</sub>&nbsp;=&nbsp;clamp(luminance(f<sub>s</sub>"
+        "&#183;L<sub>e</sub>&#183;G)&nbsp;/&nbsp;firefly_budget, "
+        "P<sub>min</sub>, 1). "
+        "firefly_budget is the maximum tolerable absolute luminance "
+        "(cd/m&#178;) from a single amplified sample. "
+        "Example: with firefly_budget&nbsp;=&nbsp;10 and shading contribution "
+        "luminance&nbsp;50, p<sub>floor</sub>&nbsp;=&nbsp;1 &#8212; the ray is "
+        "always traced, preventing a 1000-luminance firefly. A dim contribution "
+        "of luminance&nbsp;0.1 gets p<sub>floor</sub>&nbsp;=&nbsp;0.01 &#8212; "
+        "aggressive RR is safe because even 100&#215; amplification produces "
+        "only luminance&nbsp;10. Unbiased.",
+        sB))
+    S.append(Paragraph(
+        "<b>Output clamp (biased safety net).</b> "
+        "Clamp the amplified estimate: V&#770;&nbsp;=&nbsp;clamp(V&#770;,&nbsp;0,&nbsp;C). "
+        "Introduces bias bounded by C&nbsp;&#215;&nbsp;p per clamped sample. "
+        "Equivalent to p&nbsp;&#8594;&nbsp;max(p,&nbsp;1/C). "
+        "Visually: slight darkening at penumbra edges vs. bright firefly bands.",
+        sB))
 
     # ── 9 RESTIR INTEGRATION ────────────────────────────────────────
     S.append(Paragraph("9&nbsp;&nbsp;ReSTIR Integration", sH1))
@@ -489,14 +645,28 @@ def build(output_path=None):
         "during initial candidate generation: "
         "&#x1D45D;&#x0302; = f<sub>s</sub> &#215; L<sub>e</sub> &#215; G "
         "&#215; max(&#956;, &#956;<sub>min</sub>). "
-        "The &#956;<sub>min</sub> floor prevents permanent exclusion of visible "
-        "lights with stale cache entries. Unbiased: &#956; influenced "
-        "<i>selection</i>, not the final <i>value</i>.",
+        "The &#956;<sub>min</sub> floor (default 0.01) prevents permanent "
+        "exclusion of visible lights with stale cache entries. "
+        "Bok&#353;ansk&#253; and Meister [2025] independently apply the same "
+        "visibility-weighted selection idea with a neural cache.",
         sB0))
     S.append(Paragraph(
-        "An exploration candidate (1/M of budget, uniform sampling, always traced) "
-        "prevents feedback death &#8212; the &#949;-greedy strategy. Without it, the "
-        "cache could permanently exclude lights it incorrectly marks as occluded.",
+        "<b>Unbiasedness.</b> The cached &#956; appears only in the target "
+        "function &#x1D45D;&#x0302; used for candidate selection, not in the "
+        "final estimator. ReSTIR&#8217;s 1/W normalization cancels "
+        "&#x1D45D;&#x0302; &#8212; the selected light&#8217;s contribution is "
+        "divided by its selection probability, which includes &#956;. For this "
+        "cancellation to hold, every light must have nonzero selection "
+        "probability. The &#956;<sub>min</sub> floor enforces this: even a "
+        "fully occluded light (true &#956;=0) retains at least 1% of its "
+        "BRDF-weighted selection weight.",
+        sB))
+    S.append(Paragraph(
+        "An exploration candidate (1/M of budget, where M is the number of "
+        "initial light candidates per pixel, typically 32) uses uniform "
+        "sampling and always traces its shadow ray &#8212; the &#949;-greedy "
+        "strategy. Combined with &#956;<sub>min</sub>, permanent exclusion "
+        "is impossible.",
         sB))
     S.append(Paragraph(
         "L0 suffices for candidate weighting. Occluded lights (&#956;&#8776;0) are "
@@ -621,8 +791,12 @@ def build(output_path=None):
         [54, 56, 46, 62])
     S += [Spacer(1, 4), t_alt]
     S.append(Paragraph(
-        "<b>Table 4.</b> Cache-free approaches capture ~60% of benefit at ~5% "
-        "of cost for DI. The cache is uniquely needed for GI and camera motion.",
+        "<b>Table 4.</b> Cache-free approaches capture an estimated ~60% of DI "
+        "benefit at substantially lower implementation cost "
+        '(<font color="red">projected &#8212; see Sec.&nbsp;13 for measured '
+        "comparisons</font>). "
+        "The cache&#8217;s unique advantages &#8212; GI revalidation and "
+        "camera-motion robustness &#8212; have no screen-space equivalent.",
         sCap))
 
     # ── 12 RUNTIME STATISTICS ───────────────────────────────────────
@@ -642,24 +816,32 @@ def build(output_path=None):
     # ── 13 RESULTS ──────────────────────────────────────────────────
     S.append(Paragraph("13&nbsp;&nbsp;Results", sH1))
     S.append(Paragraph(
-        "<b>TODO: Test scenes.</b> Bistro (many small lights), Sponza (single sun), "
-        "outdoor IBL, animated spots. Baseline vs cache-enabled.",
+        '<font color="red"><b>13.1&nbsp;&nbsp;Test Scenes.</b> '
+        "We evaluate on Amazon Lumberyard Bistro (exterior, 128 area lights) "
+        "and Crytek Sponza (interior, single dominant directional + IBL). "
+        "[Scene stats table: triangle count, light count, resolution.]</font>",
         sB0))
     S.append(Paragraph(
-        "<b>TODO: Variance reduction.</b> Per-pixel variance maps at equal sample count. "
-        "L0/L1/L2 contribution heatmaps. MSE convergence over frames.",
+        '<font color="red"><b>13.2&nbsp;&nbsp;Shadow-Ray Reduction.</b> '
+        "[Table: rays traced / rays shaded, baseline vs. cache-enabled, "
+        "per scene. Columns: DI final shading, GI revalidation, total.]</font>",
         sB))
     S.append(Paragraph(
-        "<b>TODO: Performance.</b> Shadow ray reduction ratio. Frame time breakdown: "
-        "insert, lookup, decay, warp reduction. 1080p and 4K.",
+        '<font color="red"><b>13.3&nbsp;&nbsp;Frame Time.</b> '
+        "[Table: cache insert/lookup/decay ms, total frame time delta, "
+        "at 1080p on RTX 4090.]</font>",
         sB))
     S.append(Paragraph(
-        "<b>TODO: Runtime stats.</b> Per-frame counters over camera flythrough. "
-        "Auto-tuning DECAY_PERIOD response.",
+        '<font color="red"><b>13.4&nbsp;&nbsp;Convergence.</b> '
+        "[Figure: per-pixel MSE vs. frame number, showing convergence rate "
+        "with and without cache against 1024-spp reference.]</font>",
         sB))
     S.append(Paragraph(
-        "<b>TODO: Ablation.</b> Disable components individually: distance-gated LOD, "
-        "variance gate, warp reduction, CAS decay, pressure eviction.",
+        '<font color="red"><b>13.5&nbsp;&nbsp;Ablation.</b> '
+        "[Table rows: full system, &#8722;variance gate, &#8722;distance LOD, "
+        "&#8722;warp reduction, finest-only (L2), coarsest-only (L0), "
+        "multilevel vs finest-only, no cache. "
+        "Columns: rays/pixel, MSE, frame time.]</font>",
         sB))
     S.append(Paragraph(
         "<b>Graceful degradation.</b> Where cell resolution is too coarse, "
