@@ -18,6 +18,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  pull-requests: write
 
 jobs:
   # Fast check — always visible in PR, skips build if no paper changes
@@ -62,9 +63,18 @@ jobs:
           SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
           echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
 
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/latest
+
+          # latest/ always gets the fresh build
           cp viscachepaper/paper-draft.pdf _site/latest/paper-draft.pdf
-          cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+
+          # Root stable PDF: fresh build on main, preserve existing on PRs
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+          else
+            curl -fsSL "${PAGES_URL}/paper-draft.pdf" -o _site/paper-draft.pdf || cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -112,7 +122,6 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: paper
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
