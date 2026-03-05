@@ -52,7 +52,8 @@ A single shared hash table serves three integration points:
 Falcor/                      Git subtree — ManuelKugelmann/Falcor fork
                              (Falcor 8.0 + ported DQLin/ReSTIR_PT)
   .gitmodules                Falcor's own submodule file (upstream-facing)
-  setup.bat / setup.sh       Falcor's original scripts (packman + submodule init)
+  setup.bat / setup.sh       Falcor's original: submodule init + packman deps
+  setup_vs2022.bat           Falcor's original: setup.bat + CMake VS2022 configure
 
 Source/RenderPasses/
   VisHashFilter/             Complete Falcor 8.0 RenderPass plugin
@@ -167,13 +168,23 @@ cd VisCacheSketch
 
 # Setup (copies plugins into Falcor tree, patches CMake, runs tests, enables hooks)
 ./setup.sh
+
+# Fetch Falcor dependencies (packman: CUDA, slang, nvtt, etc.)
+# Linux:
+Falcor/setup.sh
+# Windows:
+Falcor/setup_vs2022.bat          # deps + generates VS2022 .sln
+# or just deps without VS solution:
+Falcor/setup.bat
 ```
 
 `Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
 with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
 init required. `setup.sh` copies the VisHashFilter and ReSTIRGIPass plugins
 into the Falcor tree, registers them with CMake, and enables the pre-commit
-hook for submodule sync checking.
+hook for submodule sync checking. Falcor's own setup scripts (`Falcor/setup.bat`,
+`Falcor/setup.sh`, `Falcor/setup_vs2022.bat`) handle submodule init and
+packman dependency fetching — these are original NVIDIA scripts.
 
 See `tests/test_vhf_convergence.py` for CPU unit tests (no GPU required).
 
