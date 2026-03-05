@@ -90,7 +90,7 @@ void VisCache::allocateBuffers()
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal,
         nullptr,
-        /*isStructured=*/true
+        /*createCounter=*/true
     );
     mpHashTable->setName("VHF_HashTable");
 
