@@ -100,8 +100,9 @@ def make_table(headers, rows, col_widths=None):
     return t
 
 
-def build():
-    out = "/home/claude/paper.pdf"
+def build(output_path=None):
+    import os
+    out = output_path or os.environ.get("PAPER_OUTPUT", os.path.join(os.path.dirname(__file__), "paper.pdf"))
     doc = BaseDocTemplate(out, pagesize=letter, topMargin=MARGIN_TOP,
                           bottomMargin=MARGIN_BOT, leftMargin=MARGIN_LR, rightMargin=MARGIN_LR)
 
@@ -731,4 +732,5 @@ def build():
 
 
 if __name__ == "__main__":
-    build()
+    import sys
+    build(sys.argv[1] if len(sys.argv) > 1 else None)

@@ -1,16 +1,23 @@
-name: CI
+name: Build
 
 on:
   push:
     branches: ["main", "master"]
     tags: ["v*"]
+    paths:
+      - 'Source/**'
+      - 'Falcor/**'
+      - 'scripts/**'
+      - 'CMakeLists.txt'
+      - 'setup.*'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:
 
 # Queue new runs behind in-progress ones (won't cancel running builds)
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}
+  group: build-${{ github.head_ref || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -20,31 +27,35 @@ env:
   FALCOR_DIR: Falcor
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Algorithm validations (no GPU required)
-  # ---------------------------------------------------------------------------
-  algorithm-validations:
-    name: Algorithm Validations
+  # Fast check — always visible in PR, skips builds if no source changes
+  changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      source: ${{ steps.filter.outputs.source }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          python-version: "3.11"
-
-      - name: Run VisCache algorithm validations
-        run: python tests/test_viscache_convergence.py
+          filters: |
+            source:
+              - 'Source/**'
+              - 'Falcor/**'
+              - 'scripts/**'
+              - 'CMakeLists.txt'
+              - 'setup.*'
+              - '.github/workflows/build.yml'
 
   # ---------------------------------------------------------------------------
   # Windows/VS2022 — vanilla Falcor + VisCache plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
+    needs: [changes]
+    if: always() && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
     runs-on: windows-2022
-    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
@@ -214,13 +225,12 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Windows Ninja/MSVC — alternative build path
+  # Windows Ninja/MSVC — alternative build path (non-PR only)
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
     if: github.event_name != 'pull_request'
     runs-on: windows-2022
-    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
@@ -379,13 +389,12 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Linux/GCC — optional, does not block PRs or releases
+  # Linux/GCC — optional, does not block PRs or releases (non-PR only)
   # ---------------------------------------------------------------------------
   linux-gcc:
     name: Linux/GCC
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
-    needs: algorithm-validations
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -500,7 +509,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [algorithm-validations, windows-vs2022, windows-ninja]
+    needs: [windows-vs2022, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

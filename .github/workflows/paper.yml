@@ -1,0 +1,130 @@
+name: Paper PDF
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'viscachepaper/**'
+      - '.github/workflows/paper.yml'
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+concurrency:
+  group: paper-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  # Fast check — always visible in PR, skips build if no paper changes
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      paper: ${{ steps.filter.outputs.paper }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            paper:
+              - 'viscachepaper/**'
+              - '.github/workflows/paper.yml'
+
+  paper:
+    name: Build Paper PDF
+    needs: [changes]
+    if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install reportlab
+
+      - name: Generate paper PDF
+        run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
+
+      - name: Deploy PDF to GitHub Pages
+        run: |
+          SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
+          echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
+
+          # Fetch gh-pages or create orphan branch
+          if git fetch origin gh-pages:gh-pages 2>/dev/null; then
+            git worktree add _pages gh-pages
+          else
+            git worktree add _pages --detach HEAD
+            cd _pages && git checkout --orphan gh-pages && git rm -rf . && cd ..
+          fi
+
+          # Always update latest/
+          mkdir -p _pages/latest
+          cp viscachepaper/paper-draft.pdf _pages/latest/paper-draft.pdf
+
+          # Update stable root only on pushes to main/master
+          if [[ "${{ github.event_name }}" != "pull_request" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master") ]]; then
+            cp viscachepaper/paper-draft.pdf _pages/paper-draft.pdf
+          fi
+
+          cd _pages
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "Update paper PDF from ${GITHUB_SHA::8}"
+            git push origin gh-pages
+          fi
+
+      - name: Job summary
+        run: |
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
+          echo "Built successfully (${PDF_SIZE})." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [Latest PDF](${PAGES_URL}/latest/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stable PDF (main)](${PAGES_URL}/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
+            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [download PDF](${pagesUrl}/latest/paper-draft.pdf)`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.startsWith('**Paper draft built**'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

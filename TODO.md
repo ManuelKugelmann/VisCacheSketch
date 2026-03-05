@@ -1,7 +1,6 @@
 # TODO — Global Task Tracker
 
 **Project:** Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
-**Target:** EGSR / HPG 2026
 
 ---
 
@@ -17,20 +16,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ## 1. Implementation
 
-### 1.1 Core (VisCache)
-- [x] Hash table: PCG3D addressing, lookup, insert, decay (`VisCache.slang`)
-- [x] Batched insert with SM6.5 WaveMatch coalescing (`VisCacheInsert.cs.slang`)
-- [x] Background decay sweep (`VisCacheDecay.cs.slang`)
-- [x] CV+RRR estimator for all three integration points (`ShadingCV.slang`)
-- [x] Falcor 8.0 host code: buffer management, PI auto-tuner, UI (`VisCache.h/.cpp`)
-- [x] CMake plugin build target
-- [x] CPU unit tests (5 tests, `tests/test_viscache_convergence.py`)
-
-### 1.2 ReSTIR GI Integration
-- [x] Full ReSTIRGIPass host code sketch (`ReSTIRGIPass.h/.cpp`)
-- [x] Spatial reuse shader with VisCache integration (`SpatialReuse.cs.slang`)
-- [x] ReSTIRGIPass CMakeLists.txt
-- [x] CV+RRR revalidation loop delta reference (`SpatialReuse_VisCache_delta.slang`)
+### 1.1 ReSTIR GI Integration
 - [ ] **CRITICAL** Port DQLin/ReSTIR_PT into Falcor fork (`Falcor`)
   - Fork NVIDIAGameWorks/Falcor → ManuelKugelmann/Falcor
   - Apply API migration (see `docs/PORTING.md`)
@@ -39,15 +25,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Verify k=5.0 traces/pixel with VisCache disabled
 - [ ] Enable VisCache, verify traces/pixel drops to ~0.5–1.0 at steady state
 
-### 1.3 Build & Setup
-- [x] Setup script (`setup.sh`)
-- [x] Falcor fork as git subtree (`Falcor`)
-- [x] Create ManuelKugelmann/Falcor fork on GitHub
-- [ ] Port DQLin/ReSTIR_PT into the fork, pull back via `git subtree pull`
-- [ ] Test setup.sh end-to-end on clean clone
-- [ ] Add Linux/Mac build notes (or document Windows-only status)
-
-### 1.4 Open Implementation Questions
+### 1.2 Open Implementation Questions
 - [ ] **HIGH** ABA race in inline decay: quantify error rate empirically or replace with 64-bit CAS
 - [ ] Cell sizes at non-standard scene scales (0.5m close-up, 100m city flyover)
 - [ ] Symmetric cells for GI revalidation — measure error before changing constants
@@ -87,7 +65,6 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 ## 3. Paper Revision (detail in `paper/TODO.md`)
 
 ### 3.1 CRITICAL — Blocks Submission
-- [x] **CRITICAL** Rename paper — drop "Multilevel Visibility Cache"
 - [ ] **CRITICAL** Remove "TODO: experimental validation" from abstract
 - [ ] **CRITICAL** §13 Table 4: "~60% benefit at ~5% cost" — add supporting data or mark as projected
 - [ ] **CRITICAL** §15 Results is entirely TODO — add at minimum one profiling data point
@@ -144,25 +121,4 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ## 4. Dependencies & Blockers
 
-```
-DQLin/ReSTIR_PT port ──→ §11.3 baseline ──→ Table 3 numbers ──→ §15 Results
-                                                                      ↑
-Ablation sweep ─────────────────────────────────────────────────── §15 Results
-                                                                      ↑
-At least one profiling data point ────────────────────────────── submission
-```
-
 **Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §15.
-
----
-
-## 5. Build Sequence (6-week plan from RESEARCH_NOTES)
-
-| Week | Target | Status |
-|------|--------|--------|
-| 1 | VisCache standalone, CPU unit tests | done |
-| 2 | CV+RRR in PathTracer (§11.2), validate on Sponza | pending |
-| 3 | Port DQLin/ReSTIR_PT to Falcor 8, verify Bistro | pending |
-| 4 | GI revalidation (§11.3), measure traces/px | pending |
-| 5 | Light selection (§11.1), µ-weighted RTXDI candidates | pending |
-| 6 | Ablation sweeps, automated capture, MSE plots | pending |
