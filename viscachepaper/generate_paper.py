@@ -173,31 +173,49 @@ def build(output_path=None):
         "Shadow rays dominate the cost of direct lighting in real-time path "
         "tracing. Most confirm what nearby rays already established: a surface "
         "region is consistently lit or consistently occluded from a light region. "
-        "We cache point-to-point visibility in a multilevel spatial hash table "
+        "We cache point-to-point visibility in a spatial hash table "
         "and gate shadow rays via control-variate Russian roulette residual "
         "(CV+RRR): the cached mean replaces most traces, a randomly-triggered "
         "correction preserves unbiasedness, and a self-regulating loop "
-        "concentrates remaining traces on shadow boundaries. "
-        "The cache integrates with "
-        "ReSTIR DI and GI pipelines at three points: light selection, "
-        "final shading, and path revalidation.",
+        "concentrates remaining traces on shadow boundaries.",
         sB0))
     S.append(Paragraph(
-        "Teschner et al. [2003] introduced spatial hashing for broad-phase "
-        "collision detection. Szirmay-Kalos et al. formulated CV+RRR "
-        "(&#8220;go with the winners&#8221;) for Monte Carlo estimation. "
-        "Kugelmann [2006] combined spatial-hash storage with CV+RRR for "
-        "visibility caching (CV+RRR independent of Szirmay-Kalos et al.) and "
-        "proposed a generalized adaptive sampling framework. "
-        "Binder et al. [2018] independently developed spatial hashing for "
-        "path-space filtering with jitter-before-quantize and fingerprints. "
-        "Guo et al. [2020] (NEE++) independently arrived at "
-        "spatial&#215;spatial visibility caching with RR for offline rendering. "
-        "M&#252;ller et al. [2022] demonstrated multi-resolution hash encoding. "
-        "This work extends [Kugelmann 2006] to real-time GPU path tracing: "
-        "multilevel hash with capacity management, "
-        "ReSTIR integration [Bitterli et al. 2020; Ouyang et al. 2021; "
-        "Lin et al. 2022], and GPU-specific engineering.",
+        "Kugelmann [2006] explored three independent cache experiments "
+        "&#8212; irradiance, binary visibility, and free-path distance &#8212; "
+        "each with CV+RRR correction in a fixed-resolution single-level "
+        "spatial hash. We develop the binary visibility experiment into a "
+        "complete real-time system. Binary is sufficient for shadow decisions; "
+        "its Bernoulli structure gives variance for free from a single cached "
+        "mean (var&nbsp;=&nbsp;&#956;(1&#8722;&#956;)); and the (point,&nbsp;point) "
+        "domain aligns with pairwise visibility queries. "
+        "CV+RRR itself is a classical technique (Szirmay-Kalos et al., "
+        "&#8220;go with the winners&#8221;; independently in [Kugelmann 2006]). "
+        "We do not claim it as new &#8212; we advocate for its wider adoption "
+        "and develop the system around it.",
+        sB))
+    S.append(Paragraph(
+        "World-space visibility caches are a natural complement to ReSTIR "
+        "[Bitterli et al. 2020; Ouyang et al. 2021; Lin et al. 2022]: "
+        "spatial reuse concentrates many pixels onto the same light or "
+        "secondary hit, and a world-space cache amortizes their shared "
+        "visibility queries automatically. "
+        "The cache integrates with ReSTIR DI and GI pipelines at three "
+        "points: light selection, final shading, and path revalidation.",
+        sB))
+    S.append(Paragraph(
+        "Our contributions: "
+        "(1)&nbsp;A real-time pairwise binary visibility cache with CV+RRR "
+        "correction, where the Bernoulli variance signal self-regulates "
+        "trace probability without per-scene tuning. "
+        "(2)&nbsp;Three integration points with ReSTIR DI/GI sharing one "
+        "cache &#8212; light selection weighting, final-shading shadow-ray "
+        "gating, and GI revalidation gating &#8212; the last being the "
+        "strongest case since no screen-space alternative exists for "
+        "arbitrary secondary hits. "
+        "(3)&nbsp;Real-time capacity management &#8212; temporal decay, "
+        "pressure-scaled eviction, warp reduction (SM&nbsp;6.5), "
+        "distance-gated LOD selection &#8212; and an optional multilevel "
+        "structure that reduces sensitivity to cell-size choice.",
         sB))
 
     # ── 2 RELATED WORK ─────────────────────────────────────────────

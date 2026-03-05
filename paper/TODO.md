@@ -14,13 +14,10 @@ _Review session March 2026_
 ---
 
 ## §1 Introduction
-- [ ] Reframe contribution list — CV+RRR not claimed as new; application and combination are the contributions
-- [ ] Remove "path sharing aligns with ReSTIR" as an architectural insight — this is a generic property of any spatial cache
-- [ ] Add "narrowing and deepening" framing: 2006 cached irradiance + visibility jointly; this paper narrows to visibility only (justified by Bernoulli simplification) and deepens with multilevel structure and variance-driven spatial resolution
-- [ ] State the three actual contributions explicitly:
-  1. Pairwise binary V(A,B) hash with variance-gated multilevel addressing + CV+RRR — development of the 2006 (point, point): bool experiment into a complete real-time system
-  2. Three unified ReSTIR integration points (§11.1, §11.2, §11.3) sharing one cache
-  3. Adaptive pMin / firefly budget interaction (§10.1)
+- [x] Reframe contribution list — CV+RRR explicitly not claimed as new; advocate for wider adoption
+- [x] Remove "path sharing aligns with ReSTIR" — replaced with general world-space cache + ReSTIR synergy observation
+- [x] Add 2006 lineage: three independent experiments, we develop binary visibility into complete system
+- [x] State three contributions: (1) real-time binary V cache with self-regulating CV+RRR, (2) three ReSTIR integration points sharing one cache, (3) capacity management + optional multilevel for cell-size robustness
 
 ---
 
