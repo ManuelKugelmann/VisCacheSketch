@@ -22,12 +22,14 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 
 ## Paper PDF Workflow
 
-- After modifying `viscachepaper/generate_paper.py`, rebuild locally and show the updated PDF in chat:
+- After modifying `viscachepaper/generate_paper.py`, rebuild and show inline in chat:
   ```bash
   python viscachepaper/generate_paper.py /tmp/test-paper.pdf
-  # Then use Read tool on /tmp/test-paper.pdf with pages parameter to render in chat
+  pdftoppm -png -r 200 -f 1 -l 1 /tmp/test-paper.pdf /tmp/page
+  # Then Read /tmp/page-1.png to show the page visually in chat
   ```
-- Install `poppler-utils` if needed for PDF rendering (`apt-get install -y poppler-utils`)
+  `poppler-utils` (`pdftoppm`) is pre-installed in the Claude Code web sandbox. For local/CI use, install with `apt-get install -y poppler-utils`.
+- **Note:** Reading a PDF directly with the Read tool (`pages` param) lets Claude parse its content, but does **not** show a visual image in the user's chat. You must convert to PNG first for the user to see the rendered page.
 
 ## CI
 
