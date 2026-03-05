@@ -9,7 +9,7 @@ _Review session March 2026_
 - [ ] Consider "Revisiting Visibility Prediction-with-Correction for Real-Time Path Tracing" as alternative — stronger narrative, explicit lineage
 - [x] **CRITICAL** Remove "TODO: experimental validation" from abstract — replaced with red ##% placeholders for DI and GI ray reduction
 - [x] Add CV+RRR framing sentence to abstract — integrated into existing control-variate sentence with unbiasedness guarantee
-- [ ] Add "revisit" framing to abstract: _"We develop a binary visibility experiment from [Kugelmann 2006] into a complete real-time system..."_
+- [x] ~~Add "revisit" framing to abstract~~ — removed; 2006 lineage belongs in §1/§2, not abstract
 
 ---
 
