@@ -4,7 +4,7 @@
  * Falcor 8.0 RenderPass — ReSTIR GI with VisCache CV+RRR revalidation.
  *
  * Port of DQLin/ReSTIR_PT (Falcor 5.2) to Falcor 8.0 with integrated
- * visibility hash filter for revalidation ray gating (§11.3).
+ * visibility cache for revalidation ray gating (§11.3).
  *
  * Port checklist (Falcor 5.2 → 8.0):
  *   [x] SharedPtr<X>  → ref<X>
