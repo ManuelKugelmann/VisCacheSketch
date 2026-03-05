@@ -1,0 +1,50 @@
+name: Paper Build
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "viscachepaper/**"
+      - "paper/**"
+      - ".github/workflows/paper.yml"
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - "viscachepaper/**"
+      - "paper/**"
+      - ".github/workflows/paper.yml"
+  workflow_dispatch:
+
+jobs:
+  build-paper:
+    name: Build Paper PDF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install reportlab
+
+      - name: Generate paper PDF
+        run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
+
+      - name: Upload paper PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-draft
+          path: viscachepaper/paper-draft.pdf
+          retention-days: 90
+
+      - name: Summary
+        run: |
+          echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
+          echo "Paper PDF built successfully and uploaded as artifact." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download from the **Artifacts** section of this workflow run." >> $GITHUB_STEP_SUMMARY
+          ls -lh viscachepaper/paper-draft.pdf
