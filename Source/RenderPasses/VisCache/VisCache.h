@@ -62,8 +62,9 @@ public:
 
     const Params& getParams() const { return mParams; }
 
-private:
     VisCache(ref<Device> pDevice, const Properties& props);
+
+private:
 
     void allocateBuffers();
     void runDecayPass(RenderContext* pCtx);

@@ -67,9 +67,9 @@ public:
         bool     symmetricCells       = false;  ///< Use symmetric cell sizes for GI (§5.2)
     };
 
-private:
     ReSTIRGIPass(ref<Device> pDevice, const Properties& props);
 
+private:
     void createPasses();
     void retrieveVisCacheBuffers(const RenderData& rd);
 

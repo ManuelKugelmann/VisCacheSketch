@@ -284,10 +284,10 @@ void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
     const auto& dict = rd.getDictionary();
 
     if (mVisCacheParams.enabled &&
-        dict.keyExists("visCacheTable") && dict.keyExists("visCacheCapacity"))
+        dict.keyExists("vhfTable") && dict.keyExists("vhfCapacity"))
     {
-        mpVisCacheTable   = dict["visCacheTable"];
-        mVisCacheCapacity = dict["visCacheCapacity"];
+        mpVisCacheTable   = dict["vhfTable"];
+        mVisCacheCapacity = dict["vhfCapacity"];
     }
     else
     {
