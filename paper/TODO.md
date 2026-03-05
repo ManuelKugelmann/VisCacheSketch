@@ -7,7 +7,7 @@ _Review session March 2026_
 ## Title & Abstract
 - [x] **CRITICAL** Rename paper — drop "Multilevel Visibility Cache", use "Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing"
 - [ ] Consider "Revisiting Visibility Prediction-with-Correction for Real-Time Path Tracing" as alternative — stronger narrative, explicit lineage
-- [ ] **CRITICAL** Remove "TODO: experimental validation" from abstract
+- [x] **CRITICAL** Remove "TODO: experimental validation" from abstract — replaced with red ##% placeholders for DI and GI ray reduction
 - [ ] Add CV+RRR framing sentence to abstract: _"We exploit the control-variate estimator with Russian roulette — a classical but underutilized technique — to make shadow ray gating provably unbiased regardless of cache accuracy."_
 - [ ] Add "revisit" framing to abstract: _"We develop a binary visibility experiment from [Kugelmann 2006] into a complete real-time system..."_
 
