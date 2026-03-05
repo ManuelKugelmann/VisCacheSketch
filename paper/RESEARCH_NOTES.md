@@ -9,7 +9,7 @@ _Sessions: February–March 2026_
 ### Title evolution
 | Candidate | Problem |
 |-----------|---------|
-| Multilevel Visibility Hash Filter | "Filter" implies image-space denoiser. "Multilevel" buries the lead. CV+RRR invisible. |
+| Multilevel Visibility Cache | "Filter" implies image-space denoiser. "Multilevel" buries the lead. CV+RRR invisible. |
 | Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing | Current preferred. "Unbiased" carries the differentiating claim. |
 | Revisiting Visibility Prediction-with-Correction for Real-Time Path Tracing | Alternative — stronger narrative arc, explicit 2006 lineage. |
 
@@ -91,7 +91,7 @@ Coalesces threads targeting the same L0 cell (10m grid — many pixels share the
 Auto-tunes `decayPeriod` (frames per full table sweep) based on eviction/insert ratio. Target: evict ~10% of inserts. Fast action: tunes down to 15 frames. Static scenes: tunes up to decayPeriodMax (default 600). Quality knobs (varThreshold, pMin) are never auto-tuned — only the decay rate.
 
 ### Mogwai graph ordering
-VisHashFilter must execute before PathTracer, RTXDIPass, ReSTIRGIPass. It owns the table buffer; downstream passes retrieve it via InternalDictionary. If VisHashFilter is not in the graph, all three downstream passes fall back to V=1 / full retrace with a logWarning.
+VisCache must execute before PathTracer, RTXDIPass, ReSTIRGIPass. It owns the table buffer; downstream passes retrieve it via InternalDictionary. If VisCache is not in the graph, all three downstream passes fall back to V=1 / full retrace with a logWarning.
 
 ---
 
@@ -130,7 +130,7 @@ One Falcor 8.0 tree, each technique in RenderPasses/ subdirectory, shared GBuffe
 
 | Week | Target |
 |------|--------|
-| 1 | VisHashFilter standalone, CPU unit tests |
+| 1 | VisCache standalone, CPU unit tests |
 | 2 | CV+RRR in PathTracer (§11.2), validate on Sponza |
 | 3 | Port DQLin/ReSTIR_PT to Falcor 8, verify matches Bistro figures |
 | 4 | GI revalidation (§11.3), measure traces/px vs. Table 3 |

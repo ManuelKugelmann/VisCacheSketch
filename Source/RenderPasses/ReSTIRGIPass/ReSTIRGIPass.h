@@ -1,10 +1,10 @@
 /***************************************************************************
  * ReSTIRGIPass.h
  *
- * Falcor 8.0 RenderPass — ReSTIR GI with MLVHF CV+RRR revalidation.
+ * Falcor 8.0 RenderPass — ReSTIR GI with VisCache CV+RRR revalidation.
  *
  * Port of DQLin/ReSTIR_PT (Falcor 5.2) to Falcor 8.0 with integrated
- * multilevel visibility hash filter for revalidation ray gating (§11.3).
+ * visibility cache for revalidation ray gating (§11.3).
  *
  * Port checklist (Falcor 5.2 → 8.0):
  *   [x] SharedPtr<X>  → ref<X>
@@ -21,6 +21,9 @@
 
 #pragma once
 #include "Falcor.h"
+#include "RenderGraph/RenderPass.h"
+#include "RenderGraph/RenderPassHelpers.h"
+#include "Core/Pass/ComputePass.h"
 
 using namespace Falcor;
 
@@ -28,7 +31,7 @@ class ReSTIRGIPass : public RenderPass
 {
 public:
     FALCOR_PLUGIN_CLASS(ReSTIRGIPass, "ReSTIRGIPass",
-                        "ReSTIR GI with MLVHF CV+RRR revalidation");
+                        "ReSTIR GI with VisCache CV+RRR revalidation");
 
     static ref<ReSTIRGIPass> create(ref<Device> pDevice, const Properties& props);
 
@@ -54,9 +57,9 @@ public:
     };
 
     // -----------------------------------------------------------------------
-    // MLVHF integration parameters (§11.3 / §12)
+    // VisCache integration parameters (§11.3 / §12)
     // -----------------------------------------------------------------------
-    struct MLVHFParams
+    struct VisCacheParams
     {
         bool     enabled              = true;
         float    contribThreshold     = 0.01f;  ///< Minimum residual to force trace
@@ -68,7 +71,7 @@ private:
     ReSTIRGIPass(ref<Device> pDevice, const Properties& props);
 
     void createPasses();
-    void retrieveVHFBuffers(const RenderData& rd);
+    void retrieveVisCacheBuffers(const RenderData& rd);
 
     // -----------------------------------------------------------------------
     // Compute passes
@@ -86,17 +89,17 @@ private:
     ref<Buffer>       mpSecondaryHitBuffer;    ///< Secondary hit data (Lo, posW, N)
 
     // -----------------------------------------------------------------------
-    // MLVHF: retrieved from InternalDictionary each frame
+    // VisCache: retrieved from InternalDictionary each frame
     // -----------------------------------------------------------------------
-    ref<Buffer>       mpVHFTable;
-    uint32_t          mVHFCapacity = 0u;
+    ref<Buffer>       mpVisCacheTable;
+    uint32_t          mVisCacheCapacity = 0u;
 
     // -----------------------------------------------------------------------
     // State
     // -----------------------------------------------------------------------
     ref<Scene>        mpScene;
     ReSTIRParams      mReSTIRParams;
-    MLVHFParams       mMLVHFParams;
+    VisCacheParams       mVisCacheParams;
     uint2             mFrameDim = { 0, 0 };
     uint32_t          mFrameCount = 0u;
 };

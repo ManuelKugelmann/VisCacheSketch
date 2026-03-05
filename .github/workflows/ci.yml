@@ -2,24 +2,29 @@ name: CI
 
 on:
   push:
-    branches: ["main", "master", "claude/**"]
+    branches: ["main", "master"]
     tags: ["v*"]
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:
 
+# Queue new runs behind in-progress ones (won't cancel running builds)
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 env:
-  FALCOR_DIR: external/Falcor
+  FALCOR_DIR: Falcor
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Unit tests (no GPU required)
+  # Algorithm validations (no GPU required)
   # ---------------------------------------------------------------------------
-  unit-tests:
-    name: Unit Tests
+  algorithm-validations:
+    name: Algorithm Validations
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,141 +35,46 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run VHF convergence tests
-        run: python tests/test_vhf_convergence.py
+      - name: Run VisCache algorithm validations
+        run: python tests/test_viscache_convergence.py
 
   # ---------------------------------------------------------------------------
-  # Linux/GCC — vanilla Falcor + MLVHF plugins
-  # ---------------------------------------------------------------------------
-  linux-gcc:
-    name: Linux/GCC (${{ matrix.config }})
-    runs-on: ubuntu-22.04
-    needs: unit-tests
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [Release, Debug]
-    env:
-      CMAKE_BUILD_PRESET: linux-gcc
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Init Falcor submodules
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || true
-          # Falcor was added as a subtree — populate its internal submodule
-          # directories if they are empty (submodule refs don't survive subtree squash)
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
-              rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
-            fi
-          done
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev
-
-      - name: Fetch Falcor packman dependencies
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          chmod +x tools/packman/packman
-          ./tools/packman/packman pull --platform linux-x86_64 dependencies.xml
-
-      - name: Integrate MLVHF plugins into Falcor tree
-        run: |
-          FALCOR="${{ env.FALCOR_DIR }}"
-
-          # Copy VisHashFilter plugin
-          mkdir -p "${FALCOR}/Source/RenderPasses/VisHashFilter"
-          cp -r Source/RenderPasses/VisHashFilter/* "${FALCOR}/Source/RenderPasses/VisHashFilter/"
-
-          # Copy ReSTIRGIPass plugin
-          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
-          cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
-
-          # Copy scripts
-          mkdir -p "${FALCOR}/scripts/MLVHF"
-          cp -r scripts/* "${FALCOR}/scripts/MLVHF/"
-
-          # Patch RenderPasses CMakeLists.txt to register plugins
-          RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
-          if ! grep -q "add_subdirectory(VisHashFilter)" "$RP_CMAKE"; then
-            echo "add_subdirectory(VisHashFilter)" >> "$RP_CMAKE"
-          fi
-          if ! grep -q "add_subdirectory(ReSTIRGIPass)" "$RP_CMAKE"; then
-            echo "add_subdirectory(ReSTIRGIPass)" >> "$RP_CMAKE"
-          fi
-
-          echo "--- Patched RenderPasses CMakeLists.txt ---"
-          cat "$RP_CMAKE"
-
-      - name: CMake Configure
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          CMAKE_EXE=./tools/.packman/cmake/bin/cmake
-          ${CMAKE_EXE} --preset ${{ env.CMAKE_BUILD_PRESET }}
-
-      - name: Build
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          CMAKE_EXE=./tools/.packman/cmake/bin/cmake
-          ${CMAKE_EXE} --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
-
-      - name: Upload build artifacts
-        if: matrix.config == 'Release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: falcor-linux-gcc-${{ matrix.config }}
-          path: |
-            ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/
-          retention-days: 14
-
-  # ---------------------------------------------------------------------------
-  # Windows/VS2022 — vanilla Falcor + MLVHF plugins
+  # Windows/VS2022 — vanilla Falcor + VisCache plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
-    name: Windows VS2022 (${{ matrix.config }})
-    runs-on: windows-latest
-    needs: unit-tests
+    name: Windows VS2022
+    runs-on: windows-2022
+    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
-        config: [Release, Debug]
+        # PRs: Debug only; pushes to main/tags: Debug + Release
+        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+    env:
+      CMAKE_BUILD_PRESET: windows-vs2022-ci
+      # Pin packman cache location for reproducible caching on Windows
+      PM_PACKAGES_ROOT: C:\packman-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # -- Caching: Falcor internal submodules --------------------------------
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v2
+          restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
         shell: bash
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || true
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
-              rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
-            fi
-          done
+        run: git submodule update --init --depth 1
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -172,34 +82,46 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
+      # -- Caching: sccache for compiled objects --------------------------------
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      # -- Caching: NVIDIA packman packages -----------------------------------
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: C:\packman-cache
+          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
+          restore-keys: packman-
+
       - name: Fetch Falcor packman dependencies
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
-      - name: Integrate MLVHF plugins into Falcor tree
+      - name: Integrate VisCache plugins into Falcor tree
         shell: pwsh
         run: |
           $Falcor = "${{ env.FALCOR_DIR }}"
 
-          # Copy VisHashFilter plugin
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisHashFilter" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/VisHashFilter/*" "$Falcor/Source/RenderPasses/VisHashFilter/" -Recurse -Force
+          # Copy VisCache plugin
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
           # Copy ReSTIRGIPass plugin
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
           Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
 
           # Copy scripts
-          New-Item -ItemType Directory -Path "$Falcor/scripts/MLVHF" -Force | Out-Null
-          Copy-Item "scripts/*" "$Falcor/scripts/MLVHF/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
+          Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
 
           # Patch RenderPasses CMakeLists.txt
           $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
           $content = Get-Content $rpCmake -Raw
-          if ($content -notmatch "add_subdirectory\(VisHashFilter\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(VisHashFilter)"
+          if ($content -notmatch "add_subdirectory\(VisCache\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
           if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
@@ -208,15 +130,22 @@ jobs:
           Write-Host "--- Patched RenderPasses CMakeLists.txt ---"
           Get-Content $rpCmake
 
-      - name: CMake Configure (VS2022)
+      - name: CMake Configure
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          call setup_vs2022.bat
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: cmd
-        run: msbuild.exe ${{ env.FALCOR_DIR }}\build\windows-vs2022\Falcor.sln /p:Configuration=${{ matrix.config }} /m
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }} -- /m
+
+      - name: Print sccache stats
+        if: always()
+        shell: cmd
+        run: sccache --show-stats
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -224,46 +153,44 @@ jobs:
         with:
           name: falcor-windows-vs2022-${{ matrix.config }}
           path: |
-            ${{ env.FALCOR_DIR }}/build/windows-vs2022/bin/Release/
+            ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ matrix.config }}/
           retention-days: 14
 
   # ---------------------------------------------------------------------------
   # Windows Ninja/MSVC — alternative build path
   # ---------------------------------------------------------------------------
   windows-ninja:
-    name: Windows Ninja/MSVC (${{ matrix.config }})
-    runs-on: windows-latest
-    needs: unit-tests
+    name: Windows Ninja/MSVC
+    if: github.event_name != 'pull_request'
+    runs-on: windows-2022
+    needs: algorithm-validations
     strategy:
       fail-fast: false
       matrix:
         config: [Release]
     env:
-      CMAKE_BUILD_PRESET: windows-ninja-msvc
+      CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
+      PM_PACKAGES_ROOT: C:\packman-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v2
+          restore-keys: falcor-submodules-
+
       - name: Init Falcor submodules
         shell: bash
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          git submodule sync --recursive || true
-          git submodule update --init --recursive || true
-          for mod in pybind11:https://github.com/skallweitNV/pybind11.git \
-                     glfw:https://github.com/glfw/glfw.git \
-                     args:https://github.com/Taywee/args.git \
-                     fmt:https://github.com/fmtlib/fmt.git \
-                     imgui:https://github.com/ocornut/imgui.git \
-                     vulkan-headers:https://github.com/KhronosGroup/Vulkan-Headers.git; do
-            dir="external/${mod%%:*}"
-            url="${mod#*:}"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Cloning $url -> $dir"
-              rm -rf "$dir"
-              git clone --depth 1 "$url" "$dir"
-            fi
-          done
+        run: git submodule update --init --depth 1
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -271,30 +198,42 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
+      # -- Caching: sccache for compiled objects --------------------------------
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      # -- Caching: NVIDIA packman packages -----------------------------------
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: C:\packman-cache
+          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
+          restore-keys: packman-
+
       - name: Fetch Falcor packman dependencies
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
-      - name: Integrate MLVHF plugins into Falcor tree
+      - name: Integrate VisCache plugins into Falcor tree
         shell: pwsh
         run: |
           $Falcor = "${{ env.FALCOR_DIR }}"
 
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisHashFilter" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/VisHashFilter/*" "$Falcor/Source/RenderPasses/VisHashFilter/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
           Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
 
-          New-Item -ItemType Directory -Path "$Falcor/scripts/MLVHF" -Force | Out-Null
-          Copy-Item "scripts/*" "$Falcor/scripts/MLVHF/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
+          Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
 
           $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
           $content = Get-Content $rpCmake -Raw
-          if ($content -notmatch "add_subdirectory\(VisHashFilter\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(VisHashFilter)"
+          if ($content -notmatch "add_subdirectory\(VisCache\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
           if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
@@ -304,14 +243,18 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          call setup.bat
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build/%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
+          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
+
+      - name: Print sccache stats
+        if: always()
+        shell: cmd
+        run: sccache --show-stats
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -322,13 +265,118 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
+  # Linux/GCC — optional, does not block PRs or releases
+  # ---------------------------------------------------------------------------
+  linux-gcc:
+    name: Linux/GCC
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    needs: algorithm-validations
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Release, Debug]
+    env:
+      CMAKE_BUILD_PRESET: linux-gcc-ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v2
+          restore-keys: falcor-submodules-
+
+      - name: Init Falcor submodules
+        run: git submodule update --init --depth 1
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
+            ccache-${{ runner.os }}-gcc-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=1G
+          ccache --set-config=compression=true
+          ccache -z
+
+      - name: Cache packman packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/packman
+          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
+          restore-keys: packman-
+
+      - name: Fetch Falcor packman dependencies
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          chmod +x tools/packman/packman
+          ./tools/packman/packman pull --platform linux-x86_64 dependencies.xml
+
+      - name: Patch NVTT package
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
+
+      - name: Integrate VisCache plugins into Falcor tree
+        run: |
+          FALCOR="${{ env.FALCOR_DIR }}"
+          mkdir -p "${FALCOR}/Source/RenderPasses/VisCache"
+          cp -r Source/RenderPasses/VisCache/* "${FALCOR}/Source/RenderPasses/VisCache/"
+          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
+          cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
+          mkdir -p "${FALCOR}/scripts/VisCache"
+          cp -r scripts/* "${FALCOR}/scripts/VisCache/"
+          RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
+          if ! grep -q "add_subdirectory(VisCache)" "$RP_CMAKE"; then
+            echo "add_subdirectory(VisCache)" >> "$RP_CMAKE"
+          fi
+          if ! grep -q "add_subdirectory(ReSTIRGIPass)" "$RP_CMAKE"; then
+            echo "add_subdirectory(ReSTIRGIPass)" >> "$RP_CMAKE"
+          fi
+
+      - name: CMake Configure
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
+            -DFALCOR_VALIDATE_HEADERS=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
+
+  # ---------------------------------------------------------------------------
   # Release — triggered on v* tags after successful builds
   # ---------------------------------------------------------------------------
   release:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unit-tests, linux-gcc, windows-vs2022, windows-ninja]
+    needs: [algorithm-validations, windows-vs2022, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

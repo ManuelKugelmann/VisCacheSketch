@@ -78,7 +78,7 @@ Read packed → compute decay delta → InterlockedAdd(-sub). If another thread 
 ## ReSTIR integration
 
 ### InternalDictionary handoff
-VisHashFilter executes first, writes mpHashTable ref + params to InternalDictionary. Downstream passes (PathTracer, RTXDIPass, ReSTIRGIPass) retrieve via `dict["vhfTable"]`. If VisHashFilter not in graph: downstream passes log warning and fall back to V=1 / full retrace. No crash, graceful degradation.
+VisCache executes first, writes mpHashTable ref + params to InternalDictionary. Downstream passes (PathTracer, RTXDIPass, ReSTIRGIPass) retrieve via `dict["vhfTable"]`. If VisCache not in graph: downstream passes log warning and fall back to V=1 / full retrace. No crash, graceful degradation.
 
 ### Why three integration points share one table
 The same V(A,B) cache entry is useful for:

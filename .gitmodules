@@ -1,0 +1,18 @@
+[submodule "Falcor/external/pybind11"]
+	path = Falcor/external/pybind11
+	url = https://github.com/skallweitNV/pybind11.git
+[submodule "Falcor/external/glfw"]
+	path = Falcor/external/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "Falcor/external/args"]
+	path = Falcor/external/args
+	url = https://github.com/Taywee/args.git
+[submodule "Falcor/external/fmt"]
+	path = Falcor/external/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "Falcor/external/imgui"]
+	path = Falcor/external/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "Falcor/external/vulkan-headers"]
+	path = Falcor/external/vulkan-headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers

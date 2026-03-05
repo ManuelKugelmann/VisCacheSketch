@@ -49,30 +49,32 @@ A single shared hash table serves three integration points:
 ## Repository structure
 
 ```
-external/
-  Falcor/                    Git subtree — ManuelKugelmann/Falcor fork
+Falcor/                      Git subtree — ManuelKugelmann/Falcor fork
                              (Falcor 8.0 + ported DQLin/ReSTIR_PT)
+  .gitmodules                Falcor's own submodule file (upstream-facing)
+  setup.bat / setup.sh       Falcor's original: submodule init + packman deps
+  setup_vs2022.bat           Falcor's original: setup.bat + CMake VS2022 configure
 
 Source/RenderPasses/
-  VisHashFilter/             Complete Falcor 8.0 RenderPass plugin
-    VisHashFilter.slang      Hash table: PCG3D addressing, lookup, insert, decay
-    VisHashInsert.cs.slang   Batched insert with SM6.5 WaveMatch coalescing
-    VisHashDecay.cs.slang    Background decay sweep
+  VisCache/             Complete Falcor 8.0 RenderPass plugin
+    VisCache.slang      Hash table: PCG3D addressing, lookup, insert, decay
+    VisCacheInsert.cs.slang   Batched insert with SM6.5 WaveMatch coalescing
+    VisCacheDecay.cs.slang    Background decay sweep
     ShadingCV.slang          CV+RRR estimator — all three integration points
-    VisHashFilter.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
+    VisCache.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
     CMakeLists.txt           Plugin build target
-  ReSTIRGIPass/              ReSTIR GI with MLVHF revalidation
+  ReSTIRGIPass/              ReSTIR GI with VisCache revalidation
     ReSTIRGIPass.h/.cpp      Falcor 8.0 host code (full port sketch)
     SpatialReuse.cs.slang    Spatial reuse kernel with CV+RRR integration
-    SpatialReuse_MLVHF_delta.slang  Original delta reference
+    SpatialReuse_VisCache_delta.slang  Original delta reference
     CMakeLists.txt           Plugin build target
 
 scripts/
-  MLVHF_Graph.py             Mogwai render graph
-  MLVHF_Ablation.py          Automated ablation capture (10 configs)
+  VisCache_Graph.py             Mogwai render graph
+  VisCache_Ablation.py          Automated ablation capture (10 configs)
 
 tests/
-  test_vhf_convergence.py    CPU unit tests (5 tests, no GPU required)
+  test_viscache_convergence.py    CPU unit tests (5 tests, no GPU required)
 
 paper/
   TODO.md                    Revision checklist (28 items, 4 critical)
@@ -86,7 +88,11 @@ docs/
   ThesisMK.pdf               2006 Diplomarbeit
   multilevel-visibility-hash-filter-paper.pdf
 
-setup.ps1                    Windows setup script (uses submodule by default)
+.gitmodules                  Root submodule config (mirrors Falcor/.gitmodules)
+.githooks/pre-commit         Blocks commits if .gitmodules files are out of sync
+sync-submodules.sh           Bidirectional sync between root and Falcor .gitmodules
+setup.sh                     Linux setup: calls Falcor/setup.sh + VisCache plugin copy
+setup.bat                    Windows setup: calls Falcor/setup_vs2022.bat + VisCache plugin copy
 TODO.md                      Global task tracker
 ```
 
@@ -146,7 +152,7 @@ Cell sizes calibrated for primary viewing distances 2–20 m (Bistro, Sponza). C
 | −AB | Both A and B off | Maximum table pressure stress |
 | Finest-only | minLevel=maxLevel=2 | Multilevel necessary for GI amortization |
 | Coarsest-only | minLevel=maxLevel=0 | Coarse level insufficient for shadow boundaries |
-| No-cache | VHF disabled | Full-retrace baseline |
+| No-cache | VisCache disabled | Full-retrace baseline |
 
 Ablation −B (variance gate) is the most important: must show negligible MSE gain at measurable insert cost increase.
 
@@ -156,29 +162,57 @@ Finest-only tests the central architectural claim: without coarse levels, within
 
 ## Build instructions
 
-```powershell
+```bash
 # Clone (Falcor is included as a subtree — no extra flags needed)
 git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
 cd VisCacheSketch
 
-# Setup (copies plugins into Falcor tree, patches CMake, runs tests)
-.\setup.ps1
+# Linux:
+./setup.sh
 
-# Or with external Falcor:
-.\setup.ps1 -FalcorRoot "C:\path\to\your\Falcor"
-
-# Pull upstream Falcor changes:
-git subtree pull --prefix=external/Falcor falcor master --squash
+# Windows:
+.\setup.bat
 ```
 
-`external/Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
-with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
-init required. `setup.ps1` copies the VisHashFilter and ReSTIRGIPass plugins
-into the Falcor tree and registers them with CMake.
+Each root setup script:
+1. Calls Falcor's own setup (submodule init, packman deps, git hooks;
+   Windows also generates VS2022 `.sln`)
+2. Copies VisCache and ReSTIRGIPass plugins into the Falcor tree
+3. Patches CMake to register the plugins
+4. Runs CPU unit tests
 
-See `tests/test_vhf_convergence.py` for CPU unit tests (no GPU required).
+`Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
+with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
+init required.
+
+See `tests/test_viscache_convergence.py` for CPU unit tests (no GPU required).
 
 Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
+
+### Submodule sync (subtree workflow)
+
+Because Falcor is a git subtree (not a submodule), there are **two** `.gitmodules` files:
+- **Root `.gitmodules`** — what git actually reads for submodule config
+- **`Falcor/.gitmodules`** — what upstream Falcor maintains
+
+These must stay in sync. The pre-commit hook blocks commits if they diverge.
+Use `sync-submodules.sh` to fix:
+
+```bash
+# After pulling upstream Falcor (Falcor/.gitmodules is authoritative):
+git subtree pull --prefix=Falcor falcor master --squash
+./sync-submodules.sh from-upstream
+git add .gitmodules && git commit --amend --no-edit
+
+# Before pushing to upstream Falcor (root .gitmodules is authoritative):
+./sync-submodules.sh to-upstream
+git add Falcor/.gitmodules
+git commit -m "sync submodules for upstream"
+git subtree push --prefix=Falcor falcor my-branch
+
+# Just check (no changes):
+./sync-submodules.sh check
+```
 
 ---
 

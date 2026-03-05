@@ -1,0 +1,67 @@
+#!/bin/bash
+# pre-commit hook: verify root .gitmodules and Falcor/.gitmodules are in sync
+#
+# Blocks the commit if paths or URLs differ. Run sync-submodules.sh to fix.
+# Enable: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+FALCOR_GITMODULES="Falcor/.gitmodules"
+ROOT_GITMODULES=".gitmodules"
+
+[ -f "$FALCOR_GITMODULES" ] || exit 0
+[ -f "$ROOT_GITMODULES" ] || { echo "ERROR: $ROOT_GITMODULES missing but $FALCOR_GITMODULES exists"; exit 1; }
+
+# Parse .gitmodules into path<TAB>url lines
+parse_gitmodules() {
+    local file="$1" strip="$2"
+    local current_path="" current_url=""
+    while IFS= read -r line; do
+        case "$line" in
+            *"path = "*) current_path="${line#*path = }"; [ -n "$strip" ] && current_path="${current_path#"$strip"}" ;;
+            *"url = "*)  current_url="${line#*url = }" ;;
+        esac
+        if [ -n "$current_path" ] && [ -n "$current_url" ]; then
+            printf '%s\t%s\n' "$current_path" "$current_url"
+            current_path="" current_url=""
+        fi
+    done < "$file"
+}
+
+falcor_map=$(mktemp)
+root_map=$(mktemp)
+errfile=$(mktemp)
+trap 'rm -f "$falcor_map" "$root_map" "$errfile"' EXIT
+
+parse_gitmodules "$FALCOR_GITMODULES" "" > "$falcor_map"
+parse_gitmodules "$ROOT_GITMODULES" "Falcor/" > "$root_map"
+
+# Every Falcor submodule must exist in root with exact same URL
+while IFS=$'\t' read -r path url; do
+    root_url=$(grep "^${path}"$'\t' "$root_map" | cut -f2) || true
+    if [ -z "$root_url" ]; then
+        echo "  MISSING in .gitmodules: Falcor submodule '${path}' (expected as 'Falcor/${path}')" >> "$errfile"
+    elif [ "$url" != "$root_url" ]; then
+        echo "  URL MISMATCH: '${path}'" >> "$errfile"
+        echo "    Falcor/.gitmodules: $url" >> "$errfile"
+        echo "    .gitmodules:        $root_url" >> "$errfile"
+    fi
+done < "$falcor_map"
+
+# Every Falcor/ entry in root must exist in Falcor's .gitmodules
+while IFS=$'\t' read -r path url; do
+    falcor_url=$(grep "^${path}"$'\t' "$falcor_map" | cut -f2) || true
+    if [ -z "$falcor_url" ]; then
+        echo "  STALE in .gitmodules: 'Falcor/${path}' not in Falcor/.gitmodules" >> "$errfile"
+    fi
+done < "$root_map"
+
+if [ -s "$errfile" ]; then
+    echo "=== .gitmodules sync check FAILED ==="
+    cat "$errfile"
+    echo ""
+    echo "Run ./sync-submodules.sh to fix:"
+    echo "  ./sync-submodules.sh from-upstream   # Falcor/.gitmodules is authoritative"
+    echo "  ./sync-submodules.sh to-upstream     # root .gitmodules is authoritative"
+    exit 1
+fi
