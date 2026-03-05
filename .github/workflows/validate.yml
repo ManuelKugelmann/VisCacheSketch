@@ -1,0 +1,36 @@
+name: Algorithm Validation
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'tests/**'
+      - 'Source/RenderPasses/**'
+      - '.github/workflows/validate.yml'
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - 'tests/**'
+      - 'Source/RenderPasses/**'
+      - '.github/workflows/validate.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: validate-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  algorithm-validations:
+    name: Algorithm Validations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run VisCache algorithm validations
+        run: python tests/test_viscache_convergence.py

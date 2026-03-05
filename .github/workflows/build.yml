@@ -1,16 +1,30 @@
-name: CI
+name: Build
 
 on:
   push:
     branches: ["main", "master"]
     tags: ["v*"]
+    paths:
+      - 'Source/**'
+      - 'Falcor/**'
+      - 'scripts/**'
+      - 'CMakeLists.txt'
+      - 'setup.*'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: ["main", "master"]
+    paths:
+      - 'Source/**'
+      - 'Falcor/**'
+      - 'scripts/**'
+      - 'CMakeLists.txt'
+      - 'setup.*'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 # Queue new runs behind in-progress ones (won't cancel running builds)
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}
+  group: build-${{ github.head_ref || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -21,149 +35,11 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Paper PDF (fast, no dependencies — runs immediately)
-  # ---------------------------------------------------------------------------
-  paper:
-    name: Build Paper PDF
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install reportlab
-
-      - name: Generate paper PDF
-        run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
-
-      - name: Deploy PDF to GitHub Pages
-        run: |
-          SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
-          echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
-
-          # Fetch gh-pages or create it
-          git fetch origin gh-pages:gh-pages 2>/dev/null || true
-          git worktree add _pages gh-pages 2>/dev/null || {
-            git worktree add --orphan _pages gh-pages
-          }
-
-          # Always update latest/
-          mkdir -p _pages/latest
-          cp viscachepaper/paper-draft.pdf _pages/latest/paper-draft.pdf
-
-          # Update stable root only on pushes to main/master
-          if [[ "${{ github.event_name }}" != "pull_request" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master") ]]; then
-            cp viscachepaper/paper-draft.pdf _pages/paper-draft.pdf
-          fi
-
-          cd _pages
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to deploy"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -m "Update paper PDF from ${GITHUB_SHA::8}"
-            git push origin gh-pages
-          fi
-
-      - name: Job summary
-        run: |
-          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
-          echo "Built successfully (${PDF_SIZE})." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [Latest PDF](${PAGES_URL}/latest/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stable PDF (main)](${PAGES_URL}/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
-
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
-            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [download PDF](${pagesUrl}/latest/paper-draft.pdf)`;
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.startsWith('**Paper draft built**'));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-  # ---------------------------------------------------------------------------
-  # Detect what changed (skip C++ builds for paper/docs-only changes)
-  # ---------------------------------------------------------------------------
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      source: ${{ steps.filter.outputs.source }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check paths
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            source:
-              - 'Source/**'
-              - 'Falcor/**'
-              - 'scripts/**'
-              - 'CMakeLists.txt'
-              - '.github/workflows/ci.yml'
-              - 'setup.*'
-
-  # ---------------------------------------------------------------------------
-  # Algorithm validations (no GPU required)
-  # ---------------------------------------------------------------------------
-  algorithm-validations:
-    name: Algorithm Validations
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Run VisCache algorithm validations
-        run: python tests/test_viscache_convergence.py
-
-  # ---------------------------------------------------------------------------
   # Windows/VS2022 — vanilla Falcor + VisCache plugins
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
     runs-on: windows-2022
-    needs: [algorithm-validations, changes]
-    if: needs.changes.outputs.source == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -333,13 +209,12 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Windows Ninja/MSVC — alternative build path
+  # Windows Ninja/MSVC — alternative build path (non-PR only)
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    if: github.event_name != 'pull_request' && needs.changes.outputs.source == 'true'
+    if: github.event_name != 'pull_request'
     runs-on: windows-2022
-    needs: [algorithm-validations, changes]
     strategy:
       fail-fast: false
       matrix:
@@ -498,13 +373,12 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Linux/GCC — optional, does not block PRs or releases
+  # Linux/GCC — optional, does not block PRs or releases (non-PR only)
   # ---------------------------------------------------------------------------
   linux-gcc:
     name: Linux/GCC
-    if: github.event_name != 'pull_request' && needs.changes.outputs.source == 'true'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
-    needs: [algorithm-validations, changes]
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -619,7 +493,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [algorithm-validations, windows-vs2022, windows-ninja]
+    needs: [windows-vs2022, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
