@@ -6,10 +6,10 @@ VisCacheSketch (MLVHF) — Visual Hash Filter for real-time path tracing denoisi
 
 ## Build System
 
-- Falcor is in `external/Falcor/` (added as a git subtree, not a submodule)
+- Falcor is in `Falcor/` (added as a git subtree, not a submodule)
 - Falcor's internal submodules must be shallow-cloned since subtree squash strips `.gitmodules`
 - NVIDIA packman fetches binary dependencies (CUDA, D3D12 Agility SDK, nvtt, slang, etc.)
-- After packman pull on Linux, `libnvtt.so.30106` must be copied to `libnvtt.so` (see `external/Falcor/setup.sh`)
+- After packman pull on Linux, `libnvtt.so.30106` must be copied to `libnvtt.so` (see `Falcor/setup.sh`)
 - CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
 - Windows builds require SDK 10.0.19041.0 (available on `windows-2022` runner, NOT `windows-latest`)
 

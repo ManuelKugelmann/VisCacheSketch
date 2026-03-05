@@ -3,7 +3,7 @@
 # Run from the MLVHF package root: ./setup.sh
 #
 # What this script does:
-#   1. Locates Falcor (external/Falcor subtree or FALCOR_ROOT override)
+#   1. Locates Falcor (Falcor subtree or FALCOR_ROOT override)
 #   2. Populates Falcor internal submodules (if empty after subtree squash)
 #   3. Copies MLVHF source files into the Falcor tree
 #   4. Patches CMakeLists.txt to register the plugins
@@ -22,7 +22,7 @@ fail() { echo -e "\033[31m[MLVHF] ERROR:\033[0m $1"; exit 1; }
 # ---------------------------------------------------------------------------
 # Step 1: Resolve Falcor root
 # ---------------------------------------------------------------------------
-FALCOR_ROOT="${FALCOR_ROOT:-${SCRIPT_DIR}/external/Falcor}"
+FALCOR_ROOT="${FALCOR_ROOT:-${SCRIPT_DIR}/Falcor}"
 log "Step 1: Using Falcor at: ${FALCOR_ROOT}"
 
 [ -f "${FALCOR_ROOT}/CMakeLists.txt" ] || fail "CMakeLists.txt not found in ${FALCOR_ROOT}"

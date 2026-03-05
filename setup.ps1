@@ -2,7 +2,7 @@
 # Run from the MLVHF package root: .\setup.ps1
 #
 # What this script does:
-#   1. Locates Falcor (external/Falcor subtree or -FalcorRoot override)
+#   1. Locates Falcor (Falcor subtree or -FalcorRoot override)
 #   2. Copies MLVHF source files into the Falcor tree
 #   3. Patches CMakeLists.txt to register the plugins
 #   4. Runs the Python unit tests
@@ -53,7 +53,7 @@ Require "python"
 # Step 1: Resolve Falcor root (subtree or external override)
 # ---------------------------------------------------------------------------
 if (-not $FalcorRoot) {
-    $FalcorRoot = "$ScriptDir\external\Falcor"
+    $FalcorRoot = "$ScriptDir\Falcor"
     Log "Step 1: Using Falcor subtree at: $FalcorRoot"
 } else {
     Log "Step 1: Using external Falcor at: $FalcorRoot"

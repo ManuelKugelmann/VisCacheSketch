@@ -168,10 +168,10 @@ cd VisCacheSketch
 .\setup.ps1 -FalcorRoot "C:\path\to\your\Falcor"
 
 # Pull upstream Falcor changes:
-git subtree pull --prefix=external/Falcor falcor master --squash
+git subtree pull --prefix=Falcor falcor master --squash
 ```
 
-`external/Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
+`Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
 with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
 init required. `setup.ps1` copies the VisHashFilter and ReSTIRGIPass plugins
 into the Falcor tree and registers them with CMake.

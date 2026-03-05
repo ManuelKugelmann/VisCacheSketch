@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 env:
-  FALCOR_DIR: external/Falcor
+  FALCOR_DIR: Falcor
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -63,12 +63,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            external/Falcor/external/pybind11
-            external/Falcor/external/glfw
-            external/Falcor/external/args
-            external/Falcor/external/fmt
-            external/Falcor/external/imgui
-            external/Falcor/external/vulkan-headers
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
           key: falcor-submodules-${{ runner.os }}-v2
           restore-keys: falcor-submodules-
 
@@ -91,7 +91,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\packman-cache
-          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
           restore-keys: packman-
 
       - name: Fetch Falcor packman dependencies
@@ -179,12 +179,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            external/Falcor/external/pybind11
-            external/Falcor/external/glfw
-            external/Falcor/external/args
-            external/Falcor/external/fmt
-            external/Falcor/external/imgui
-            external/Falcor/external/vulkan-headers
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
           key: falcor-submodules-${{ runner.os }}-v2
           restore-keys: falcor-submodules-
 
@@ -207,7 +207,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\packman-cache
-          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
           restore-keys: packman-
 
       - name: Fetch Falcor packman dependencies
@@ -287,12 +287,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            external/Falcor/external/pybind11
-            external/Falcor/external/glfw
-            external/Falcor/external/args
-            external/Falcor/external/fmt
-            external/Falcor/external/imgui
-            external/Falcor/external/vulkan-headers
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
           key: falcor-submodules-${{ runner.os }}-v2
           restore-keys: falcor-submodules-
 
@@ -321,7 +321,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/packman
-          key: packman-${{ runner.os }}-${{ hashFiles('external/Falcor/dependencies.xml') }}
+          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
           restore-keys: packman-
 
       - name: Fetch Falcor packman dependencies

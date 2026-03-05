@@ -1,0 +1,46 @@
+#!/bin/bash
+# pre-commit hook: verify root .gitmodules stays in sync with Falcor/.gitmodules
+#
+# Falcor is added as a git subtree. Its internal .gitmodules (with paths like
+# "external/fmt") is NOT used by git — only the root .gitmodules matters.
+# This hook ensures every submodule declared in Falcor/.gitmodules has a
+# corresponding entry in the root .gitmodules with the "Falcor/" prefix.
+#
+# Enable: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+FALCOR_GITMODULES="Falcor/.gitmodules"
+ROOT_GITMODULES=".gitmodules"
+
+# Skip if Falcor/.gitmodules doesn't exist (e.g., fresh clone before subtree)
+[ -f "$FALCOR_GITMODULES" ] || exit 0
+[ -f "$ROOT_GITMODULES" ] || { echo "ERROR: $ROOT_GITMODULES missing but $FALCOR_GITMODULES exists"; exit 1; }
+
+errors=0
+
+# Extract submodule paths from Falcor's .gitmodules and check root has them
+grep '^\s*path = ' "$FALCOR_GITMODULES" | sed 's/.*path = //' | while read -r falcor_path; do
+    root_path="Falcor/${falcor_path}"
+    if ! grep -q "path = ${root_path}$" "$ROOT_GITMODULES"; then
+        echo "SYNC ERROR: Falcor submodule '${falcor_path}' not found in root .gitmodules as '${root_path}'"
+        # Signal error via a temp file since we're in a subshell
+        touch /tmp/.githook_sync_error
+    fi
+done
+
+# Check root .gitmodules doesn't have stale Falcor/ entries
+grep '^\s*path = Falcor/' "$ROOT_GITMODULES" | sed 's/.*path = //' | while read -r root_path; do
+    falcor_path="${root_path#Falcor/}"
+    if ! grep -q "path = ${falcor_path}$" "$FALCOR_GITMODULES"; then
+        echo "SYNC ERROR: Root .gitmodules has '${root_path}' but Falcor/.gitmodules has no '${falcor_path}'"
+        touch /tmp/.githook_sync_error
+    fi
+done
+
+if [ -f /tmp/.githook_sync_error ]; then
+    rm -f /tmp/.githook_sync_error
+    echo ""
+    echo "Fix: update $ROOT_GITMODULES to match $FALCOR_GITMODULES (prefixed with Falcor/)"
+    exit 1
+fi

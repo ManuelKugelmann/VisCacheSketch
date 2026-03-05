@@ -31,7 +31,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [x] Spatial reuse shader with MLVHF integration (`SpatialReuse.cs.slang`)
 - [x] ReSTIRGIPass CMakeLists.txt
 - [x] CV+RRR revalidation loop delta reference (`SpatialReuse_MLVHF_delta.slang`)
-- [ ] **CRITICAL** Port DQLin/ReSTIR_PT into Falcor fork (`external/Falcor`)
+- [ ] **CRITICAL** Port DQLin/ReSTIR_PT into Falcor fork (`Falcor`)
   - Fork NVIDIAGameWorks/Falcor → ManuelKugelmann/Falcor
   - Apply API migration (see `docs/PORTING.md`)
   - Merge full DQLin reservoir logic into sketch files
@@ -41,7 +41,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ### 1.3 Build & Setup
 - [x] Windows setup script (`setup.ps1`)
-- [x] Falcor fork as git subtree (`external/Falcor`)
+- [x] Falcor fork as git subtree (`Falcor`)
 - [x] Create ManuelKugelmann/Falcor fork on GitHub
 - [ ] Port DQLin/ReSTIR_PT into the fork, pull back via `git subtree pull`
 - [ ] Test setup.ps1 end-to-end on clean clone
