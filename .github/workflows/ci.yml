@@ -127,6 +127,13 @@ jobs:
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
           }
 
+          # Silence MSVC C4996 from fmt's use of deprecated stdext iterators
+          $extCmake = "$Falcor/external/CMakeLists.txt"
+          $extContent = Get-Content $extCmake -Raw
+          if ($extContent -notmatch "_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING") {
+            Add-Content $extCmake "`ntarget_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)"
+          }
+
           Write-Host "--- Patched RenderPasses CMakeLists.txt ---"
           Get-Content $rpCmake
 
@@ -237,6 +244,13 @@ jobs:
           }
           if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
+          }
+
+          # Silence MSVC C4996 from fmt's use of deprecated stdext iterators
+          $extCmake = "$Falcor/external/CMakeLists.txt"
+          $extContent = Get-Content $extCmake -Raw
+          if ($extContent -notmatch "_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING") {
+            Add-Content $extCmake "`ntarget_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)"
           }
 
       - name: CMake Configure
