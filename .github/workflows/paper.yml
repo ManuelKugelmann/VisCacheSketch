@@ -58,28 +58,30 @@ jobs:
       - name: Generate paper PDF
         run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
 
-      - name: Prepare Pages artifact
+      - name: Set PDF size
         run: |
           SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
           echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
 
-          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+      - name: Prepare Pages artifact
+        if: github.event_name != 'pull_request'
+        run: |
           mkdir -p _site/latest
-
-          # latest/ always gets the fresh build
           cp viscachepaper/paper-draft.pdf _site/latest/paper-draft.pdf
-
-          # Root stable PDF: fresh build on main, preserve existing on PRs
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
-          else
-            curl -fsSL "${PAGES_URL}/paper-draft.pdf" -o _site/paper-draft.pdf || cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
-          fi
+          cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+      - name: Upload PR artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-draft
+          path: viscachepaper/paper-draft.pdf
 
       - name: Job summary
         run: |
@@ -95,8 +97,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
-            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [download PDF](${pagesUrl}/latest/paper-draft.pdf)`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [download artifact](${runUrl})`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -122,6 +124,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: paper
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
