@@ -127,11 +127,39 @@ jobs:
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
           }
 
-          # Silence MSVC C4996 from fmt's use of deprecated stdext iterators
+          # ------------------------------------------------------------------
+          # Patch external/CMakeLists.txt to silence upstream build warnings.
+          # These are Falcor-internal issues (not VisCache code) that we fix
+          # at CI time to keep the Falcor subtree vanilla.
+          # ------------------------------------------------------------------
           $extCmake = "$Falcor/external/CMakeLists.txt"
           $extContent = Get-Content $extCmake -Raw
+
+          # C4996: fmt uses deprecated stdext::checked_array_iterator (MSVC 14.44+)
           if ($extContent -notmatch "_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING") {
             Add-Content $extCmake "`ntarget_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)"
+          }
+
+          # TBB deprecation: OpenVDB pulls in tbb/task.h which TBB marks deprecated.
+          # TBB_SUPPRESS_DEPRECATED_MESSAGES silences the runtime/compile-time banner.
+          if ($extContent -notmatch "TBB_SUPPRESS_DEPRECATED_MESSAGES") {
+            Add-Content $extCmake "`ntarget_compile_definitions(tbb INTERFACE TBB_SUPPRESS_DEPRECATED_MESSAGES=1)"
+          }
+
+          # ------------------------------------------------------------------
+          # Patch Falcor linker flags for Debug builds.
+          # ------------------------------------------------------------------
+          $falcorCmake = "$Falcor/Source/Falcor/CMakeLists.txt"
+          $falcorContent = Get-Content $falcorCmake -Raw
+
+          # LNK4098: Falcor intentionally uses release-built libs (assimp, lz4, zlib)
+          # in Debug for performance, which links MSVCRT (release CRT) alongside
+          # MSVCRTd (debug CRT). Tell the linker to ignore the release CRT in Debug.
+          if ($falcorContent -notmatch "NODEFAULTLIB:MSVCRT") {
+            $falcorContent = $falcorContent -replace `
+              '(target_link_options\(Falcor\s+PUBLIC\s+# MSVC flags\.)', `
+              "`$1`n        `$<`$<AND:`$<CXX_COMPILER_ID:MSVC>,`$<CONFIG:Debug>>:/NODEFAULTLIB:MSVCRT>"
+            Set-Content $falcorCmake $falcorContent -NoNewline
           }
 
           Write-Host "--- Patched RenderPasses CMakeLists.txt ---"
@@ -141,7 +169,8 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          set "SRCDIR=%CD:\=/%"
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/d1trimfile:%SRCDIR%/" "-DCMAKE_CXX_FLAGS=/d1trimfile:%SRCDIR%/"
 
       - name: Build
         shell: cmd
@@ -246,18 +275,47 @@ jobs:
             Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
           }
 
-          # Silence MSVC C4996 from fmt's use of deprecated stdext iterators
+          # ------------------------------------------------------------------
+          # Patch external/CMakeLists.txt to silence upstream build warnings.
+          # These are Falcor-internal issues (not VisCache code) that we fix
+          # at CI time to keep the Falcor subtree vanilla.
+          # ------------------------------------------------------------------
           $extCmake = "$Falcor/external/CMakeLists.txt"
           $extContent = Get-Content $extCmake -Raw
+
+          # C4996: fmt uses deprecated stdext::checked_array_iterator (MSVC 14.44+)
           if ($extContent -notmatch "_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING") {
             Add-Content $extCmake "`ntarget_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)"
+          }
+
+          # TBB deprecation: OpenVDB pulls in tbb/task.h which TBB marks deprecated.
+          # TBB_SUPPRESS_DEPRECATED_MESSAGES silences the runtime/compile-time banner.
+          if ($extContent -notmatch "TBB_SUPPRESS_DEPRECATED_MESSAGES") {
+            Add-Content $extCmake "`ntarget_compile_definitions(tbb INTERFACE TBB_SUPPRESS_DEPRECATED_MESSAGES=1)"
+          }
+
+          # ------------------------------------------------------------------
+          # Patch Falcor linker flags for Debug builds.
+          # ------------------------------------------------------------------
+          $falcorCmake = "$Falcor/Source/Falcor/CMakeLists.txt"
+          $falcorContent = Get-Content $falcorCmake -Raw
+
+          # LNK4098: Falcor intentionally uses release-built libs (assimp, lz4, zlib)
+          # in Debug for performance, which links MSVCRT (release CRT) alongside
+          # MSVCRTd (debug CRT). Tell the linker to ignore the release CRT in Debug.
+          if ($falcorContent -notmatch "NODEFAULTLIB:MSVCRT") {
+            $falcorContent = $falcorContent -replace `
+              '(target_link_options\(Falcor\s+PUBLIC\s+# MSVC flags\.)', `
+              "`$1`n        `$<`$<AND:`$<CXX_COMPILER_ID:MSVC>,`$<CONFIG:Debug>>:/NODEFAULTLIB:MSVCRT>"
+            Set-Content $falcorCmake $falcorContent -NoNewline
           }
 
       - name: CMake Configure
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          set "SRCDIR=%CD:\=/%"
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/d1trimfile:%SRCDIR%/" "-DCMAKE_CXX_FLAGS=/d1trimfile:%SRCDIR%/"
 
       - name: Build
         shell: cmd
@@ -369,10 +427,13 @@ jobs:
       - name: CMake Configure
         run: |
           cd ${{ env.FALCOR_DIR }}
+          SRCDIR="$(pwd)"
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
             -DFALCOR_VALIDATE_HEADERS=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
+            "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="
 
       - name: Build
         run: |
