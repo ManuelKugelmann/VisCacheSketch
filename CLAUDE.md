@@ -20,6 +20,15 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 - CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
 - Windows builds require SDK 10.0.19041.0 (available on `windows-2022` runner, NOT `windows-latest`)
 
+## Paper PDF Workflow
+
+- After modifying `viscachepaper/generate_paper.py`, rebuild locally and show the updated PDF in chat:
+  ```bash
+  python viscachepaper/generate_paper.py /tmp/test-paper.pdf
+  # Then use Read tool on /tmp/test-paper.pdf with pages parameter to render in chat
+  ```
+- Install `poppler-utils` if needed for PDF rendering (`apt-get install -y poppler-utils`)
+
 ## CI
 
 - Workflows (separate, path-scoped triggers):

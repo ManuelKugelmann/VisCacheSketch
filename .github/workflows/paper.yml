@@ -15,7 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
 
 jobs:
   # Fast check — always visible in PR, skips build if no paper changes
@@ -40,9 +43,6 @@ jobs:
     needs: [changes]
     if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,38 +58,30 @@ jobs:
       - name: Generate paper PDF
         run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
 
-      - name: Deploy PDF to GitHub Pages
+      - name: Set PDF size
         run: |
           SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
           echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
 
-          # Fetch gh-pages or create orphan branch
-          if git fetch origin gh-pages:gh-pages 2>/dev/null; then
-            git worktree add _pages gh-pages
+      - name: Prepare Pages artifact
+        run: |
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          mkdir -p _site/latest
+          cp viscachepaper/paper-draft.pdf _site/latest/paper-draft.pdf
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            # Main: update stable root PDF
+            cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
           else
-            git worktree add _pages --detach HEAD
-            cd _pages && git checkout --orphan gh-pages && git rm -rf . && cd ..
+            # PR: preserve stable root PDF from current Pages deployment
+            curl -fsSL "${PAGES_URL}/paper-draft.pdf" -o _site/paper-draft.pdf \
+              || cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
           fi
 
-          # Always update latest/
-          mkdir -p _pages/latest
-          cp viscachepaper/paper-draft.pdf _pages/latest/paper-draft.pdf
-
-          # Update stable root only on pushes to main/master
-          if [[ "${{ github.event_name }}" != "pull_request" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master") ]]; then
-            cp viscachepaper/paper-draft.pdf _pages/paper-draft.pdf
-          fi
-
-          cd _pages
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to deploy"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -m "Update paper PDF from ${GITHUB_SHA::8}"
-            git push origin gh-pages
-          fi
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
       - name: Job summary
         run: |
@@ -106,7 +98,7 @@ jobs:
         with:
           script: |
             const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
-            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [download PDF](${pagesUrl}/latest/paper-draft.pdf)`;
+            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [preview PDF](${pagesUrl}/latest/paper-draft.pdf) | [stable PDF](${pagesUrl}/paper-draft.pdf)`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -128,3 +120,15 @@ jobs:
                 body,
               });
             }
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: paper
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
