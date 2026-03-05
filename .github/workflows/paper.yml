@@ -2,7 +2,7 @@ name: Paper PDF
 
 on:
   push:
-    branches: ["main", "master", "claude/**"]
+    branches: ["main", "master"]
     paths:
       - 'viscachepaper/**'
       - '.github/workflows/paper.yml'
