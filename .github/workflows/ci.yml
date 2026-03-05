@@ -28,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,32 +45,34 @@ jobs:
       - name: Generate paper PDF
         run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
 
-      - name: Upload paper PDF
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: paper-draft
-          path: viscachepaper/paper-draft.pdf
-          retention-days: 90
+      - name: Prepare Pages deploy
+        run: |
+          mkdir -p _site
+          cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+
+      - name: Deploy to GitHub Pages
+        id: pages
+        uses: actions/deploy-pages@v4
 
       - name: Job summary
-        env:
-          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
           SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
+          PDF_URL="${{ steps.pages.outputs.page_url }}paper-draft.pdf"
           echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
           echo "Built successfully (${SIZE})." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[Download PDF](${ARTIFACT_URL})" >> $GITHUB_STEP_SUMMARY
+          echo "[Download PDF](${PDF_URL})" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
-        env:
-          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         with:
           script: |
-            const body = `**Paper draft built** — [download PDF](${process.env.ARTIFACT_URL})`;
+            const pdfUrl = `${{ steps.pages.outputs.page_url }}paper-draft.pdf`;
+            const body = `**Paper draft built** — [download PDF](${pdfUrl})`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
