@@ -27,9 +27,8 @@ jobs:
     name: Build Paper PDF
     runs-on: ubuntu-latest
     permissions:
+      contents: write
       pull-requests: write
-      pages: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,34 +44,57 @@ jobs:
       - name: Generate paper PDF
         run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
 
-      - name: Prepare Pages deploy
+      - name: Deploy PDF to GitHub Pages
         run: |
-          mkdir -p _site
-          cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+          SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
+          echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+          # Fetch gh-pages or create it
+          git fetch origin gh-pages:gh-pages 2>/dev/null || true
+          git worktree add _pages gh-pages 2>/dev/null || {
+            git worktree add --orphan _pages gh-pages
+          }
 
-      - name: Deploy to GitHub Pages
-        id: pages
-        uses: actions/deploy-pages@v4
+          # Always update latest/
+          mkdir -p _pages/latest
+          cp viscachepaper/paper-draft.pdf _pages/latest/paper-draft.pdf
+
+          # Update stable root only on pushes to main/master
+          if [[ "${{ github.event_name }}" != "pull_request" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master") ]]; then
+            cp viscachepaper/paper-draft.pdf _pages/paper-draft.pdf
+          fi
+
+          cd _pages
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "Update paper PDF from ${GITHUB_SHA::8}"
+            git push origin gh-pages
+          fi
 
       - name: Job summary
         run: |
-          SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
-          PDF_URL="${{ steps.pages.outputs.page_url }}paper-draft.pdf"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
-          echo "Built successfully (${SIZE})." >> $GITHUB_STEP_SUMMARY
+          echo "Built successfully (${PDF_SIZE})." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[Download PDF](${PDF_URL})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Latest PDF](${PAGES_URL}/latest/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stable PDF (main)](${PAGES_URL}/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
-            const pdfUrl = `${{ steps.pages.outputs.page_url }}paper-draft.pdf`;
-            const body = `**Paper draft built** — [download PDF](${pdfUrl})`;
+            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
+            const body = [
+              `**Paper draft built** (${process.env.PDF_SIZE})`,
+              `- [Latest PDF](${pagesUrl}/latest/paper-draft.pdf)`,
+              `- [Stable PDF (main)](${pagesUrl}/paper-draft.pdf)`,
+            ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
