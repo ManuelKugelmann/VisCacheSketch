@@ -143,9 +143,10 @@ def build(output_path=None):
     S.append(Paragraph(
         "We present a multilevel spatial hash table that caches pairwise visibility "
         "between surface regions and light regions for real-time path tracing. "
-        "The cached mean "
-        "serves as a control variate for shadow ray gating via Russian roulette, "
-        "forming a self-regulating loop that concentrates traces on shadow boundaries. "
+        "The cached mean serves as a control variate with Russian roulette residual "
+        "(CV+RRR) &mdash; a classical technique that makes shadow-ray gating provably "
+        "unbiased regardless of cache accuracy &mdash; forming a self-regulating loop "
+        "that concentrates traces on shadow boundaries. "
         "Multiple LOD levels are written simultaneously "
         "and selected per query by screen-space cell footprint. "
         "We integrate the cache with ReSTIR DI and GI pipelines: cached visibility "
