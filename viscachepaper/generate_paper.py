@@ -816,33 +816,201 @@ def build(output_path=None):
     # ── 13 RESULTS ──────────────────────────────────────────────────
     S.append(Paragraph("13&nbsp;&nbsp;Results", sH1))
     S.append(Paragraph(
-        '<font color="red"><b>13.1&nbsp;&nbsp;Test Scenes.</b> '
-        "We evaluate on Amazon Lumberyard Bistro (exterior, 128 area lights) "
-        "and Crytek Sponza (interior, single dominant directional + IBL). "
-        "[Scene stats table: triangle count, light count, resolution.]</font>",
+        "All measurements at 1920&#215;1080, 1&nbsp;spp, RTX&nbsp;4090, "
+        "driver 560.x, DXR&nbsp;1.1. Reference images: 4096&nbsp;spp "
+        "accumulation, same seed. MSE computed in linear RGB.",
         sB0))
+
+    S.append(Paragraph("13.1&nbsp;&nbsp;Test Scenes", sH2))
+
+    t_scenes = make_table(
+        ["Scene", "Triangles", "Lights", "Character"],
+        [['<font color="red">Bistro Exterior</font>',
+          '<font color="red">2.8 M</font>',
+          '<font color="red">128 area</font>',
+          '<font color="red">Many small occluders, complex penumbrae</font>'],
+         ['<font color="red">Sponza</font>',
+          '<font color="red">262 K</font>',
+          '<font color="red">1 dir + IBL</font>',
+          '<font color="red">Large open interior, sharp shadow boundary</font>'],
+         ['<font color="red">Cornell Box</font>',
+          '<font color="red">32</font>',
+          '<font color="red">1 area</font>',
+          '<font color="red">Stress test: single cell covers entire scene</font>']],
+        [46, 34, 34, 104])
+    S += [Spacer(1, 4), t_scenes]
     S.append(Paragraph(
-        '<font color="red"><b>13.2&nbsp;&nbsp;Shadow-Ray Reduction.</b> '
-        "[Table: rays traced / rays shaded, baseline vs. cache-enabled, "
-        "per scene. Columns: DI final shading, GI revalidation, total.]</font>",
-        sB))
+        "<b>Table 5.</b> Test scenes. Bistro is the primary benchmark; "
+        "Sponza tests single-light coherence; Cornell Box verifies graceful "
+        "degradation when the cache offers no spatial advantage.",
+        sCap))
+
+    S.append(Paragraph("13.2&nbsp;&nbsp;Shadow-Ray Reduction", sH2))
+
+    t_rays = make_table(
+        ["Scene", "Mode", "DI final", "GI reval.", "Total rays/px"],
+        [['<font color="red">Bistro</font>',
+          "Baseline",
+          '<font color="red">1.00</font>',
+          '<font color="red">1.00</font>',
+          '<font color="red">2.00</font>'],
+         ['<font color="red">Bistro</font>',
+          "Cache",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ['<font color="red">Sponza</font>',
+          "Baseline",
+          '<font color="red">1.00</font>',
+          '<font color="red">1.00</font>',
+          '<font color="red">2.00</font>'],
+         ['<font color="red">Sponza</font>',
+          "Cache",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ['<font color="red">Cornell</font>',
+          "Cache",
+          '<font color="red">##</font>',
+          '<font color="red">&#8212;</font>',
+          '<font color="red">##</font>']],
+        [40, 36, 36, 36, 40])
+    S += [Spacer(1, 4), t_rays]
     S.append(Paragraph(
-        '<font color="red"><b>13.3&nbsp;&nbsp;Frame Time.</b> '
-        "[Table: cache insert/lookup/decay ms, total frame time delta, "
-        "at 1080p on RTX 4090.]</font>",
-        sB))
+        '<font color="red"><b>Table 6.</b> Shadow rays traced per pixel. '
+        "DI&nbsp;final = post-ReSTIR shading shadow ray. "
+        "GI&nbsp;reval. = ReSTIR&nbsp;GI path revalidation shadow ray. "
+        "Baseline traces every ray unconditionally (1.0). "
+        "Cache values are the fraction of rays actually traced after CV+RRR "
+        "gating (lower is better). "
+        "Expected: Bistro DI ~0.12, GI ~0.15; Sponza DI ~0.08; "
+        "Cornell ~1.0 (cache cannot help &#8212; single cell, high variance)."
+        "</font>",
+        sCap))
+
+    S.append(Paragraph("13.3&nbsp;&nbsp;Frame Time", sH2))
+
+    t_time = make_table(
+        ["Component", "Bistro (ms)", "Sponza (ms)"],
+        [["Lookup",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["Insert + warp reduce",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["Decay (1/60 table)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["Cache total overhead",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["Shadow rays saved",
+          '<font color="red">&#8722;##</font>',
+          '<font color="red">&#8722;##</font>'],
+         ["<b>Net frame time &#916;</b>",
+          '<font color="red"><b>&#8722;##</b></font>',
+          '<font color="red"><b>&#8722;##</b></font>']],
+        [62, 48, 48])
+    S += [Spacer(1, 4), t_time]
     S.append(Paragraph(
-        '<font color="red"><b>13.4&nbsp;&nbsp;Convergence.</b> '
-        "[Figure: per-pixel MSE vs. frame number, showing convergence rate "
-        "with and without cache against 1024-spp reference.]</font>",
-        sB))
+        '<font color="red"><b>Table 7.</b> Frame time breakdown. '
+        "Cache overhead is the cost of lookup + insert + decay. "
+        "Shadow rays saved is the time recovered by not tracing gated rays. "
+        "Net &#916; = overhead &#8722; savings (negative = net win). "
+        "Expected: lookup ~0.05&nbsp;ms, insert ~0.08&nbsp;ms, "
+        "decay ~0.02&nbsp;ms; shadow savings ~0.8&#8211;1.2&nbsp;ms "
+        "depending on scene complexity. "
+        "Measure via GPU timestamp queries bracketing each dispatch."
+        "</font>",
+        sCap))
+
+    S.append(Paragraph("13.4&nbsp;&nbsp;Convergence", sH2))
     S.append(Paragraph(
-        '<font color="red"><b>13.5&nbsp;&nbsp;Ablation.</b> '
-        "[Table rows: full system, &#8722;variance gate, &#8722;distance LOD, "
-        "&#8722;warp reduction, finest-only (L2), coarsest-only (L0), "
-        "multilevel vs finest-only, no cache. "
-        "Columns: rays/pixel, MSE, frame time.]</font>",
-        sB))
+        '<font color="red">[Figure 2: MSE vs. frame number, log-log plot.] '
+        "X-axis: frame index (1&#8211;256). Y-axis: MSE relative to "
+        "4096-spp reference. Three curves per scene: "
+        "(a)&nbsp;baseline 1&nbsp;spp, "
+        "(b)&nbsp;cache-enabled 1&nbsp;spp, "
+        "(c)&nbsp;baseline at equivalent ray budget (i.e. baseline using "
+        "only as many rays as the cache actually traced). "
+        "Curve (b) should track curve (a) &#8212; same MSE proves "
+        "unbiasedness. Curve (c) at higher MSE proves the cache is "
+        "not just saving rays but allocating them better. "
+        "Include error bars (std over 5 seeds) if variance is visible. "
+        "Inset: per-pixel variance map at frame 64, baseline vs. cache "
+        "&#8212; cache should show lower variance at penumbrae.</font>",
+        sB0))
+
+    S.append(Paragraph("13.5&nbsp;&nbsp;Ablation", sH2))
+
+    t_ablation = make_table(
+        ["Configuration", "Rays/px", "MSE", "ms"],
+        [["Full system (L0+L1+L2, var gate, warp red.)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["&#8722; variance gate (always write all levels)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["&#8722; distance LOD (all levels at all distances)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["&#8722; warp reduction (per-thread atomics only)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["L0 only (coarsest, 10&nbsp;m cells)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["L2 only (finest, 8&nbsp;cm cells)",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["&#8722; firefly adaptive P<sub>min</sub>",
+          '<font color="red">##</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>'],
+         ["No cache (baseline)",
+          '<font color="red">1.00 / 1.00</font>',
+          '<font color="red">##</font>',
+          '<font color="red">##</font>']],
+        [100, 34, 34, 26])
+    S += [Spacer(1, 4), t_ablation]
+    S.append(Paragraph(
+        '<font color="red"><b>Table 8.</b> Ablation on Bistro exterior, '
+        "frame 64, 1&nbsp;spp. Rays/px = DI&nbsp;/&nbsp;GI. MSE relative "
+        "to 4096-spp reference. ms = total frame time. "
+        "Key predictions: "
+        "(a)&nbsp;&#8722;variance gate should show same rays/px but higher "
+        "insert cost (unnecessary fine-level writes in smooth regions); "
+        "(b)&nbsp;L0-only should show moderate ray reduction but higher MSE "
+        "near shadow edges (coarse cells blur penumbrae); "
+        "(c)&nbsp;L2-only should show poor far-field performance (subpixel "
+        "cells, low hit rate); "
+        "(d)&nbsp;&#8722;warp reduction should show same MSE but higher "
+        "insert ms (more atomic contention at L0).</font>",
+        sCap))
+
+    S.append(Paragraph("13.6&nbsp;&nbsp;Disocclusion Stress Test", sH2))
+    S.append(Paragraph(
+        '<font color="red">[Figure 3: Cache hit rate vs. frame during fast '
+        "camera flythrough.] "
+        "X-axis: frame. Y-axis: cache hit rate (queries returning valid "
+        "entry / total queries). "
+        "Protocol: static camera for 120 frames (cache warm-up), then "
+        "fast lateral strafe exposing previously hidden geometry. "
+        "Measure: (a)&nbsp;frames to recover 80% hit rate after "
+        "disocclusion event, (b)&nbsp;peak variance spike magnitude, "
+        "(c)&nbsp;ray count spike (should approach 1.0 = baseline in "
+        "disoccluded region, proving graceful degradation). "
+        "Compare DECAY_PERIOD = 60 vs. 300: faster decay should recover "
+        "sooner but steady-state hit rate may be slightly lower. "
+        "Secondary plot: per-level hit rate (L0 recovers first, L2 last)."
+        "</font>",
+        sB0))
     S.append(Paragraph(
         "<b>Graceful degradation.</b> Where cell resolution is too coarse, "
         "variance stays high, p<sub>survive</sub> &#8594; 1, every ray traces. "
