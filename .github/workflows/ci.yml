@@ -58,24 +58,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # -- Caching: Falcor internal submodules --------------------------------
-      - name: Cache Falcor submodules
-        uses: actions/cache@v4
-        with:
-          path: |
-            Falcor/external/pybind11
-            Falcor/external/glfw
-            Falcor/external/args
-            Falcor/external/fmt
-            Falcor/external/imgui
-            Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v2
-          restore-keys: falcor-submodules-
-
-      - name: Init Falcor submodules
-        shell: bash
-        run: git submodule update --init --depth 1
-
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -85,6 +67,32 @@ jobs:
       # -- Caching: sccache for compiled objects --------------------------------
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
+
+      # -- Caching: Falcor internal submodules --------------------------------
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            .git/modules/Falcor
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v3
+          restore-keys: falcor-submodules-
+
+      - name: Init Falcor submodules
+        shell: bash
+        run: |
+          # Remove cached working trees that lack .git metadata (stale v2 cache)
+          for sub in Falcor/external/pybind11 Falcor/external/glfw Falcor/external/args Falcor/external/fmt Falcor/external/imgui Falcor/external/vulkan-headers; do
+            if [ -d "$sub" ] && [ ! -f "$sub/.git" ]; then
+              rm -rf "$sub"
+            fi
+          done
+          git submodule update --init --depth 1
 
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
@@ -211,23 +219,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Falcor submodules
-        uses: actions/cache@v4
-        with:
-          path: |
-            Falcor/external/pybind11
-            Falcor/external/glfw
-            Falcor/external/args
-            Falcor/external/fmt
-            Falcor/external/imgui
-            Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v2
-          restore-keys: falcor-submodules-
-
-      - name: Init Falcor submodules
-        shell: bash
-        run: git submodule update --init --depth 1
-
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -237,6 +228,31 @@ jobs:
       # -- Caching: sccache for compiled objects --------------------------------
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
+
+      # -- Caching: Falcor internal submodules --------------------------------
+      - name: Cache Falcor submodules
+        uses: actions/cache@v4
+        with:
+          path: |
+            .git/modules/Falcor
+            Falcor/external/pybind11
+            Falcor/external/glfw
+            Falcor/external/args
+            Falcor/external/fmt
+            Falcor/external/imgui
+            Falcor/external/vulkan-headers
+          key: falcor-submodules-${{ runner.os }}-v3
+          restore-keys: falcor-submodules-
+
+      - name: Init Falcor submodules
+        shell: bash
+        run: |
+          for sub in Falcor/external/pybind11 Falcor/external/glfw Falcor/external/args Falcor/external/fmt Falcor/external/imgui Falcor/external/vulkan-headers; do
+            if [ -d "$sub" ] && [ ! -f "$sub/.git" ]; then
+              rm -rf "$sub"
+            fi
+          done
+          git submodule update --init --depth 1
 
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
@@ -359,17 +375,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
+            .git/modules/Falcor
             Falcor/external/pybind11
             Falcor/external/glfw
             Falcor/external/args
             Falcor/external/fmt
             Falcor/external/imgui
             Falcor/external/vulkan-headers
-          key: falcor-submodules-${{ runner.os }}-v2
+          key: falcor-submodules-${{ runner.os }}-v3
           restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
-        run: git submodule update --init --depth 1
+        run: |
+          for sub in Falcor/external/pybind11 Falcor/external/glfw Falcor/external/args Falcor/external/fmt Falcor/external/imgui Falcor/external/vulkan-headers; do
+            if [ -d "$sub" ] && [ ! -f "$sub/.git" ]; then
+              rm -rf "$sub"
+            fi
+          done
+          git submodule update --init --depth 1
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
