@@ -170,6 +170,20 @@ jobs:
             Set-Content $falcorCmake $falcorContent -NoNewline
           }
 
+          # ------------------------------------------------------------------
+          # Strip CI path prefix from diagnostics and PDB source paths.
+          # Uses add_compile_options() to preserve CMake's default /EHsc etc.
+          # ------------------------------------------------------------------
+          $rootCmake = "$Falcor/CMakeLists.txt"
+          $rootContent = Get-Content $rootCmake -Raw
+          $trimPath = (Resolve-Path $Falcor).Path -replace '\\','/'
+          if ($rootContent -notmatch "d1trimfile") {
+            $rootContent = $rootContent -replace `
+              '(project\(Falcor[^)]*\))', `
+              "`$1`nadd_compile_options(/d1trimfile:$trimPath/)"
+            Set-Content $rootCmake $rootContent -NoNewline
+          }
+
           Write-Host "--- Patched RenderPasses CMakeLists.txt ---"
           Get-Content $rpCmake
 
@@ -177,8 +191,7 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          set "SRCDIR=%CD:\=/%"
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/d1trimfile:%SRCDIR%/" "-DCMAKE_CXX_FLAGS=/d1trimfile:%SRCDIR%/"
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: cmd
@@ -326,12 +339,25 @@ jobs:
             Set-Content $falcorCmake $falcorContent -NoNewline
           }
 
+          # ------------------------------------------------------------------
+          # Strip CI path prefix from diagnostics and PDB source paths.
+          # Uses add_compile_options() to preserve CMake's default /EHsc etc.
+          # ------------------------------------------------------------------
+          $rootCmake = "$Falcor/CMakeLists.txt"
+          $rootContent = Get-Content $rootCmake -Raw
+          $trimPath = (Resolve-Path $Falcor).Path -replace '\\','/'
+          if ($rootContent -notmatch "d1trimfile") {
+            $rootContent = $rootContent -replace `
+              '(project\(Falcor[^)]*\))', `
+              "`$1`nadd_compile_options(/d1trimfile:$trimPath/)"
+            Set-Content $rootCmake $rootContent -NoNewline
+          }
+
       - name: CMake Configure
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          set "SRCDIR=%CD:\=/%"
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/d1trimfile:%SRCDIR%/" "-DCMAKE_CXX_FLAGS=/d1trimfile:%SRCDIR%/"
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build
         shell: cmd
