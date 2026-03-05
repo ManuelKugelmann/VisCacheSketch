@@ -11,27 +11,13 @@ BASE_DIR=$(dirname "$0")
 PACKMAN=${BASE_DIR}/tools/packman/packman
 PLATFORM=linux-x86_64
 
-echo "Fetching pinned submodules ..."
+echo "Updating git submodules ..."
 
 if ! [ -x "$(command -v git)" ]; then
     echo "Cannot find git on PATH! Please initialize submodules manually and rerun."
     exit 1
 else
-    grep -v '^#' "${BASE_DIR}/external/submodules.txt" | while read -r name url sha; do
-        [ -z "$name" ] && continue
-        dir="${BASE_DIR}/external/$name"
-        if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-            echo "  Fetching $name @ ${sha:0:10}"
-            rm -rf "$dir"
-            mkdir -p "$dir"
-            git -C "$dir" init -q
-            git -C "$dir" remote add origin "$url"
-            git -C "$dir" fetch --depth 1 origin "$sha"
-            git -C "$dir" checkout FETCH_HEAD -q
-        else
-            echo "  $name already present, skipping"
-        fi
-    done
+    git -C "${BASE_DIR}/../.." submodule update --init --depth 1
 fi
 
 echo "Fetching dependencies ..."

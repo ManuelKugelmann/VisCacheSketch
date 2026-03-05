@@ -74,21 +74,7 @@ jobs:
 
       - name: Init Falcor submodules
         shell: bash
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          grep -v '^#' external/submodules.txt | while read -r name url sha; do
-            [ -z "$name" ] && continue
-            dir="external/$name"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Fetching $name @ ${sha:0:10}"
-              rm -rf "$dir"
-              mkdir -p "$dir"
-              git -C "$dir" init -q
-              git -C "$dir" remote add origin "$url"
-              git -C "$dir" fetch --depth 1 origin "$sha"
-              git -C "$dir" checkout FETCH_HEAD -q
-            fi
-          done
+        run: git submodule update --init --depth 1
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -204,21 +190,7 @@ jobs:
 
       - name: Init Falcor submodules
         shell: bash
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          grep -v '^#' external/submodules.txt | while read -r name url sha; do
-            [ -z "$name" ] && continue
-            dir="external/$name"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Fetching $name @ ${sha:0:10}"
-              rm -rf "$dir"
-              mkdir -p "$dir"
-              git -C "$dir" init -q
-              git -C "$dir" remote add origin "$url"
-              git -C "$dir" fetch --depth 1 origin "$sha"
-              git -C "$dir" checkout FETCH_HEAD -q
-            fi
-          done
+        run: git submodule update --init --depth 1
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -325,21 +297,7 @@ jobs:
           restore-keys: falcor-submodules-
 
       - name: Init Falcor submodules
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          grep -v '^#' external/submodules.txt | while read -r name url sha; do
-            [ -z "$name" ] && continue
-            dir="external/$name"
-            if [ ! -f "$dir/CMakeLists.txt" ] && [ ! -f "$dir/imgui.h" ]; then
-              echo "Fetching $name @ ${sha:0:10}"
-              rm -rf "$dir"
-              mkdir -p "$dir"
-              git -C "$dir" init -q
-              git -C "$dir" remote add origin "$url"
-              git -C "$dir" fetch --depth 1 origin "$sha"
-              git -C "$dir" checkout FETCH_HEAD -q
-            fi
-          done
+        run: git submodule update --init --depth 1
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
