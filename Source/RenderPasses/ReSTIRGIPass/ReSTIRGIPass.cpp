@@ -197,7 +197,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     // ----------------------------------------------------------------
     {
         auto vars = mpInitialSamplingPass->getRootVar();
-        vars["gScene"]         = mpScene->getParameterBlock();
+        mpScene->bindShaderData(vars["gScene"]);
         vars["gVBuffer"]       = pVBuffer;
         vars["gReservoirs"]    = mpReservoirBuffer;
         vars["gSecondaryHits"] = mpSecondaryHitBuffer;
@@ -213,7 +213,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     if (mReSTIRParams.enableTemporalReuse && mFrameCount > 0)
     {
         auto vars = mpTemporalReusePass->getRootVar();
-        vars["gScene"]              = mpScene->getParameterBlock();
+        mpScene->bindShaderData(vars["gScene"]);
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gPrevReservoirs"]     = mpPrevReservoirBuffer;
         vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
@@ -235,7 +235,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     if (mReSTIRParams.enableSpatialReuse)
     {
         auto vars = mpSpatialReusePass->getRootVar();
-        vars["gScene"]              = mpScene->getParameterBlock();
+        mpScene->bindShaderData(vars["gScene"]);
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
         vars["PerFrameCB"]["gFrameDim"]       = mFrameDim;
@@ -260,7 +260,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     // ----------------------------------------------------------------
     {
         auto vars = mpFinalShadingPass->getRootVar();
-        vars["gScene"]              = mpScene->getParameterBlock();
+        mpScene->bindShaderData(vars["gScene"]);
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
         vars["gColorOutput"]        = pColorOutput;
