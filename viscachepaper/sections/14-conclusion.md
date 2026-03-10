@@ -1,22 +1,16 @@
 # 14. Conclusion
 
 Twenty years ago, a thesis [Kugelmann 2006]
-cached pairwise binary visibility in spatial grids —
-backed by spatial hashing [Teschner et al. 2003] in the accompanying code,
-though not described in the thesis text —
-and corrected predictions via variance-driven adaptive sampling,
-a technique called prediction-with-correction
-(control variate + Russian roulette on the residual;
-non-zero termination estimate [Szécsi et al. 2003];
-variance-driven RR from "go with the winners" [Szirmay-Kalos et al. 2005]).
-The thesis developed many cache experiments —
-visibility prediction, contribution prediction, and others —
-as part of a broader framework for adaptive global illumination.
-Instant radiosity [Keller 1997] was the test case,
-but the method was always algorithm-agnostic:
+cached pairwise binary visibility in spatial hashing grids
+[Teschner et al. 2003]
+and corrected predictions via variance-driven adaptive sampling
+(prediction-with-correction:
+control variate + Russian roulette on the residual
+[Szécsi et al. 2003; Szirmay-Kalos et al. 2005]).
+The method was always algorithm-agnostic:
 it operates on pairwise (point, point) → {0,1} queries
 regardless of what generates them.
-The idea was sound but limited by
+The idea was limited by
 fixed-resolution single-level hashing and offline CPU execution.
 We have described the engineering —
 drawing on two decades of developments in GPU hashing,
