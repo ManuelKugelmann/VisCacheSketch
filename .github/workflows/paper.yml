@@ -83,7 +83,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- [Latest (branch)](${PAGES_URL}/latest/paper.md)" >> $GITHUB_STEP_SUMMARY
           echo "- [Stable (main)](${PAGES_URL}/paper.md)" >> $GITHUB_STEP_SUMMARY
-          echo "- [View in repo](https://github.com/${REPO}/blob/${SHORT_SHA}/viscachepaper/paper-combined.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Section index](https://github.com/${REPO}/blob/${SHORT_SHA}/viscachepaper/paper-sketch.md)" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
@@ -92,10 +92,11 @@ jobs:
           script: |
             const lines = process.env.PAPER_LINES;
             const sha = context.sha.substring(0, 7);
-            const repo = `${context.repo.owner}/${context.repo.repo}`;
-            const blobUrl = `https://github.com/${repo}/blob/${context.sha}/viscachepaper/paper-combined.md`;
-            const sketchUrl = `https://github.com/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
-            const body = `**Paper sketch built** (${lines} lines) — [combined markdown](${blobUrl}) | [section index](${sketchUrl}) | \`${sha}\``;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pagesUrl = `https://${owner}.github.io/${repo}`;
+            const sketchUrl = `https://github.com/${owner}/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
+            const body = `**Paper sketch built** (${lines} lines) — [combined markdown](${pagesUrl}/latest/paper.md) | [section index](${sketchUrl}) | \`${sha}\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
