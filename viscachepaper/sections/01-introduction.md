@@ -66,9 +66,9 @@ with two decades of hashing and GPU advances:
   variance-driven correction rate with a second feedback channel:
   the same Bernoulli signal (var = μ(1−μ), no separate accumulator needed)
   now also gates write depth —
-  whether fine-level entries are updated.
-  High-variance regions trace more *and* maintain fine resolution;
-  stable regions trace rarely and update only the coarsest level.
+  each level's variance controls whether the next finer level is written.
+  High-variance regions trace more *and* cascade to fine resolution;
+  stable regions stop propagation early.
   Stotko et al. [2025] independently developed the same principle
   for TSDF hashing.
   See Sec. 8.

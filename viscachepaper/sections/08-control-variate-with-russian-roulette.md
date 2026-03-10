@@ -95,9 +95,9 @@ The signal is self-correcting
 which changes the trace rate).
 What we add beyond this is a second use of the same signal:
 the write-depth gate (Sec. 5) governs spatial resolution —
-whether fine-level cache entries are updated.
-High-variance regions trace more often *and* update fine levels;
-low-variance regions trace rarely *and* only update the coarsest level.
+each level's variance gates writes to the next finer level.
+High-variance regions trace more often *and* cascade updates to fine levels;
+low-variance regions trace rarely *and* stop propagation early.
 This coupled adaptation is self-regulating
 and only becomes possible with a multilevel cache.
 
