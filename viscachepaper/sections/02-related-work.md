@@ -6,13 +6,13 @@ This paper builds directly on [Kugelmann 2006], a thesis on adaptive global illu
 
 ## 2.2 Visibility Caching
 
-Ward [1994] first observed that shadow-ray decisions can be guided by spatial statistics — sorting lights by potential contribution and estimating visibility for below-threshold sources rather than tracing. This is the conceptual ancestor of all visibility caching: don't trace shadow rays you can predict.
+Ward [1991] first observed that shadow-ray decisions can be guided by spatial statistics — sorting lights by potential contribution and estimating visibility for below-threshold sources rather than tracing. This is the conceptual ancestor of all visibility caching: don't trace shadow rays you can predict.
 
 Popov et al. [2013] developed adaptive quantization visibility caching, adapting resolution to local visibility complexity via octree subdivision, reporting less than 2% of shadow rays needed. Their adaptive-resolution idea is related to our variance-gated write depth, but uses explicit octree subdivision rather than hash-level selection. Ulbrich et al. [2013] proposed progressive refinement of cached visibility, sharing our philosophy that cache quality improves over frames. Both are offline, CPU-based.
 
 Guo, Eisemann and Eisemann [2020] (NEE++) cache voxel-to-voxel visibility probability in a 6D domain with bidirectional symmetry and standard RR rejection, reporting 80% shadow ray reduction. Their dense D³×D³ matrix (16³ voxels, ~32 MB, single resolution) does not scale to large scenes. Our approach improves on NEE++ in three specific ways: (a) sparse multilevel hash instead of dense matrix; (b) prediction-with-correction instead of standard RR — returning μ on termination rather than zero reduces residual variance; (c) real-time GPU implementation.
 
-Concurrent with this work, Bokšanský and Meister [2025] feed neural visibility estimates (Instant-NGP backbone [Müller et al. 2022]) into weighted reservoir sampling for light selection — the same visibility-weighted selection idea as our Sec. 9.1. Their approach operates in biased mode by default, using network output directly for shading when confident. Prediction-with-correction (Sec. 8) would make their biased mode unbiased by construction — the technique applies identically to any data structure that provides a mean visibility estimate μ.
+Concurrent with this work, Bokšanský and Meister [2025] feed neural visibility estimates (Instant-NGP backbone [Müller et al. 2022]) into weighted reservoir sampling for light selection — the same visibility-weighted selection idea as our Sec. 9.1. Their primary mode is unbiased (clamping zero/negative estimates to small positive constants); a secondary "Neural Direct Illumination" mode uses network output directly for shading, trading bias for speed. Prediction-with-correction (Sec. 8) applies identically to any data structure that provides a mean visibility estimate μ — it would provide an alternative unbiased path for their neural cache.
 
 ## 2.3 Spatial Hashing
 

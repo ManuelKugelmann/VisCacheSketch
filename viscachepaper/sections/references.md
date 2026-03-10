@@ -4,13 +4,13 @@
 
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
-- [Bokšanský and Meister 2025] A. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
+- [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
 
 - [Gautron 2020] P. Gautron. "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing." *SIGGRAPH Talks*, 2020.
 
 - [Gautron 2021] P. Gautron. "Practical Spatial Hash Map Updates." Chapter 41 in *Ray Tracing Gems II*, Apress, 2021.
 
-- [Guo et al. 2020] J. Guo, M. Eisemann, and E. Eisemann. "NEE++: Faster N-Closest Emitter Sampling with Voxelized Visibility." *Computer Graphics Forum* (Pacific Graphics), 39(7), 2020.
+- [Guo et al. 2020] J. Guo, M. Eisemann, and E. Eisemann. "Next Event Estimation++: Visibility Mapping for Efficient Light Transport Simulation." *Computer Graphics Forum* (Pacific Graphics), 39(7):205–217, 2020.
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
 
@@ -40,6 +40,6 @@
 
 - [Ulbrich et al. 2013] R. Ulbrich, J. Novák, H. Rehfeld, and C. Dachsbacher. "Progressive Visibility Caching for Fast Indirect Illumination." *Proc. VMV*, 2013.
 
-- [Ward 1994] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *Eurographics Rendering Workshop*, 1994.
+- [Ward 1991] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *2nd Eurographics Workshop on Rendering*, Barcelona, 1991. Published in *Photorealistic Rendering in Computer Graphics*, pp. 11–20, Springer-Verlag, 1994.
 
 - [Zhang et al. 2024] Y. Zhang et al. "Area ReSTIR: Re-Sampling for Real-Time Defocus and Antialiasing." *ACM SIGGRAPH*, 2024.
