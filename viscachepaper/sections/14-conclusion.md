@@ -1,6 +1,27 @@
 # 14. Conclusion
 
-This paper completes work begun twenty years ago. The core algorithm — cache pairwise visibility in a spatial hash [Teschner et al. 2003], correct predictions via variance-driven adaptive sampling (prediction-with-correction [Kugelmann 2006]; non-zero termination estimate [Szécsi et al. 2003]; variance-driven RR from "go with the winners" [Szirmay-Kalos et al. 2005]) — was proposed in [Kugelmann 2006] as part of a thesis on adaptive global illumination that developed many cache experiments, including visibility prediction and contribution prediction. Instant radiosity [Keller 1997] was the 2006 test case, but the method was always algorithm-agnostic: it operates on pairwise (point, point) → {0,1} queries regardless of what generates them. The idea was sound but limited by fixed-resolution single-level hashing and offline CPU execution. We have described the engineering — drawing on two decades of developments in GPU hashing, lock-free atomics, and multilevel spatial data structures — required to make it practical in a real-time path tracer.
+Twenty years ago, a thesis [Kugelmann 2006]
+cached pairwise binary visibility in spatial grids —
+backed by spatial hashing [Teschner et al. 2003] in the accompanying code,
+though not described in the thesis text —
+and corrected predictions via variance-driven adaptive sampling,
+a technique called prediction-with-correction
+(control variate + Russian roulette on the residual;
+non-zero termination estimate [Szécsi et al. 2003];
+variance-driven RR from "go with the winners" [Szirmay-Kalos et al. 2005]).
+The thesis developed many cache experiments —
+visibility prediction, contribution prediction, and others —
+as part of a broader framework for adaptive global illumination.
+Instant radiosity [Keller 1997] was the test case,
+but the method was always algorithm-agnostic:
+it operates on pairwise (point, point) → {0,1} queries
+regardless of what generates them.
+The idea was sound but limited by
+fixed-resolution single-level hashing and offline CPU execution.
+We have described the engineering —
+drawing on two decades of developments in GPU hashing,
+lock-free atomics, and multilevel spatial data structures —
+required to make it practical in a real-time path tracer.
 
 The key additions, each built on specific prior work:
 
