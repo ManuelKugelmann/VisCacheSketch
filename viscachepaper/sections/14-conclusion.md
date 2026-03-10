@@ -15,3 +15,28 @@ The key additions, each built on specific prior work:
 The cache is algorithm-agnostic. We demonstrated integration with ReSTIR DI and GI [Bitterli et al. 2020; Ouyang et al. 2021] as one natural client, but the same cache applies to instant radiosity (as in the original thesis), classical next-event estimation, or any method evaluating pairwise visibility.
 
 Key observations: (1) ReSTIR GI's selection concentration aligns with coarse cache cells, enabling within-frame amortization of revalidation traces — but this is a happy property of the integration, not of the cache itself; (2) contribution-weighted RR gates revalidation by perceptual importance rather than raw visibility variance; (3) the design degrades gracefully — every failure mode falls back to unoptimized baseline tracing, so the cache can never make things worse.
+
+**Future work.**
+Currently the cache only suppresses traces (RR with survival ≤ 1).
+Adjoint-driven RR and splitting [Vorba and Křivánek 2016]
+and the "go with the winners" family
+[Aldous and Vazirani 1994; Grassberger 2002]
+suggest the complementary direction:
+*splitting* — tracing multiple shadow rays per shading point
+for high-variance, high-importance cache entries —
+to converge the cache faster in critical regions.
+The same importance-weighted framework applies:
+where pfloor already reaches 1 and variance remains high,
+a splitting factor > 1 could allocate additional traces.
+A natural application is light selection:
+the cache's per-entry variance signal could weight
+reservoir sampling candidates,
+preferring lights whose visibility is uncertain
+over lights the cache already predicts confidently —
+a "go with the winners" strategy applied to light selection
+rather than path continuation.
+Efficiency-aware adaptation [Rath et al. 2022; Meyer et al. 2024]
+could further improve budget allocation
+by incorporating per-ray traversal cost,
+backing off RR when rays are cheap
+and being more aggressive when BVH traversal is expensive.

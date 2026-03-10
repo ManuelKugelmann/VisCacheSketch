@@ -128,7 +128,7 @@ adjacent pixels share similar psurvive,
 producing bright clusters that temporal denoisers integrate
 into persistent bright bands.
 
-**Adaptive Pmin.**
+**Adaptive Pmin (contribution-weighted survival floor).**
 Scale the survival floor by shading contribution:
 pfloor = clamp(luminance(fs·Le·G) / firefly_budget, Pmin, 1).
 firefly_budget is the maximum tolerable absolute luminance (cd/m²)
@@ -140,6 +140,28 @@ preventing a 1000-luminance firefly.
 A dim contribution of luminance 0.1 gets pfloor = 0.01 —
 aggressive RR is safe because even 100× amplification
 produces only luminance 10. Unbiased.
+
+**Connection to zero-variance theory.**
+This contribution-weighted floor is the shadow-ray analogue
+of the weight window in adjoint-driven RR and splitting
+[Vorba and Křivánek 2016]:
+queries whose answer matters more to the final image
+get higher survival probability.
+In zero-variance random walk theory,
+the optimal RR survival probability at a point
+is proportional to the local importance
+(the adjoint transport solution).
+For a shadow ray,
+the "importance" is the shading contribution luminance(fs·Le·G) —
+exactly the quantity pfloor scales by.
+The variance-driven base probability p_s = var/τ
+handles cache uncertainty;
+the contribution-weighted floor handles image importance.
+Together they approximate the efficiency-optimal strategy
+identified by Bolin and Meyer [1997]
+and pursued for path continuation by EARS [Rath et al. 2022]:
+allocate traces where (variance × importance) is high,
+suppress where both are low.
 
 **Output clamp (biased safety net).**
 Clamp the amplified estimate: V̂ = clamp(V̂, 0, C).
