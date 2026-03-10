@@ -12,9 +12,10 @@
 Twenty years ago, a thesis [Kugelmann 2006] cached pairwise binary visibility
 in spatial grids and corrected predictions via variance-driven adaptive sampling —
 a technique called *prediction-with-correction*
-(control variate + Russian roulette on the residual,
-common technique formalized for rendering by
-[Szécsi et al. 2003; Szirmay-Kalos et al. 2005]) —
+(control variate + Russian roulette on the residual;
+non-zero termination estimate formalized for rendering by
+[Szécsi et al. 2003],
+variance-driven RR by [Szirmay-Kalos et al. 2005]) —
 yielding an unbiased estimator regardless of cache quality.
 The spatial grids were visible in the thesis results,
 but the underlying spatial hashing — inspired by Teschner et al. [2003]

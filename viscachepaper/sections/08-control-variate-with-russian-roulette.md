@@ -8,9 +8,11 @@ combines two standard Monte Carlo techniques:
 a control variate and Russian roulette on the residual.
 Substituting an estimate instead of zero on RR termination is common technique —
 implicit in the "go with the winners" family
-[Aldous and Vazirani 1994; Grassberger 2002]
-and formalized for rendering by Szécsi et al. [2003]
-and Szirmay-Kalos et al. [2005].
+[Aldous and Vazirani 1994; Grassberger 2002].
+Szécsi et al. [2003] formalized the non-zero termination estimate
+for rendering (CV+RR, but with fixed RR probability);
+Szirmay-Kalos et al. [2005] added variance-driven RR
+via the "go with the winners" splitting/RR framework.
 [Kugelmann 2006] arrived at the same math independently
 (thesis Sec. 3.4, "predictions with correction at random")
 but refined the **estimation source** —

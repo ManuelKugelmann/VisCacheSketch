@@ -6,8 +6,8 @@ a surface region is consistently lit or consistently occluded from a light regio
 The core idea of this paper —
 cache point-to-point visibility in spatial grids and gate shadow rays via
 *prediction-with-correction* [Kugelmann 2006]
-(CV+RR, common technique formalized for rendering by
-[Szécsi et al. 2003; Szirmay-Kalos et al. 2005]) —
+(CV+RR; non-zero termination estimate [Szécsi et al. 2003],
+variance-driven RR [Szirmay-Kalos et al. 2005]) —
 is twenty years old.
 Kugelmann [2006] developed it as part of a thesis on adaptive global illumination
 with a general *prediction-with-correction* framework applied through

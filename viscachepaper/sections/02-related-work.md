@@ -154,10 +154,10 @@ rather than discarding it.
 In the graphics context,
 Szécsi, Szirmay-Kalos and Kelemen [2003] formalized this for rendering,
 showing the variance benefit of returning a non-zero estimate
-on RR termination.
-Szirmay-Kalos, Antal and Sbert [2005] extended it
-into a variance-driven splitting/RR framework
-("go with the winners" for path tracing),
+on RR termination — but with fixed RR probability,
+not variance-driven.
+Szirmay-Kalos, Antal and Sbert [2005] added variance-driven RR
+via a splitting/RR framework ("go with the winners" for path tracing),
 using a scene-global average radiance estimate
 (from total emitted power and average albedo) on termination.
 
