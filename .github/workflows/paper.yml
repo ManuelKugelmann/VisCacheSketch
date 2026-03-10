@@ -1,14 +1,16 @@
-name: Paper PDF
+name: Paper PDF (disabled — using markdown sketch, will re-enable for TeX)
 
+# Disabled: PDF generation retired in favour of markdown sketch.
+# Re-enable when switching to TeX-based publishing.
 on:
-  push:
-    branches: ["main", "master"]
-    paths:
-      - 'viscachepaper/**'
-      - '.github/workflows/paper.yml'
-  pull_request:
-    branches: ["main", "master"]
   workflow_dispatch:
+  # push:
+  #   branches: ["main", "master"]
+  #   paths:
+  #     - 'viscachepaper/**'
+  #     - '.github/workflows/paper.yml'
+  # pull_request:
+  #   branches: ["main", "master"]
 
 concurrency:
   group: paper-${{ github.head_ref || github.ref }}
