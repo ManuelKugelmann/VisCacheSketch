@@ -1,15 +1,15 @@
 """
-test_restir_variants.py — CPU-side validation for ReSTIR pass variants.
+test_restir_variants.py — CPU-side validation for ReSTIR pass algorithm correctness.
 
 Validates:
 1.  Local CV+RRR estimator unbiasedness (reservoir-local mu)
-2.  Local CV+RRR with perfect mu (mu=V) degenerates to V
-3.  Local CV+RRR with bad mu still converges (unbiased for any mu)
+2.  Local CV+RRR with bad mu still converges (unbiased for any mu)
+3.  Local CV+RRR with mu=0 still converges
 4.  RR probability is clamped to [pMin, 1.0]
-5.  Toggle consistency: property round-trip for DI/GI/PT
-6.  Ablation matrix: all toggle combinations are valid
-7.  evalTargetPdf matches luminance(bsdf * Lo) * G
-8.  geometryValid rejects back-facing / distant neighbors
+5.  evalTargetPdf matches luminance(bsdf * Lo) * G
+6.  geometryValid rejects back-facing / distant neighbors
+7.  mu fallback and clamping edge cases
+8.  Variance reduction — CV+RRR vs vanilla when mu is accurate
 
 Run standalone:  python tests/test_restir_variants.py
 No GPU required — validates algorithm logic before shader compilation.
@@ -169,46 +169,7 @@ check("RR probability 1.0 clamping",
       f"p={p_big:.6f}")
 
 # ---------------------------------------------------------------------------
-# Test 5: Toggle consistency — property keys match across DI/GI/PT
-# ---------------------------------------------------------------------------
-# These are the canonical property keys that must exist in all three passes
-common_viscache_keys = {"enableVisCacheRevalidation", "enableVisCacheLightSelection"}
-gi_pt_extra_keys = {"enableCVRRRRevalidation"}
-
-di_keys = common_viscache_keys
-gi_keys = common_viscache_keys | gi_pt_extra_keys
-pt_keys = common_viscache_keys | gi_pt_extra_keys
-
-check("Toggle keys: DI has VisCache toggles",
-      di_keys == {"enableVisCacheRevalidation", "enableVisCacheLightSelection"},
-      f"keys={di_keys}")
-
-check("Toggle keys: GI has VisCache + CVRRR toggles",
-      gi_keys == {"enableVisCacheRevalidation", "enableVisCacheLightSelection", "enableCVRRRRevalidation"},
-      f"keys={gi_keys}")
-
-check("Toggle keys: PT matches GI toggles",
-      pt_keys == gi_keys,
-      f"PT={pt_keys}  GI={gi_keys}")
-
-# ---------------------------------------------------------------------------
-# Test 6: Ablation matrix — all toggle combinations valid
-# ---------------------------------------------------------------------------
-valid_combos = 0
-for vc_reval in [False, True]:
-    for cvrrr in [False, True]:
-        for light_sel in [False, True]:
-            # VisCache reval and local CV+RRR are mutually exclusive in shader
-            # (USE_VISCACHE_REVAL takes priority via #elif), but both enabled
-            # is still a valid configuration (VisCache wins)
-            valid_combos += 1
-
-check("Ablation matrix: all 8 toggle combos valid",
-      valid_combos == 8,
-      f"combos={valid_combos}")
-
-# ---------------------------------------------------------------------------
-# Test 7: evalTargetPdf matches expected formula
+# Test 5: evalTargetPdf matches expected formula
 # ---------------------------------------------------------------------------
 test_bsdf = [0.5, 0.3, 0.2]
 test_Lo = [2.0, 1.5, 1.0]
@@ -220,7 +181,7 @@ check("evalTargetPdf formula",
       f"expected={expected:.6f}  actual={actual:.6f}")
 
 # ---------------------------------------------------------------------------
-# Test 8: geometryValid rejects bad neighbors
+# Test 6: geometryValid rejects bad neighbors
 # ---------------------------------------------------------------------------
 N_up = [0.0, 1.0, 0.0]
 N_down = [0.0, -1.0, 0.0]
@@ -241,7 +202,7 @@ check("geometryValid: same normal, far → reject",
       not geometry_valid(N_up, N_up, P1, P2_far, 0.5, 0.2))
 
 # ---------------------------------------------------------------------------
-# Test 9: mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1) edge cases
+# Test 7: mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1) edge cases
 # ---------------------------------------------------------------------------
 # pHatNoVis near zero → mu defaults to 0.5
 p_hat_tiny = 1e-8
@@ -257,7 +218,7 @@ check("mu clamps to 1.0 when ratio > 1",
       f"mu=clamp(0.8/0.5)={mu_clamped}")
 
 # ---------------------------------------------------------------------------
-# Test 10: Variance reduction — local CV+RRR has lower variance than vanilla
+# Test 8: Variance reduction — local CV+RRR has lower variance than vanilla
 # when mu is accurate
 # ---------------------------------------------------------------------------
 V_gt10 = 0.6
@@ -280,80 +241,6 @@ std_vanilla = math.sqrt(sum((x - mean_vanilla) ** 2 for x in var_vanilla) / len(
 check("Variance: good mu CV+RRR ≤ vanilla + epsilon",
       std_cvrrr <= std_vanilla + 0.05,
       f"std_cvrrr={std_cvrrr:.4f}  std_vanilla={std_vanilla:.4f}")
-
-
-# ---------------------------------------------------------------------------
-# Test 11: Light-selection-only ablation — S11.1 without S11.3
-# VisCache light pre-selection uses cached mu to bias initial candidate
-# sampling toward visible lights. Shadow rays are still unconditional
-# (vanilla), so this isolates the benefit of better initial candidates.
-# ---------------------------------------------------------------------------
-lightsel_only_flags = {
-    'enableVisCacheRevalidation': False,
-    'enableVisCacheLightSelection': True,
-}
-# Light-sel-only must still activate VisCache (hash table needed for mu lookup)
-lightsel_viscache_active = (lightsel_only_flags['enableVisCacheRevalidation']
-                            or lightsel_only_flags['enableVisCacheLightSelection'])
-check("Light-sel-only: VisCache active (hash table needed for mu)",
-      lightsel_viscache_active,
-      f"isVisCacheActive={lightsel_viscache_active}")
-
-# Light-sel-only must NOT gate shadow rays (revalidation off)
-check("Light-sel-only: revalidation disabled (vanilla shadow rays)",
-      not lightsel_only_flags['enableVisCacheRevalidation'],
-      "enableVisCacheRevalidation=False → unconditional V(P,Q)")
-
-# All three passes (DI/GI/PT) support this combination
-for pass_name in ["DI", "GI", "PT"]:
-    check(f"Light-sel-only: {pass_name} supports independent toggles",
-          True,  # verified by grep: all three passes read both flags independently
-          f"enableVisCacheLightSelection independent of enableVisCacheRevalidation")
-
-
-# ---------------------------------------------------------------------------
-# Test 12: VisCache internal ablation toggles — property round-trip
-# All 5 ablation bools must be settable via createPass() properties.
-# ---------------------------------------------------------------------------
-viscache_ablation_keys = {
-    "enableVisCacheDistanceLOD", "enableVisCacheVarianceGate",
-    "enableVisCacheWarpReduction", "enableVisCacheDecay",
-    "enableVisCachePressureEvict"
-}
-check("VisCache ablation: 5 toggles (A–E) are property-accessible",
-      len(viscache_ablation_keys) == 5,
-      f"keys={sorted(viscache_ablation_keys)}")
-
-# Each ablation disables exactly one feature while keeping others on
-for key in sorted(viscache_ablation_keys):
-    defaults = {k: True for k in viscache_ablation_keys}
-    defaults[key] = False
-    active_count = sum(1 for v in defaults.values() if v)
-    check(f"VisCache ablation: disabling {key} keeps {active_count}/5 active",
-          active_count == 4,
-          f"{key}=False, rest=True")
-
-# ---------------------------------------------------------------------------
-# Test 13: All enableVisCache* flags set on VisCache, forwarded via dict
-# VisCache is authoritative — downstream passes read from dictionary.
-# ---------------------------------------------------------------------------
-viscache_all_keys = viscache_ablation_keys | {
-    "enableVisCacheRevalidation", "enableVisCacheLightSelection"
-}
-check("VisCache: 7 enableVisCache* flags (5 ablation + 2 feature)",
-      len(viscache_all_keys) == 7,
-      f"keys={sorted(viscache_all_keys)}")
-
-check("VisCache: all flags use enableVisCache prefix",
-      all(k.startswith("enableVisCache") for k in viscache_all_keys),
-      "consistent naming")
-
-# ---------------------------------------------------------------------------
-# Test 14: Decay-off ablation — enableVisCacheDecay=False skips decay pass
-# ---------------------------------------------------------------------------
-check("VisCache ablation: enableVisCacheDecay=False skips decay pass",
-      True,  # verified in VisCache.cpp: if (mParams.enableVisCacheDecay && ...)
-      "enableVisCacheDecay checked before decayPeriod")
 
 
 # ============================================================================
