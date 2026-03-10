@@ -28,3 +28,6 @@ Thumbs.db
 captures/
 *.exr
 *.hdr
+
+# Generated paper (built by CI, deployed to Pages)
+viscachepaper/paper-combined.md

@@ -20,19 +20,22 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 - CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
 - Windows builds require SDK 10.0.19041.0 (available on `windows-2022` runner, NOT `windows-latest`)
 
-## Paper PDF Workflow
+## Paper Sketch Workflow
 
-- After modifying `viscachepaper/generate_paper.py`, rebuild locally and show the updated PDF in chat:
+- The paper sketch lives in `viscachepaper/paper-sketch.md` (index) with per-section files in `viscachepaper/sections/`.
+- Edit individual section files directly — no build step needed, markdown renders on GitHub.
+- The PDF generator (`viscachepaper/generate_paper.py`) is preserved for future TeX-based publishing but **disabled in CI**. To generate locally: `pip install reportlab && python viscachepaper/generate_paper.py /tmp/paper.pdf`
+- To show a PDF visually in chat, convert to PNG first:
   ```bash
-  python viscachepaper/generate_paper.py /tmp/test-paper.pdf
-  # Then use Read tool on /tmp/test-paper.pdf with pages parameter to render in chat
+  pdftoppm -png -r 200 -f 1 -l 1 /tmp/paper.pdf /tmp/page
+  # Then Read /tmp/page-1.png
   ```
-- Install `poppler-utils` if needed for PDF rendering (`apt-get install -y poppler-utils`)
+  Reading a PDF directly with the Read tool parses content but does **not** show a visual image in chat.
 
 ## CI
 
 - Workflows (separate, path-scoped triggers):
-  - `.github/workflows/paper.yml` — Paper PDF build + GitHub Pages deploy (`viscachepaper/`)
+  - `.github/workflows/paper.yml` — Combines `viscachepaper/sections/*.md` into `paper-combined.md`, deploys to GitHub Pages, comments on PRs (PDF generation preserved but commented out for future TeX publishing)
   - `.github/workflows/validate.yml` — Algorithm validation tests (`tests/`, `Source/RenderPasses/`)
   - `.github/workflows/build.yml` — Binary builds + release (`Source/`, `Falcor/`, `scripts/`, `CMakeLists.txt`, `setup.*`)
 - Runs on: `ubuntu-22.04` (Linux/GCC), `windows-2022` (VS2022 + Ninja/MSVC)

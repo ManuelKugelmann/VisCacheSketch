@@ -76,9 +76,30 @@ class AlgoBox(Flowable):
             c.drawString(x0+6, yy, ln); yy -= self.line_h
 
 
+def _build_stamp():
+    import os, subprocess, datetime
+    sha = os.environ.get("GITHUB_SHA", "").strip()
+    if not sha:
+        try:
+            sha = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+            ).decode().strip()
+        except Exception:
+            sha = "unknown"
+    else:
+        sha = sha[:7]
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return f"Built {ts}  |  {sha}"
+
+_STAMP = _build_stamp()
+
+
 def footer(canvas, doc):
     canvas.saveState(); canvas.setFont(F, 8); canvas.setFillColor(GRAY)
     canvas.drawCentredString(PAGE_W/2, MARGIN_BOT-20, f"{doc.page}")
+    if doc.page == 1:
+        canvas.setFont(FM, 6); canvas.setFillColor(RGRAY)
+        canvas.drawRightString(PAGE_W - MARGIN_LR, PAGE_H - MARGIN_TOP + 4, _STAMP)
     canvas.restoreState()
 
 
@@ -106,7 +127,7 @@ def build(output_path=None):
     doc = BaseDocTemplate(out, pagesize=letter, topMargin=MARGIN_TOP,
                           bottomMargin=MARGIN_BOT, leftMargin=MARGIN_LR, rightMargin=MARGIN_LR)
 
-    TITLE_H = 183
+    TITLE_H = 258
     GAP = 2
     COL_H_P1 = BODY_H - TITLE_H - GAP
     title_frame = Frame(MARGIN_LR, MARGIN_BOT + COL_H_P1 + GAP,
