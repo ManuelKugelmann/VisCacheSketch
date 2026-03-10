@@ -9,11 +9,19 @@
 
 ### Abstract
 
-A flat, multilevel spatial hash table (8-byte entries, lock-free atomics)
-caches binary visibility predictions in world space.
-Stochastic correction keeps the estimator unbiased.
-Demonstrated with ReSTIR DI/GI on Bistro exterior:
-**##%** fewer shadow rays (direct), **##%** (GI revalidation),
-no measurable bias.
+Most shadow rays in real-time path tracing are redundant,
+as nearby surface points querying the same light region
+overwhelmingly agree on the outcome.
+We store these binary predictions in a flat, multilevel spatial hash table
+with 8-byte entries and lock-free atomic updates,
+and correct cached predictions stochastically
+so that the estimator remains unbiased regardless of cache quality.
+Position-seeded jitter provides an intrinsic box filter across cell boundaries,
+while variance derived from the Bernoulli mean alone
+drives both the correction rate and the write depth across levels.
+Integrated with ReSTIR DI and GI on Bistro exterior,
+the cache reduces shadow rays by
+**##%** (direct) and **##%** (GI revalidation)
+with no measurable bias.
 
 **Keywords:** visibility caching, shadow rays, spatial hashing, prediction-with-correction, adaptive sampling, real-time rendering, collision handling
