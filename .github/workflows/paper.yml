@@ -57,14 +57,16 @@ jobs:
         run: |
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/latest
-          cp viscachepaper/paper-combined.md _site/latest/paper.md
+
+          # Wrap markdown in HTML with client-side rendering
+          python3 viscachepaper/wrap_html.py viscachepaper/paper-combined.md _site/latest/paper.html
           cp viscachepaper/index.html _site/index.html
 
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            cp viscachepaper/paper-combined.md _site/paper.md
+            cp _site/latest/paper.html _site/paper.html
           else
-            curl -fsSL "${PAGES_URL}/paper.md" -o _site/paper.md \
-              || cp viscachepaper/paper-combined.md _site/paper.md
+            curl -fsSL "${PAGES_URL}/paper.html" -o _site/paper.html \
+              || cp _site/latest/paper.html _site/paper.html
           fi
 
       - name: Upload Pages artifact
@@ -81,8 +83,8 @@ jobs:
           echo "## Paper Sketch" >> $GITHUB_STEP_SUMMARY
           echo "Combined markdown built (${PAPER_LINES} lines)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [Latest (branch)](${PAGES_URL}/latest/paper.md)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stable (main)](${PAGES_URL}/paper.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Latest (branch)](${PAGES_URL}/latest/paper.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stable (main)](${PAGES_URL}/paper.html)" >> $GITHUB_STEP_SUMMARY
           echo "- [Section index](https://github.com/${REPO}/blob/${SHORT_SHA}/viscachepaper/paper-sketch.md)" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
@@ -96,7 +98,7 @@ jobs:
             const repo = context.repo.repo;
             const pagesUrl = `https://${owner}.github.io/${repo}`;
             const sketchUrl = `https://github.com/${owner}/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
-            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/latest/paper.md) | [stable (main)](${pagesUrl}/paper.md) | [section index](${sketchUrl}) | \`${sha}\``;
+            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/latest/paper.html) | [stable (main)](${pagesUrl}/paper.html) | [section index](${sketchUrl}) | \`${sha}\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
