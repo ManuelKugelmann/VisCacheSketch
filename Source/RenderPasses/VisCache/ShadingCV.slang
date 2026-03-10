@@ -59,7 +59,7 @@ float3 evalDirectLightingCV(ShadingData sd,
     float pFloor   = clamp(contrib / gFireflyBudget, gPMin, 1.0f);
     float p        = clamp(r.var / gVarThreshold, pFloor, 1.0f);
 
-    if (sampleUniform1D(sg) < p)
+    if (sampleNext1D(sg) < p)
     {
         // Trace correction ray
         float V = traceShadowRay(sd.posW, lightPos);
@@ -111,7 +111,7 @@ float evalRevalidationCV(float3 P, float3 Q,
     float res = luminance(C) * max(mu, 1.0f - mu);
     float p   = clamp(res / gVarThreshold, gPMin, 1.0f);
 
-    if (sampleUniform1D(sg) < p)
+    if (sampleNext1D(sg) < p)
     {
         float V = traceShadowRay(P, Q);
         vhfInsert(P, Q, V, camPos);

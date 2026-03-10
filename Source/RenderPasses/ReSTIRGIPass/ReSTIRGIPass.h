@@ -57,15 +57,21 @@ public:
     };
 
     // -----------------------------------------------------------------------
-    // VisCache integration parameters (§11.3 / §12)
+    // VisCache integration — each feature independently toggleable for ablation.
+    //   enableRevalidation:   CV+RRR gated V(P,Q) in spatial reuse (§11.3)
+    //   enableLightSelection: Cached mu in NEE target function (§11.1)
+    //   Both off:             Vanilla ReSTIR GI (no VisCache).
     // -----------------------------------------------------------------------
     struct VisCacheParams
     {
-        bool     enabled              = true;
-        float    contribThreshold     = 0.01f;  ///< Minimum residual to force trace
-        float    pMin                 = 0.05f;  ///< RR floor for revalidation
-        bool     symmetricCells       = false;  ///< Use symmetric cell sizes for GI (§5.2)
+        bool     enableRevalidation    = false;  ///< CV+RRR at spatial reuse
+        bool     enableLightSelection  = false;  ///< Cached mu in light weighting
+        float    contribThreshold      = 0.01f;  ///< Minimum residual to force trace
+        float    pMin                  = 0.05f;  ///< RR floor for revalidation
+        bool     symmetricCells        = false;  ///< Symmetric cell sizes for GI (§5.2)
     };
+
+    bool isVisCacheActive() const { return mVisCacheParams.enableRevalidation || mVisCacheParams.enableLightSelection; }
 
     ReSTIRGIPass(ref<Device> pDevice, const Properties& props);
 
@@ -98,7 +104,11 @@ private:
     // VisCache: retrieved from InternalDictionary each frame
     // -----------------------------------------------------------------------
     ref<Buffer>       mpVisCacheTable;
-    uint32_t          mVisCacheCapacity = 0u;
+    uint32_t          mVisCacheCapacity      = 0u;
+    float             mVisCacheVarThreshold  = 0.1f;
+    float             mVisCachePMin          = 0.05f;
+    uint32_t          mVisCacheBootThreshold = 32u;
+    float             mVisCacheFireflyBudget = 0.05f;
 
     // -----------------------------------------------------------------------
     // State

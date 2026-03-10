@@ -6,11 +6,11 @@
  *
  * At k=5 spatial neighbors, DQLin traces 5 shadow rays per pixel.
  * With VisCache enabled, evalRevalidationCV() gates these via cached
- * visibility, reducing to ~0.5–1.0 rays/pixel at steady state (§12).
+ * visibility, reducing to ~0.5-1.0 rays/pixel at steady state (S12).
  *
  * Unbiased: E[mu + (V - mu) / p] = E[V] for any cache quality.
  *
- * Ported from DQLin/ReSTIR_PT (Falcor 5.2 → 8.0). Core reservoir
+ * Ported from DQLin/ReSTIR_PT (Falcor 5.2 -> 8.0). Core reservoir
  * streaming, neighbor selection, and Talbot MIS follow the original.
  * Only the visibility evaluation is modified for VisCache integration.
  ***************************************************************************/
@@ -23,12 +23,6 @@ import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 
 import RenderPasses.ReSTIRGIPass.ReSTIRGICommon;
-
-// VisCache integration
-#if USE_VISCACHE
-import RenderPasses.VisCache.VisCache;
-import RenderPasses.VisCache.ShadingCV;
-#endif
 
 // ---------------------------------------------------------------------------
 // Buffers
@@ -45,16 +39,75 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-#if USE_VISCACHE
-// VisCache bindings (set by host if enabled)
-RWStructuredBuffer<VHFEntry> gVisCacheTable;
-cbuffer VisCacheRevalCB
+// ---------------------------------------------------------------------------
+// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
+// ---------------------------------------------------------------------------
+ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
 {
-    uint  gVisCacheCapacity;
-    float gRevalVarThreshold;
-    float gRevalPMin;
-    float gRevalFireflyBudget;
-};
+    VertexData v;
+    uint materialID = 0;
+
+    if (hit.getType() == HitType::Triangle)
+    {
+        const TriangleHit tri = hit.getTriangleHit();
+        v = gScene.getVertexData(tri);
+        materialID = gScene.getMaterialID(tri.instanceID);
+    }
+    else
+    {
+        v.posW = rayOrigin + rayDir;
+        v.normalW = -rayDir;
+        v.faceNormalW = -rayDir;
+        v.tangentW = float4(0, 1, 0, 1);
+        v.texC = float2(0);
+    }
+
+    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
+}
+
+// ---------------------------------------------------------------------------
+// Visibility ray trace — core implementation used by both vanilla and
+// VisCache modes. Returns 1.0 if visible, 0.0 if occluded.
+// ---------------------------------------------------------------------------
+float traceVisibilityRay(float3 origin, float3 target)
+{
+    float3 dir  = target - origin;
+    float  dist = length(dir);
+    if (dist < 1e-6f) return 1.0f;
+    dir /= dist;
+
+    Ray ray = Ray(origin, dir, 1e-4f, dist - 1e-4f);
+
+    SceneRayQuery<0> rayQuery;
+    return rayQuery.traceVisibilityRay(ray) ? 1.0f : 0.0f;
+}
+
+// ---------------------------------------------------------------------------
+// traceShadowRay — external dependency required by ShadingCV.slang's
+// evalRevalidationCV(). ShadingCV declares this as "Assumed to be
+// provided by the host". We define it here before the VisCache import
+// so that the linker resolves the call.
+// ---------------------------------------------------------------------------
+float traceShadowRay(float3 origin, float3 target)
+{
+    return traceVisibilityRay(origin, target);
+}
+
+// VisCache integration: import AFTER defining traceShadowRay so that
+// evalRevalidationCV() can resolve its call. VisCache.slang brings in
+// gVHFTable + VisCacheParams cbuffer; ShadingCV.slang provides
+// evalRevalidationCV(). The host (ReSTIRGIPass.cpp) must bind to:
+//   gVHFTable                      <- VisCache hash table buffer
+//   VisCacheParams.gTableCapacity  <- table size
+//   VisCacheParams.gVarThreshold   <- variance gate
+//   VisCacheParams.gPMin           <- RR floor
+//   VisCacheParams.gFireflyBudget  <- adaptive pMin scale
+//   VisCacheParams.gBootThreshold  <- min samples before trusting
+// USE_VISCACHE_REVAL: CV+RRR revalidation at spatial reuse (S11.3)
+// USE_VISCACHE: any VisCache feature active (imports needed)
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCache;
+import RenderPasses.VisCache.ShadingCV;
 #endif
 
 // ---------------------------------------------------------------------------
@@ -71,38 +124,18 @@ uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 }
 
 // ---------------------------------------------------------------------------
-// Trace a visibility ray between two points using Falcor's scene API.
-// Returns 1.0 if visible, 0.0 if occluded.
-// ---------------------------------------------------------------------------
-float traceVisibilityRay(float3 origin, float3 target)
-{
-    float3 dir  = target - origin;
-    float  dist = length(dir);
-    if (dist < 1e-6f) return 1.0f;
-    dir /= dist;
-
-    RayDesc ray;
-    ray.Origin    = origin;
-    ray.Direction = dir;
-    ray.TMin      = 1e-4f;
-    ray.TMax      = dist - 1e-4f;
-
-    SceneRayQuery<0> rayQuery;
-    return rayQuery.traceVisibilityRay(ray) ? 1.0f : 0.0f;
-}
-
-// ---------------------------------------------------------------------------
 // Visibility evaluation — two paths controlled by USE_VISCACHE
 // ---------------------------------------------------------------------------
 float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
                           float G, inout SampleGenerator sg)
 {
-#if USE_VISCACHE
-    // CV+RRR revalidation (§12)
-    // Replaces unconditional traceVisibilityRay with cached + gated trace.
+#if USE_VISCACHE_REVAL
+    // CV+RRR revalidation (S11.3/S12) — independently toggleable for ablation.
+    // evalRevalidationCV uses gVHFTable/VisCacheParams from VisCache.slang,
+    // traceShadowRay defined above, and gCamPos from PerFrameCB.
     return evalRevalidationCV(P, Q, bsdf, Lo, G, gCamPos, sg);
 #else
-    // Original DQLin: unconditional shadow ray for each neighbor
+    // Vanilla ReSTIR GI: unconditional shadow ray for each neighbor
     return traceVisibilityRay(P, Q);
 #endif
 }
@@ -144,14 +177,11 @@ float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
 
 // ---------------------------------------------------------------------------
 // Talbot MIS weight [Talbot et al. 2005]
-// Computes the MIS weight for combining the current pixel with its neighbors.
-// Uses 1/M normalization as the default (balance heuristic simplification).
 // ---------------------------------------------------------------------------
 #if USE_MIS
 float computeTalbotMISWeight(float targetPdfHere, float M_here,
                               float targetPdfThere, float M_there)
 {
-    // Balance heuristic: w_s = (n_s * p_s) / sum_i(n_i * p_i)
     float num   = M_here * targetPdfHere;
     float denom = num + M_there * targetPdfThere;
     return (denom > 0.0f) ? (num / denom) : 0.0f;
@@ -179,8 +209,12 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    let lod = ExplicitLodTextureSampler(0.0f);
-    ShadingData sd = gScene.loadShadingData(hitInfo, pixel, float2(0.5f), lod);
+    // Compute ray direction from camera (Falcor 8.0)
+    TriangleHit priTri = hitInfo.getTriangleHit();
+    VertexData priVert = gScene.getVertexData(priTri);
+    float3 rayDir = normalize(priVert.posW - gCamPos);
+
+    ShadingData sd = loadSD(hitInfo, gCamPos, rayDir);
 
     SampleGenerator sg = SampleGenerator::create(pixel, gFrameCount * 13u + 3u);
 

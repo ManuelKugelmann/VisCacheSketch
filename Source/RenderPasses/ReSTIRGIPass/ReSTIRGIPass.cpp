@@ -37,11 +37,12 @@ ReSTIRGIPass::ReSTIRGIPass(ref<Device> pDevice, const Properties& props)
     if (props.has("enableSpatialReuse"))  mReSTIRParams.enableSpatialReuse  = props["enableSpatialReuse"];
     if (props.has("enableMIS"))           mReSTIRParams.enableMIS           = props["enableMIS"];
 
-    // Deserialise VisCache params
-    if (props.has("visCacheEnabled"))         mVisCacheParams.enabled          = props["visCacheEnabled"];
-    if (props.has("visCacheContribThreshold")) mVisCacheParams.contribThreshold = props["visCacheContribThreshold"];
-    if (props.has("visCachePMin"))             mVisCacheParams.pMin             = props["visCachePMin"];
-    if (props.has("visCacheSymmetricCells"))   mVisCacheParams.symmetricCells   = props["visCacheSymmetricCells"];
+    // Deserialise VisCache params (independently toggleable for ablation)
+    if (props.has("visCacheRevalidation"))    mVisCacheParams.enableRevalidation   = props["visCacheRevalidation"];
+    if (props.has("visCacheLightSelection")) mVisCacheParams.enableLightSelection = props["visCacheLightSelection"];
+    if (props.has("visCacheContribThreshold")) mVisCacheParams.contribThreshold    = props["visCacheContribThreshold"];
+    if (props.has("visCachePMin"))             mVisCacheParams.pMin                = props["visCachePMin"];
+    if (props.has("visCacheSymmetricCells"))   mVisCacheParams.symmetricCells      = props["visCacheSymmetricCells"];
 }
 
 ref<ReSTIRGIPass> ReSTIRGIPass::create(ref<Device> pDevice, const Properties& props)
@@ -62,7 +63,8 @@ Properties ReSTIRGIPass::getProperties() const
     p["enableSpatialReuse"]  = mReSTIRParams.enableSpatialReuse;
     p["enableMIS"]           = mReSTIRParams.enableMIS;
 
-    p["visCacheEnabled"]          = mVisCacheParams.enabled;
+    p["visCacheRevalidation"]     = mVisCacheParams.enableRevalidation;
+    p["visCacheLightSelection"]   = mVisCacheParams.enableLightSelection;
     p["visCacheContribThreshold"] = mVisCacheParams.contribThreshold;
     p["visCachePMin"]             = mVisCacheParams.pMin;
     p["visCacheSymmetricCells"]   = mVisCacheParams.symmetricCells;
@@ -126,7 +128,9 @@ void ReSTIRGIPass::createPasses()
 {
     DefineList defines;
     defines.add("NUM_SPATIAL_NEIGHBORS", std::to_string(mReSTIRParams.numSpatialNeighbors));
-    defines.add("USE_VISCACHE", mVisCacheParams.enabled ? "1" : "0");
+    defines.add("USE_VISCACHE", isVisCacheActive() ? "1" : "0");
+    defines.add("USE_VISCACHE_REVAL", mVisCacheParams.enableRevalidation ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheParams.enableLightSelection ? "1" : "0");
     defines.add("USE_TEMPORAL_REUSE", mReSTIRParams.enableTemporalReuse ? "1" : "0");
     defines.add("USE_SPATIAL_REUSE", mReSTIRParams.enableSpatialReuse ? "1" : "0");
     defines.add("USE_MIS", mReSTIRParams.enableMIS ? "1" : "0");
@@ -244,7 +248,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
         vars["PerFrameCB"]["gCamPos"]         = camPos;
 
         // VisCache bindings (ignored if USE_VISCACHE == 0)
-        if (mVisCacheParams.enabled && mpVisCacheTable)
+        if (isVisCacheActive() && mpVisCacheTable)
         {
             bindVisCacheToPass(mpSpatialReusePass);
         }
@@ -283,17 +287,30 @@ void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
 {
     const auto& dict = rd.getDictionary();
 
-    if (mVisCacheParams.enabled &&
+    // Dictionary keys match VisCache.cpp::execute() exports
+    if (isVisCacheActive() &&
         dict.keyExists("vhfTable") && dict.keyExists("vhfCapacity"))
     {
-        mpVisCacheTable   = dict["vhfTable"];
-        mVisCacheCapacity = dict["vhfCapacity"];
+        mpVisCacheTable       = dict["vhfTable"];
+        mVisCacheCapacity     = dict["vhfCapacity"];
+        mVisCacheVarThreshold = dict.keyExists("vhfVarThreshold")
+            ? dict["vhfVarThreshold"].operator float() : mVisCacheParams.contribThreshold;
+        mVisCachePMin         = dict.keyExists("vhfPMin")
+            ? dict["vhfPMin"].operator float() : mVisCacheParams.pMin;
+        mVisCacheBootThreshold = dict.keyExists("vhfBootThreshold")
+            ? dict["vhfBootThreshold"].operator uint32_t() : 32u;
+        mVisCacheFireflyBudget = dict.keyExists("vhfFireflyBudget")
+            ? dict["vhfFireflyBudget"].operator float() : mVisCacheParams.contribThreshold;
     }
     else
     {
-        mpVisCacheTable   = nullptr;
-        mVisCacheCapacity = 0u;
-        if (mVisCacheParams.enabled)
+        mpVisCacheTable        = nullptr;
+        mVisCacheCapacity      = 0u;
+        mVisCacheVarThreshold  = 0.1f;
+        mVisCachePMin          = 0.05f;
+        mVisCacheBootThreshold = 32u;
+        mVisCacheFireflyBudget = 0.05f;
+        if (isVisCacheActive())
             logWarning("ReSTIRGIPass: VisCache buffers not found in dictionary. "
                        "Ensure VisCache runs before ReSTIRGIPass in the render graph.");
     }
@@ -304,12 +321,17 @@ void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
 // ============================================================================
 void ReSTIRGIPass::bindVisCacheToPass(const ref<ComputePass>& pass)
 {
+    // Binding names must match VisCache.slang declarations:
+    //   RWStructuredBuffer<VHFEntry> gVHFTable;
+    //   cbuffer VisCacheParams { gTableCapacity, gBootThreshold,
+    //       gVarThreshold, gPMin, gFireflyBudget, ... };
     auto vars = pass->getRootVar();
-    vars["gVisCacheTable"]                       = mpVisCacheTable;
-    vars["VisCacheRevalCB"]["gVisCacheCapacity"]   = mVisCacheCapacity;
-    vars["VisCacheRevalCB"]["gRevalVarThreshold"]  = mVisCacheParams.contribThreshold;
-    vars["VisCacheRevalCB"]["gRevalPMin"]          = mVisCacheParams.pMin;
-    vars["VisCacheRevalCB"]["gRevalFireflyBudget"] = mVisCacheParams.contribThreshold;
+    vars["gVHFTable"]                              = mpVisCacheTable;
+    vars["VisCacheParams"]["gTableCapacity"]        = mVisCacheCapacity;
+    vars["VisCacheParams"]["gBootThreshold"]         = mVisCacheBootThreshold;
+    vars["VisCacheParams"]["gVarThreshold"]          = mVisCacheVarThreshold;
+    vars["VisCacheParams"]["gPMin"]                  = mVisCachePMin;
+    vars["VisCacheParams"]["gFireflyBudget"]         = mVisCacheFireflyBudget;
 }
 
 // ============================================================================
@@ -339,9 +361,11 @@ void ReSTIRGIPass::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Talbot MIS",       mReSTIRParams.enableMIS);
     widget.separator();
 
-    // VisCache integration
-    dirty |= widget.checkbox("VisCache revalidation", mVisCacheParams.enabled);
-    if (mVisCacheParams.enabled)
+    // VisCache integration — independently toggleable for ablation
+    widget.text("VisCache (ablation toggles)");
+    dirty |= widget.checkbox("CV+RRR revalidation (S11.3)", mVisCacheParams.enableRevalidation);
+    dirty |= widget.checkbox("Light selection (S11.1)",      mVisCacheParams.enableLightSelection);
+    if (isVisCacheActive())
     {
         widget.var("Contrib threshold",   mVisCacheParams.contribThreshold, 0.001f, 0.5f, 0.005f);
         widget.var("pMin (RR floor)",     mVisCacheParams.pMin,             0.01f,  0.5f, 0.005f);
