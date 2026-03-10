@@ -32,8 +32,8 @@ ReSTIR's spatial reuse funnels many pixels
 onto the same light or secondary hit,
 and a world-space cache amortizes their shared queries naturally.
 
-This paper turns the 2006 prototype into a production-ready system
-by incorporating two decades of hashing and GPU advances:
+This paper revisits the 2006 prototype
+with two decades of hashing and GPU advances:
 
 - **Position-seeded jitter** replaces Binder et al.'s [2018]
   cell-index jitter with pcg3d [Jarzynski & Olano 2020]
