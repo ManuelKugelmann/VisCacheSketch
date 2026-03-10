@@ -96,7 +96,7 @@ jobs:
             const repo = context.repo.repo;
             const pagesUrl = `https://${owner}.github.io/${repo}`;
             const sketchUrl = `https://github.com/${owner}/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
-            const body = `**Paper sketch built** (${lines} lines) — [combined markdown](${pagesUrl}/latest/paper.md) | [section index](${sketchUrl}) | \`${sha}\``;
+            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/latest/paper.md) | [stable (main)](${pagesUrl}/paper.md) | [section index](${sketchUrl}) | \`${sha}\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
