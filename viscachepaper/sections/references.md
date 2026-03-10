@@ -4,6 +4,8 @@
 
 - [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Fast Path Space Filtering by Jittered Spatial Hashing." *ACM SIGGRAPH Talks*, 2018. Extended version: "Massively Parallel Path Space Filtering." *arXiv:1902.05942*, 2019.
 
+- [Bolin and Meyer 1997] M. R. Bolin and G. W. Meyer. "An Error Metric for Monte Carlo Ray Tracing." *Rendering Techniques '97* (Proc. Eurographics Workshop on Rendering), pp. 57–68, Springer, 1997.
+
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
 - [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
@@ -30,11 +32,15 @@
 
 - [Liu et al. 2025] J. Liu et al. "Reservoir Splatting for Temporal Path Resampling and Motion Blur." *ACM SIGGRAPH*, 2025.
 
+- [Meyer et al. 2024] A. Meyer, A. Rath, Ö. Yazici, and P. Slusallek. "MARS: Multi-sample Allocation through Russian Roulette and Splitting." *ACM SIGGRAPH Asia*, 2024.
+
 - [Müller et al. 2022] T. Müller, A. Evans, C. Schied, and A. Keller. "Instant Neural Graphics Primitives with a Multiresolution Hash Encoding." *ACM Trans. Graph.*, 41(4):102, 2022.
 
 - [Ouyang et al. 2021] Y. Ouyang, S. Liu, M. Kettunen, M. Pharr, and J. Pantaleoni. "ReSTIR GI: Path Resampling for Real-Time Path Tracing." *Computer Graphics Forum*, 40(8):17–29, 2021.
 
 - [Popov et al. 2013] S. Popov, R. Ramamoorthi, F. Durand, and G. Drettakis. "Adaptive Quantization Visibility Caching." *Eurographics Symposium on Rendering*, 2013.
+
+- [Rath et al. 2022] A. Rath, P. Grittmann, S. Herholz, P. Slusallek, and K. Myszkowski. "EARS: Efficiency-Aware Russian Roulette and Splitting." *ACM Trans. Graph.*, 41(4):81, 2022.
 
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
@@ -47,6 +53,8 @@
 - [Teschner et al. 2003] M. Teschner et al. "Optimized Spatial Hashing for Collision Detection of Deformable Objects." *Proc. VMV*, pp. 47–54, 2003.
 
 - [Ulbrich et al. 2013] R. Ulbrich, J. Novák, H. Rehfeld, and C. Dachsbacher. "Progressive Visibility Caching for Fast Indirect Illumination." *Proc. VMV*, 2013.
+
+- [Vorba and Křivánek 2016] J. Vorba and J. Křivánek. "Adjoint-Driven Russian Roulette and Splitting in Light Transport Simulation." *ACM Trans. Graph.* (SIGGRAPH), 35(4):42, 2016.
 
 - [Ward 1991] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *2nd Eurographics Workshop on Rendering*, Barcelona, 1991. Published in *Photorealistic Rendering in Computer Graphics*, pp. 11–20, Springer-Verlag, 1994.
 

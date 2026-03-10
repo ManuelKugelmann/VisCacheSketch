@@ -185,6 +185,26 @@ in addition to correction rate,
 creating a self-regulating loop
 that only becomes possible with a multilevel cache.
 
+Bolin and Meyer [1997] first analyzed optimal RR/splitting factors
+from variance estimates per bounce level.
+Vorba and Křivánek [2016] (ADRRS) precompute an adjoint importance function
+to set per-scattering-event weight windows —
+RR where importance is low, splitting where it is high.
+Rath et al. [2022] (EARS) learn optimal RR/splitting factors
+during rendering via efficiency-aware iteration,
+provably converging to Bolin and Meyer's optimal factors;
+Meyer et al. [2024] (MARS) generalize this to per-technique sample counts.
+All operate on **path continuation** decisions (bounce-level RR/splitting),
+not on shadow ray gating.
+Our work is orthogonal:
+we use variance-driven RR to gate individual shadow rays
+against a cached control variate,
+not to decide whether a path should survive another bounce.
+The connection is that both families
+allocate sampling budget from a variance or importance signal —
+ADRRS's adjoint-weighted survival probability
+is formally analogous to our contribution-weighted pfloor (Sec. 8.1).
+
 ## 2.5 Integration Targets (Orthogonal)
 
 The visibility cache is agnostic to the algorithm
