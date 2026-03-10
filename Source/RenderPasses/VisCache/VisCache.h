@@ -49,13 +49,13 @@ public:
         float    fireflyBudget   = 0.05f;       ///< Adaptive pMin scale
         uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=off)
         uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling
-        bool     enableGIRevalidation  = true;
-        bool     enableLightSelection  = true;
-        bool     enableWarpReduction   = true;  ///< SM 6.5 WaveMatch (disable for ablation C)
-        bool     enableVarianceGate    = true;  ///< Ablation B
-        bool     enableDistanceLOD     = true;  ///< Ablation A
-        bool     enableDecay           = true;  ///< Ablation D
-        bool     enablePressureEvict   = true;  ///< Ablation E
+        bool     enableVisCacheRevalidation    = true;  ///< CV+RRR shadow ray gating (§11.3)
+        bool     enableVisCacheLightSelection = true;  ///< Cached mu in target function (§11.1)
+        bool     enableVisCacheWarpReduction  = true;  ///< SM 6.5 WaveMatch (ablation C)
+        bool     enableVisCacheVarianceGate   = true;  ///< Ablation B
+        bool     enableVisCacheDistanceLOD    = true;  ///< Ablation A
+        bool     enableVisCacheDecay          = true;  ///< Ablation D
+        bool     enableVisCachePressureEvict  = true;  ///< Ablation E
         int      minLevel              = 0;     ///< For finest-only: set to 2
         int      maxLevel              = 2;     ///< For coarsest-only: set to 0
     };

@@ -170,6 +170,12 @@ void ReSTIRDIPass::retrieveVisCacheBuffers(const RenderData& rd)
             ? dict["vhfBootThreshold"].operator uint32_t() : 32u;
         mVisCacheFireflyBudget = dict.keyExists("vhfFireflyBudget")
             ? dict["vhfFireflyBudget"].operator float() : 0.05f;
+
+        // VisCache pass is authoritative for feature flags — override local
+        if (dict.keyExists("vhfEnableRevalidation"))
+            mVisCacheFlags.enableVisCacheRevalidation = dict["vhfEnableRevalidation"];
+        if (dict.keyExists("vhfEnableLightSelection"))
+            mVisCacheFlags.enableVisCacheLightSelection = dict["vhfEnableLightSelection"];
     }
     else
     {

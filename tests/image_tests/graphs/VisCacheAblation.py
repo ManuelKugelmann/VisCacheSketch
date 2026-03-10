@@ -1,14 +1,18 @@
 from falcor import *
 
 # ---------------------------------------------------------------------------
-# Default VisCache params (all ablation toggles ON)
+# Default VisCache params (all features + ablation toggles ON)
+# Feature flags are set here on VisCache and forwarded via dictionary to
+# downstream passes — no need to duplicate on each ReSTIR pass.
 # ---------------------------------------------------------------------------
 _VC_DEFAULTS = {
-    'enableDistanceLOD':   True,
-    'enableVarianceGate':  True,
-    'enableWarpReduction': True,
-    'enableDecay':         True,
-    'enablePressureEvict': True,
+    'enableVisCacheRevalidation':    True,
+    'enableVisCacheLightSelection':  True,
+    'enableVisCacheDistanceLOD':     True,
+    'enableVisCacheVarianceGate':    True,
+    'enableVisCacheWarpReduction':   True,
+    'enableVisCacheDecay':           True,
+    'enableVisCachePressureEvict':   True,
 }
 
 
@@ -19,16 +23,14 @@ def _make_viscache(overrides={}):
 
 
 def _make_gi_graph(name, vc_overrides={}):
-    """ReSTIR GI full VisCache graph with VisCache ablation overrides."""
+    """ReSTIR GI graph — feature flags come from VisCache via dict."""
     g = RenderGraph(name)
     VisCache = _make_viscache(vc_overrides)
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRGI = createPass("ReSTIRGIPass", {
-        'enableVisCacheRevalidation': True,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRGI, "ReSTIRGI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -44,16 +46,13 @@ def _make_gi_graph(name, vc_overrides={}):
 
 
 def _make_di_graph(name, vc_overrides={}):
-    """ReSTIR DI full VisCache graph with VisCache ablation overrides."""
+    """ReSTIR DI graph — feature flags come from VisCache via dict."""
     g = RenderGraph(name)
     VisCache = _make_viscache(vc_overrides)
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
-    ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidation': True,
-        'enableVisCacheLightSelection': True,
-    })
+    ReSTIRDI = createPass("ReSTIRDIPass")
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
@@ -68,7 +67,7 @@ def _make_di_graph(name, vc_overrides={}):
 
 
 def _make_pt_graph(name, vc_overrides={}):
-    """ReSTIR PT full VisCache graph with VisCache ablation overrides."""
+    """ReSTIR PT graph — feature flags come from VisCache via dict."""
     g = RenderGraph(name)
     VisCache = _make_viscache(vc_overrides)
     g.addPass(VisCache, "VisCache")
@@ -76,9 +75,7 @@ def _make_pt_graph(name, vc_overrides={}):
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 4,
-        'enableVisCacheRevalidation': True,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -97,17 +94,17 @@ def _make_pt_graph(name, vc_overrides={}):
 # Ablation A–E: GI (primary ablation pass — tests all toggles)
 # ---------------------------------------------------------------------------
 VisCacheAblation_GI_Full     = _make_gi_graph("VisCacheAblation_GI_Full")
-VisCacheAblation_GI_NoLOD    = _make_gi_graph("VisCacheAblation_GI_NoLOD",    {'enableDistanceLOD': False})
-VisCacheAblation_GI_NoVarGate= _make_gi_graph("VisCacheAblation_GI_NoVarGate",{'enableVarianceGate': False})
-VisCacheAblation_GI_NoWarp   = _make_gi_graph("VisCacheAblation_GI_NoWarp",   {'enableWarpReduction': False})
-VisCacheAblation_GI_NoDecay  = _make_gi_graph("VisCacheAblation_GI_NoDecay",  {'enableDecay': False})
-VisCacheAblation_GI_NoEvict  = _make_gi_graph("VisCacheAblation_GI_NoEvict",  {'enablePressureEvict': False})
+VisCacheAblation_GI_NoLOD    = _make_gi_graph("VisCacheAblation_GI_NoLOD",    {'enableVisCacheDistanceLOD': False})
+VisCacheAblation_GI_NoVarGate= _make_gi_graph("VisCacheAblation_GI_NoVarGate",{'enableVisCacheVarianceGate': False})
+VisCacheAblation_GI_NoWarp   = _make_gi_graph("VisCacheAblation_GI_NoWarp",   {'enableVisCacheWarpReduction': False})
+VisCacheAblation_GI_NoDecay  = _make_gi_graph("VisCacheAblation_GI_NoDecay",  {'enableVisCacheDecay': False})
+VisCacheAblation_GI_NoEvict  = _make_gi_graph("VisCacheAblation_GI_NoEvict",  {'enableVisCachePressureEvict': False})
 
 # ---------------------------------------------------------------------------
 # Decay ablation spot-checks: DI and PT (most decay-sensitive)
 # ---------------------------------------------------------------------------
-VisCacheAblation_DI_NoDecay = _make_di_graph("VisCacheAblation_DI_NoDecay", {'enableDecay': False})
-VisCacheAblation_PT_NoDecay = _make_pt_graph("VisCacheAblation_PT_NoDecay", {'enableDecay': False})
+VisCacheAblation_DI_NoDecay = _make_di_graph("VisCacheAblation_DI_NoDecay", {'enableVisCacheDecay': False})
+VisCacheAblation_PT_NoDecay = _make_pt_graph("VisCacheAblation_PT_NoDecay", {'enableVisCacheDecay': False})
 
 try: m.addGraph(VisCacheAblation_GI_Full)
 except NameError: None

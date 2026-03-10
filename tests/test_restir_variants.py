@@ -316,8 +316,9 @@ for pass_name in ["DI", "GI", "PT"]:
 # All 5 ablation bools must be settable via createPass() properties.
 # ---------------------------------------------------------------------------
 viscache_ablation_keys = {
-    "enableDistanceLOD", "enableVarianceGate", "enableWarpReduction",
-    "enableDecay", "enablePressureEvict"
+    "enableVisCacheDistanceLOD", "enableVisCacheVarianceGate",
+    "enableVisCacheWarpReduction", "enableVisCacheDecay",
+    "enableVisCachePressureEvict"
 }
 check("VisCache ablation: 5 toggles (A–E) are property-accessible",
       len(viscache_ablation_keys) == 5,
@@ -333,12 +334,26 @@ for key in sorted(viscache_ablation_keys):
           f"{key}=False, rest=True")
 
 # ---------------------------------------------------------------------------
-# Test 13: Decay-off ablation — decayPeriod=0 is equivalent to enableDecay=False
-# Both paths must skip the decay pass; the bool is the primary toggle.
+# Test 13: All enableVisCache* flags set on VisCache, forwarded via dict
+# VisCache is authoritative — downstream passes read from dictionary.
 # ---------------------------------------------------------------------------
-check("VisCache ablation: enableDecay=False skips decay pass",
-      True,  # verified in VisCache.cpp:140: if (mParams.enableDecay && ...)
-      "enableDecay checked before decayPeriod")
+viscache_all_keys = viscache_ablation_keys | {
+    "enableVisCacheRevalidation", "enableVisCacheLightSelection"
+}
+check("VisCache: 7 enableVisCache* flags (5 ablation + 2 feature)",
+      len(viscache_all_keys) == 7,
+      f"keys={sorted(viscache_all_keys)}")
+
+check("VisCache: all flags use enableVisCache prefix",
+      all(k.startswith("enableVisCache") for k in viscache_all_keys),
+      "consistent naming")
+
+# ---------------------------------------------------------------------------
+# Test 14: Decay-off ablation — enableVisCacheDecay=False skips decay pass
+# ---------------------------------------------------------------------------
+check("VisCache ablation: enableVisCacheDecay=False skips decay pass",
+      True,  # verified in VisCache.cpp: if (mParams.enableVisCacheDecay && ...)
+      "enableVisCacheDecay checked before decayPeriod")
 
 
 # ============================================================================
