@@ -424,7 +424,7 @@ def build(output_path=None):
         sB0))
     S.append(Paragraph(
         "Fingerprint uses the same jittered+quantized coordinates as the address "
-        "but a different hash function [Keller et al., 2016],[Binder et al., 2018]. "
+        "but a different hash function [Binder et al., 2018]. "
         "Optional bidirectional canonicalization (lexicographic swap) merges "
         "V(P,Q) and V(Q,P) into one entry; requires symmetric cell sizes. "
         "Probe sequence: double hashing with fingerprint as h<sub>2</sub>. "
@@ -1078,10 +1078,6 @@ def build(output_path=None):
         "[Jarzynski &amp; Olano 2020] M. Jarzynski and M. Olano. "
         "\"Hash Functions for GPU Rendering.\" "
         "<i>JCGT</i>, 9(3):21&#8211;38, 2020.",
-
-        "[Keller et al. 2016] A. Keller, N. Binder, and K. Dahm. "
-        "\"Path Space Similarity Determined by Fourier Histogram Descriptors.\" "
-        "ACM SIGGRAPH 2014 Talks; extended with hash-based filtering 2016.",
 
         "[Lin et al. 2022] D. Lin et al. \"Generalized Resampled Importance "
         "Sampling: Foundations of ReSTIR.\" <i>ACM Trans. Graph.</i>, 41(4), 2022.",

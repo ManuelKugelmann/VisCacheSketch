@@ -10,8 +10,6 @@
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
 
-- [Keller et al. 2016] A. Keller, N. Binder, and K. Dahm. "Path Space Similarity Determined by Fourier Histogram Descriptors." ACM SIGGRAPH 2014 Talks; extended with hash-based filtering 2016.
-
 - [Lin et al. 2022] D. Lin et al. "Generalized Resampled Importance Sampling: Foundations of ReSTIR." *ACM Trans. Graph.*, 41(4), 2022.
 
 - [Müller et al. 2022] T. Müller, A. Evans, C. Schied, and A. Keller. "Instant Neural Graphics Primitives with a Multiresolution Hash Encoding." *ACM Trans. Graph.*, 41(4):102, 2022.

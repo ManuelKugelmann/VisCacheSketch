@@ -112,12 +112,5 @@ ls -1 "$REF_DIR"/*.pdf 2>/dev/null | while read -r f; do
 done
 
 echo ""
-echo "=== Remaining (obtain from publisher or author page) ==="
-for paper in \
-    "Ward1994_AdaptiveShadowTesting.pdf — Springer (try radiance-online.org HTML)" \
-    "Keller2014_PathSpaceSimilarity.pdf  — NVIDIA Research / ResearchGate" \
-    ; do
-    echo "  $paper"
-done
-echo ""
-echo "Place manually obtained PDFs in: $REF_DIR/"
+echo "Note: Ward1994 was converted from HTML and is already committed."
+echo "Note: Liu2025 (241 MB) exceeds GitHub 100 MB limit — download only."

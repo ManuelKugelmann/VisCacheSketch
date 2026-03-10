@@ -107,11 +107,6 @@ Evaluates hash functions for quality (TestU01) and GPU speed. PCG3D recommended 
 Foundational spatial hashing paper. Infinite regular grid compressed via hash function — no scene bounds needed. Covered in Keller's CG lectures at Ulm; likely common root for both Kugelmann 2006 and Binder 2018.
 - PDF: [Author page](https://matthias-research.github.io/pages/publications/tetraederCollision.pdf) | **Auto**
 
-### Keller 2014 — Path Space Similarity
-**A. Keller, N. Binder, K. Dahm, "Path Space Similarity via Fourier Histogram Descriptors," SIGGRAPH Talk 2014.**
-Detects light-path similarity using local image statistics and radiance-distribution descriptors. Precursor to Binder 2018 path space filtering.
-- PDF: [NVIDIA Research](https://research.nvidia.com/publication/2014-07_path-space-similarity-determined-fourier-histogram-descriptors) / [ResearchGate](https://www.researchgate.net/publication/264902828) | **Manual**
-
 ---
 
 ## Control variates

@@ -99,7 +99,7 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 
 // ---------------------------------------------------------------------------
 // Address and fingerprint functions
-// Two different hash chains to keep them independent [Keller et al. 2016].
+// Two different hash chains to keep them independent [Binder et al. 2018].
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
