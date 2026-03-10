@@ -14,19 +14,11 @@ that predicts binary shadow-ray outcomes
 and corrects errors stochastically,
 yielding an unbiased estimator regardless of cache quality.
 The cache is a single flat hash table
-storing per-cell hit/miss ratios in 8 bytes,
-updated lock-free with single-InterlockedAdd atomics.
-Position-seeded jitter acts as an intrinsic box filter
-across cell boundaries,
-fingerprint-based double hashing handles collisions,
-and LOD level encoded in the hash key
-lets multiple resolutions coexist without indirection.
-Variance is obtained for free from the Bernoulli mean (var = μ(1−μ))
-and drives both the correction rate
-and write-depth gating across levels.
-The cache is algorithm-agnostic;
-we demonstrate it with ReSTIR DI and GI
-but it applies to any pairwise visibility query.
+with 8-byte entries, lock-free atomic updates,
+multilevel resolution without indirection,
+and variance derived for free from the Bernoulli mean.
+It is algorithm-agnostic;
+we demonstrate it with ReSTIR DI and GI.
 On Bistro exterior, shadow rays drop by
 **##%** (direct) and **##%** (GI revalidation),
 with no measurable bias.
