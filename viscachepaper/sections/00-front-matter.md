@@ -9,43 +9,26 @@
 
 ### Abstract
 
-Twenty years ago, a thesis [Kugelmann 2006] cached pairwise binary visibility
-in a spatial hash grid [Teschner et al. 2003]
-and corrected predictions via variance-driven adaptive sampling —
-a technique called *prediction-with-correction*
-(control variate + Russian roulette on the residual;
-non-zero termination estimate formalized for rendering by
-[Szécsi et al. 2003],
-variance-driven RR by [Szirmay-Kalos et al. 2005]) —
+We present a world-space visibility cache
+that predicts binary shadow-ray outcomes
+and corrects errors stochastically,
 yielding an unbiased estimator regardless of cache quality.
-The method was demonstrated on instant radiosity but was always algorithm-agnostic.
-It used fixed-resolution single-level hashing on the CPU,
-with generalized variance driving only the correction rate.
-
-This paper completes that work
-by integrating improvements developed in the intervening decades:
-robust hash addressing with position-seeded jitter
-[Binder et al. 2018, modified] that acts as an intrinsic box filter
+The cache is a single flat hash table
+storing per-cell hit/miss ratios in 8 bytes,
+updated lock-free with single-InterlockedAdd atomics.
+Position-seeded jitter acts as an intrinsic box filter
 across cell boundaries,
-fingerprint-based collision detection [Binder et al. 2018]
-with double-hash probing [Knuth 1973],
-LOD level encoded directly into the hash key [Gautron 2020]
-so that multiple resolutions coexist in one flat table,
-variance-driven write-depth gating inspired by concurrent work
-on adaptive hash resolution [Stotko et al. 2025],
-and GPU-parallel lock-free updates [Gautron 2021]
-with pcg3d hashing [Jarzynski & Olano 2020].
-By narrowing from the thesis's general framework to binary visibility,
-we exploit Bernoulli structure:
-variance is free from the mean alone (var = μ(1−μ)),
-eliminating the separate variance accumulator.
-We demonstrate integration with ReSTIR DI and GI
-[Bitterli et al. 2020; Ouyang et al. 2021] as one natural client,
-but the cache applies equally to classical next-event estimation
-or any pairwise visibility query.
-Initial profiling on Bistro exterior shows
-**##%** shadow-ray reduction in direct illumination
-and **##%** in GI revalidation,
-with no measurable bias and negligible cache-maintenance overhead.
+fingerprint-based double hashing handles collisions,
+and LOD level encoded in the hash key
+lets multiple resolutions coexist without indirection.
+Variance is obtained for free from the Bernoulli mean (var = μ(1−μ))
+and drives both the correction rate
+and write-depth gating across levels.
+The cache is algorithm-agnostic;
+we demonstrate it with ReSTIR DI and GI
+but it applies to any pairwise visibility query.
+On Bistro exterior, shadow rays drop by
+**##%** (direct) and **##%** (GI revalidation),
+with no measurable bias.
 
 **Keywords:** visibility caching, shadow rays, spatial hashing, prediction-with-correction, adaptive sampling, real-time rendering, collision handling
