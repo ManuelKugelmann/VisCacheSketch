@@ -20,7 +20,7 @@ The Bernoulli optimization (var = μ(1−μ), requiring no separate variance est
 
 The test case was Instant Radiosity [Keller 1997], but the caching method was always algorithm-agnostic: it operates on pairwise queries regardless of the rendering algorithm generating them.
 
-See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006_ThesisMK.pdf) for the thesis. The Szécsi et al. [2003] paper "Variance Reduction for Russian Roulette" is available on [ResearchGate](https://www.researchgate.net/publication/221546555_Variance_Reduction_for_Russian-roulette).
+See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006_ThesisMK.pdf) for the thesis and [`docs/references/Szecsi2003_VarianceReductionRR.pdf`](docs/references/Szecsi2003_VarianceReductionRR.pdf) for the Szécsi et al. [2003] paper (also on [ResearchGate](https://www.researchgate.net/publication/221546555_Variance_Reduction_for_Russian-roulette)).
 
 ---
 
