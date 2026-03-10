@@ -10,26 +10,20 @@
 ### Abstract
 
 Twenty years ago, a thesis [Kugelmann 2006] cached pairwise binary visibility
-in spatial grids and corrected predictions via variance-driven adaptive sampling —
+in a spatial hash grid [Teschner et al. 2003]
+and corrected predictions via variance-driven adaptive sampling —
 a technique called *prediction-with-correction*
 (control variate + Russian roulette on the residual;
 non-zero termination estimate formalized for rendering by
 [Szécsi et al. 2003],
 variance-driven RR by [Szirmay-Kalos et al. 2005]) —
 yielding an unbiased estimator regardless of cache quality.
-The spatial grids were visible in the thesis results,
-but the underlying spatial hashing — inspired by Teschner et al. [2003]
-to sidestep the curse of dimensionality in naive grids —
-was an unmentioned implementation detail;
-the thesis contribution was applying CV+RR with per-point cached predictions
-and generalized variance-driven adaptive sampling to visibility.
 The method was demonstrated on instant radiosity but was always algorithm-agnostic.
-It used fixed-resolution single-level grids on the CPU,
+It used fixed-resolution single-level hashing on the CPU,
 with generalized variance driving only the correction rate.
 
-This paper completes that work by replacing the naive grid
-with formal spatial hashing [Teschner et al. 2003]
-and integrating improvements developed in the intervening decades:
+This paper completes that work
+by integrating improvements developed in the intervening decades:
 robust hash addressing with position-seeded jitter
 [Binder et al. 2018, modified] that acts as an intrinsic box filter
 across cell boundaries,
