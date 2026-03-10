@@ -8,6 +8,16 @@
 
 ---
 
+## History
+
+The 2006 Diplomarbeit by MK ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm) suffered multiple problems — side work for financial reasons, theft of personal belongings, overambitious scope, and experiments that were not automated enough — and was never properly finished.
+
+It included independent development of CV+RRR (estimation with correction; Kalos' earlier work on this was found late), and a spatial-hashing-based cache used in experiments with cached directional irradiance, directional free-ray distribution, and point-to-point visibility. The CV + rarely-correct + hash-cached-estimate combination was used to reduce Instant Radiosity shadow rays to a tiny fraction. Variance-based CV+RRR was formulated as adaptive sampling, along with other unrelated findings.
+
+See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006_ThesisMK.pdf) for details.
+
+---
+
 ## Overview
 
 This paper develops the binary visibility experiment from [Kugelmann 2006] into a complete real-time system. The 2006 Diplomarbeit ran three separate cache experiments — irradiance (point, dir) → ℝ, binary visibility (point, point) → {0,1}, and free-path distance (point, dir) → ℝ≥0 — each with CV+RRR correction rates driven by their respective variances, stored in a fixed-resolution single-level spatial hash. This work narrows to binary visibility and deepens the architecture.
