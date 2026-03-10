@@ -16,7 +16,7 @@ The thesis developed a general framework called *predictions with correction at 
 
 Using a control variate instead of zero on RR termination is standard Monte Carlo variance reduction — combining two textbook techniques (Knuth 1973; Hammersley and Handscomb 1964). The idea is at least implicit in the "go with the winners" family (Aldous and Vazirani 1994; Grassberger 2002). In the graphics context, Szécsi, Szirmay-Kalos and Kelemen [2003] formalized this for rendering, and Szirmay-Kalos et al. [2005] extended it into a variance-driven splitting/RR framework using a scene-global average radiance estimate. The Kugelmann thesis arrived at the same CV+RR math independently but refined the **estimation source** (per-point spatial cache rather than a scene-global constant) and the **variance signal use** (generalized variance closing the cache-quality → trace-rate loop). The overlap with Szécsi et al. was found late in the writing process.
 
-The spatial grid was visible in the thesis — screenshots show grid cells, and the frustum grid structure is part of the results. What was an unmentioned implementation detail was the use of *spatial hashing* [Teschner et al. 2003] to map grid cells to memory. Spatial hashing was encountered during teaching assistant work on Keller's "Simulation Algorithms" lecture at Universität Ulm, where it was used for broad-phase physical collision detection. The thesis used it but did not describe or frame it as a technique.
+The spatial grids (world-space and frustum) were visible in the thesis — screenshots show grid cells. What was an unmentioned implementation detail was the use of *spatial hashing* [Teschner et al. 2003] to map grid cells to memory. Spatial hashing was encountered during teaching assistant work on Keller's "Simulation Algorithms" lecture at Universität Ulm, where it was used for broad-phase physical collision detection. The thesis used it but did not describe or frame it as a technique.
 
 The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized in 2006 — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility and exploiting the Bernoulli structure is a contribution of this paper.
 
@@ -132,7 +132,7 @@ The 2006 Diplomarbeit "Efficient Adaptive Global Illumination Algorithms" (Unive
 - **Contribution prediction** (Sec. 3.2.3): predicting full lighting contributions rather than just visibility.
 - And other cached quantities — all using generalized variance estimators.
 
-The spatial/frustum grid was visible in the thesis (screenshots show grid cells). The grid used spatial hashing [Teschner et al. 2003] internally to map cells to memory, but hashing itself was an unmentioned implementation detail — encountered during TA work on Keller's "Simulation Algorithms" lecture but not described as a technique in the thesis.
+The spatial grids (world-space and frustum) were visible in the thesis (screenshots show grid cells). The grids used spatial hashing [Teschner et al. 2003] internally to map cells to memory, but hashing itself was an unmentioned implementation detail — encountered during TA work on Keller's "Simulation Algorithms" lecture but not described as a technique in the thesis.
 
 **What this paper adds beyond 2006:**
 - Robust hashing with position-seeded jitter (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020])
