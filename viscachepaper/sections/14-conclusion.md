@@ -1,6 +1,6 @@
 # 14. Conclusion
 
-This paper completes work begun twenty years ago. The core algorithm — cache pairwise visibility in a spatial hash [Teschner et al. 2003], correct predictions via CV+RRR [Szirmay-Kalos et al. 2005; Kugelmann 2006] — was proposed in [Kugelmann 2006] as part of a thesis on adaptive global illumination. Instant radiosity was the 2006 test case, but the method was always algorithm-agnostic: it operates on pairwise (point, point) → {0,1} queries regardless of what generates them. The idea was sound but limited by fixed-resolution single-level hashing and offline CPU execution. We have described the engineering — drawing on two decades of developments in GPU hashing, lock-free atomics, and multilevel spatial data structures — required to make it practical in a real-time path tracer.
+This paper completes work begun twenty years ago. The core algorithm — cache pairwise visibility in a spatial hash [Teschner et al. 2003], correct predictions via variance-driven adaptive sampling (prediction-with-correction [Kugelmann 2006]; "go with the winners" [Szirmay-Kalos et al. 2005]) — was proposed in [Kugelmann 2006] as part of a thesis on adaptive global illumination. Instant radiosity was the 2006 test case, but the method was always algorithm-agnostic: it operates on pairwise (point, point) → {0,1} queries regardless of what generates them. The idea was sound but limited by fixed-resolution single-level hashing and offline CPU execution. We have described the engineering — drawing on two decades of developments in GPU hashing, lock-free atomics, and multilevel spatial data structures — required to make it practical in a real-time path tracer.
 
 The key additions, each built on specific prior work:
 
@@ -10,7 +10,7 @@ The key additions, each built on specific prior work:
 
 - **LOD in the hash key** (from [Gautron 2020, 2021]). Level index in the hash input; multiple resolutions in one flat table. Prior multilevel approaches — separate tables [Müller et al. 2022], octree subdivision [Popov et al. 2013], hierarchical cascades — were all more complex and performed worse for our access pattern.
 
-- **Coupled variance adaptation** (extending [Kugelmann 2006]; independently paralleled by [Stotko et al. 2025]). The Bernoulli variance signal drives both correction rate and spatial resolution simultaneously. This coupling is self-regulating and only becomes possible with a multilevel cache — [Kugelmann 2006] had fixed resolution, so only the correction rate adapted.
+- **Coupled variance adaptation** (extending [Kugelmann 2006]'s adaptive sampling; independently paralleled by [Stotko et al. 2025]). [Kugelmann 2006] already used Bernoulli variance to drive the correction rate. We add a second use of the same signal: write-depth gating drives spatial resolution. This coupling is self-regulating and only becomes possible with a multilevel cache.
 
 The cache is algorithm-agnostic. We demonstrated integration with ReSTIR DI and GI [Bitterli et al. 2020; Ouyang et al. 2021] as one natural client, but the same cache applies to instant radiosity (as in the original thesis), classical next-event estimation, or any method evaluating pairwise visibility.
 

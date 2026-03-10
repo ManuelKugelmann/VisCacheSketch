@@ -1,6 +1,8 @@
-# 8. Control Variate with Russian Roulette
+# 8. Prediction with Correction
 
-The cached mean μ serves as a control variate — returning μ instead of zero on RR termination. This technique was proposed by Szirmay-Kalos et al. [2005] ("go with the winners") and developed independently in [Kugelmann 2006] for all three cache experiments. We do not claim CV+RRR as new; it is a classical variance reduction technique that deserves wider adoption in the real-time rendering community. Analytic lighting (BRDF × Le × G) is always evaluated. Only the shadow ray is gated:
+The core estimator, which we call *prediction-with-correction* following the naming in [Kugelmann 2006], is a control-variate technique with Russian roulette on the residual. Szirmay-Kalos et al. [2005] independently proposed the same idea as "go with the winners." The technique is classical; [Kugelmann 2006] already used variance-driven RR survival probability as adaptive sampling — the Bernoulli variance var = μ(1−μ) directly controlled how often correction rays fired. We do not claim prediction-with-correction as new; we apply it to a multilevel cache where the same variance signal now also drives spatial resolution (Sec. 5), a coupling that was impossible at fixed resolution.
+
+Analytic lighting (BRDF × Le × G) is always evaluated. Only the shadow ray is gated:
 
 **Algorithm 3: Shading with Cached Visibility**
 ```
@@ -20,13 +22,13 @@ else
 
 **Unbiasedness proof.** The estimator V̂ equals μ + (V − μ)/p with probability p, and μ with probability (1−p). E[V̂] = p·(μ + (E[V]−μ)/p) + (1−p)·μ = E[V]. The residual variance is Var[V̂] = (1/p − 1)·Var[V − μ]. When μ = E[V], the residual is zero — a perfect cache needs no correction rays. Cache quality affects only efficiency (residual variance), never correctness. Only traced values are inserted — returning μ without tracing does not update the cache, preventing positive feedback.
 
-**Generality.** CV+RRR converts any visibility estimate μ — whether from a spatial hash (this work), a neural network [Bokšanský and Meister 2025], temporal reprojection, or spatial neighbor polling — into an unbiased estimator wherever a mean estimate is available. The technique is agnostic to the source of μ; cache quality affects only efficiency, never correctness.
+**Generality.** Prediction-with-correction converts any visibility estimate μ — whether from a spatial hash (this work), a neural network [Bokšanský and Meister 2025], temporal reprojection, or spatial neighbor polling — into an unbiased estimator. The technique is agnostic to the source of μ; cache quality affects only efficiency, never correctness.
 
 **Why binary visibility.** [Kugelmann 2006] explored three cached quantities; we choose binary visibility for three reasons: (1) binary is sufficient for shadow-ray decisions — the ray either hits or misses; (2) Bernoulli structure gives variance for free from μ alone (var = μ(1−μ)), requiring no separate variance estimator; (3) the (point, point) → {0,1} domain aligns naturally with any pairwise visibility query — whether from ReSTIR reservoirs, instant radiosity VPLs, or classical next-event estimation. Free-path distance [Kugelmann 2006, experiment 3] is a richer representation but requires a separate variance estimator and is not pursued here.
 
-**Coupled variance adaptation.** The same Bernoulli variance var = μ(1−μ) drives two reinforcing mechanisms simultaneously: (1) RR survival probability p = clamp(var/τ, pmin, 1) governs the correction rate — how often shadow rays are traced; (2) the write-depth gate (Sec. 5.2) governs spatial resolution — whether fine-level cache entries are updated. High-variance regions trace more often *and* update fine levels; low-variance regions trace rarely *and* only update the coarsest level. This coupling is self-regulating: no per-scene tuning is needed because the variance signal adapts to local shadow structure automatically. The coupling only becomes possible with a multilevel cache — [Kugelmann 2006] had fixed resolution, so only the correction rate was variance-driven.
+**Variance as adaptive sampling.** Already in [Kugelmann 2006], the Bernoulli variance drove the RR survival probability — this is adaptive sampling: high-uncertainty regions trace more, low-uncertainty regions trace less. The variance signal is free (computed from μ alone) and self-correcting (tracing updates μ, which changes variance, which changes the trace rate). What we add is a second use of the same signal: the write-depth gate (Sec. 5) governs spatial resolution — whether fine-level cache entries are updated. High-variance regions trace more often *and* update fine levels; low-variance regions trace rarely *and* only update the coarsest level. This coupled adaptation is self-regulating and only becomes possible with a multilevel cache.
 
-Self-regulating: low σ2 → aggressive RR → few traces. High σ2 → always trace → cache updates → σ2 drops. Lighting change → σ2 rises → traces reallocated. Pmin ≈ 0.05 ensures at least 5% of pixels always trace.
+Self-regulating: low σ² → aggressive RR → few traces. High σ² → always trace → cache updates → σ² drops. Lighting change → σ² rises → traces reallocated. Pmin ≈ 0.05 ensures at least 5% of pixels always trace.
 
 ## 8.1 Firefly Mitigation
 

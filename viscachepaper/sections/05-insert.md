@@ -1,6 +1,6 @@
 # 5. Insert
 
-L0 is read to decide write depth. During bootstrap, all levels are written. Once L0 matures, fine levels are written only where L0 variance exceeds a threshold — the same variance signal that drives RR survival probability in Sec. 8 (see coupled variance adaptation). A distance interval gates the LOD range by target square pixel footprint: skip levels where the cell is below 4×4 pixels or above 64×64 pixels. Clipmap-like: L0 far field, L2 near field, L1 bridges. Both-endpoint jitter is in the addressing step (Sec. 4). Single InterlockedAdd on packed uint ensures counters stay in sync.
+L0 is read to decide write depth. During bootstrap, all levels are written. Once L0 matures, fine levels are written only where L0 variance exceeds a threshold — the same variance signal that drives adaptive sampling in Sec. 8 (see coupled variance adaptation). A distance interval gates the LOD range by target square pixel footprint: skip levels where the cell is below 4×4 pixels or above 64×64 pixels. Clipmap-like: L0 far field, L2 near field, L1 bridges. Both-endpoint jitter is in the addressing step (Sec. 4). Single InterlockedAdd on packed uint ensures counters stay in sync.
 
 **Algorithm 1: Distance + Variance-Gated Insert**
 ```
