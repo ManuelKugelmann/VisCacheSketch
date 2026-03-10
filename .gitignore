@@ -29,5 +29,8 @@ captures/
 *.exr
 *.hdr
 
+# Downloaded test scenes
+media/
+
 # Generated paper (built by CI, deployed to Pages)
 viscachepaper/paper-combined.md

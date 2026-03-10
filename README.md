@@ -75,7 +75,11 @@ scripts/
   VisCache_Graph.py             Mogwai render graph (interactive + ablation presets)
   VisCache_Ablation.py          Automated ablation capture (10 configs, §15)
   VisCache_Baselines.py         Automated baseline capture (14 DI/GI/PT configs)
+  VisCache_Reference.py         1024 spp path tracer ground truth capture
+  VisCache_Stress.py            Disocclusion flythrough stress test
   smoke_test.py                 Headless plugin registration + graph wiring test
+  download_scenes.sh            Download Bistro + Sponza test scenes
+  run_paper_experiments.sh      Run all captures for the paper (end-to-end)
 
 tests/
   test_viscache_convergence.py    CPU unit tests (5 tests, no GPU required)
