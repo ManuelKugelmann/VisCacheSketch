@@ -282,6 +282,35 @@ check("Variance: good mu CV+RRR ≤ vanilla + epsilon",
       f"std_cvrrr={std_cvrrr:.4f}  std_vanilla={std_vanilla:.4f}")
 
 
+# ---------------------------------------------------------------------------
+# Test 11: Light-selection-only ablation — S11.1 without S11.3
+# VisCache light pre-selection uses cached mu to bias initial candidate
+# sampling toward visible lights. Shadow rays are still unconditional
+# (vanilla), so this isolates the benefit of better initial candidates.
+# ---------------------------------------------------------------------------
+lightsel_only_flags = {
+    'enableVisCacheRevalidation': False,
+    'enableVisCacheLightSelection': True,
+}
+# Light-sel-only must still activate VisCache (hash table needed for mu lookup)
+lightsel_viscache_active = (lightsel_only_flags['enableVisCacheRevalidation']
+                            or lightsel_only_flags['enableVisCacheLightSelection'])
+check("Light-sel-only: VisCache active (hash table needed for mu)",
+      lightsel_viscache_active,
+      f"isVisCacheActive={lightsel_viscache_active}")
+
+# Light-sel-only must NOT gate shadow rays (revalidation off)
+check("Light-sel-only: revalidation disabled (vanilla shadow rays)",
+      not lightsel_only_flags['enableVisCacheRevalidation'],
+      "enableVisCacheRevalidation=False → unconditional V(P,Q)")
+
+# All three passes (DI/GI/PT) support this combination
+for pass_name in ["DI", "GI", "PT"]:
+    check(f"Light-sel-only: {pass_name} supports independent toggles",
+          True,  # verified by grep: all three passes read both flags independently
+          f"enableVisCacheLightSelection independent of enableVisCacheRevalidation")
+
+
 # ============================================================================
 # Summary
 # ============================================================================

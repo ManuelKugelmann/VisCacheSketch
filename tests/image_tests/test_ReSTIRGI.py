@@ -8,7 +8,8 @@ import sys
 sys.path.append('..')
 from helpers import render_frames
 from graphs.ReSTIRGI import (ReSTIRGI_Vanilla, ReSTIRGI_CVRRRLocal,
-                              ReSTIRGI_VisCacheReval, ReSTIRGI_VisCacheFull)
+                              ReSTIRGI_VisCacheReval, ReSTIRGI_VisCacheLightSel,
+                              ReSTIRGI_VisCacheFull)
 from falcor import *
 
 # ---------------------------------------------------------------------------
@@ -33,9 +34,16 @@ m.addGraph(ReSTIRGI_VisCacheReval)
 render_frames(m, 'viscache_reval', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR GI — VisCache full (S11.1 + S11.3)
+# ReSTIR GI — VisCache light pre-selection only (S11.1, no S11.3)
 # ---------------------------------------------------------------------------
 m.removeGraph(ReSTIRGI_VisCacheReval)
+m.addGraph(ReSTIRGI_VisCacheLightSel)
+render_frames(m, 'viscache_lightsel', frames=[1, 16, 64])
+
+# ---------------------------------------------------------------------------
+# ReSTIR GI — VisCache full (S11.1 + S11.3)
+# ---------------------------------------------------------------------------
+m.removeGraph(ReSTIRGI_VisCacheLightSel)
 m.addGraph(ReSTIRGI_VisCacheFull)
 render_frames(m, 'viscache_full', frames=[1, 16, 64])
 

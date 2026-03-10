@@ -71,6 +71,31 @@ def render_graph_ReSTIRGI_VisCacheReval():
     return g
 
 
+def render_graph_ReSTIRGI_VisCacheLightSel():
+    """ReSTIR GI — VisCache light pre-selection only (S11.1, no S11.3)."""
+    g = RenderGraph("ReSTIRGI_VisCacheLightSel")
+    VisCache = createPass("VisCachePass")
+    g.addPass(VisCache, "VisCache")
+    VBuffer = createPass("VBufferRT")
+    g.addPass(VBuffer, "VBuffer")
+    ReSTIRGI = createPass("ReSTIRGIPass", {
+        'enableVisCacheRevalidation': False,
+        'enableCVRRRRevalidation': False,
+        'enableVisCacheLightSelection': True,
+    })
+    g.addPass(ReSTIRGI, "ReSTIRGI")
+    ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
+    g.addPass(ToneMapper, "ToneMapper")
+
+    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    g.addEdge("VBuffer.vbuffer", "ReSTIRGI.vbuffer")
+    g.addEdge("VBuffer.mvec", "ReSTIRGI.motionVectors")
+    g.addEdge("ReSTIRGI.color", "ToneMapper.src")
+    g.markOutput("ToneMapper.dst")
+    g.markOutput("ReSTIRGI.color")
+    return g
+
+
 def render_graph_ReSTIRGI_VisCacheFull():
     """ReSTIR GI — VisCache revalidation + light selection (S11.1 + S11.3)."""
     g = RenderGraph("ReSTIRGI_VisCacheFull")
@@ -99,6 +124,7 @@ def render_graph_ReSTIRGI_VisCacheFull():
 ReSTIRGI_Vanilla = render_graph_ReSTIRGI_Vanilla()
 ReSTIRGI_CVRRRLocal = render_graph_ReSTIRGI_CVRRRLocal()
 ReSTIRGI_VisCacheReval = render_graph_ReSTIRGI_VisCacheReval()
+ReSTIRGI_VisCacheLightSel = render_graph_ReSTIRGI_VisCacheLightSel()
 ReSTIRGI_VisCacheFull = render_graph_ReSTIRGI_VisCacheFull()
 try: m.addGraph(ReSTIRGI_Vanilla)
 except NameError: None
