@@ -50,3 +50,6 @@ jobs:
 
       - name: Run VisCache algorithm validations
         run: python tests/test_viscache_convergence.py
+
+      - name: Run ReSTIR variant validations
+        run: python tests/test_restir_variants.py
