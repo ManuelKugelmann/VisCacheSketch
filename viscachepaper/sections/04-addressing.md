@@ -24,7 +24,7 @@ With level-in-key, a coarse L0 entry and a fine L2 entry for the same spatial re
 
 ## 4.4 Collision Detection
 
-Fingerprint uses the same jittered+quantized coordinates as the address but a different hash function [Binder et al., 2018]. Binder et al. use linear probing; we replace it with double hashing using the fingerprint as h2, which distributes probe chains more uniformly under high load. The fingerprint detects collisions at lookup time: if the stored fingerprint does not match, the entry belongs to a different key. False positives (two different keys producing identical fingerprint and table slot) are possible but rare — at 32-bit fingerprint, the probability is ~2⁻³² per probe step.
+Fingerprint uses the same jittered+quantized coordinates as the address but a different hash function [Binder et al., 2018]. Binder et al. use linear probing; we use standard double hashing [Knuth 1973] with the fingerprint as h2, which distributes probe chains more uniformly under high load. The fingerprint detects collisions at lookup time: if the stored fingerprint does not match, the entry belongs to a different key. False positives (two different keys producing identical fingerprint and table slot) are possible but rare — at 32-bit fingerprint, the probability is ~2⁻³² per probe step.
 
 ## 4.5 Infinite Endpoints
 

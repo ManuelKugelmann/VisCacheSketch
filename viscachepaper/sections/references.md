@@ -16,6 +16,8 @@
 
 - [Keller 1997] A. Keller. "Instant Radiosity." *SIGGRAPH '97*, pp. 49–56, 1997.
 
+- [Knuth 1973] D. E. Knuth. *The Art of Computer Programming, Vol. 3: Sorting and Searching*. Addison-Wesley, 1973. Section 6.4 (double hashing).
+
 - [Kugelmann 2006] M. Kugelmann. "Efficient Adaptive Global Illumination Algorithms." Diplomarbeit, Universität Ulm, 2006. Supervisor: A. Keller.
 
 - [Lin et al. 2022] D. Lin et al. "Generalized Resampled Importance Sampling: Foundations of ReSTIR." *ACM Trans. Graph.*, 41(4), 2022.
