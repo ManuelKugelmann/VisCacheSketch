@@ -6,11 +6,13 @@
 
 - [Bokšanský and Meister 2025] A. Bokšanský and D. Meister. "Neural Visibility Cache." 2025.
 
+- [Gautron 2020] P. Gautron. "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing." *SIGGRAPH Talks*, 2020.
+
+- [Gautron 2021] P. Gautron. "Practical Spatial Hash Map Updates." Chapter 41 in *Ray Tracing Gems II*, Apress, 2021.
+
 - [Guo et al. 2020] Y. Guo, E. Eisemann, and T. Eisemann. "NEE++: Faster N-Closest Emitter Sampling with Voxelized Visibility." *Pacific Graphics*, 2020.
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
-
-- [Keller et al. 2016] A. Keller, N. Binder, and K. Dahm. "Path Space Similarity Determined by Fourier Histogram Descriptors." ACM SIGGRAPH 2014 Talks; extended with hash-based filtering 2016.
 
 - [Lin et al. 2022] D. Lin et al. "Generalized Resampled Importance Sampling: Foundations of ReSTIR." *ACM Trans. Graph.*, 41(4), 2022.
 
@@ -24,7 +26,9 @@
 
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
-- [Szirmay-Kalos et al.] L. Szirmay-Kalos et al. "Go with the Winners" — control variate Russian roulette. (Exact citation TBD.)
+- [Szirmay-Kalos et al. 2005] L. Szirmay-Kalos, G. Antal, and M. Sbert. "Go with the Winners Strategy in Path Tracing." *Journal of WSCG*, 13:49–56, 2005.
+
+- [Talbot et al. 2005] J. Talbot, D. Cline, and P. Egbert. "Importance Resampling for Global Illumination." *Eurographics Symposium on Rendering*, pp. 139–146, 2005.
 
 - [Teschner et al. 2003] M. Teschner et al. "Optimized Spatial Hashing for Collision Detection of Deformable Objects." *Proc. VMV*, pp. 47–54, 2003.
 

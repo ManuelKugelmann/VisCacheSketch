@@ -30,6 +30,15 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
     if (props.has("minLevel"))       mParams.minLevel       = props["minLevel"];
     if (props.has("maxLevel"))       mParams.maxLevel       = props["maxLevel"];
+
+    // VisCache feature + ablation toggles
+    if (props.has("enableVisCacheRevalidation"))    mParams.enableVisCacheRevalidation    = props["enableVisCacheRevalidation"];
+    if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
+    if (props.has("enableVisCacheDistanceLOD"))     mParams.enableVisCacheDistanceLOD     = props["enableVisCacheDistanceLOD"];
+    if (props.has("enableVisCacheVarianceGate"))    mParams.enableVisCacheVarianceGate    = props["enableVisCacheVarianceGate"];
+    if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
+    if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
+    if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
 }
 
 ref<VisCache> VisCache::create(ref<Device> pDevice,
@@ -50,6 +59,15 @@ Properties VisCache::getProperties() const
     p["decayPeriod"]   = mParams.decayPeriod;
     p["minLevel"]      = mParams.minLevel;
     p["maxLevel"]      = mParams.maxLevel;
+
+    // VisCache feature + ablation toggles
+    p["enableVisCacheRevalidation"]    = mParams.enableVisCacheRevalidation;
+    p["enableVisCacheLightSelection"]  = mParams.enableVisCacheLightSelection;
+    p["enableVisCacheDistanceLOD"]     = mParams.enableVisCacheDistanceLOD;
+    p["enableVisCacheVarianceGate"]    = mParams.enableVisCacheVarianceGate;
+    p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
+    p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
+    p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
     return p;
 }
 
@@ -134,10 +152,19 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfMinLevel"]     = mParams.minLevel;
     dict["vhfMaxLevel"]     = mParams.maxLevel;
 
+    // Feature + ablation toggles — downstream passes read these
+    dict["vhfEnableRevalidation"]    = mParams.enableVisCacheRevalidation;
+    dict["vhfEnableLightSelection"]  = mParams.enableVisCacheLightSelection;
+    dict["vhfEnableWarpReduction"]   = mParams.enableVisCacheWarpReduction;
+    dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
+    dict["vhfEnableDistanceLOD"]     = mParams.enableVisCacheDistanceLOD;
+    dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
+    dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
+
     // ----------------------------------------------------------------
     // Background decay sweep (1/decayPeriod of table per frame)
     // ----------------------------------------------------------------
-    if (mParams.enableDecay && mParams.decayPeriod > 0 &&
+    if (mParams.enableVisCacheDecay && mParams.decayPeriod > 0 &&
         (mFrameCount % mParams.decayPeriod) == 0u)
     {
         runDecayPass(pCtx);
@@ -227,19 +254,19 @@ void VisCache::renderUI(Gui::Widgets& widget)
     widget.var("Decay period max", mParams.decayPeriodMax, 15u, 2000u);
     widget.separator();
 
-    widget.checkbox("GI revalidation",   mParams.enableGIRevalidation);
-    widget.checkbox("Light selection",   mParams.enableLightSelection);
-    widget.checkbox("Warp reduction",    mParams.enableWarpReduction);
+    widget.checkbox("VisCache revalidation (S11.3)",   mParams.enableVisCacheRevalidation);
+    widget.checkbox("VisCache light selection (S11.1)", mParams.enableVisCacheLightSelection);
+    widget.checkbox("VisCache warp reduction",         mParams.enableVisCacheWarpReduction);
     widget.separator();
 
     // Ablation toggles
     if (auto g = widget.group("Ablation toggles", /*open=*/false))
     {
-        g.checkbox("A: Distance-gated LOD",   mParams.enableDistanceLOD);
-        g.checkbox("B: Variance-gated depth", mParams.enableVarianceGate);
-        g.checkbox("C: Warp reduction",       mParams.enableWarpReduction);
-        g.checkbox("D: Inline CAS decay",     mParams.enableDecay);
-        g.checkbox("E: Pressure eviction",    mParams.enablePressureEvict);
+        g.checkbox("A: Distance-gated LOD",   mParams.enableVisCacheDistanceLOD);
+        g.checkbox("B: Variance-gated depth", mParams.enableVisCacheVarianceGate);
+        g.checkbox("C: Warp reduction",       mParams.enableVisCacheWarpReduction);
+        g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
+        g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
         g.var("Min LOD level", mParams.minLevel, 0, 2);
         g.var("Max LOD level", mParams.maxLevel, 0, 2);
     }

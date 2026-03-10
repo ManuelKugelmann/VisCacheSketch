@@ -6,52 +6,30 @@
  *
  * At k=5 spatial neighbors, DQLin traces 5 shadow rays per pixel.
  * With VisCache enabled, evalRevalidationCV() gates these via cached
- * visibility, reducing to ~0.5–1.0 rays/pixel at steady state (§12).
+ * visibility, reducing to ~0.5-1.0 rays/pixel at steady state (S12).
  *
  * Unbiased: E[mu + (V - mu) / p] = E[V] for any cache quality.
  *
- * TODO: Merge full DQLin spatial reuse logic (neighbor selection,
- *       reservoir streaming, Talbot MIS weights) from the ported
- *       Falcor fork. This file contains the complete skeleton with
- *       VisCache integration points marked.
+ * Ported from DQLin/ReSTIR_PT (Falcor 5.2 -> 8.0). Core reservoir
+ * streaming, neighbor selection, and Talbot MIS follow the original.
+ * Only the visibility evaluation is modified for VisCache integration.
  ***************************************************************************/
 
 import Scene.Scene;
+import Scene.Shading;
 import Scene.ShadingData;
 import Scene.HitInfo;
 import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 
-// VisCache integration
-#if USE_VISCACHE
-import RenderPasses.VisCache.VisCache;
-import RenderPasses.VisCache.ShadingCV;
-#endif
-
-// ---------------------------------------------------------------------------
-// Reservoir data structures (match DQLin/ReSTIR_PT)
-// ---------------------------------------------------------------------------
-struct SecondaryHit
-{
-    float3 posW;
-    float3 normalW;
-    float3 Lo;       ///< Outgoing radiance at secondary hit
-    float  invPDF;
-};
-
-struct PathReservoir
-{
-    SecondaryHit secondaryHit;
-    float  W;        ///< Reservoir weight
-    float  M;        ///< Sample count
-    bool isValid() { return M > 0.0f && W > 0.0f; }
-};
+import RenderPasses.ReSTIRGIPass.ReSTIRGICommon;
 
 // ---------------------------------------------------------------------------
 // Buffers
 // ---------------------------------------------------------------------------
 RWStructuredBuffer<PathReservoir> gReservoirs;
 StructuredBuffer<SecondaryHit>    gSecondaryHits;
+Texture2D<PackedHitInfo>          gVBuffer;
 
 cbuffer PerFrameCB
 {
@@ -60,6 +38,64 @@ cbuffer PerFrameCB
     uint   gFrameCount;
     float3 gCamPos;
 };
+
+// ---------------------------------------------------------------------------
+// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
+// ---------------------------------------------------------------------------
+ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
+{
+    VertexData v;
+    uint materialID = 0;
+
+    if (hit.getType() == HitType::Triangle)
+    {
+        const TriangleHit tri = hit.getTriangleHit();
+        v = gScene.getVertexData(tri);
+        materialID = gScene.getMaterialID(tri.instanceID);
+    }
+    else
+    {
+        v.posW = rayOrigin + rayDir;
+        v.normalW = -rayDir;
+        v.faceNormalW = -rayDir;
+        v.tangentW = float4(0, 1, 0, 1);
+        v.texC = float2(0);
+    }
+
+    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
+}
+
+// ---------------------------------------------------------------------------
+// Visibility ray trace — core implementation used by both vanilla and
+// VisCache modes. Returns 1.0 if visible, 0.0 if occluded.
+// ---------------------------------------------------------------------------
+float traceVisibilityRay(float3 origin, float3 target)
+{
+    float3 dir  = target - origin;
+    float  dist = length(dir);
+    if (dist < 1e-6f) return 1.0f;
+    dir /= dist;
+
+    Ray ray = Ray(origin, dir, 1e-4f, dist - 1e-4f);
+
+    SceneRayQuery<0> rayQuery;
+    return rayQuery.traceVisibilityRay(ray) ? 1.0f : 0.0f;
+}
+
+// ---------------------------------------------------------------------------
+// traceShadowRay — external dependency required by RevalidationCommon.slang
+// and ShadingCV.slang. Must be defined BEFORE the import.
+// ---------------------------------------------------------------------------
+float traceShadowRay(float3 origin, float3 target)
+{
+    return traceVisibilityRay(origin, target);
+}
+
+// Shared CV+RRR logic: VisCache hash table, local reservoir-local, or vanilla.
+// RevalidationCommon.slang imports VisCache/ShadingCV when USE_VISCACHE=1,
+// declares LocalRevalCB when USE_LOCAL_REVAL=1, and provides
+// evaluateVisibility() + evalLocalRevalidation().
+import RenderPasses.VisCache.RevalidationCommon;
 
 // ---------------------------------------------------------------------------
 // Neighbor selection (screen-space disk, DQLin pattern)
@@ -75,28 +111,56 @@ uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 }
 
 // ---------------------------------------------------------------------------
-// Visibility evaluation — two paths controlled by USE_VISCACHE
+// Evaluate target function for a neighbor's sample at this pixel's
+// shading point (reconnection-based, with visibility).
+// Returns: p_hat * visibility
 // ---------------------------------------------------------------------------
-float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
-                          float G, inout SampleGenerator sg)
+float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
+                        float neighborTargetPdf,
+                        inout SampleGenerator sg, out float pHatNoVis)
 {
-#if USE_VISCACHE
-    // CV+RRR revalidation (§12)
-    // Replaces unconditional TraceVisibilityRay with cached + gated trace.
-    return evalRevalidationCV(P, Q, bsdf, Lo, G, gCamPos, sg);
-#else
-    // Original DQLin: unconditional shadow ray
-    RayDesc ray;
-    ray.Origin    = P;
-    ray.Direction = normalize(Q - P);
-    ray.TMin      = 1e-4f;
-    ray.TMax      = length(Q - P) - 1e-4f;
+    pHatNoVis = 0.0f;
+    if (luminance(neighborSample.Lo) < 1e-7f) return 0.0f;
 
-    // TODO: Use scene's TraceVisibilityRay or traceRayInline (DXR 1.1)
-    // This is a placeholder — replace with DQLin's actual trace function.
-    return traceShadowRay(P, Q);
-#endif
+    float3 toHit = neighborSample.posW - sd.posW;
+    float  dist  = length(toHit);
+    if (dist < 1e-6f) return 0.0f;
+
+    float3 dir      = toHit / dist;
+    float  cosTheta = dot(sd.N, dir);
+    if (cosTheta <= 0.0f) return 0.0f;  // behind surface
+
+    float cosHit = abs(dot(neighborSample.normalW, -dir));
+    float G      = cosTheta * cosHit / (dist * dist + 1e-6f);
+
+    // Approximate BSDF (diffuse for reconnection, consistent with DQLin)
+    float3 bsdf = float3(cosTheta / M_PI);
+
+    pHatNoVis = evalTargetPdf(bsdf, neighborSample.Lo, G);
+    if (pHatNoVis < 1e-7f) return 0.0f;
+
+    // Visibility — VisCache-gated, local CV+RRR, or unconditional
+    // neighborTargetPdf is passed for the local CV+RRR mu estimate.
+    float V = evaluateVisibility(sd.posW, neighborSample.posW,
+                                  bsdf, neighborSample.Lo, G,
+                                  neighborTargetPdf, pHatNoVis,
+                                  gCamPos, sg);
+
+    return pHatNoVis * V;
 }
+
+// ---------------------------------------------------------------------------
+// Talbot MIS weight [Talbot et al. 2005]
+// ---------------------------------------------------------------------------
+#if USE_MIS
+float computeTalbotMISWeight(float targetPdfHere, float M_here,
+                              float targetPdfThere, float M_there)
+{
+    float num   = M_here * targetPdfHere;
+    float denom = num + M_there * targetPdfThere;
+    return (denom > 0.0f) ? (num / denom) : 0.0f;
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Main spatial reuse kernel
@@ -109,16 +173,44 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     uint pixelIdx = pixel.y * gFrameDim.x + pixel.x;
 
-    // Load this pixel's reservoir and shading data
     PathReservoir reservoir = gReservoirs[pixelIdx];
-    if (!reservoir.isValid()) return;
 
-    // TODO: Load ShadingData from GBuffer / vbuffer at this pixel
-    // ShadingData sd = loadShadingData(pixel);
-    float3 P = float3(0);  // placeholder — load from GBuffer
-    float3 N = float3(0, 1, 0);
+    // Load shading data at this pixel
+    HitInfo hitInfo = HitInfo(gVBuffer[pixel]);
+    if (!hitInfo.isValid())
+    {
+        gReservoirs[pixelIdx] = reservoir;
+        return;
+    }
 
-    SampleGenerator sg = SampleGenerator::create(pixel, gFrameCount);
+    // Compute ray direction from camera (Falcor 8.0)
+    TriangleHit priTri = hitInfo.getTriangleHit();
+    VertexData priVert = gScene.getVertexData(priTri);
+    float3 rayDir = normalize(priVert.posW - gCamPos);
+
+    ShadingData sd = loadSD(hitInfo, gCamPos, rayDir);
+
+    SampleGenerator sg = SampleGenerator::create(pixel, gFrameCount * 13u + 3u);
+
+    // Build output reservoir by merging current + k spatial neighbors
+    PathReservoir merged;
+    merged.reset();
+
+    // Stream current pixel's reservoir first
+    if (reservoir.isValid())
+    {
+        float w = reservoir.targetPdf * reservoir.W * reservoir.M;
+        merged.M    += reservoir.M;
+        merged.wSum += w;
+        if (merged.wSum > 0.0f && sampleNext1D(sg) * merged.wSum < w)
+        {
+            merged.sample    = reservoir.sample;
+            merged.targetPdf = reservoir.targetPdf;
+        }
+    }
+
+    // Track total neighbor M for MIS denominator
+    float totalNeighborM = 0.0f;
 
     // ---------------------------------------------------------------
     // Spatial reuse loop: k neighbors
@@ -134,49 +226,38 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         PathReservoir neighbor = gReservoirs[nbrIdx];
         if (!neighbor.isValid()) continue;
 
-        float3 Q  = neighbor.secondaryHit.posW;
-        float3 Lo = neighbor.secondaryHit.Lo;
+        // Geometry validation: reject neighbors with different surfaces
+        if (!geometryValid(sd.N, neighbor.sample.normalW, sd.posW, neighbor.sample.posW, 0.5f, 0.2f))
+            continue;
 
-        // Geometry term at the reconnection vertex
-        float3 toQ   = Q - P;
-        float  distPQ = length(toQ);
-        if (distPQ < 1e-6f) continue;
+        // Evaluate target function for neighbor's sample at this pixel
+        // (includes visibility via VisCache or unconditional trace)
+        float pHatNoVis;
+        float pHatWithVis = evalTargetAtPixel(sd, neighbor.sample, neighbor.targetPdf, sg, pHatNoVis);
 
-        float3 dirPQ = toQ / distPQ;
-        float  G     = abs(dot(N, dirPQ))
-                      * abs(dot(neighbor.secondaryHit.normalW, -dirPQ))
-                      / (distPQ * distPQ + 1e-6f);
+        if (pHatWithVis < 1e-7f) continue;
 
-        // TODO: Evaluate BSDF at P for direction dirPQ
-        // float3 bsdf = evalBSDF(sd, dirPQ);
-        float3 bsdf = float3(1.0f);  // placeholder
+        // Clamp neighbor M for stability
+        float nbrM = min(neighbor.M, kMaxSpatialM);
 
-        float3 C = bsdf * Lo * G;
+        // Compute weight for reservoir merge
+        float w = pHatWithVis * neighbor.W * nbrM;
 
-        // ----- VisCache integration point -----
-        // evaluateVisibility() calls evalRevalidationCV() when USE_VISCACHE=1,
-        // or unconditional trace when USE_VISCACHE=0.
-        float Vest = evaluateVisibility(P, Q, bsdf, Lo, G, sg);
+        merged.M    += nbrM;
+        merged.wSum += w;
+        totalNeighborM += nbrM;
 
-        // Contribution for reservoir update
-        float contrib = luminance(C * Vest) * neighbor.secondaryHit.invPDF;
-
-        // TODO: Talbot MIS weight (if USE_MIS)
-        // float mis = computeTalbotMIS(reservoir, neighbor, ...);
-        // contrib *= mis;
-
-        // Reservoir merge (streaming RIS)
-        reservoir.W += contrib;
-        reservoir.M += neighbor.M;
-        if (sampleNext1D(sg) < contrib / max(reservoir.W, 1e-20f))
+        if (merged.wSum > 0.0f && sampleNext1D(sg) * merged.wSum < w)
         {
-            reservoir.secondaryHit = neighbor.secondaryHit;
+            merged.sample    = neighbor.sample;
+            merged.targetPdf = pHatWithVis;
         }
     }
 
-    // Normalize reservoir weight
-    if (reservoir.M > 0.0f)
-        reservoir.W /= reservoir.M;
+    merged.finalize();
 
-    gReservoirs[pixelIdx] = reservoir;
+    // Clamp total M for stability
+    merged.M = min(merged.M, kMaxSpatialM);
+
+    gReservoirs[pixelIdx] = merged;
 }

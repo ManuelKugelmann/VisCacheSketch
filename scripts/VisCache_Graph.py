@@ -25,19 +25,19 @@ def set_ablation(visCache, cfg):
 ABLATION_FULL = {}  # All features on — paper result
 
 ABLATION_MINUS_A = {   # Disable distance-gated LOD
-    "enableDistanceLOD": False,
+    "enableVisCacheDistanceLOD": False,
 }
 ABLATION_MINUS_B = {   # Disable variance-gated write depth
-    "enableVarianceGate": False,
+    "enableVisCacheVarianceGate": False,
 }
 ABLATION_MINUS_C = {   # Disable warp reduction (per-lane atomics)
-    "enableWarpReduction": False,
+    "enableVisCacheWarpReduction": False,
 }
 ABLATION_MINUS_D = {   # Disable inline CAS decay
-    "enableDecay": False,
+    "enableVisCacheDecay": False,
 }
 ABLATION_MINUS_E = {   # Disable pressure-scaled eviction
-    "enablePressureEvict": False,
+    "enableVisCachePressureEvict": False,
 }
 ABLATION_FINEST_ONLY = {   # Multilevel vs. finest-level-only comparison
     "minLevel": 2,
@@ -78,13 +78,13 @@ def render_graph_VisCache():
         "decayPeriodMax":  600,
         "minLevel":        0,
         "maxLevel":        2,
-        "enableGIRevalidation": True,
-        "enableLightSelection": True,
-        "enableWarpReduction":  True,
-        "enableVarianceGate":   True,
-        "enableDistanceLOD":    True,
-        "enableDecay":          True,
-        "enablePressureEvict":  True,
+        "enableVisCacheRevalidation":   True,
+        "enableVisCacheLightSelection": True,
+        "enableVisCacheWarpReduction":  True,
+        "enableVisCacheVarianceGate":   True,
+        "enableVisCacheDistanceLOD":    True,
+        "enableVisCacheDecay":          True,
+        "enableVisCachePressureEvict":  True,
     })
     set_ablation(visCache, ACTIVE_ABLATION)
     g.addPass(visCache, "VisCache")

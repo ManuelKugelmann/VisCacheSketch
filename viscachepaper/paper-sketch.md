@@ -2,6 +2,8 @@
 
 This is the markdown-based paper sketch for the VisCacheSketch project. Each section is maintained as a separate file for easier editing.
 
+> **CI auto-combines** all `sections/*.md` files (sorted by filename) into `paper-combined.md` via `.github/workflows/paper.yml`, then deploys an HTML preview to GitHub Pages. Edit individual section files — the combined output is generated automatically.
+
 ## Sections
 
 | # | Section | File |
@@ -23,14 +25,7 @@ This is the markdown-based paper sketch for the VisCacheSketch project. Each sec
 | 14 | [Conclusion](sections/14-conclusion.md) | `sections/14-conclusion.md` |
 | — | [References](sections/references.md) | `sections/references.md` |
 
-## Design documents
-
-Detailed implementation references (not paper prose, but the full technical design):
-
-- [Multilevel Visibility Hash Filter — Design Doc](multilevel-visibility-hash-filter.md)
-- [Multilevel Path-Space Hash Filter — Design Doc](multilevel-pathspace-hash-filter.md)
-
-## PDF generation (disabled)
+## PDF generation (dormant)
 
 The PDF generator (`generate_paper.py`) is preserved for future TeX-based publishing but is currently disabled in CI. To generate locally:
 

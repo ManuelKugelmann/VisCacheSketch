@@ -7,11 +7,11 @@ _Paper §15 — all configurations and metric targets_
 
 | Toggle | Parameter | Off behaviour | Ablation label |
 |--------|-----------|--------------|---------------|
-| A | `enableDistanceLOD` | Write all levels always | −A |
-| B | `enableVarianceGate` | Write fine levels in all regions | −B |
-| C | `enableWarpReduction` | Per-lane atomics at L0 | −C |
-| D | `enableDecay` | No counter decay | −D |
-| E | `enablePressureEvict` | Evict from step 0 | −E |
+| A | `enableVisCacheDistanceLOD` | Write all levels always | −A |
+| B | `enableVisCacheVarianceGate` | Write fine levels in all regions | −B |
+| C | `enableVisCacheWarpReduction` | Per-lane atomics at L0 | −C |
+| D | `enableVisCacheDecay` | No counter decay | −D |
+| E | `enableVisCachePressureEvict` | Evict from step 0 | −E |
 | — | `minLevel=maxLevel=2` | Finest level only | Finest-only |
 | — | `minLevel=maxLevel=0` | Coarsest level only | Coarsest-only |
 | — | VisCache disabled entirely | Full retrace baseline | No-cache |

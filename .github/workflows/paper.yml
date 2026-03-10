@@ -5,6 +5,7 @@ on:
     branches: ["main", "master"]
     paths:
       - 'viscachepaper/**'
+      - 'tests/test_paper_ablations.py'
       - '.github/workflows/paper.yml'
   pull_request:
     branches: ["main", "master"]
@@ -35,7 +36,25 @@ jobs:
           filters: |
             paper:
               - 'viscachepaper/**'
+              - 'tests/test_paper_ablations.py'
               - '.github/workflows/paper.yml'
+
+  paper-ablation-tests:
+    name: Paper Ablation Tests
+    needs: [changes]
+    if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run paper ablation validations
+        run: python tests/test_paper_ablations.py
 
   paper:
     name: Build Combined Markdown

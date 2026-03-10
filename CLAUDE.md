@@ -4,6 +4,10 @@
 
 VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denoising, built as Falcor render passes.
 
+## Project History
+
+See the **History** section at the top of `README.md`. The 2006 Diplomarbeit (`docs/references/Kugelmann2006_ThesisMK.pdf`, referred to as "thesismk") is the direct ancestor of this work — it established CV+RRR, spatial-hash caching, and the shadow ray reduction approach. This project extends that into a real-time system with multilevel hashing and ReSTIR integration.
+
 ## Falcor Subtree Policy
 
 - Falcor is in `Falcor/` (added as a git subtree, not a submodule)
@@ -22,9 +26,10 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 
 ## Paper Sketch Workflow
 
-- The paper sketch lives in `viscachepaper/paper-sketch.md` (index) with per-section files in `viscachepaper/sections/`.
-- Edit individual section files directly — no build step needed, markdown renders on GitHub.
-- The PDF generator (`viscachepaper/generate_paper.py`) is preserved for future TeX-based publishing but **disabled in CI**. To generate locally: `pip install reportlab && python viscachepaper/generate_paper.py /tmp/paper.pdf`
+- **`viscachepaper/sections/*.md`** are the current WIP paper content. Edit these directly.
+- `viscachepaper/paper-sketch.md` is just an index/TOC linking to the section files — not paper content itself.
+- CI (`paper.yml`) auto-combines `sections/*.md` (sorted by filename) into `paper-combined.md` and deploys an HTML preview to GitHub Pages.
+- **PDF generation is dormant.** `generate_paper.py` is preserved for future TeX-based publishing but disabled in CI and not actively maintained. To generate locally: `pip install reportlab && python viscachepaper/generate_paper.py /tmp/paper.pdf`
 - To show a PDF visually in chat, convert to PNG first:
   ```bash
   pdftoppm -png -r 200 -f 1 -l 1 /tmp/paper.pdf /tmp/page

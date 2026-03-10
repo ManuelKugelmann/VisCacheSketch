@@ -29,5 +29,11 @@ captures/
 *.exr
 *.hdr
 
+# Downloaded test scenes
+media/
+
+# Downloaded reference papers — tracked in git (LFS recommended for large PDFs)
+# docs/references/
+
 # Generated paper (built by CI, deployed to Pages)
 viscachepaper/paper-combined.md

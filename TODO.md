@@ -35,9 +35,20 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ## 2. Experiments & Ablation
 
+### 2.0 Setup
+- [x] Ablation capture script (`scripts/VisCache_Ablation.py` — 10 configs)
+- [x] Baseline capture script (`scripts/VisCache_Baselines.py` — 14 DI/GI/PT configs)
+- [x] Reference capture script (`scripts/VisCache_Reference.py` — 1024 spp)
+- [x] Stress test script (`scripts/VisCache_Stress.py` — flythrough)
+- [x] Scene download script (`scripts/download_scenes.sh` — Bistro, Sponza)
+- [x] Full paper runner (`scripts/run_paper_experiments.sh` — runs all of the above)
+- [x] Manual release workflow (`.github/workflows/release.yml` — timestamp+SHA versioning)
+- [ ] Download test scenes: `./scripts/download_scenes.sh`
+
 ### 2.1 Ablation Sweep (see `docs/ABLATION.md` for full matrix)
+Run: `./scripts/run_paper_experiments.sh` (or individual scripts below)
 - [ ] **CRITICAL** Run at least one informal Bistro profiling data point (blocks §15)
-- [ ] Full config baseline capture (Bistro + Sponza)
+- [ ] Full config baseline capture (Bistro + Sponza) — `scripts/VisCache_Baselines.py`
 - [ ] -A: distance-gated LOD off
 - [ ] -B: variance gate off (most important ablation)
 - [ ] -C: WaveMatch off (SM 6.5 comparison, RTX 3090/4090)
@@ -50,11 +61,13 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] **HIGH** Add multilevel vs. finest-level-only ablation row to paper table
 
 ### 2.2 Stress Tests
+Run: `scripts/VisCache_Stress.py`
 - [ ] Disocclusion: fast camera flythrough, measure frames to 80% hit rate
 - [ ] Variance spike duration after disocclusion
 - [ ] Peak shadow ray ratio during cold-start
 
 ### 2.3 Metrics & References
+Run: `scripts/VisCache_Reference.py`
 - [ ] Capture 1024 spp path tracer reference (Bistro, Sponza)
 - [ ] Per-pixel MSE vs. reference for each config
 - [ ] GPU timestamp breakdown: insert / lookup / decay ms
@@ -119,6 +132,40 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 
 ---
 
-## 4. Dependencies & Blockers
+## 4. Running All Paper Experiments
+
+```bash
+# 1. Build Falcor with VisCache plugins
+./setup.sh          # Linux
+# .\setup.bat       # Windows
+
+# 2. Download test scenes (Bistro ~3.2 GB, Sponza ~70 MB)
+./scripts/download_scenes.sh
+
+# 3. Run all experiments (smoke test → reference → baselines → ablation → stress)
+./scripts/run_paper_experiments.sh
+
+# Or run individual steps:
+./scripts/run_paper_experiments.sh --skip-stress --skip-reference   # baselines + ablation only
+./scripts/run_paper_experiments.sh --dry-run                       # preview commands
+
+# 4. Trigger a release build from any commit
+# GitHub → Actions → Release → Run workflow
+# Version: dev-YYYYMMDD-HHMMSS-<sha8>
+```
+
+Output structure:
+```
+captures/
+  reference/       1024 spp ground truth EXRs
+  baselines/       DI/GI/PT × vanilla/local/reval/lightsel/full
+  ablation/        A–E toggles, finest/coarsest-only, no-cache
+  stress/          Disocclusion flythrough (full_viscache + no_cache)
+  logs/            Per-experiment stdout/stderr logs
+```
+
+---
+
+## 5. Dependencies & Blockers
 
 **Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §15.

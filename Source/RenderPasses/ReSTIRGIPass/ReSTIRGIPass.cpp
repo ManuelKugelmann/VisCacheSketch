@@ -3,25 +3,17 @@
  *
  * Falcor 8.0 implementation — ReSTIR GI with VisCache revalidation.
  *
- * This is a port sketch of DQLin/ReSTIR_PT to Falcor 8.0. The core
+ * Port of DQLin/ReSTIR_PT (Falcor 5.2) to Falcor 8.0. The core
  * reservoir logic (initial sampling, temporal reuse, spatial reuse,
  * final shading) follows DQLin's original structure. The VisCache
  * integration replaces unconditional V(P,Q) shadow rays in spatial
  * reuse with CV+RRR gated calls (§11.3 / §12).
  *
- * TODO: Copy the full DQLin/ReSTIR_PT source into this skeleton.
- *       The upstream repo uses Falcor 5.2 — apply the API migration
- *       from docs/PORTING.md (global search-replace, ~30 min).
+ * DQLin/ReSTIR_PT paper: "Generalized Resampled Importance Sampling:
+ * Foundations of ReSTIR" (Lin et al., SIGGRAPH 2022).
  ***************************************************************************/
 
 #include "ReSTIRGIPass.h"
-
-// Reservoir struct size: must match Slang PathReservoir (see DQLin source)
-// secondaryHit (posW:12, N:12, Lo:12, invPDF:4) + reservoir (W:4, M:4, ...) = 64 bytes
-static constexpr size_t kReservoirSize = 64u;
-
-// Secondary hit data: posW:12, N:12, Lo:12, pad:28 = 64 bytes
-static constexpr size_t kSecondaryHitSize = 64u;
 
 // ============================================================================
 // Plugin registration (Falcor 8.0)
@@ -45,11 +37,13 @@ ReSTIRGIPass::ReSTIRGIPass(ref<Device> pDevice, const Properties& props)
     if (props.has("enableSpatialReuse"))  mReSTIRParams.enableSpatialReuse  = props["enableSpatialReuse"];
     if (props.has("enableMIS"))           mReSTIRParams.enableMIS           = props["enableMIS"];
 
-    // Deserialise VisCache params
-    if (props.has("visCacheEnabled"))         mVisCacheParams.enabled          = props["visCacheEnabled"];
-    if (props.has("visCacheContribThreshold")) mVisCacheParams.contribThreshold = props["visCacheContribThreshold"];
-    if (props.has("visCachePMin"))             mVisCacheParams.pMin             = props["visCachePMin"];
-    if (props.has("visCacheSymmetricCells"))   mVisCacheParams.symmetricCells   = props["visCacheSymmetricCells"];
+    // Deserialise VisCache params (independently toggleable for ablation)
+    if (props.has("enableVisCacheRevalidation"))     mVisCacheParams.enableVisCacheRevalidation    = props["enableVisCacheRevalidation"];
+    if (props.has("enableCVRRRRevalidation"))       mVisCacheParams.enableCVRRRRevalidation       = props["enableCVRRRRevalidation"];
+    if (props.has("enableVisCacheLightSelection"))   mVisCacheParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
+    if (props.has("visCacheContribThreshold")) mVisCacheParams.contribThreshold    = props["visCacheContribThreshold"];
+    if (props.has("visCachePMin"))             mVisCacheParams.pMin                = props["visCachePMin"];
+    if (props.has("visCacheSymmetricCells"))   mVisCacheParams.symmetricCells      = props["visCacheSymmetricCells"];
 }
 
 ref<ReSTIRGIPass> ReSTIRGIPass::create(ref<Device> pDevice, const Properties& props)
@@ -70,7 +64,9 @@ Properties ReSTIRGIPass::getProperties() const
     p["enableSpatialReuse"]  = mReSTIRParams.enableSpatialReuse;
     p["enableMIS"]           = mReSTIRParams.enableMIS;
 
-    p["visCacheEnabled"]          = mVisCacheParams.enabled;
+    p["enableVisCacheRevalidation"]    = mVisCacheParams.enableVisCacheRevalidation;
+    p["enableCVRRRRevalidation"]      = mVisCacheParams.enableCVRRRRevalidation;
+    p["enableVisCacheLightSelection"] = mVisCacheParams.enableVisCacheLightSelection;
     p["visCacheContribThreshold"] = mVisCacheParams.contribThreshold;
     p["visCachePMin"]             = mVisCacheParams.pMin;
     p["visCacheSymmetricCells"]   = mVisCacheParams.symmetricCells;
@@ -85,8 +81,8 @@ RenderPassReflection ReSTIRGIPass::reflect(const CompileData& compileData)
     RenderPassReflection r;
 
     // Inputs from GBuffer / PathTracer
-    r.addInput("vbuffer", "Visibility buffer (hit data)");
-    r.addInput("motionVectors", "Motion vectors for temporal reuse");
+    r.addInput("vbuffer", "Visibility buffer (packed hit info)");
+    r.addInput("motionVectors", "Motion vectors for temporal reuse").flags(RenderPassReflection::Field::Flags::Optional);
 
     // Output
     r.addOutput("color", "Indirect illumination").format(ResourceFormat::RGBA32Float);
@@ -134,7 +130,10 @@ void ReSTIRGIPass::createPasses()
 {
     DefineList defines;
     defines.add("NUM_SPATIAL_NEIGHBORS", std::to_string(mReSTIRParams.numSpatialNeighbors));
-    defines.add("USE_VISCACHE", mVisCacheParams.enabled ? "1" : "0");
+    defines.add("USE_VISCACHE", isVisCacheActive() ? "1" : "0");
+    defines.add("USE_VISCACHE_REVAL", mVisCacheParams.enableVisCacheRevalidation ? "1" : "0");
+    defines.add("USE_LOCAL_REVAL", mVisCacheParams.enableCVRRRRevalidation ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheParams.enableVisCacheLightSelection ? "1" : "0");
     defines.add("USE_TEMPORAL_REUSE", mReSTIRParams.enableTemporalReuse ? "1" : "0");
     defines.add("USE_SPATIAL_REUSE", mReSTIRParams.enableSpatialReuse ? "1" : "0");
     defines.add("USE_MIS", mReSTIRParams.enableMIS ? "1" : "0");
@@ -185,6 +184,9 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
 
     if (!pVBuffer || !pColorOutput) return;
 
+    // Camera position for VisCache LOD and distance calculations
+    float3 camPos = mpScene->getCamera()->getPosition();
+
     // ----------------------------------------------------------------
     // Retrieve VisCache buffers from InternalDictionary (if available)
     // VisCache must run before this pass in the render graph.
@@ -203,6 +205,7 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
         vars["gSecondaryHits"] = mpSecondaryHitBuffer;
         vars["PerFrameCB"]["gFrameCount"] = mFrameCount;
         vars["PerFrameCB"]["gFrameDim"]   = mFrameDim;
+        vars["PerFrameCB"]["gCamPos"]     = camPos;
 
         mpInitialSamplingPass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
     }
@@ -210,15 +213,18 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     // ----------------------------------------------------------------
     // Pass 2: Temporal reuse
     // ----------------------------------------------------------------
-    if (mReSTIRParams.enableTemporalReuse && mFrameCount > 0)
+    if (mReSTIRParams.enableTemporalReuse && mFrameCount > 0 && pMotionVec)
     {
         auto vars = mpTemporalReusePass->getRootVar();
         mpScene->bindShaderData(vars["gScene"]);
+        vars["gVBuffer"]            = pVBuffer;
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gPrevReservoirs"]     = mpPrevReservoirBuffer;
         vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
         vars["gMotionVectors"]      = pMotionVec;
-        vars["PerFrameCB"]["gFrameDim"] = mFrameDim;
+        vars["PerFrameCB"]["gFrameDim"]   = mFrameDim;
+        vars["PerFrameCB"]["gFrameCount"] = mFrameCount;
+        vars["PerFrameCB"]["gCamPos"]     = camPos;
 
         mpTemporalReusePass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
     }
@@ -236,20 +242,25 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     {
         auto vars = mpSpatialReusePass->getRootVar();
         mpScene->bindShaderData(vars["gScene"]);
-        vars["gReservoirs"]         = mpReservoirBuffer;
-        vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
+        vars["gVBuffer"]                = pVBuffer;
+        vars["gReservoirs"]             = mpReservoirBuffer;
+        vars["gSecondaryHits"]          = mpSecondaryHitBuffer;
         vars["PerFrameCB"]["gFrameDim"]       = mFrameDim;
         vars["PerFrameCB"]["gSpatialRadius"]  = mReSTIRParams.spatialRadius;
         vars["PerFrameCB"]["gFrameCount"]     = mFrameCount;
+        vars["PerFrameCB"]["gCamPos"]         = camPos;
 
         // VisCache bindings (ignored if USE_VISCACHE == 0)
-        if (mVisCacheParams.enabled && mpVisCacheTable)
+        if (isVisCacheActive() && mpVisCacheTable)
         {
-            vars["gVisCacheTable"]      = mpVisCacheTable;
-            vars["gTableCapacity"] = mVisCacheCapacity;
-            vars["gVarThreshold"]  = mVisCacheParams.contribThreshold;
-            vars["gPMin"]          = mVisCacheParams.pMin;
-            vars["gFireflyBudget"] = mVisCacheParams.contribThreshold;
+            bindVisCacheToPass(mpSpatialReusePass);
+        }
+
+        // Local CV+RRR bindings (no hash table, uses reservoir-local mu)
+        if (mVisCacheParams.enableCVRRRRevalidation)
+        {
+            vars["LocalRevalCB"]["gLocalRevalContribThreshold"] = mVisCacheParams.contribThreshold;
+            vars["LocalRevalCB"]["gLocalRevalPMin"]             = mVisCacheParams.pMin;
         }
 
         mpSpatialReusePass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
@@ -261,10 +272,13 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
     {
         auto vars = mpFinalShadingPass->getRootVar();
         mpScene->bindShaderData(vars["gScene"]);
+        vars["gVBuffer"]            = pVBuffer;
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
         vars["gColorOutput"]        = pColorOutput;
-        vars["PerFrameCB"]["gFrameDim"] = mFrameDim;
+        vars["PerFrameCB"]["gFrameDim"]   = mFrameDim;
+        vars["PerFrameCB"]["gFrameCount"] = mFrameCount;
+        vars["PerFrameCB"]["gCamPos"]     = camPos;
 
         mpFinalShadingPass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
     }
@@ -283,20 +297,57 @@ void ReSTIRGIPass::retrieveVisCacheBuffers(const RenderData& rd)
 {
     const auto& dict = rd.getDictionary();
 
-    if (mVisCacheParams.enabled &&
+    // Dictionary keys match VisCache.cpp::execute() exports
+    if (isVisCacheActive() &&
         dict.keyExists("vhfTable") && dict.keyExists("vhfCapacity"))
     {
-        mpVisCacheTable   = dict["vhfTable"];
-        mVisCacheCapacity = dict["vhfCapacity"];
+        mpVisCacheTable       = dict["vhfTable"];
+        mVisCacheCapacity     = dict["vhfCapacity"];
+        mVisCacheVarThreshold = dict.keyExists("vhfVarThreshold")
+            ? dict["vhfVarThreshold"].operator float() : mVisCacheParams.contribThreshold;
+        mVisCachePMin         = dict.keyExists("vhfPMin")
+            ? dict["vhfPMin"].operator float() : mVisCacheParams.pMin;
+        mVisCacheBootThreshold = dict.keyExists("vhfBootThreshold")
+            ? dict["vhfBootThreshold"].operator uint32_t() : 32u;
+        mVisCacheFireflyBudget = dict.keyExists("vhfFireflyBudget")
+            ? dict["vhfFireflyBudget"].operator float() : mVisCacheParams.contribThreshold;
+
+        // VisCache pass is authoritative for feature flags — override local
+        if (dict.keyExists("vhfEnableRevalidation"))
+            mVisCacheParams.enableVisCacheRevalidation = dict["vhfEnableRevalidation"];
+        if (dict.keyExists("vhfEnableLightSelection"))
+            mVisCacheParams.enableVisCacheLightSelection = dict["vhfEnableLightSelection"];
     }
     else
     {
-        mpVisCacheTable   = nullptr;
-        mVisCacheCapacity = 0u;
-        if (mVisCacheParams.enabled)
+        mpVisCacheTable        = nullptr;
+        mVisCacheCapacity      = 0u;
+        mVisCacheVarThreshold  = 0.1f;
+        mVisCachePMin          = 0.05f;
+        mVisCacheBootThreshold = 32u;
+        mVisCacheFireflyBudget = 0.05f;
+        if (isVisCacheActive())
             logWarning("ReSTIRGIPass: VisCache buffers not found in dictionary. "
                        "Ensure VisCache runs before ReSTIRGIPass in the render graph.");
     }
+}
+
+// ============================================================================
+// Bind VisCache buffers to the spatial reuse pass
+// ============================================================================
+void ReSTIRGIPass::bindVisCacheToPass(const ref<ComputePass>& pass)
+{
+    // Binding names must match VisCache.slang declarations:
+    //   RWStructuredBuffer<VHFEntry> gVHFTable;
+    //   cbuffer VisCacheParams { gTableCapacity, gBootThreshold,
+    //       gVarThreshold, gPMin, gFireflyBudget, ... };
+    auto vars = pass->getRootVar();
+    vars["gVHFTable"]                              = mpVisCacheTable;
+    vars["VisCacheParams"]["gTableCapacity"]        = mVisCacheCapacity;
+    vars["VisCacheParams"]["gBootThreshold"]         = mVisCacheBootThreshold;
+    vars["VisCacheParams"]["gVarThreshold"]          = mVisCacheVarThreshold;
+    vars["VisCacheParams"]["gPMin"]                  = mVisCachePMin;
+    vars["VisCacheParams"]["gFireflyBudget"]         = mVisCacheFireflyBudget;
 }
 
 // ============================================================================
@@ -326,9 +377,12 @@ void ReSTIRGIPass::renderUI(Gui::Widgets& widget)
     dirty |= widget.checkbox("Talbot MIS",       mReSTIRParams.enableMIS);
     widget.separator();
 
-    // VisCache integration
-    widget.checkbox("VisCache revalidation", mVisCacheParams.enabled);
-    if (mVisCacheParams.enabled)
+    // VisCache integration — independently toggleable for ablation
+    widget.text("VisCache (ablation toggles)");
+    dirty |= widget.checkbox("VisCache CV+RRR revalidation (S11.3)",     mVisCacheParams.enableVisCacheRevalidation);
+    dirty |= widget.checkbox("CV+RRR revalidation (reservoir mu, no hash table)", mVisCacheParams.enableCVRRRRevalidation);
+    dirty |= widget.checkbox("VisCache light selection (S11.1)",          mVisCacheParams.enableVisCacheLightSelection);
+    if (isVisCacheActive() || mVisCacheParams.enableCVRRRRevalidation)
     {
         widget.var("Contrib threshold",   mVisCacheParams.contribThreshold, 0.001f, 0.5f, 0.005f);
         widget.var("pMin (RR floor)",     mVisCacheParams.pMin,             0.01f,  0.5f, 0.005f);

@@ -57,21 +57,37 @@ public:
     };
 
     // -----------------------------------------------------------------------
-    // VisCache integration parameters (§11.3 / §12)
+    // VisCache / CV+RRR integration — each feature independently toggleable.
+    //
+    // Ablation matrix:
+    //   All off:                Vanilla ReSTIR GI (unconditional shadow rays).
+    //   enableLocalReval only:  CV+RRR using reservoir-local mu (no hash table).
+    //                           mu = neighbor.targetPdf / pHatNoVis; no extra memory.
+    //   enableRevalidation:     CV+RRR using VisCache hash table mu (§11.3).
+    //   enableLightSelection:   Cached mu in NEE target function (§11.1).
+    //   enableRevalidation + enableLightSelection: Full VisCache integration.
     // -----------------------------------------------------------------------
     struct VisCacheParams
     {
-        bool     enabled              = true;
-        float    contribThreshold     = 0.01f;  ///< Minimum residual to force trace
-        float    pMin                 = 0.05f;  ///< RR floor for revalidation
-        bool     symmetricCells       = false;  ///< Use symmetric cell sizes for GI (§5.2)
+        bool     enableVisCacheRevalidation  = false;  ///< CV+RRR via VisCache hash table (§11.3)
+        bool     enableCVRRRRevalidation   = false;  ///< CV+RRR via reservoir-local mu (no hash table)
+        bool     enableVisCacheLightSelection = false;  ///< Cached mu in light weighting (§11.1)
+        float    contribThreshold      = 0.01f;  ///< Minimum residual to force trace
+        float    pMin                  = 0.05f;  ///< RR floor for revalidation
+        bool     symmetricCells        = false;  ///< Symmetric cell sizes for GI (§5.2)
     };
+
+    /// True if any feature needs the VisCache hash table.
+    bool isVisCacheActive() const { return mVisCacheParams.enableVisCacheRevalidation || mVisCacheParams.enableVisCacheLightSelection; }
+    /// True if any CV+RRR variant is active (hash table or local).
+    bool isAnyRevalActive() const { return mVisCacheParams.enableVisCacheRevalidation || mVisCacheParams.enableCVRRRRevalidation; }
 
     ReSTIRGIPass(ref<Device> pDevice, const Properties& props);
 
 private:
     void createPasses();
     void retrieveVisCacheBuffers(const RenderData& rd);
+    void bindVisCacheToPass(const ref<ComputePass>& pass);
 
     // -----------------------------------------------------------------------
     // Compute passes
@@ -82,8 +98,13 @@ private:
     ref<ComputePass>  mpFinalShadingPass;
 
     // -----------------------------------------------------------------------
-    // Reservoir buffers
+    // Reservoir buffers (sizes must match ReSTIRGICommon.slang structs)
+    // PathReservoir: SecondaryHit (64B) + W,M,wSum,targetPdf (16B) = 80 bytes
+    // SecondaryHit: posW(12) + normalW(12) + Lo(12) + invPDF(4) + wi(12) + pad(4) = 56 bytes
     // -----------------------------------------------------------------------
+    static constexpr size_t kReservoirSize    = 80u;
+    static constexpr size_t kSecondaryHitSize = 56u;
+
     ref<Buffer>       mpReservoirBuffer;       ///< Current-frame reservoirs
     ref<Buffer>       mpPrevReservoirBuffer;   ///< Previous-frame (temporal)
     ref<Buffer>       mpSecondaryHitBuffer;    ///< Secondary hit data (Lo, posW, N)
@@ -92,14 +113,18 @@ private:
     // VisCache: retrieved from InternalDictionary each frame
     // -----------------------------------------------------------------------
     ref<Buffer>       mpVisCacheTable;
-    uint32_t          mVisCacheCapacity = 0u;
+    uint32_t          mVisCacheCapacity      = 0u;
+    float             mVisCacheVarThreshold  = 0.1f;
+    float             mVisCachePMin          = 0.05f;
+    uint32_t          mVisCacheBootThreshold = 32u;
+    float             mVisCacheFireflyBudget = 0.05f;
 
     // -----------------------------------------------------------------------
     // State
     // -----------------------------------------------------------------------
     ref<Scene>        mpScene;
     ReSTIRParams      mReSTIRParams;
-    VisCacheParams       mVisCacheParams;
+    VisCacheParams    mVisCacheParams;
     uint2             mFrameDim = { 0, 0 };
     uint32_t          mFrameCount = 0u;
 };

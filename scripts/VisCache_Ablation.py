@@ -17,15 +17,15 @@ kCaptureDir    = "captures/ablation"
 
 ABLATION_CONFIGS = [
     ("full",         {}),
-    ("minus_A",      {"enableDistanceLOD":   False}),
-    ("minus_B",      {"enableVarianceGate":  False}),
-    ("minus_C",      {"enableWarpReduction": False}),
-    ("minus_D",      {"enableDecay":         False}),
-    ("minus_E",      {"enablePressureEvict": False}),
-    ("minus_AB",     {"enableDistanceLOD":   False, "enableVarianceGate": False}),
+    ("minus_A",      {"enableVisCacheDistanceLOD":   False}),
+    ("minus_B",      {"enableVisCacheVarianceGate":  False}),
+    ("minus_C",      {"enableVisCacheWarpReduction": False}),
+    ("minus_D",      {"enableVisCacheDecay":         False}),
+    ("minus_E",      {"enableVisCachePressureEvict": False}),
+    ("minus_AB",     {"enableVisCacheDistanceLOD":   False, "enableVisCacheVarianceGate": False}),
     ("finest_only",  {"minLevel": 2, "maxLevel": 2}),
     ("coarsest_only",{"minLevel": 0, "maxLevel": 0}),
-    ("no_cache",     {"enableGIRevalidation": False, "enableLightSelection": False}),
+    ("no_cache",     {"enableVisCacheRevalidation": False, "enableVisCacheLightSelection": False}),
 ]
 
 
@@ -45,9 +45,10 @@ def build_base_graph():
 def apply_ablation(graph, config_dict):
     visCache = graph.getPass("VisCache")
     # Reset to full config first
-    for attr in ["enableDistanceLOD", "enableVarianceGate", "enableWarpReduction",
-                 "enableDecay", "enablePressureEvict", "enableGIRevalidation",
-                 "enableLightSelection"]:
+    for attr in ["enableVisCacheDistanceLOD", "enableVisCacheVarianceGate",
+                 "enableVisCacheWarpReduction", "enableVisCacheDecay",
+                 "enableVisCachePressureEvict", "enableVisCacheRevalidation",
+                 "enableVisCacheLightSelection"]:
         setattr(visCache, attr, True)
     visCache.minLevel = 0
     visCache.maxLevel = 2
