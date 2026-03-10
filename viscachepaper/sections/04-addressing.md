@@ -8,7 +8,7 @@ Quantization uses absolute cell-size division: int3(floor(pos / cell_size)). No 
 
 Jitter uses pcg3d [Jarzynski & Olano, 2020], seeded from the unquantized position bits asuint(pos). Each surface point gets deterministic but spatially decorrelated jitter — a fixed world-space point always maps to the same cell, but nearby points near a cell boundary may map to different cells.
 
-This is the key departure from Binder et al. [2018], who seed jitter from the preliminary cell index floor(pos/cell_size). Their approach maximizes samples per cell but creates sharp step functions at (irregularly placed) cell boundaries — a systematic, persistent bias that does not diminish with accumulation.
+This is the key departure from Binder et al. [2018], whose jitter is shared within a cell (ensuring all positions in one cell receive the same displacement). This maximizes samples per cell but creates sharp step functions at (irregularly placed) cell boundaries — a systematic, persistent bias that does not diminish with accumulation.
 
 **The jitter *is* the filter.** Position-seeded jitter gives probabilistic cell membership near boundaries: a surface point at distance d from a cell edge has probability d/cell_size of mapping to the adjacent cell. Across many samples, this produces an intrinsic box filter of width cell_size centered on the boundary. The filter requires no explicit smoothing pass, no bilateral weights, no neighbor polling — it emerges directly from the addressing scheme. The marginal variance increase from boundary dilution is noise that reduces with sample count, while Binder's boundary steps are irreducible bias. Eliminating bias at the cost of slightly more reducible variance is the standard Monte Carlo trade-off — the same principle that makes stochastic sampling preferable to regular grids.
 
@@ -24,7 +24,7 @@ With level-in-key, a coarse L0 entry and a fine L2 entry for the same spatial re
 
 ## 4.4 Collision Detection
 
-Fingerprint uses the same jittered+quantized coordinates as the address but a different hash function [Binder et al., 2018]. Probe sequence: double hashing with fingerprint as h2. The fingerprint detects collisions at lookup time: if the stored fingerprint does not match, the entry belongs to a different key. False positives (two different keys producing identical fingerprint and table slot) are possible but rare — at 32-bit fingerprint, the probability is ~2⁻³² per probe step.
+Fingerprint uses the same jittered+quantized coordinates as the address but a different hash function [Binder et al., 2018]. Binder et al. use linear probing; we replace it with double hashing using the fingerprint as h2, which distributes probe chains more uniformly under high load. The fingerprint detects collisions at lookup time: if the stored fingerprint does not match, the entry belongs to a different key. False positives (two different keys producing identical fingerprint and table slot) are possible but rare — at 32-bit fingerprint, the probability is ~2⁻³² per probe step.
 
 ## 4.5 Infinite Endpoints
 

@@ -309,7 +309,7 @@ git subtree push --prefix=Falcor falcor my-branch
 | Keller 1997 | Instant Radiosity — original 2006 test case |
 | Gautron 2020, 2021 | LOD in hash key, lock-free GPU hash updates |
 | Stotko et al. 2025 (MrHash) | Independent: variance-driven resolution in flat hash (TSDF domain) |
-| Binder et al. 2018 | Spatial hashing, jitter-quantize, double-hash probe |
+| Binder et al. 2018 | Spatial hashing, jitter-quantize, fingerprint collision detection |
 | Lin et al. 2022 (GRIS/ReSTIR_PT) | Essential baseline for §11.3 Table 3 ground truth |
 | Bokšanský & Meister 2025 (JCGT) | Concurrent — neural visibility cache for light selection |
 | Liu et al. 2025 (SIGGRAPH) | Orthogonal — Reservoir Splatting for temporal reuse |

@@ -1,6 +1,6 @@
 # References
 
-- [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Path Space Filtering." *GPU Zen 2*, 2018.
+- [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Fast Path Space Filtering by Jittered Spatial Hashing." *ACM SIGGRAPH Talks*, 2018. Extended version: "Massively Parallel Path Space Filtering." *arXiv:1902.05942*, 2019.
 
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
