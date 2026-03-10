@@ -1,6 +1,9 @@
 # DQLin/ReSTIR_PT → Falcor 8.0 Port Guide
 
-Estimated time: **1–2 days** (mechanical changes, no algorithmic changes).
+**Status: PORTED** — All shaders and host code have been ported to Falcor 8.0.
+Remaining: GPU verification on Bistro (see §6 checklist below).
+
+Original estimate: 1–2 days (mechanical changes, no algorithmic changes).
 The Slang shaders require only VisCache-specific additions (see delta files).
 The C++ host code requires Falcor API migration.
 

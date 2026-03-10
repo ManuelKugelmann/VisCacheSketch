@@ -3,6 +3,7 @@ add_plugin(ReSTIRGIPass)
 target_sources(ReSTIRGIPass PRIVATE
     ReSTIRGIPass.h
     ReSTIRGIPass.cpp
+    ReSTIRGICommon.slang
     InitialSampling.cs.slang
     TemporalReuse.cs.slang
     SpatialReuse.cs.slang
