@@ -28,6 +28,6 @@ Note that this integration is not specific to ReSTIR GI. Any path-reuse algorith
 |---|---|---|---|
 | In target (selection) | M candidates | If μ>0 | Feedback loop |
 | Post-shading | ~88% of 1/px | Trivially | Minimal |
-| GI revalidation | ~85% of k/px | Pred+corr | Cold on disocclusion |
+| GI revalidation | ~85% of k/px | CV+VRRR | Cold on disocclusion |
 
 > **Table 2.** Cache insertion points. All three work with the same hash table. The post-shading and revalidation points are algorithm-agnostic — they apply wherever a pairwise visibility query occurs.
