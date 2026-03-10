@@ -1,6 +1,6 @@
 # Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
 
-**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](viscachepaper/paper-combined.md)** | **[2006 Diplomarbeit](docs/ThesisMK.pdf)**
+**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.md)** | **[2006 Diplomarbeit](docs/ThesisMK.pdf)**
 
 **Author:** Manuel Kugelmann
 **Target venue:** EGSR / HPG 2026
