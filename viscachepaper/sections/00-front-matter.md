@@ -9,18 +9,11 @@
 
 ### Abstract
 
-We present a world-space visibility cache
-that predicts binary shadow-ray outcomes
-and corrects errors stochastically,
-yielding an unbiased estimator regardless of cache quality.
-The cache is a single flat hash table
-with 8-byte entries, lock-free atomic updates,
-multilevel resolution without indirection,
-and variance derived for free from the Bernoulli mean.
-It is algorithm-agnostic;
-we demonstrate it with ReSTIR DI and GI.
-On Bistro exterior, shadow rays drop by
-**##%** (direct) and **##%** (GI revalidation),
-with no measurable bias.
+A flat, multilevel spatial hash table (8-byte entries, lock-free atomics)
+caches binary visibility predictions in world space
+and corrects them stochastically to keep the estimator unbiased.
+Demonstrated with ReSTIR DI/GI on Bistro exterior:
+**##%** fewer shadow rays (direct), **##%** (GI revalidation),
+no measurable bias.
 
 **Keywords:** visibility caching, shadow rays, spatial hashing, prediction-with-correction, adaptive sampling, real-time rendering, collision handling
