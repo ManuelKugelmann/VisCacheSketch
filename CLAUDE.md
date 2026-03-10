@@ -22,9 +22,9 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 
 ## Paper Sketch Workflow
 
-- The paper sketch lives in `viscachepaper/paper-sketch.md` (index) with per-section files in `viscachepaper/sections/`.
-- CI (`paper.yml`) auto-combines `sections/*.md` into `paper-combined.md` and deploys an HTML preview to GitHub Pages.
-- Edit individual section files directly — no build step needed, markdown renders on GitHub.
+- **`viscachepaper/sections/*.md`** are the current WIP paper content. Edit these directly.
+- `viscachepaper/paper-sketch.md` is just an index/TOC linking to the section files — not paper content itself.
+- CI (`paper.yml`) auto-combines `sections/*.md` (sorted by filename) into `paper-combined.md` and deploys an HTML preview to GitHub Pages.
 - **PDF generation is dormant.** `generate_paper.py` is preserved for future TeX-based publishing but disabled in CI and not actively maintained. To generate locally: `pip install reportlab && python viscachepaper/generate_paper.py /tmp/paper.pdf`
 - To show a PDF visually in chat, convert to PNG first:
   ```bash
