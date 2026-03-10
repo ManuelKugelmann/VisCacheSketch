@@ -14,6 +14,8 @@
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
 
+- [Keller 1997] A. Keller. "Instant Radiosity." *SIGGRAPH '97*, pp. 49–56, 1997.
+
 - [Kugelmann 2006] M. Kugelmann. "Efficient Adaptive Global Illumination Algorithms." Diplomarbeit, Universität Ulm, 2006. Supervisor: A. Keller.
 
 - [Lin et al. 2022] D. Lin et al. "Generalized Resampled Importance Sampling: Foundations of ReSTIR." *ACM Trans. Graph.*, 41(4), 2022.
@@ -27,6 +29,8 @@
 - [Popov et al. 2013] S. Popov, R. Ramamoorthi, F. Durand, and G. Drettakis. "Adaptive Quantization Visibility Caching." *Eurographics Symposium on Rendering*, 2013.
 
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
+
+- [Szécsi et al. 2003] L. Szécsi, L. Szirmay-Kalos, and C. Kelemen. "Variance Reduction for Russian Roulette." *Journal of WSCG*, 11(1), 2003.
 
 - [Szirmay-Kalos et al. 2005] L. Szirmay-Kalos, G. Antal, and M. Sbert. "Go with the Winners Strategy in Path Tracing." *Journal of WSCG*, 13:49–56, 2005.
 
