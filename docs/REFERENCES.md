@@ -127,16 +127,41 @@ Proposes returning a control variate value on RR termination instead of zero. Ku
 
 ## Scenes used across papers
 
-| Scene | Used by | Notes |
-|-------|---------|-------|
-| **Bistro** (Amazon Lumberyard) | ReSTIR DI, GI, PT, Bokšanský 2025, Liu 2025, Binder 2019 | Primary benchmark |
-| **Sponza** (Crytek) | Path Space Filtering, ReSTIR GI | Single dominant light |
-| **Emerald Square** | ReSTIR DI, Area ReSTIR, Bokšanský 2025 | Large outdoor, many lights |
-| **Zero Day** (NVIDIA) | ReSTIR DI, ReSTIR PT, Liu 2025 | Dynamic scene |
-| **Country Kitchen** | ReSTIR GI | Interior, indirect dominant |
-| **Living Room** | ReSTIR GI | Interior |
-| **Cornell Box** | Many (validation) | Simple, analytic reference |
-| **San Miguel** | Binder 2019, Popov 2013 | Complex outdoor |
-| **Arcade** (Falcor bundled) | Falcor examples | Ships with Falcor |
+### Cross-paper scene matrix
 
-For scene download: `./scripts/download_scenes.sh`
+| Scene | ReSTIR DI | ReSTIR GI | GRIS/PT | NVC 2025 | Liu 2025 | Binder 2019 | Popov 2013 | Source |
+|-------|:---------:|:---------:|:-------:|:--------:|:--------:|:-----------:|:----------:|--------|
+| **Bistro Interior** | | | x | x | | x | | [NVIDIA ORCA](https://developer.nvidia.com/orca/amazon-lumberyard-bistro) |
+| **Bistro Exterior** | | | | x | | | | NVIDIA ORCA |
+| **Sponza** | | | | x | | | | [Crytek](https://casual-effects.com/data/) |
+| **Zero Day** | x | | x | x | x | | | NVIDIA ORCA |
+| **Kitchen** | | x | x | x | | | | [Bitterli resources](https://benedikt-bitterli.me/resources/) |
+| **VeachAjar** | | | x | | | | | Bitterli resources |
+| **San Miguel** | | | x | | | x | | Bitterli resources |
+| **Emerald Square** | x | | | | | | | NVIDIA ORCA |
+| **Subway** | | | | x | | | | NVIDIA |
+| **Living Room** | | x | | | | | | Bitterli resources |
+| **Carousel** | | | x | | | | | |
+| **Opera House** | | | x | | | | | |
+| **Cornell Box** | | | | | | | | Bundled / analytic |
+| **Arcade** | | | | | | | | Falcor bundled |
+
+### Priority scenes for VisCache comparison
+
+These appear in 3+ comparison papers and should be our primary benchmarks:
+
+1. **Bistro Interior** — GRIS, NVC, Binder. Complex lighting, many emitters. **Primary benchmark.**
+2. **Zero Day** — ReSTIR DI, GRIS, NVC, Liu 2025. Dynamic emissives. Tests cache invalidation.
+3. **Kitchen** (Country Kitchen) — ReSTIR GI, GRIS, NVC. Interior, indirect-dominant. Tests §11.3 GI revalidation.
+4. **Sponza** — NVC, path space filtering. Single dominant light. Tests DI efficiency.
+
+### Scene sources
+
+| Source | URL | Notes |
+|--------|-----|-------|
+| NVIDIA ORCA | [developer.nvidia.com/orca](https://developer.nvidia.com/orca) | Bistro, Emerald Square, Zero Day — includes Falcor `.pyscene` |
+| Bitterli Resources | [benedikt-bitterli.me/resources](https://benedikt-bitterli.me/resources/) | 32 scenes (Tungsten/pbrt). Falcor has pbrt-v4 importer |
+| Casual Effects | [casual-effects.com/data](https://casual-effects.com/data/) | Sponza, San Miguel mirrors |
+| Falcor bundled | `Falcor/media/Arcade/` | Arcade sample scene |
+
+For automated download of Bistro + Sponza: `./scripts/download_scenes.sh`
