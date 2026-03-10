@@ -160,8 +160,6 @@ closing the loop between cache quality and trace rate.
 By narrowing to binary visibility, we exploit Bernoulli structure:
 var = μ(1−μ) is free from the mean alone,
 requiring no separate accumulator.
-We do not claim the CV+RR math as a contribution —
-it is common technique.
 What we add is a second use of the same variance signal:
 write-depth gating (Sec. 5) drives spatial resolution
 in addition to correction rate,
