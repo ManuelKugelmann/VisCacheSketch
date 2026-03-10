@@ -35,7 +35,7 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 ## CI
 
 - Workflows (separate, path-scoped triggers):
-  - `.github/workflows/paper.yml` — Paper PDF build + GitHub Pages deploy (`viscachepaper/`) **(disabled — manual dispatch only)**
+  - `.github/workflows/paper.yml` — Combines `viscachepaper/sections/*.md` into `paper-combined.md`, deploys to GitHub Pages, comments on PRs (PDF generation preserved but commented out for future TeX publishing)
   - `.github/workflows/validate.yml` — Algorithm validation tests (`tests/`, `Source/RenderPasses/`)
   - `.github/workflows/build.yml` — Binary builds + release (`Source/`, `Falcor/`, `scripts/`, `CMakeLists.txt`, `setup.*`)
 - Runs on: `ubuntu-22.04` (Linux/GCC), `windows-2022` (VS2022 + Ninja/MSVC)

@@ -1,16 +1,14 @@
-name: Paper PDF (disabled — using markdown sketch, will re-enable for TeX)
+name: Paper Sketch
 
-# Disabled: PDF generation retired in favour of markdown sketch.
-# Re-enable when switching to TeX-based publishing.
 on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'viscachepaper/**'
+      - '.github/workflows/paper.yml'
+  pull_request:
+    branches: ["main", "master"]
   workflow_dispatch:
-  # push:
-  #   branches: ["main", "master"]
-  #   paths:
-  #     - 'viscachepaper/**'
-  #     - '.github/workflows/paper.yml'
-  # pull_request:
-  #   branches: ["main", "master"]
 
 concurrency:
   group: paper-${{ github.head_ref || github.ref }}
@@ -23,7 +21,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  # Fast check — always visible in PR, skips build if no paper changes
   changes:
     name: Detect Changes
     runs-on: ubuntu-latest
@@ -41,7 +38,7 @@ jobs:
               - '.github/workflows/paper.yml'
 
   paper:
-    name: Build Paper PDF
+    name: Build Combined Markdown
     needs: [changes]
     if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
@@ -49,38 +46,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install reportlab
-
-      - name: Generate paper PDF
-        env:
-          GITHUB_SHA: ${{ github.sha }}
-        run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
-
-      - name: Set PDF size
+      - name: Combine sections into single markdown
         run: |
-          SIZE=$(ls -lh viscachepaper/paper-draft.pdf | awk '{print $5}')
-          echo "PDF_SIZE=${SIZE}" >> $GITHUB_ENV
+          python3 viscachepaper/combine_paper.py viscachepaper/paper-combined.md
+          LINES=$(wc -l < viscachepaper/paper-combined.md)
+          echo "PAPER_LINES=${LINES}" >> $GITHUB_ENV
+          echo "Combined paper: ${LINES} lines"
 
       - name: Prepare Pages artifact
         run: |
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/latest
-          cp viscachepaper/paper-draft.pdf _site/latest/paper-draft.pdf
+          cp viscachepaper/paper-combined.md _site/latest/paper.md
           cp viscachepaper/index.html _site/index.html
 
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            # Main: update stable root PDF
-            cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+            cp viscachepaper/paper-combined.md _site/paper.md
           else
-            # PR: preserve stable root PDF from current Pages deployment
-            curl -fsSL "${PAGES_URL}/paper-draft.pdf" -o _site/paper-draft.pdf \
-              || cp viscachepaper/paper-draft.pdf _site/paper-draft.pdf
+            curl -fsSL "${PAGES_URL}/paper.md" -o _site/paper.md \
+              || cp viscachepaper/paper-combined.md _site/paper.md
           fi
 
       - name: Upload Pages artifact
@@ -91,25 +75,33 @@ jobs:
       - name: Job summary
         run: |
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          echo "## Paper Draft" >> $GITHUB_STEP_SUMMARY
-          echo "Built successfully (${PDF_SIZE})." >> $GITHUB_STEP_SUMMARY
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          REPO="${{ github.repository }}"
+          echo "## Paper Sketch" >> $GITHUB_STEP_SUMMARY
+          echo "Combined markdown built (${PAPER_LINES} lines)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [Latest PDF](${PAGES_URL}/latest/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stable PDF (main)](${PAGES_URL}/paper-draft.pdf)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Latest (branch)](${PAGES_URL}/latest/paper.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stable (main)](${PAGES_URL}/paper.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [View in repo](https://github.com/${REPO}/blob/${SHORT_SHA}/viscachepaper/paper-combined.md)" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
-            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
-            const body = `**Paper draft built** (${process.env.PDF_SIZE}) — [preview PDF](${pagesUrl}/latest/paper-draft.pdf) | [stable PDF](${pagesUrl}/paper-draft.pdf)`;
+            const lines = process.env.PAPER_LINES;
+            const sha = context.sha.substring(0, 7);
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const blobUrl = `https://github.com/${repo}/blob/${context.sha}/viscachepaper/paper-combined.md`;
+            const sketchUrl = `https://github.com/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
+            const body = `**Paper sketch built** (${lines} lines) — [combined markdown](${blobUrl}) | [section index](${sketchUrl}) | \`${sha}\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            const existing = comments.find(c => c.body.startsWith('**Paper draft built**'));
+            const existing = comments.find(c => c.body.startsWith('**Paper sketch built**'));
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -129,6 +121,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: paper
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -137,3 +130,14 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # ── PDF generation (disabled — re-enable for TeX publishing) ──────
+  # pdf:
+  #   name: Build Paper PDF
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with: { python-version: "3.11" }
+  #     - run: pip install reportlab
+  #     - run: python viscachepaper/generate_paper.py viscachepaper/paper-draft.pdf
