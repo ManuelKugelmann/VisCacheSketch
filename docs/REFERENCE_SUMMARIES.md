@@ -293,32 +293,70 @@ sorting; we use per-pair probability.
 ## Missing from references.md (found in code/paper)
 
 ### Gautron 2020 — Real-Time Ray-Traced Ambient Occlusion
-**Ray Tracing Gems 2, 2020/2021.**
+**P. Gautron, "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing," SIGGRAPH Talks, 2020.**
 
-Spatial hash with LOD index in hash function; viewing-distance-based cell size;
-coarse-to-fine propagation.
+World-space AO filtering via spatial hash map. Key contributions: LOD index encoded
+directly into the hash function, viewing-distance-based cell size selection, and
+coarse-to-fine propagation of cached values across hierarchy levels. Demonstrates
+production-quality results on CAD scenes with hundreds of millions of polygons.
 
-**VisCache link:** Direct source for distance-gated LOD selection strategy
-(VisCache.slang line 164). LOD indexing in the hash function is a key design adoption.
+**VisCache link:** Direct source for our distance-gated LOD selection strategy
+(VisCache.slang line 164). The idea of encoding LOD level into the hash key —
+so different resolution levels coexist in the same flat table — is adopted directly.
+Gautron caches AO (scalar); we cache visibility probability (scalar). Same data
+structure philosophy, different cached quantity.
 
-**Status:** Referenced in code and design doc but **not in references.md or sections/references.md**.
+**Transitive citations:**
+- Teschner et al. 2003 — spatial hashing foundation (already cited)
+
+**Status:** Referenced in code and design doc but **not yet in references.md or sections/references.md**.
 **Action needed:** Add to both reference lists.
 
 ---
 
+### Gautron 2021 — Practical Spatial Hash Map Updates
+**P. Gautron, "Practical Spatial Hash Map Updates," Chapter 41 in *Ray Tracing Gems II*, Apress, 2021.**
+
+Follow-up to the 2020 talk. Details the GPU update scheme for spatial hash maps:
+lock-free atomics for simple payloads (AO), extended storage for complex payloads
+(16-bit floats for image-based lighting). Discusses eviction policies, temporal
+stability, and handling of hash collisions under concurrent writes.
+
+**VisCache link:** Our atomic EMA update (§6) faces the same concurrent-write
+challenges. Gautron's lock-free atomics pattern for scalar payloads applies directly
+to our per-cell probability update. The eviction/temporal-stability discussion
+informed our decay factor design.
+
+**Transitive citations:** None beyond Gautron 2020.
+
+**Status:** Not yet in reference lists. Consider citing alongside Gautron 2020 if
+the hash map update mechanism is discussed in detail.
+
+---
+
 ### Talbot 2005 — Importance Resampling for Global Illumination
-**Eurographics Symposium on Rendering, 2005.**
+**J. Talbot, D. Cline, P. Egbert, "Importance Resampling for Global Illumination," EGSR 2005.**
 
-Foundational RIS (Resampled Importance Sampling) paper. Introduces streaming weighted
-reservoir sampling for light transport.
+Foundational paper for Resampled Importance Sampling (RIS). Develops importance
+resampling into a variance reduction technique for Monte Carlo integration.
+Demonstrates 10–70% variance reduction over standard importance sampling for direct
+lighting. Introduces the streaming weighted reservoir that Bitterli 2020 later
+adapts into spatiotemporal ReSTIR.
 
-**VisCache link:** Theoretical foundation for all ReSTIR methods. Referenced in
-ReSTIRGICommon.slang (streaming reservoir, M-cap stability). Not directly cited in
-the paper text — transitive through Bitterli 2020 and Lin 2022.
+**VisCache link:** Theoretical foundation for all ReSTIR methods. The streaming
+weighted reservoir (Algorithm 1 in Talbot) is the core data structure in
+ReSTIRGICommon.slang (lines 29, 120) and underlies the M-cap temporal stability
+mechanism. VisCache does not modify the reservoir itself — it modifies the target
+PDF p̂ and gates the final visibility evaluation. Understanding RIS is necessary
+to prove that CV+RRR gating preserves unbiasedness of the resampled estimator.
+
+**Transitive citations:**
+- Rubin 1988 — statistical importance resampling (SIR) from Bayesian statistics
+- Veach & Guibas 1995 — MIS (combined with RIS in Talbot's framework)
 
 **Status:** Referenced in code comments but **not in paper references**.
-**Action needed:** Consider adding if RIS theory is discussed in §11; otherwise
-transitive citation through Bitterli/Lin is sufficient.
+**Action needed:** Add if §11 discusses RIS theory or unbiasedness proof; otherwise
+transitive through Bitterli 2020 and Lin 2022 is sufficient.
 
 ---
 
@@ -332,15 +370,18 @@ Szirmay-Kalos 2005 ─→ CV+RRR ──────────┤
 Kugelmann 2006 ─→ spatial hash + CV+RRR ┘
     ↑ taught via                          ↓ 20 years later
 Teschner 2003 ─→ spatial hashing    VisCache (this paper)
-    ↓ evolved                             ↑ addressing from
-Binder 2018 ─→ jitter+quantize+fingerprint┘
-    ↑ hash function from                  ↑ integration targets
-Jarzynski 2020 ─→ PCG3D             ReSTIR DI/GI/PT/Area
-                                         ↑ RIS from
-                                    Talbot 2005
+    ↓ evolved                        ↑ addressing    ↑ LOD design
+Binder 2018 ─→ jitter+quantize+fp ──┘               │
+    ↑ hash function from            Gautron 2020 ────┘ distance-gated LOD
+Jarzynski 2020 ─→ PCG3D            Gautron 2021 ─→ atomic hash map updates
+                                        ↑ integration targets
+                                   ReSTIR DI/GI/PT/Area
+                                        ↑ RIS from
+                                   Talbot 2005
 
 Concurrent work:
   Bokšanský 2025 (neural, biased)   ←→   VisCache (hash, unbiased)
+      ↑ backbone from Müller 2022
   Stotko 2025 (variance→resolution) ←→   §7 write-depth gate
   Liu 2025 (temporal splatting)      ⊥    VisCache (orthogonal)
 
