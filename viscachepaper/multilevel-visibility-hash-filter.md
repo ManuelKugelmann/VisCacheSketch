@@ -6,7 +6,7 @@
 
 ## 1. Problem
 
-Shadow rays dominate the cost of direct lighting in real-time path tracing. Most shadow rays confirm what nearby rays already established — a surface region is consistently visible or consistently occluded from another surface region. We cache point-to-point visibility in a multilevel spatial hash table and use the cached variance to gate shadow ray tracing via control-variate Russian roulette residual (CV+RRR, "go with the winners" [Szirmay-Kalos et al.]).
+Shadow rays dominate the cost of direct lighting in real-time path tracing. Most shadow rays confirm what nearby rays already established — a surface region is consistently visible or consistently occluded from another surface region. We cache point-to-point visibility in a multilevel spatial hash table and use the cached variance to gate shadow ray tracing via control-variate Russian roulette residual (CV+RRR) [Szirmay-Kalos et al. 2005; Kugelmann 2006].
 
 Complementary to ReSTIR. ReSTIR selects *which* light to sample. We cache *whether* the selected light is visible. The cache serves ReSTIR DI (shadow rays), ReSTIR GI (revalidation rays), and ReSTIR light selection (cached μ in target function). All are point-to-point visibility queries into the same table.
 
@@ -695,7 +695,7 @@ Cache-free approaches capture ~60% of the benefit at ~5% of implementation cost 
 
 ## 15. Contributions
 
-The core idea — spatial-hash grid for visibility prediction with RR-gated correction — originates in [Kugelmann 2006], a Diplomarbeit at Universität Ulm supervised by Alexander Keller (CV+RRR independent of [Szirmay-Kalos et al.]). NEE++ [Guo et al. 2020] independently arrived at a similar spatial×spatial cache with RR for offline rendering.
+The core idea — spatial-hash grid for visibility prediction with RR-gated correction — originates in [Kugelmann 2006], a Diplomarbeit at Universität Ulm supervised by Alexander Keller (CV+RRR independent of [Szirmay-Kalos et al. 2005]). NEE++ [Guo et al. 2020] independently arrived at a similar spatial×spatial cache with RR for offline rendering.
 
 This work extends the 2006 foundation to real-time GPU path tracing:
 

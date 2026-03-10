@@ -1,6 +1,6 @@
 # 8. Control Variate with Russian Roulette
 
-The cached mean μ serves as a control variate [Szirmay-Kalos et al.]. Analytic lighting (BRDF × Le × G) is always evaluated. Only the shadow ray is gated:
+The cached mean μ serves as a control variate [Szirmay-Kalos et al. 2005]. Analytic lighting (BRDF × Le × G) is always evaluated. Only the shadow ray is gated:
 
 **Algorithm 3: Shading with Cached Visibility**
 ```

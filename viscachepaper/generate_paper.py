@@ -209,10 +209,9 @@ def build(output_path=None):
         "its Bernoulli structure gives variance for free from a single cached "
         "mean (var&nbsp;=&nbsp;&#956;(1&#8722;&#956;)); and the (point,&nbsp;point) "
         "domain aligns with pairwise visibility queries. "
-        "CV+RRR itself is a classical technique (Szirmay-Kalos et al., "
-        "&#8220;go with the winners&#8221;; independently in [Kugelmann 2006]). "
-        "We do not claim it as new &#8212; we advocate for its wider adoption "
-        "and develop the system around it.",
+        "CV+RRR builds on classical variance-reduction ideas "
+        "(cf. [Szirmay-Kalos et al. 2005]; independently in [Kugelmann 2006]). "
+        "We do not claim it as new&#8212;we develop the system around it.",
         sB))
     S.append(Paragraph(
         "World-space visibility caches are a natural complement to ReSTIR "
@@ -307,12 +306,14 @@ def build(output_path=None):
         "standard RTXDI.",
         sB))
     S.append(Paragraph(
-        "<b>Control variates and hashing.</b> Szirmay-Kalos et al. described "
-        "the &#8220;go with the winners&#8221; estimator: returning a control "
-        "variate value on RR termination instead of zero. "
-        "[Kugelmann 2006] developed CV+RRR independently for the same purpose. "
-        "We apply this classical technique to cached visibility "
-        "and advocate for its wider adoption. "
+        "<b>Control variates and hashing.</b> Szirmay-Kalos, Antal and Sbert "
+        "[2005] proposed a &#8220;go with the winners&#8221; strategy that "
+        "adaptively splits or terminates paths based on local and global "
+        "variance estimates&#8212;a form of RRS with continuous child-path "
+        "counts. Our CV+RRR is distinct: rather than choosing how many child "
+        "paths to spawn, it returns a cached control-variate prediction on RR "
+        "termination instead of zero. "
+        "[Kugelmann 2006] developed CV+RRR independently. "
         "For hash noise we use pcg3d [Jarzynski and Olano 2020], a GPU hash "
         "function that passes all but one BigCrush test at ~12&nbsp;ALU with "
         "no lookup table.",
@@ -534,7 +535,7 @@ def build(output_path=None):
     S.append(Paragraph("8&nbsp;&nbsp;Control Variate with Russian Roulette", sH1))
 
     S.append(Paragraph(
-        "The cached mean &#956; serves as a control variate [Szirmay-Kalos et al.]. "
+        "The cached mean &#956; serves as a control variate [Szirmay-Kalos et al. 2005]. "
         "Analytic lighting (BRDF &#215; L<sub>e</sub> &#215; G) is always evaluated. "
         "Only the shadow ray is gated:",
         sB0))
@@ -1043,7 +1044,7 @@ def build(output_path=None):
     S.append(Paragraph(
         "We have described an assembly of known techniques for real-time "
         "visibility caching: sparse multilevel hash replacing NEE++'s dense matrix "
-        "[Guo et al. 2020], control-variate RR [Szirmay-Kalos et al.] returning "
+        "[Guo et al. 2020], control-variate RR [Szirmay-Kalos et al. 2005] returning "
         "cached mean on trace termination, distance-gated LOD intervals, "
         "angular quantization for infinite endpoints, runtime statistics with "
         "auto-tuning, and integration with ReSTIR DI/GI pipelines.",
@@ -1101,8 +1102,9 @@ def build(output_path=None):
         "[Stotko et al. 2025] P. Stotko et al. \"MrHash: Resolution Where It "
         "Counts.\" <i>arXiv:2511.21459</i>, 2025.",
 
-        "[Szirmay-Kalos et al.] L. Szirmay-Kalos et al. \"Go with the Winners\" "
-        "&#8212; control variate Russian roulette. (Exact citation TBD.)",
+        "[Szirmay-Kalos et al. 2005] L. Szirmay-Kalos, G. Antal, and M. Sbert. "
+        "\"Go with the Winners Strategy in Path Tracing.\" "
+        "<i>Journal of WSCG</i>, 13:49&#8211;56, 2005.",
 
         "[Teschner et al. 2003] M. Teschner et al. \"Optimized Spatial Hashing "
         "for Collision Detection of Deformable Objects.\" "

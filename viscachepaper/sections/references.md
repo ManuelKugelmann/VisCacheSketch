@@ -26,7 +26,7 @@
 
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
-- [Szirmay-Kalos et al.] L. Szirmay-Kalos et al. "Go with the Winners" — control variate Russian roulette. (Exact citation TBD.)
+- [Szirmay-Kalos et al. 2005] L. Szirmay-Kalos, G. Antal, and M. Sbert. "Go with the Winners Strategy in Path Tracing." *Journal of WSCG*, 13:49–56, 2005.
 
 - [Talbot et al. 2005] J. Talbot, D. Cline, and P. Egbert. "Importance Resampling for Global Illumination." *Eurographics Symposium on Rendering*, pp. 139–146, 2005.
 
