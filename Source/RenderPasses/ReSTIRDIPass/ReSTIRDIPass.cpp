@@ -30,7 +30,8 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
 ReSTIRDIPass::ReSTIRDIPass(ref<Device> pDevice, const Properties& props)
     : RenderPass(pDevice)
 {
-    if (props.has("mode")) mMode = Mode(props["mode"].operator uint32_t());
+    if (props.has("enableVisCacheRevalidation"))    mVisCacheFlags.enableVisCacheRevalidation   = props["enableVisCacheRevalidation"];
+    if (props.has("enableVisCacheLightSelection"))  mVisCacheFlags.enableVisCacheLightSelection = props["enableVisCacheLightSelection"];
 }
 
 ref<ReSTIRDIPass> ReSTIRDIPass::create(ref<Device> pDevice, const Properties& props)
@@ -44,7 +45,8 @@ ref<ReSTIRDIPass> ReSTIRDIPass::create(ref<Device> pDevice, const Properties& pr
 Properties ReSTIRDIPass::getProperties() const
 {
     Properties p;
-    p["mode"] = uint32_t(mMode);
+    p["enableVisCacheRevalidation"]    = mVisCacheFlags.enableVisCacheRevalidation;
+    p["enableVisCacheLightSelection"]  = mVisCacheFlags.enableVisCacheLightSelection;
     return p;
 }
 
@@ -69,8 +71,9 @@ void ReSTIRDIPass::compile(RenderContext* pCtx, const CompileData& compileData)
     mFrameDim = compileData.defaultTexDims;
 
     DefineList defines;
-    defines.add("USE_VISCACHE", (mMode != Mode::Vanilla) ? "1" : "0");
-    defines.add("USE_VISCACHE_LIGHTSEL", (mMode == Mode::LightSel) ? "1" : "0");
+    defines.add("USE_VISCACHE", isVisCacheActive() ? "1" : "0");
+    defines.add("USE_VISCACHE_REVAL", mVisCacheFlags.enableVisCacheRevalidation ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheFlags.enableVisCacheLightSelection ? "1" : "0");
 
     // PrepareSurfaceData pass — sets up surface info for RTXDI
     {
@@ -100,8 +103,8 @@ void ReSTIRDIPass::execute(RenderContext* pCtx, const RenderData& rd)
     auto pColor   = rd.getTexture("color");
     if (!pVBuffer || !pColor) return;
 
-    // Retrieve VisCache buffers if in VisCache/LightSel mode
-    if (mMode != Mode::Vanilla)
+    // Retrieve VisCache buffers if any VisCache feature is active
+    if (isVisCacheActive())
         retrieveVisCacheBuffers(rd);
 
     // Step 1: Prepare surface data for RTXDI
@@ -144,7 +147,7 @@ void ReSTIRDIPass::finalShading(RenderContext* pCtx, const ref<Texture>& pVBuffe
     vars["PerFrameCB"]["gFrameDim"] = mFrameDim;
 
     // Bind VisCache if enabled
-    if (mMode != Mode::Vanilla && mpVisCacheTable)
+    if (isVisCacheActive() && mpVisCacheTable)
         bindVisCacheToPass(mpFinalShadingPass);
 
     mpFinalShadingPass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
@@ -172,7 +175,7 @@ void ReSTIRDIPass::retrieveVisCacheBuffers(const RenderData& rd)
     {
         mpVisCacheTable = nullptr;
         mVisCacheCapacity = 0u;
-        if (mMode != Mode::Vanilla)
+        if (isVisCacheActive())
             logWarning("ReSTIRDIPass: VisCache buffers not found. "
                        "Ensure VisCache runs before ReSTIRDIPass.");
     }
@@ -206,18 +209,12 @@ void ReSTIRDIPass::renderUI(Gui::Widgets& widget)
     widget.text("ReSTIR DI (RTXDI) + VisCache");
     widget.separator();
 
-    // Mode selector
-    static const Gui::DropdownList kModes = {
-        {0, "Vanilla (no VisCache)"},
-        {1, "VisCache (CV+RRR shadow gating)"},
-        {2, "VisCache + Light Selection"},
-    };
-    uint32_t mode = uint32_t(mMode);
-    if (widget.dropdown("Mode", kModes, mode))
-    {
-        mMode = Mode(mode);
-        mOptionsChanged = true;
-    }
+    // VisCache toggles (independently toggleable for ablation)
+    widget.text("VisCache Integration (toggleable for ablation)");
+    bool dirty = false;
+    dirty |= widget.checkbox("VisCache CV+RRR revalidation (S11.3)",     mVisCacheFlags.enableVisCacheRevalidation);
+    dirty |= widget.checkbox("VisCache light selection (S11.1)",          mVisCacheFlags.enableVisCacheLightSelection);
+    mOptionsChanged |= dirty;
 
     widget.separator();
 

@@ -5,9 +5,10 @@
  * ReSTIRPTCommon (with extended PathReservoir carrying prefix throughput).
  *
  * VisCache modes (independently toggled via defines):
- *   USE_VISCACHE_REVAL=1:    CV+RRR gated V(P,Q) at reconnection (S11.3).
+ *   USE_VISCACHE_REVAL=1:    CV+RRR gated V(P,Q) via VisCache hash table (S11.3).
+ *   USE_LOCAL_REVAL=1:       CV+RRR via reservoir-local mu (no hash table).
  *   USE_VISCACHE_LIGHTSEL=1: Cached mu in target function (S11.1).
- *   Both=0:                  Vanilla ReSTIR PT.
+ *   All=0:                   Vanilla ReSTIR PT.
  ***************************************************************************/
 
 import Scene.Scene;
@@ -68,8 +69,8 @@ float traceShadowRay(float3 origin, float3 target)
     return traceVisibilityRay(origin, target);
 }
 
-// VisCache imports (only when revalidation is enabled)
-#if USE_VISCACHE_REVAL
+// VisCache imports (only when hash-table revalidation is enabled)
+#if USE_VISCACHE
 import RenderPasses.VisCache.VisCache;
 import RenderPasses.VisCache.ShadingCV;
 #endif
@@ -83,17 +84,61 @@ uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
     return uint2(nbr);
 }
 
+// ---------------------------------------------------------------------------
+// Local CV+RRR parameters (reservoir-local mu, no hash table)
+// ---------------------------------------------------------------------------
+#if USE_LOCAL_REVAL
+cbuffer LocalRevalCB
+{
+    float gLocalRevalContribThreshold;
+    float gLocalRevalPMin;
+};
+#endif
+
+// ---------------------------------------------------------------------------
+// Local CV+RRR estimator — uses reservoir-local information only.
+// mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1)
+// Then standard CV+RRR: E[mu + (V - mu) / p] = E[V], unbiased.
+// ---------------------------------------------------------------------------
+float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
+                             float G, float neighborTargetPdf, float pHatNoVis,
+                             float contribThreshold, float pMin,
+                             inout SampleGenerator sg)
+{
+    float mu = (pHatNoVis > 1e-7f) ? clamp(neighborTargetPdf / pHatNoVis, 0.0f, 1.0f)
+                                     : 0.5f;
+
+    float3 C   = bsdf * Lo * G;
+    float  res = luminance(C) * max(mu, 1.0f - mu);
+    float  p   = clamp(res / contribThreshold, pMin, 1.0f);
+
+    if (sampleNext1D(sg) < p)
+    {
+        float V = traceVisibilityRay(P, Q);
+        return mu + (V - mu) / p;
+    }
+    return mu;
+}
+
+// ---------------------------------------------------------------------------
+// Visibility evaluation — three paths
+// ---------------------------------------------------------------------------
 float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
-                          float G, inout SampleGenerator sg)
+                          float G, float neighborTargetPdf, float pHatNoVis,
+                          inout SampleGenerator sg)
 {
 #if USE_VISCACHE_REVAL
     return evalRevalidationCV(P, Q, bsdf, Lo, G, gCamPos, sg);
+#elif USE_LOCAL_REVAL
+    return evalLocalRevalidation(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis,
+                                  gLocalRevalContribThreshold, gLocalRevalPMin, sg);
 #else
     return traceVisibilityRay(P, Q);
 #endif
 }
 
 float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
+                        float neighborTargetPdf,
                         inout SampleGenerator sg, out float pHatNoVis)
 {
     pHatNoVis = 0.0f;
@@ -115,7 +160,8 @@ float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
     if (pHatNoVis < 1e-7f) return 0.0f;
 
     float V = evaluateVisibility(sd.posW, neighborSample.posW,
-                                  bsdf, neighborSample.Lo, G, sg);
+                                  bsdf, neighborSample.Lo, G,
+                                  neighborTargetPdf, pHatNoVis, sg);
     return pHatNoVis * V;
 }
 
@@ -173,7 +219,7 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
             continue;
 
         float pHatNoVis;
-        float pHatWithVis = evalTargetAtPixel(sd, neighbor.sample, sg, pHatNoVis);
+        float pHatWithVis = evalTargetAtPixel(sd, neighbor.sample, neighbor.targetPdf, sg, pHatNoVis);
         if (pHatWithVis < 1e-7f) continue;
 
         float nbrM = min(neighbor.M, kMaxSpatialM);

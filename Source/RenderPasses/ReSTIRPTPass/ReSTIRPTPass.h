@@ -61,9 +61,15 @@ public:
     // -----------------------------------------------------------------------
     struct VisCacheFlags
     {
-        bool enableLightSelection  = false;  ///< S11.1: cached mu in target func
-        bool enableRevalidation    = false;  ///< S11.3: CV+RRR at reconnection
+        bool     enableVisCacheLightSelection = false;  ///< S11.1: cached mu in target func
+        bool     enableVisCacheRevalidation   = false;  ///< S11.3: CV+RRR via VisCache hash table
+        bool     enableCVRRRRevalidation      = false;  ///< CV+RRR via reservoir-local mu (no hash table)
+        float    contribThreshold             = 0.01f;  ///< Minimum residual to force trace
+        float    pMin                         = 0.05f;  ///< RR floor for revalidation
     };
+
+    bool isVisCacheActive() const { return mVisCacheFlags.enableVisCacheRevalidation || mVisCacheFlags.enableVisCacheLightSelection; }
+    bool isAnyRevalActive() const { return mVisCacheFlags.enableVisCacheRevalidation || mVisCacheFlags.enableCVRRRRevalidation; }
 
     ReSTIRPTPass(ref<Device> pDevice, const Properties& props);
 

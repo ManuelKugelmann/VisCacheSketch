@@ -26,8 +26,11 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
     if (props.has("enableSpatialReuse"))    mParams.enableSpatialReuse   = props["enableSpatialReuse"];
     if (props.has("enableMIS"))             mParams.enableMIS            = props["enableMIS"];
 
-    if (props.has("visCacheLightSelection"))  mVisCacheFlags.enableLightSelection = props["visCacheLightSelection"];
-    if (props.has("visCacheRevalidation"))    mVisCacheFlags.enableRevalidation   = props["visCacheRevalidation"];
+    if (props.has("enableVisCacheLightSelection"))  mVisCacheFlags.enableVisCacheLightSelection = props["enableVisCacheLightSelection"];
+    if (props.has("enableVisCacheRevalidation"))    mVisCacheFlags.enableVisCacheRevalidation   = props["enableVisCacheRevalidation"];
+    if (props.has("enableCVRRRRevalidation"))       mVisCacheFlags.enableCVRRRRevalidation      = props["enableCVRRRRevalidation"];
+    if (props.has("visCacheContribThreshold"))       mVisCacheFlags.contribThreshold             = props["visCacheContribThreshold"];
+    if (props.has("visCachePMin"))                   mVisCacheFlags.pMin                         = props["visCachePMin"];
 }
 
 ref<ReSTIRPTPass> ReSTIRPTPass::create(ref<Device> pDevice, const Properties& props)
@@ -46,8 +49,11 @@ Properties ReSTIRPTPass::getProperties() const
     p["enableSpatialReuse"]    = mParams.enableSpatialReuse;
     p["enableMIS"]             = mParams.enableMIS;
 
-    p["visCacheLightSelection"] = mVisCacheFlags.enableLightSelection;
-    p["visCacheRevalidation"]   = mVisCacheFlags.enableRevalidation;
+    p["enableVisCacheLightSelection"] = mVisCacheFlags.enableVisCacheLightSelection;
+    p["enableVisCacheRevalidation"]   = mVisCacheFlags.enableVisCacheRevalidation;
+    p["enableCVRRRRevalidation"]      = mVisCacheFlags.enableCVRRRRevalidation;
+    p["visCacheContribThreshold"]     = mVisCacheFlags.contribThreshold;
+    p["visCachePMin"]                 = mVisCacheFlags.pMin;
     return p;
 }
 
@@ -92,14 +98,13 @@ void ReSTIRPTPass::compile(RenderContext* pCtx, const CompileData& compileData)
 // ============================================================================
 void ReSTIRPTPass::createPasses()
 {
-    bool useVisCache = mVisCacheFlags.enableLightSelection || mVisCacheFlags.enableRevalidation;
-
     DefineList defines;
     defines.add("MAX_BOUNCES", std::to_string(mParams.maxBounces));
     defines.add("NUM_SPATIAL_NEIGHBORS", std::to_string(mParams.numSpatialNeighbors));
-    defines.add("USE_VISCACHE", useVisCache ? "1" : "0");
-    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheFlags.enableLightSelection ? "1" : "0");
-    defines.add("USE_VISCACHE_REVAL", mVisCacheFlags.enableRevalidation ? "1" : "0");
+    defines.add("USE_VISCACHE", isVisCacheActive() ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheFlags.enableVisCacheLightSelection ? "1" : "0");
+    defines.add("USE_VISCACHE_REVAL", mVisCacheFlags.enableVisCacheRevalidation ? "1" : "0");
+    defines.add("USE_LOCAL_REVAL", mVisCacheFlags.enableCVRRRRevalidation ? "1" : "0");
     defines.add("USE_TEMPORAL_REUSE", mParams.enableTemporalReuse ? "1" : "0");
     defines.add("USE_SPATIAL_REUSE", mParams.enableSpatialReuse ? "1" : "0");
     defines.add("USE_MIS", mParams.enableMIS ? "1" : "0");
@@ -188,8 +193,15 @@ void ReSTIRPTPass::execute(RenderContext* pCtx, const RenderData& rd)
         vars["PerFrameCB"]["gFrameCount"]     = mFrameCount;
         vars["PerFrameCB"]["gCamPos"]         = camPos;
 
-        if (mVisCacheFlags.enableRevalidation && mpVisCacheTable)
+        if (mVisCacheFlags.enableVisCacheRevalidation && mpVisCacheTable)
             bindVisCacheToPass(mpSpatialReusePass);
+
+        // Local CV+RRR bindings (no hash table, uses reservoir-local mu)
+        if (mVisCacheFlags.enableCVRRRRevalidation)
+        {
+            vars["LocalRevalCB"]["gLocalRevalContribThreshold"] = mVisCacheFlags.contribThreshold;
+            vars["LocalRevalCB"]["gLocalRevalPMin"]             = mVisCacheFlags.pMin;
+        }
 
         mpSpatialReusePass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
     }
@@ -217,7 +229,7 @@ void ReSTIRPTPass::retrieveVisCacheBuffers(const RenderData& rd)
 {
     const auto& dict = rd.getDictionary();
 
-    if ((mVisCacheFlags.enableLightSelection || mVisCacheFlags.enableRevalidation) &&
+    if (isVisCacheActive() &&
         dict.keyExists("vhfTable") && dict.keyExists("vhfCapacity"))
     {
         mpVisCacheTable        = dict["vhfTable"];
@@ -274,8 +286,14 @@ void ReSTIRPTPass::renderUI(Gui::Widgets& widget)
     widget.separator();
 
     widget.text("VisCache Integration (toggleable for ablation)");
-    dirty |= widget.checkbox("Light selection (S11.1)", mVisCacheFlags.enableLightSelection);
-    dirty |= widget.checkbox("CV+RRR revalidation (S11.3)", mVisCacheFlags.enableRevalidation);
+    dirty |= widget.checkbox("VisCache CV+RRR revalidation (S11.3)",     mVisCacheFlags.enableVisCacheRevalidation);
+    dirty |= widget.checkbox("CV+RRR revalidation (reservoir mu, no hash table)", mVisCacheFlags.enableCVRRRRevalidation);
+    dirty |= widget.checkbox("VisCache light selection (S11.1)",          mVisCacheFlags.enableVisCacheLightSelection);
+    if (isVisCacheActive() || mVisCacheFlags.enableCVRRRRevalidation)
+    {
+        widget.var("Contrib threshold",   mVisCacheFlags.contribThreshold, 0.001f, 0.5f, 0.005f);
+        widget.var("pMin (RR floor)",     mVisCacheFlags.pMin,             0.01f,  0.5f, 0.005f);
+    }
 
     if (dirty) createPasses();
 }

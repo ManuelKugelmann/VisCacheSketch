@@ -57,21 +57,30 @@ public:
     };
 
     // -----------------------------------------------------------------------
-    // VisCache integration — each feature independently toggleable for ablation.
-    //   enableRevalidation:   CV+RRR gated V(P,Q) in spatial reuse (§11.3)
-    //   enableLightSelection: Cached mu in NEE target function (§11.1)
-    //   Both off:             Vanilla ReSTIR GI (no VisCache).
+    // VisCache / CV+RRR integration — each feature independently toggleable.
+    //
+    // Ablation matrix:
+    //   All off:                Vanilla ReSTIR GI (unconditional shadow rays).
+    //   enableLocalReval only:  CV+RRR using reservoir-local mu (no hash table).
+    //                           mu = neighbor.targetPdf / pHatNoVis; no extra memory.
+    //   enableRevalidation:     CV+RRR using VisCache hash table mu (§11.3).
+    //   enableLightSelection:   Cached mu in NEE target function (§11.1).
+    //   enableRevalidation + enableLightSelection: Full VisCache integration.
     // -----------------------------------------------------------------------
     struct VisCacheParams
     {
-        bool     enableRevalidation    = false;  ///< CV+RRR at spatial reuse
-        bool     enableLightSelection  = false;  ///< Cached mu in light weighting
+        bool     enableVisCacheRevalidation  = false;  ///< CV+RRR via VisCache hash table (§11.3)
+        bool     enableCVRRRRevalidation   = false;  ///< CV+RRR via reservoir-local mu (no hash table)
+        bool     enableVisCacheLightSelection = false;  ///< Cached mu in light weighting (§11.1)
         float    contribThreshold      = 0.01f;  ///< Minimum residual to force trace
         float    pMin                  = 0.05f;  ///< RR floor for revalidation
         bool     symmetricCells        = false;  ///< Symmetric cell sizes for GI (§5.2)
     };
 
-    bool isVisCacheActive() const { return mVisCacheParams.enableRevalidation || mVisCacheParams.enableLightSelection; }
+    /// True if any feature needs the VisCache hash table.
+    bool isVisCacheActive() const { return mVisCacheParams.enableVisCacheRevalidation || mVisCacheParams.enableVisCacheLightSelection; }
+    /// True if any CV+RRR variant is active (hash table or local).
+    bool isAnyRevalActive() const { return mVisCacheParams.enableVisCacheRevalidation || mVisCacheParams.enableCVRRRRevalidation; }
 
     ReSTIRGIPass(ref<Device> pDevice, const Properties& props);
 

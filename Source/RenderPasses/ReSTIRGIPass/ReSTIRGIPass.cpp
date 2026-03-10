@@ -38,8 +38,9 @@ ReSTIRGIPass::ReSTIRGIPass(ref<Device> pDevice, const Properties& props)
     if (props.has("enableMIS"))           mReSTIRParams.enableMIS           = props["enableMIS"];
 
     // Deserialise VisCache params (independently toggleable for ablation)
-    if (props.has("visCacheRevalidation"))    mVisCacheParams.enableRevalidation   = props["visCacheRevalidation"];
-    if (props.has("visCacheLightSelection")) mVisCacheParams.enableLightSelection = props["visCacheLightSelection"];
+    if (props.has("enableVisCacheRevalidation"))     mVisCacheParams.enableVisCacheRevalidation    = props["enableVisCacheRevalidation"];
+    if (props.has("enableCVRRRRevalidation"))       mVisCacheParams.enableCVRRRRevalidation       = props["enableCVRRRRevalidation"];
+    if (props.has("enableVisCacheLightSelection"))   mVisCacheParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
     if (props.has("visCacheContribThreshold")) mVisCacheParams.contribThreshold    = props["visCacheContribThreshold"];
     if (props.has("visCachePMin"))             mVisCacheParams.pMin                = props["visCachePMin"];
     if (props.has("visCacheSymmetricCells"))   mVisCacheParams.symmetricCells      = props["visCacheSymmetricCells"];
@@ -63,8 +64,9 @@ Properties ReSTIRGIPass::getProperties() const
     p["enableSpatialReuse"]  = mReSTIRParams.enableSpatialReuse;
     p["enableMIS"]           = mReSTIRParams.enableMIS;
 
-    p["visCacheRevalidation"]     = mVisCacheParams.enableRevalidation;
-    p["visCacheLightSelection"]   = mVisCacheParams.enableLightSelection;
+    p["enableVisCacheRevalidation"]    = mVisCacheParams.enableVisCacheRevalidation;
+    p["enableCVRRRRevalidation"]      = mVisCacheParams.enableCVRRRRevalidation;
+    p["enableVisCacheLightSelection"] = mVisCacheParams.enableVisCacheLightSelection;
     p["visCacheContribThreshold"] = mVisCacheParams.contribThreshold;
     p["visCachePMin"]             = mVisCacheParams.pMin;
     p["visCacheSymmetricCells"]   = mVisCacheParams.symmetricCells;
@@ -129,8 +131,9 @@ void ReSTIRGIPass::createPasses()
     DefineList defines;
     defines.add("NUM_SPATIAL_NEIGHBORS", std::to_string(mReSTIRParams.numSpatialNeighbors));
     defines.add("USE_VISCACHE", isVisCacheActive() ? "1" : "0");
-    defines.add("USE_VISCACHE_REVAL", mVisCacheParams.enableRevalidation ? "1" : "0");
-    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheParams.enableLightSelection ? "1" : "0");
+    defines.add("USE_VISCACHE_REVAL", mVisCacheParams.enableVisCacheRevalidation ? "1" : "0");
+    defines.add("USE_LOCAL_REVAL", mVisCacheParams.enableCVRRRRevalidation ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSEL", mVisCacheParams.enableVisCacheLightSelection ? "1" : "0");
     defines.add("USE_TEMPORAL_REUSE", mReSTIRParams.enableTemporalReuse ? "1" : "0");
     defines.add("USE_SPATIAL_REUSE", mReSTIRParams.enableSpatialReuse ? "1" : "0");
     defines.add("USE_MIS", mReSTIRParams.enableMIS ? "1" : "0");
@@ -253,6 +256,13 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
             bindVisCacheToPass(mpSpatialReusePass);
         }
 
+        // Local CV+RRR bindings (no hash table, uses reservoir-local mu)
+        if (mVisCacheParams.enableCVRRRRevalidation)
+        {
+            vars["LocalRevalCB"]["gLocalRevalContribThreshold"] = mVisCacheParams.contribThreshold;
+            vars["LocalRevalCB"]["gLocalRevalPMin"]             = mVisCacheParams.pMin;
+        }
+
         mpSpatialReusePass->execute(pCtx, mFrameDim.x, mFrameDim.y, 1u);
     }
 
@@ -363,9 +373,10 @@ void ReSTIRGIPass::renderUI(Gui::Widgets& widget)
 
     // VisCache integration — independently toggleable for ablation
     widget.text("VisCache (ablation toggles)");
-    dirty |= widget.checkbox("CV+RRR revalidation (S11.3)", mVisCacheParams.enableRevalidation);
-    dirty |= widget.checkbox("Light selection (S11.1)",      mVisCacheParams.enableLightSelection);
-    if (isVisCacheActive())
+    dirty |= widget.checkbox("VisCache CV+RRR revalidation (S11.3)",     mVisCacheParams.enableVisCacheRevalidation);
+    dirty |= widget.checkbox("CV+RRR revalidation (reservoir mu, no hash table)", mVisCacheParams.enableCVRRRRevalidation);
+    dirty |= widget.checkbox("VisCache light selection (S11.1)",          mVisCacheParams.enableVisCacheLightSelection);
+    if (isVisCacheActive() || mVisCacheParams.enableCVRRRRevalidation)
     {
         widget.var("Contrib threshold",   mVisCacheParams.contribThreshold, 0.001f, 0.5f, 0.005f);
         widget.var("pMin (RR floor)",     mVisCacheParams.pMin,             0.01f,  0.5f, 0.005f);

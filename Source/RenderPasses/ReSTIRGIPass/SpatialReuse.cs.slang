@@ -124,18 +124,70 @@ uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 }
 
 // ---------------------------------------------------------------------------
-// Visibility evaluation — two paths controlled by USE_VISCACHE
+// Local CV+RRR parameters (shared with VisCache path for consistency)
+// When USE_LOCAL_REVAL is active, these come from PerFrameCB instead of
+// VisCacheParams cbuffer, since no hash table is involved.
+// ---------------------------------------------------------------------------
+#if USE_LOCAL_REVAL
+cbuffer LocalRevalCB
+{
+    float gLocalRevalContribThreshold;
+    float gLocalRevalPMin;
+};
+#endif
+
+// ---------------------------------------------------------------------------
+// Local CV+RRR estimator — uses reservoir-local information only.
+//
+// mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1)
+// The neighbor's targetPdf was computed WITH visibility in a prior pass,
+// while pHatNoVis is the same target function WITHOUT visibility.
+// Their ratio approximates the visibility at the neighbor's evaluation.
+//
+// Then standard CV+RRR: E[mu + (V - mu) / p] = E[V], unbiased.
+// ---------------------------------------------------------------------------
+float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
+                             float G, float neighborTargetPdf, float pHatNoVis,
+                             float contribThreshold, float pMin,
+                             inout SampleGenerator sg)
+{
+    // Reservoir-local visibility estimate
+    float mu = (pHatNoVis > 1e-7f) ? clamp(neighborTargetPdf / pHatNoVis, 0.0f, 1.0f)
+                                     : 0.5f;  // no data -> uncertain
+
+    // Contribution-weighted residual bound (same as VisCache path)
+    float3 C   = bsdf * Lo * G;
+    float  res = luminance(C) * max(mu, 1.0f - mu);
+    float  p   = clamp(res / contribThreshold, pMin, 1.0f);
+
+    if (sampleNext1D(sg) < p)
+    {
+        float V = traceVisibilityRay(P, Q);
+        // Unbiased CV+RRR estimator
+        return mu + (V - mu) / p;
+    }
+    return mu;  // no trace — use reservoir-local estimate
+}
+
+// ---------------------------------------------------------------------------
+// Visibility evaluation — three paths:
+//   USE_VISCACHE_REVAL: CV+RRR via VisCache hash table (S11.3)
+//   USE_LOCAL_REVAL:    CV+RRR via reservoir-local mu (no hash table)
+//   Neither:            Vanilla — unconditional shadow ray
 // ---------------------------------------------------------------------------
 float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
-                          float G, inout SampleGenerator sg)
+                          float G, float neighborTargetPdf, float pHatNoVis,
+                          inout SampleGenerator sg)
 {
 #if USE_VISCACHE_REVAL
-    // CV+RRR revalidation (S11.3/S12) — independently toggleable for ablation.
-    // evalRevalidationCV uses gVHFTable/VisCacheParams from VisCache.slang,
-    // traceShadowRay defined above, and gCamPos from PerFrameCB.
+    // VisCache hash table CV+RRR (S11.3)
     return evalRevalidationCV(P, Q, bsdf, Lo, G, gCamPos, sg);
+#elif USE_LOCAL_REVAL
+    // Reservoir-local CV+RRR (no hash table — ablation baseline)
+    return evalLocalRevalidation(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis,
+                                  gLocalRevalContribThreshold, gLocalRevalPMin, sg);
 #else
-    // Vanilla ReSTIR GI: unconditional shadow ray for each neighbor
+    // Vanilla: unconditional shadow ray for each neighbor
     return traceVisibilityRay(P, Q);
 #endif
 }
@@ -146,6 +198,7 @@ float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
 // Returns: p_hat * visibility
 // ---------------------------------------------------------------------------
 float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
+                        float neighborTargetPdf,
                         inout SampleGenerator sg, out float pHatNoVis)
 {
     pHatNoVis = 0.0f;
@@ -168,9 +221,11 @@ float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
     pHatNoVis = evalTargetPdf(bsdf, neighborSample.Lo, G);
     if (pHatNoVis < 1e-7f) return 0.0f;
 
-    // Visibility — VisCache-gated or unconditional depending on define
+    // Visibility — VisCache-gated, local CV+RRR, or unconditional
+    // neighborTargetPdf is passed for the local CV+RRR mu estimate.
     float V = evaluateVisibility(sd.posW, neighborSample.posW,
-                                  bsdf, neighborSample.Lo, G, sg);
+                                  bsdf, neighborSample.Lo, G,
+                                  neighborTargetPdf, pHatNoVis, sg);
 
     return pHatNoVis * V;
 }
@@ -259,7 +314,7 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         // Evaluate target function for neighbor's sample at this pixel
         // (includes visibility via VisCache or unconditional trace)
         float pHatNoVis;
-        float pHatWithVis = evalTargetAtPixel(sd, neighbor.sample, sg, pHatNoVis);
+        float pHatWithVis = evalTargetAtPixel(sd, neighbor.sample, neighbor.targetPdf, sg, pHatNoVis);
 
         if (pHatWithVis < 1e-7f) continue;
 

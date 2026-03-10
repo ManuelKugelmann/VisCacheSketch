@@ -36,12 +36,16 @@ public:
     void                 renderUI(Gui::Widgets& widget) override;
     void                 setScene(RenderContext* pCtx, const ref<Scene>& pScene) override;
 
-    enum class Mode : uint32_t
+    // -----------------------------------------------------------------------
+    // VisCache integration — individually toggleable for ablation
+    // -----------------------------------------------------------------------
+    struct VisCacheFlags
     {
-        Vanilla   = 0,  ///< Standard RTXDI, no VisCache
-        VisCache  = 1,  ///< CV+RRR shadow ray gating only (§11.3)
-        LightSel  = 2,  ///< Cached mu in target function + CV+RRR (§11.1 + §11.3)
+        bool enableVisCacheRevalidation    = false;  ///< CV+RRR shadow ray gating (§11.3)
+        bool enableVisCacheLightSelection  = false;  ///< Cached mu in target function (§11.1)
     };
+
+    bool isVisCacheActive() const { return mVisCacheFlags.enableVisCacheRevalidation || mVisCacheFlags.enableVisCacheLightSelection; }
 
     ReSTIRDIPass(ref<Device> pDevice, const Properties& props);
 
@@ -63,7 +67,7 @@ private:
     // -----------------------------------------------------------------------
     // VisCache integration
     // -----------------------------------------------------------------------
-    Mode              mMode = Mode::Vanilla;
+    VisCacheFlags     mVisCacheFlags;
     ref<Buffer>       mpVisCacheTable;
     uint32_t          mVisCacheCapacity      = 0u;
     float             mVisCacheVarThreshold  = 0.1f;
