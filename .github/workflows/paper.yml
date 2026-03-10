@@ -26,8 +26,15 @@ permissions:
   pull-requests: write
 
 jobs:
-  paper:
-    name: Build & Deploy Paper
+  test:
+    name: Ablation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/test_paper_ablations.py
+
+  build-deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -36,21 +43,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run ablation tests
-        run: python3 tests/test_paper_ablations.py
-
-      - name: Combine sections into single markdown
+      - name: Combine & wrap
         run: |
           python3 viscachepaper/combine_paper.py viscachepaper/paper-combined.md
           LINES=$(wc -l < viscachepaper/paper-combined.md)
           echo "PAPER_LINES=${LINES}" >> $GITHUB_ENV
-          echo "Combined paper: ${LINES} lines"
 
-      - name: Prepare Pages artifact
-        run: |
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/preview
-
           python3 viscachepaper/wrap_html.py viscachepaper/paper-combined.md _site/preview/paper.html
           cp viscachepaper/index.html _site/index.html
 
