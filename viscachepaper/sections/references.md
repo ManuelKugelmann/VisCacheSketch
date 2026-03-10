@@ -6,6 +6,10 @@
 
 - [Bokšanský and Meister 2025] A. Bokšanský and D. Meister. "Neural Visibility Cache." 2025.
 
+- [Gautron 2020] P. Gautron. "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing." *SIGGRAPH Talks*, 2020.
+
+- [Gautron 2021] P. Gautron. "Practical Spatial Hash Map Updates." Chapter 41 in *Ray Tracing Gems II*, Apress, 2021.
+
 - [Guo et al. 2020] Y. Guo, E. Eisemann, and T. Eisemann. "NEE++: Faster N-Closest Emitter Sampling with Voxelized Visibility." *Pacific Graphics*, 2020.
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
@@ -23,6 +27,8 @@
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
 - [Szirmay-Kalos et al.] L. Szirmay-Kalos et al. "Go with the Winners" — control variate Russian roulette. (Exact citation TBD.)
+
+- [Talbot et al. 2005] J. Talbot, D. Cline, and P. Egbert. "Importance Resampling for Global Illumination." *Eurographics Symposium on Rendering*, pp. 139–146, 2005.
 
 - [Teschner et al. 2003] M. Teschner et al. "Optimized Spatial Hashing for Collision Detection of Deformable Objects." *Proc. VMV*, pp. 47–54, 2003.
 
