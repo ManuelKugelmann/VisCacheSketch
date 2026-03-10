@@ -81,22 +81,9 @@ it would provide an alternative unbiased path for their neural cache.
 
 ## 2.3 Spatial Hashing
 
-Teschner et al. [2003] established spatial hashing
-for collision detection of deformable objects:
+Teschner et al. [2003] established spatial hashing:
 an infinite regular grid compressed to a finite table via hash function,
 requiring no scene bounds.
-This was encountered during teaching assistant work
-on Keller's simulation algorithms lectures at Universität Ulm,
-where it was used for broad-phase physical collision detection.
-The motivation for adopting spatial hashing came from
-Keller's lecture hints that all naive spatial grids
-are doomed by the curse of dimensionality —
-and trees also suffer from it to some degree.
-Spatial hashing sidesteps this by compressing
-the sparse occupancy of a high-dimensional grid into a compact table.
-This was the pedagogical root of applying spatial hashing
-to illumination caching in [Kugelmann 2006]
-and subsequent GPU hash table work.
 
 Binder et al. [2018] applied spatial hashing to path-space filtering
 with jitter before quantization,
