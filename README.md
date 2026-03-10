@@ -12,11 +12,13 @@
 
 The 2006 Diplomarbeit by MK ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm, supervisor Alexander Keller) suffered multiple problems — side work for financial reasons, theft of personal belongings, overambitious scope, and experiments that were not automated enough — and was never properly finished.
 
-The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4) — using a cached prediction as control variate and Russian roulette to decide whether to correct. The framework was applied to many cache experiments, including visibility prediction (Sec. 3.2.2) and contribution prediction (Sec. 3.2.3), with variance-driven RR survival probability as adaptive sampling (Sec. 3.4.1). The idea of using variance — not absolute light — to drive sampling rate was inspired by hints in Keller's lectures at Universität Ulm. The control-variate RR idea was developed independently; Szécsi, Szirmay-Kalos and Kelemen [2003] proposed reducing RR variance by returning a non-zero estimate on termination, and Szirmay-Kalos et al. [2005] extended this into the broader "go with the winners" splitting/RR framework. The Kugelmann thesis was found to overlap with this prior work late in the writing process.
+The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4) — using a cached prediction as control variate and Russian roulette to decide whether to correct, with generalized variance (tracked explicitly per cache entry) driving RR survival probability as adaptive sampling (Sec. 3.4.1). The framework was applied through many explorative cache experiments — visibility prediction (Sec. 3.2.2), contribution prediction (Sec. 3.2.3), and others — all using general variance estimators. The idea of using variance — not absolute light — to drive sampling rate was inspired by hints in Keller's lectures at Universität Ulm.
 
-Spatial hashing was not described in the thesis text — it was an implementation detail in the accompanying code. Spatial hashing [Teschner et al. 2003] was encountered during teaching assistant work on Keller's "Simulation Algorithms" lecture at Universität Ulm, where it was used for broad-phase physical collision detection. In the thesis code, spatial grid cells were used to group nearby visibility and contribution samples — a use of spatial locality closely related to formal spatial hashing.
+Using a control variate instead of zero on RR termination is standard Monte Carlo variance reduction — combining two textbook techniques (Knuth 1973; Hammersley and Handscomb 1964). The idea is at least implicit in the "go with the winners" family (Aldous and Vazirani 1994; Grassberger 2002). In the graphics context, Szécsi, Szirmay-Kalos and Kelemen [2003] formalized this for rendering, and Szirmay-Kalos et al. [2005] extended it into a variance-driven splitting/RR framework using a scene-global average radiance estimate. The Kugelmann thesis arrived at the same CV+RR math independently but refined the **estimation source** (per-point spatial cache rather than a scene-global constant) and the **variance signal use** (generalized variance closing the cache-quality → trace-rate loop). The overlap with Szécsi et al. was found late in the writing process.
 
-The Bernoulli optimization (var = μ(1−μ), requiring no separate variance estimator for binary visibility) was not realized in 2006 — the thesis used general variance estimation for all cached quantities.
+Spatial hashing was not described in the thesis text — it was a hidden implementation detail in the accompanying code. Spatial hashing [Teschner et al. 2003] was encountered during teaching assistant work on Keller's "Simulation Algorithms" lecture at Universität Ulm, where it was used for broad-phase physical collision detection. In the thesis code, spatial grid cells grouped nearby visibility and contribution samples — closely related to formal spatial hashing but not framed as such.
+
+The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized in 2006 — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility and exploiting the Bernoulli structure is a contribution of this paper.
 
 The test case was Instant Radiosity [Keller 1997], but the caching method was always algorithm-agnostic: it operates on pairwise queries regardless of the rendering algorithm generating them.
 
@@ -26,7 +28,7 @@ See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006
 
 ## Overview
 
-This paper develops the binary visibility prediction from [Kugelmann 2006] into a complete real-time system. The 2006 Diplomarbeit developed a general *prediction-with-correction* framework (Sec. 3.4) applied to visibility prediction and contribution prediction, with variance-driven adaptive sampling. This work narrows to binary visibility and deepens the architecture with improvements from the intervening two decades.
+This paper develops the binary visibility prediction from [Kugelmann 2006] into a complete real-time system. The 2006 Diplomarbeit developed a general *prediction-with-correction* framework (Sec. 3.4) applied through many explorative experiments to visibility, contribution, and other cached quantities, with generalized variance-driven adaptive sampling. This work narrows to binary visibility — exploiting Bernoulli structure for free variance — and deepens the architecture with improvements from the intervening two decades.
 
 ### Core mechanism
 
@@ -124,12 +126,13 @@ TODO.md                      Global task tracker
 
 ## Lineage: Kugelmann 2006
 
-The 2006 Diplomarbeit "Efficient Adaptive Global Illumination Algorithms" (Universität Ulm, supervisor Alexander Keller) established the prediction-with-correction framework used here. The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4), applied to:
+The 2006 Diplomarbeit "Efficient Adaptive Global Illumination Algorithms" (Universität Ulm, supervisor Alexander Keller) established the prediction-with-correction framework used here. The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4), applied through many explorative experiments to:
 
 - **Visibility prediction** (Sec. 3.2.2): (point, point) → {0,1}. Direct ancestor of this paper.
 - **Contribution prediction** (Sec. 3.2.3): predicting full lighting contributions rather than just visibility.
+- And other cached quantities — all using generalized variance estimators.
 
-Spatial grid cells were used to group nearby samples — an implementation detail closely related to formal spatial hashing [Teschner et al. 2003], encountered during TA work on Keller's "Simulation Algorithms" lecture. The motivation for spatial hashing came from Keller's lecture hints that all naive spatial grids are doomed by the curse of dimensionality, and trees also suffer from it to some degree.
+Spatial grid cells were used to group nearby samples — a hidden implementation detail, not a contribution. The grid's use of spatial locality was closely related to formal spatial hashing [Teschner et al. 2003], encountered during TA work on Keller's "Simulation Algorithms" lecture, but the thesis did not frame it as such.
 
 **What this paper adds beyond 2006:**
 - Robust hashing with position-seeded jitter (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020])
@@ -303,9 +306,13 @@ git subtree push --prefix=Falcor falcor my-branch
 
 | Paper | Relation |
 |-------|---------|
-| Kugelmann 2006 (Diplomarbeit) | Direct ancestor — prediction-with-correction framework, visibility + contribution prediction |
-| Szécsi et al. 2003 | Variance reduction for RR — returning non-zero on termination |
-| Szirmay-Kalos et al. 2005 | "Go with the winners" — splitting/RR framework |
+| Kugelmann 2006 (Diplomarbeit) | Direct ancestor — CV+RR with per-point cache, generalized variance-driven adaptive sampling |
+| Aldous & Vazirani 1994 | "Go with the winners" algorithms — CV+RR idea implicit |
+| Grassberger 2002 | "Go with the winners" for general Monte Carlo |
+| Szécsi et al. 2003 | Formalized CV+RR for rendering (returning non-zero on termination) |
+| Szirmay-Kalos et al. 2005 | "Go with the winners" for path tracing — splitting/RR with scene-global estimate |
+| Hammersley & Handscomb 1964 | Monte Carlo Methods — textbook CV and RR |
+| Knuth 1973 | TAOCP Vol. 3 — double hashing (Sec. 6.4) |
 | Keller 1997 | Instant Radiosity — original 2006 test case |
 | Gautron 2020, 2021 | LOD in hash key, lock-free GPU hash updates |
 | Stotko et al. 2025 (MrHash) | Independent: variance-driven resolution in flat hash (TSDF domain) |
