@@ -10,8 +10,8 @@
 ### Abstract
 
 A flat, multilevel spatial hash table (8-byte entries, lock-free atomics)
-caches binary visibility predictions in world space
-and corrects them stochastically to keep the estimator unbiased.
+caches binary visibility predictions in world space.
+Stochastic correction keeps the estimator unbiased.
 Demonstrated with ReSTIR DI/GI on Bistro exterior:
 **##%** fewer shadow rays (direct), **##%** (GI revalidation),
 no measurable bias.
