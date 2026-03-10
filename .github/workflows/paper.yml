@@ -26,21 +26,21 @@ permissions:
   pull-requests: write
 
 jobs:
-  # ── Fast: combine markdown + prepare site artifact ────────────────
-  combine:
-    name: Combine Paper
+  # ── Fast: combine, wrap, deploy, notify — all one runner ──────────
+  paper:
+    name: Build & Deploy
     runs-on: ubuntu-latest
-    outputs:
-      lines: ${{ steps.build.outputs.lines }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Combine & wrap
-        id: build
         run: |
           python3 viscachepaper/combine_paper.py viscachepaper/paper-combined.md
           LINES=$(wc -l < viscachepaper/paper-combined.md)
-          echo "lines=${LINES}" >> $GITHUB_OUTPUT
+          echo "PAPER_LINES=${LINES}" >> $GITHUB_ENV
 
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/preview
@@ -58,23 +58,6 @@ jobs:
         with:
           path: _site
 
-  # ── Parallel: ablation tests ──────────────────────────────────────
-  test:
-    name: Ablation Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: python3 tests/test_paper_ablations.py
-
-  # ── After combine: deploy + PR comment ────────────────────────────
-  deploy:
-    name: Deploy & Notify
-    needs: combine
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
@@ -85,9 +68,8 @@ jobs:
           SHA="${{ github.sha }}"
           SHORT_SHA="${SHA:0:7}"
           REPO="${{ github.repository }}"
-          LINES="${{ needs.combine.outputs.lines }}"
           echo "## Paper Sketch" >> $GITHUB_STEP_SUMMARY
-          echo "Combined markdown built (${LINES} lines)." >> $GITHUB_STEP_SUMMARY
+          echo "Combined markdown built (${PAPER_LINES} lines)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- [Latest (branch)](${PAGES_URL}/preview/paper.html)" >> $GITHUB_STEP_SUMMARY
           echo "- [Stable (main)](${PAGES_URL}/paper.html)" >> $GITHUB_STEP_SUMMARY
@@ -98,7 +80,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const lines = '${{ needs.combine.outputs.lines }}';
+            const lines = process.env.PAPER_LINES;
             const sha = context.sha.substring(0, 7);
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -126,6 +108,14 @@ jobs:
                 body,
               });
             }
+
+  # ── Parallel: ablation tests ──────────────────────────────────────
+  test:
+    name: Ablation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/test_paper_ablations.py
 
   # ── PDF generation (disabled — re-enable for TeX publishing) ──────
   # pdf:
