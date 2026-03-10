@@ -72,8 +72,10 @@ Source/RenderPasses/
     CMakeLists.txt           Plugin build target
 
 scripts/
-  VisCache_Graph.py             Mogwai render graph
-  VisCache_Ablation.py          Automated ablation capture (10 configs)
+  VisCache_Graph.py             Mogwai render graph (interactive + ablation presets)
+  VisCache_Ablation.py          Automated ablation capture (10 configs, §15)
+  VisCache_Baselines.py         Automated baseline capture (14 DI/GI/PT configs)
+  smoke_test.py                 Headless plugin registration + graph wiring test
 
 tests/
   test_viscache_convergence.py    CPU unit tests (5 tests, no GPU required)
@@ -190,6 +192,65 @@ init required.
 See `tests/test_viscache_convergence.py` for CPU unit tests (no GPU required).
 
 Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
+
+---
+
+## Using a release
+
+Download a release archive from the [Releases page](https://github.com/ManuelKugelmann/VisCacheSketch/releases). Archives are named `viscache-windows-<config>-<sha>.tar.gz`.
+
+### Quick start
+
+```bash
+# Extract
+tar xzf viscache-windows-Release-*.tar.gz
+
+# Run with a scene (interactive)
+Mogwai.exe --script scripts/VisCache/VisCache_Graph.py --scene path/to/Bistro_Interior.pyscene
+
+# Run headless (no window — for capture/batch)
+Mogwai.exe --headless --script scripts/VisCache/VisCache_Graph.py --scene path/to/scene.pyscene
+```
+
+### Running ablation captures
+
+```bash
+# All 10 ablation configs (§15) — 200 warmup + 16 capture frames each
+Mogwai.exe --headless --script scripts/VisCache/VisCache_Ablation.py --scene Bistro_Interior.pyscene
+# Output: captures/ablation/<config>/frame_NNNN.exr
+
+# All 14 baseline configs (DI/GI/PT × vanilla/local/reval/lightsel/full)
+Mogwai.exe --headless --script scripts/VisCache/VisCache_Baselines.py --scene Bistro_Interior.pyscene
+# Output: captures/baselines/<pass>_<config>/frame_NNNN.exr
+```
+
+### Running a smoke test
+
+```bash
+# Verify plugins loaded and graph wiring works (no scene needed, exits immediately)
+Mogwai.exe --headless --script scripts/VisCache/smoke_test.py
+```
+
+### Triggering a manual release
+
+Go to **Actions > Release > Run workflow** on GitHub. Inputs:
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `commit_sha` | HEAD of selected branch | Specific commit to build |
+| `config` | Release | Release or Debug build |
+| `prerelease` | false | Mark as pre-release on GitHub |
+
+The version tag is auto-generated as `dev-YYYYMMDD-HHMMSS-<sha8>` from the commit timestamp and short SHA. No manual tagging needed.
+
+### Scenes
+
+The release does not include test scenes. Download separately:
+
+- **Bistro** (Amazon Lumberyard) — primary benchmark scene
+- **Sponza** (Crytek) — secondary benchmark
+
+Place `.pyscene` files anywhere and pass `--scene path/to/file`.
 
 ### Submodule sync (subtree workflow)
 
