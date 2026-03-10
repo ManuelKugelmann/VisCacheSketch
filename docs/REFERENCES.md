@@ -1,9 +1,7 @@
 # Referenced Papers
 
 Run `./docs/fetch_papers.sh` to download freely available preprints into `docs/references/`.
-Own papers (`ThesisMK.pdf`, `multilevel-visibility-hash-filter-paper.pdf`) are committed directly in `docs/`.
-
-**Do not commit downloaded PDFs to git** — `docs/references/` is gitignored.
+All reference PDFs (including own papers) are committed in `docs/references/`.
 
 ---
 
@@ -12,7 +10,7 @@ Own papers (`ThesisMK.pdf`, `multilevel-visibility-hash-filter-paper.pdf`) are c
 ### Kugelmann 2006
 **M. Kugelmann, "Efficient Adaptive Global Illumination Algorithms," Diplomarbeit, Universität Ulm, 2006.**
 Three independent cache experiments — irradiance, binary visibility, free-path distance — each with CV+RRR correction rates driven by variance, stored in a fixed-resolution single-level spatial hash. Direct ancestor of VisCache: we develop experiment (2) (binary visibility) into a complete real-time system.
-- PDF: `docs/ThesisMK.pdf` (in repo)
+- PDF: `docs/references/Kugelmann2006_ThesisMK.pdf` (in repo)
 
 ---
 

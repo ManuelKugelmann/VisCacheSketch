@@ -1,6 +1,6 @@
 # Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
 
-**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit](docs/ThesisMK.pdf)**
+**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit](docs/references/Kugelmann2006_ThesisMK.pdf)**
 
 **Author:** Manuel Kugelmann
 **Target venue:** EGSR / HPG 2026
@@ -93,7 +93,7 @@ docs/
   PORTING.md                 DQLin/ReSTIR_PT → Falcor 8.0 port guide
   ABLATION.md                Ablation matrix and per-config metric targets
   DESIGN.md                  Architecture decisions and tradeoffs
-  ThesisMK.pdf               2006 Diplomarbeit
+  references/                 Reference PDFs (auto-downloaded + own papers)
   multilevel-visibility-hash-filter-paper.pdf
 
 .gitmodules                  Root submodule config (mirrors Falcor/.gitmodules)

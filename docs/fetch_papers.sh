@@ -87,6 +87,12 @@ download "Teschner2003_SpatialHashing.pdf" \
 download "SzirmayKalos2005_GoWithTheWinners.pdf" \
     "https://dspace5.zcu.cz/bitstream/11025/1454/1/Szirmay-Kalos.pdf"
 
+download "Ulbrich2013_ProgressiveVisCache.pdf" \
+    "https://haukerehfeld.de/publications/ProgressiveVisibilityCaching/ProgressiveVisibilityCaching.pdf"
+
+download "Guo2020_NEEplusplus.pdf" \
+    "https://repository.tudelft.nl/file/File_b19b0fe9-d16c-406d-a2cd-32f38507c50f"
+
 echo ""
 
 # ── NVIDIA Research hosted ──────────────────────────────────────────────
@@ -108,8 +114,6 @@ done
 echo ""
 echo "=== Remaining (obtain from publisher or author page) ==="
 for paper in \
-    "Guo2020_NEEpp.pdf                — Wiley (CGF/Pacific Graphics)" \
-    "Ulbrich2013_ProgressiveVisCache.pdf — Eurographics DL" \
     "Ward1994_AdaptiveShadowTesting.pdf — Springer (try radiance-online.org HTML)" \
     "Keller2014_PathSpaceSimilarity.pdf  — NVIDIA Research / ResearchGate" \
     ; do
