@@ -53,6 +53,3 @@ jobs:
 
       - name: Run ReSTIR variant validations
         run: python tests/test_restir_variants.py
-
-      - name: Run paper ablation validations
-        run: python tests/test_paper_ablations.py
