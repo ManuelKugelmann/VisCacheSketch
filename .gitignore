@@ -35,5 +35,8 @@ media/
 # Downloaded reference papers — tracked in git (LFS recommended for large PDFs)
 # docs/references/
 
+# PDFs exceeding GitHub 100 MB limit (download via fetch_papers.sh)
+docs/references/Liu2025_ReservoirSplatting.pdf
+
 # Generated paper (built by CI, deployed to Pages)
 viscachepaper/paper-combined.md
