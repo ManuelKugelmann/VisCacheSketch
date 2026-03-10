@@ -18,8 +18,8 @@ via the "go with the winners" splitting/RR framework.
 but refined the **estimation source** —
 per-point cached predictions rather than a scene-global average —
 and the **variance signal use** —
-generalized variance (tracked explicitly per cache entry)
-drives RR survival probability as adaptive sampling (Sec. 3.4.1).
+variance drives RR survival probability
+as adaptive sampling (Sec. 3.4.1).
 The per-point cache is what makes the technique effective:
 a good spatial prediction gives near-zero residual variance,
 while a scene-global average helps little.
@@ -73,15 +73,12 @@ cache quality affects only efficiency, never correctness.
 **Why binary visibility.**
 [Kugelmann 2006] explored many cached quantities
 through explorative experiments —
-visibility prediction, contribution prediction, and others —
-using generalized variance estimators throughout.
+visibility prediction, contribution prediction, and others.
 We focus on binary visibility for three reasons:
 (1) binary is sufficient for shadow-ray decisions —
 the ray either hits or misses;
 (2) Bernoulli structure gives variance for free from μ alone
-(var = μ(1−μ)),
-eliminating the separate variance accumulator
-needed in the original thesis's general framework;
+(var = μ(1−μ)), requiring no separate accumulator;
 (3) the (point, point) → {0,1} domain aligns naturally
 with any pairwise visibility query —
 whether from ReSTIR reservoirs, instant radiosity VPLs,
@@ -89,17 +86,10 @@ or classical next-event estimation.
 
 **Variance as adaptive sampling.**
 Already in [Kugelmann 2006],
-generalized variance
-(tracked explicitly per cache entry
-across diverse cached quantities — visibility, contribution, etc.)
-drove the RR survival probability —
-this is adaptive sampling:
+variance drove the RR survival probability —
 high-uncertainty regions trace more, low-uncertainty regions trace less.
 By narrowing to binary visibility, we exploit Bernoulli structure:
-variance is free from μ alone (var = μ(1−μ)),
-requiring no separate variance accumulator —
-an optimization not available
-in the general-variance setting of the original thesis.
+var = μ(1−μ) is free from the mean alone, requiring no separate accumulator.
 The signal is self-correcting
 (tracing updates μ, which changes variance,
 which changes the trace rate).

@@ -7,8 +7,7 @@ a thesis on adaptive global illumination that developed a general framework
 called *predictions with correction at random* (Sec. 3.4 of the thesis) —
 using a cached prediction as control variate
 and Russian roulette to decide whether to correct,
-with generalized variance (tracked explicitly per cache entry)
-driving adaptive sampling (Sec. 3.4.1).
+with variance driving adaptive sampling (Sec. 3.4.1).
 The framework was applied through many explorative cache experiments —
 visibility prediction (Sec. 3.2.2),
 contribution prediction (Sec. 3.2.3), and others,
@@ -155,15 +154,12 @@ but with two refinements that make the technique practical:
 rather than a scene-global constant —
 a good local prediction gives near-zero residual variance,
 while a global average helps little;
-(b) **generalized variance** (tracked explicitly per cache entry)
-drives the RR survival probability as adaptive sampling (Sec. 3.4.1),
+(b) **variance** drives the RR survival probability
+as adaptive sampling (Sec. 3.4.1),
 closing the loop between cache quality and trace rate.
-The thesis explored many cached quantities through explorative experiments —
-visibility, contribution, and others —
-all using general variance estimators.
 By narrowing to binary visibility, we exploit Bernoulli structure:
 var = μ(1−μ) is free from the mean alone,
-eliminating the separate variance accumulator.
+requiring no separate accumulator.
 We do not claim the CV+RR math as a contribution —
 it is common technique.
 What we add is a second use of the same variance signal:
