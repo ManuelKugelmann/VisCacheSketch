@@ -222,7 +222,9 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 camPos)
 
 // ---------------------------------------------------------------------------
 // INSERT (called after tracing a shadow ray)
-// Variance-gated write depth: only writes fine levels at shadow boundaries.
+// Cascaded variance gate: each level's variance gates writes to the next.
+// The coarsest level is always written; finer levels only if the parent
+// level's variance exceeds gVarThreshold (or is still bootstrapping).
 // Single InterlockedAdd keeps vis and total always in sync.
 // Inline overflow decay: subtract 1/8 when total > 0xE000.
 // ---------------------------------------------------------------------------
@@ -231,39 +233,35 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 camPos)
     int lo, hi;
     vhfDistLOD(posA, camPos, lo, hi);
 
-    // Bootstrap or boundary check: determine max write depth
-    int3 qa0 = jitterQuantize(posA, kCellA[lo], 0xAAu ^ uint(lo));
-    int3 qb0 = jitterQuantize(posB, kCellB[lo], 0xBBu ^ uint(lo));
-    uint fp0   = vhfFingerprint(qa0, qb0, uint(lo));
-    uint addr0 = vhfAddr(qa0, qb0, uint(lo));
-    int  slot0 = vhfFindSlot(addr0, fp0, false);
-
-    int vmax;
-    if (slot0 < 0)
-    {
-        vmax = int(kNumLevels) - 1;  // bootstrap: write all levels
-    }
-    else
-    {
-        uint total0 = gVHFTable[slot0].packed & 0xFFFFu;
-        if (total0 < gBootThreshold)
-        {
-            vmax = int(kNumLevels) - 1;  // still bootstrapping
-        }
-        else
-        {
-            uint vis0 = gVHFTable[slot0].packed >> 16u;
-            float mu0 = float(vis0) / float(total0);
-            float var0 = mu0 * (1.0f - mu0);
-            // Variance gate: only write fine levels at shadow boundaries
-            vmax = (var0 > gVarThreshold) ? int(kNumLevels) - 1 : lo;
-        }
-    }
-
     uint visVal = (V > 0.5f) ? 1u : 0u;
 
-    for (int lvl = lo; lvl <= min(hi, vmax); lvl++)
+    for (int lvl = lo; lvl <= hi; lvl++)
     {
+        // Cascaded gate: for levels above the coarsest, check parent variance
+        if (lvl > lo)
+        {
+            int3 qap = jitterQuantize(posA, kCellA[lvl - 1], 0xAAu ^ uint(lvl - 1));
+            int3 qbp = jitterQuantize(posB, kCellB[lvl - 1], 0xBBu ^ uint(lvl - 1));
+            uint fpp   = vhfFingerprint(qap, qbp, uint(lvl - 1));
+            uint addrp = vhfAddr(qap, qbp, uint(lvl - 1));
+            int  slotp = vhfFindSlot(addrp, fpp, false);
+
+            if (slotp >= 0)
+            {
+                uint totalp = gVHFTable[slotp].packed & 0xFFFFu;
+                if (totalp >= gBootThreshold)
+                {
+                    uint visp  = gVHFTable[slotp].packed >> 16u;
+                    float mup  = float(visp) / float(totalp);
+                    float varp = mup * (1.0f - mup);
+                    if (varp <= gVarThreshold)
+                        break;  // parent is smooth — stop propagation
+                }
+                // else: still bootstrapping — continue writing
+            }
+            // else: parent miss — continue writing (bootstrap)
+        }
+
         int3 qa = jitterQuantize(posA, kCellA[lvl], 0xAAu ^ uint(lvl));
         int3 qb = jitterQuantize(posB, kCellB[lvl], 0xBBu ^ uint(lvl));
 
