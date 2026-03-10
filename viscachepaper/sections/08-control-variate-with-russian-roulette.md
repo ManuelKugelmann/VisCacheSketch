@@ -1,6 +1,6 @@
 # 8. Control Variate with Russian Roulette
 
-The cached mean μ serves as a control variate [Szirmay-Kalos et al. 2005]. Analytic lighting (BRDF × Le × G) is always evaluated. Only the shadow ray is gated:
+The cached mean μ serves as a control variate — returning μ instead of zero on RR termination. This technique was proposed by Szirmay-Kalos et al. [2005] ("go with the winners") and developed independently in [Kugelmann 2006] for all three cache experiments. We do not claim CV+RRR as new; it is a classical variance reduction technique that deserves wider adoption in the real-time rendering community. Analytic lighting (BRDF × Le × G) is always evaluated. Only the shadow ray is gated:
 
 **Algorithm 3: Shading with Cached Visibility**
 ```
@@ -22,7 +22,7 @@ else
 
 **Generality.** CV+RRR converts any visibility estimate μ — whether from a spatial hash (this work), a neural network [Bokšanský and Meister 2025], temporal reprojection, or spatial neighbor polling — into an unbiased estimator wherever a mean estimate is available. The technique is agnostic to the source of μ; cache quality affects only efficiency, never correctness.
 
-**Why binary visibility.** [Kugelmann 2006] explored three cached quantities; we choose binary visibility for three reasons: (1) binary is sufficient for shadow-ray decisions — the ray either hits or misses; (2) Bernoulli structure gives variance for free from μ alone (var = μ(1−μ)), requiring no separate variance estimator; (3) the (point, point) → {0,1} domain aligns naturally with ReSTIR's pairwise queries where each reservoir stores a specific source–target pair. Free-path distance [Kugelmann 2006, experiment 3] is a richer representation but requires a separate variance estimator and is not pursued here.
+**Why binary visibility.** [Kugelmann 2006] explored three cached quantities; we choose binary visibility for three reasons: (1) binary is sufficient for shadow-ray decisions — the ray either hits or misses; (2) Bernoulli structure gives variance for free from μ alone (var = μ(1−μ)), requiring no separate variance estimator; (3) the (point, point) → {0,1} domain aligns naturally with any pairwise visibility query — whether from ReSTIR reservoirs, instant radiosity VPLs, or classical next-event estimation. Free-path distance [Kugelmann 2006, experiment 3] is a richer representation but requires a separate variance estimator and is not pursued here.
 
 **Coupled variance adaptation.** The same Bernoulli variance var = μ(1−μ) drives two reinforcing mechanisms simultaneously: (1) RR survival probability p = clamp(var/τ, pmin, 1) governs the correction rate — how often shadow rays are traced; (2) the write-depth gate (Sec. 5.2) governs spatial resolution — whether fine-level cache entries are updated. High-variance regions trace more often *and* update fine levels; low-variance regions trace rarely *and* only update the coarsest level. This coupling is self-regulating: no per-scene tuning is needed because the variance signal adapts to local shadow structure automatically. The coupling only becomes possible with a multilevel cache — [Kugelmann 2006] had fixed resolution, so only the correction rate was variance-driven.
 
