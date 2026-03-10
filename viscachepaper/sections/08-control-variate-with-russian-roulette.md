@@ -111,6 +111,26 @@ low-variance regions trace rarely *and* only update the coarsest level.
 This coupled adaptation is self-regulating
 and only becomes possible with a multilevel cache.
 
+**Analogy to ADRRS p_lim.**
+In adjoint-driven RR/splitting [Vorba and Křivánek 2016],
+the limiting survival probability p_lim sets a floor
+below which paths are terminated —
+importance controls the boundary between tracing and termination.
+Our variance-driven write-depth gate is the spatial analogue:
+σ² sets a ceiling on which hash levels receive updates,
+so importance (here: uncertainty) controls the boundary
+between fine and coarse resolution.
+ADRRS couples one signal (adjoint importance)
+to one decision (path continuation);
+we couple one signal (Bernoulli variance)
+to two decisions — correction rate *and* spatial resolution —
+through the shared multilevel structure.
+The contribution-weighted pfloor (Sec. 8.1)
+closes the circle:
+it is the direct shadow-ray counterpart of ADRRS's p_lim,
+weighting survival by image-space importance
+rather than adjoint transport importance.
+
 Self-regulating:
 low σ² → aggressive RR → few traces.
 High σ² → always trace → cache updates → σ² drops.

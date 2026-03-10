@@ -202,8 +202,11 @@ against a cached control variate,
 not to decide whether a path should survive another bounce.
 The connection is that both families
 allocate sampling budget from a variance or importance signal —
-ADRRS's adjoint-weighted survival probability
-is formally analogous to our contribution-weighted pfloor (Sec. 8.1).
+ADRRS's p_lim (adjoint-weighted survival floor)
+is formally analogous to our contribution-weighted pfloor (Sec. 8.1),
+and ADRRS's coupling of one signal to one decision (path continuation)
+maps onto our coupling of one signal to two decisions —
+correction rate and write depth — as detailed in Sec. 8.
 
 ## 2.5 Integration Targets (Orthogonal)
 
