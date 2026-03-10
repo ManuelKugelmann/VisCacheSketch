@@ -30,6 +30,13 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
     if (props.has("minLevel"))       mParams.minLevel       = props["minLevel"];
     if (props.has("maxLevel"))       mParams.maxLevel       = props["maxLevel"];
+
+    // Ablation toggles (A–E)
+    if (props.has("enableDistanceLOD"))    mParams.enableDistanceLOD    = props["enableDistanceLOD"];
+    if (props.has("enableVarianceGate"))   mParams.enableVarianceGate   = props["enableVarianceGate"];
+    if (props.has("enableWarpReduction"))  mParams.enableWarpReduction  = props["enableWarpReduction"];
+    if (props.has("enableDecay"))          mParams.enableDecay          = props["enableDecay"];
+    if (props.has("enablePressureEvict"))  mParams.enablePressureEvict  = props["enablePressureEvict"];
 }
 
 ref<VisCache> VisCache::create(ref<Device> pDevice,
@@ -50,6 +57,13 @@ Properties VisCache::getProperties() const
     p["decayPeriod"]   = mParams.decayPeriod;
     p["minLevel"]      = mParams.minLevel;
     p["maxLevel"]      = mParams.maxLevel;
+
+    // Ablation toggles (A–E)
+    p["enableDistanceLOD"]    = mParams.enableDistanceLOD;
+    p["enableVarianceGate"]   = mParams.enableVarianceGate;
+    p["enableWarpReduction"]  = mParams.enableWarpReduction;
+    p["enableDecay"]          = mParams.enableDecay;
+    p["enablePressureEvict"]  = mParams.enablePressureEvict;
     return p;
 }
 
