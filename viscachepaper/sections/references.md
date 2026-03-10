@@ -1,16 +1,22 @@
 # References
 
+- [Aldous and Vazirani 1994] D. Aldous and U. Vazirani. "'Go with the Winners' Algorithms." *Proc. 35th IEEE FOCS*, pp. 492–501, 1994.
+
 - [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Fast Path Space Filtering by Jittered Spatial Hashing." *ACM SIGGRAPH Talks*, 2018. Extended version: "Massively Parallel Path Space Filtering." *arXiv:1902.05942*, 2019.
 
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
 - [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
 
+- [Grassberger 2002] P. Grassberger. "Go with the Winners: A General Monte Carlo Strategy." *Computer Physics Communications*, 147:64–70, 2002.
+
 - [Gautron 2020] P. Gautron. "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing." *SIGGRAPH Talks*, 2020.
 
 - [Gautron 2021] P. Gautron. "Practical Spatial Hash Map Updates." Chapter 41 in *Ray Tracing Gems II*, Apress, 2021.
 
 - [Guo et al. 2020] J. Guo, M. Eisemann, and E. Eisemann. "Next Event Estimation++: Visibility Mapping for Efficient Light Transport Simulation." *Computer Graphics Forum* (Pacific Graphics), 39(7):205–217, 2020.
+
+- [Hammersley and Handscomb 1964] J. M. Hammersley and D. C. Handscomb. *Monte Carlo Methods*. Methuen, London, 1964.
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
 
