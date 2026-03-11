@@ -1,9 +1,87 @@
 # 1. Introduction
 
-Shadow rays dominate the cost of direct lighting in real-time path tracing. Most confirm what nearby rays already established: a surface region is consistently lit or consistently occluded from a light region. We cache point-to-point visibility in a spatial hash table and gate shadow rays via control-variate Russian roulette residual (CV+RRR): the cached mean replaces most traces, a randomly-triggered correction preserves unbiasedness, and a self-regulating loop concentrates remaining traces on shadow boundaries.
+Most shadow rays in real-time path tracing are redundant.
+Nearby surface points asking about the same light region
+overwhelmingly agree on the answer — lit or blocked —
+yet each fires its own ray.
+A world-space cache that remembers these answers
+and only re-traces where the outcome is uncertain
+can eliminate the majority of shadow work
+without disturbing the estimator.
 
-Kugelmann [2006] explored three independent cache experiments — irradiance, binary visibility, and free-path distance — each with CV+RRR correction in a fixed-resolution single-level spatial hash. We develop the binary visibility experiment into a complete real-time system. Binary is sufficient for shadow decisions; its Bernoulli structure gives variance for free from a single cached mean (var = μ(1−μ)); and the (point, point) domain aligns with pairwise visibility queries. CV+RRR builds on classical variance-reduction ideas (cf. [Szirmay-Kalos et al. 2005]; independently in [Kugelmann 2006]). We do not claim it as new — we develop the system around it.
+The idea is not new.
+Kugelmann [2006] built exactly this system — spatial hash grids
+storing per-cell visibility predictions, corrected stochastically
+to preserve unbiasedness — as part of a broader thesis
+on adaptive global-illumination sampling.
+That work explored many cache flavours
+(visibility, contribution, combined)
+within a general prediction-with-correction framework,
+using variance to throttle the correction rate.
+It ran on the CPU, used a single grid resolution,
+and demonstrated the concept on instant radiosity.
+The spatial hashing itself [Teschner et al. 2003] was treated
+as plumbing, not contribution —
+the point was the cached estimator and its adaptive loop.
 
-World-space visibility caches are a natural complement to ReSTIR [Bitterli et al. 2020; Ouyang et al. 2021; Lin et al. 2022]: spatial reuse concentrates many pixels onto the same light or secondary hit, and a world-space cache amortizes their shared visibility queries automatically. The cache integrates with ReSTIR DI and GI pipelines at three points: light selection, final shading, and path revalidation.
+What has changed is the platform, not the principle.
+GPU ray-tracing hardware, wave intrinsics for lock-free atomics,
+and the ReSTIR framework [Bitterli et al. 2020; Ouyang et al. 2021]
+now make the approach both practical and urgent:
+ReSTIR's spatial reuse funnels many pixels
+onto the same light or secondary hit,
+and a world-space cache amortizes their shared queries naturally.
 
-Our contributions: (1) A real-time pairwise binary visibility cache with CV+RRR correction, where the Bernoulli variance signal self-regulates trace probability without per-scene tuning. (2) Three integration points with ReSTIR DI/GI sharing one cache — light selection weighting, final-shading shadow-ray gating, and GI revalidation gating — the last being the strongest case since no screen-space alternative exists for arbitrary secondary hits. (3) Real-time capacity management — temporal decay, pressure-scaled eviction, warp reduction (SM 6.5), distance-gated LOD selection — and an optional multilevel structure that reduces sensitivity to cell-size choice.
+This paper revisits the 2006 prototype
+with two decades of hashing and GPU advances:
+
+- **Position-seeded jitter** replaces Binder et al.'s [2018]
+  cell-index jitter with pcg3d [Jarzynski & Olano 2020]
+  seeded from unquantized position bits.
+  Nearby points near a cell boundary probabilistically map
+  to adjacent cells — an intrinsic box filter
+  that smooths transitions instead of producing
+  the sharp steps of deterministic quantization.
+  See Sec. 4.
+
+- **Fingerprint collision handling** adopts Binder et al.'s [2018]
+  fingerprint-based detection but replaces linear probing
+  with double hashing, adds pressure-scaled eviction
+  to self-heal long probe chains,
+  and uses inline overflow decay via atomic CAS
+  to keep counters bounded while preserving the mean ratio.
+  An 8-byte entry format enables single-InterlockedAdd updates
+  and WaveMatch coalescing (SM 6.5) for ~16× reduction
+  in atomic contention at coarse levels.
+  See Secs. 3, 5, 6.
+
+- **LOD in the hash key**, following Gautron [2020, 2021],
+  encodes resolution level directly into the hash function
+  so multiple levels coexist in one flat table —
+  no separate tables, no tree, no indirection.
+  Distance-gated level selection acts as a clipmap.
+  See Secs. 3, 5.
+
+- **Coupled variance adaptation** extends the original thesis's
+  variance-driven correction rate with a second feedback channel:
+  the same Bernoulli signal (var = μ(1−μ), no separate accumulator needed)
+  now also gates write depth —
+  each level's variance controls whether the next finer level is written.
+  High-variance regions trace more *and* cascade to fine resolution;
+  stable regions stop propagation early.
+  Stotko et al. [2025] independently developed the same principle
+  for TSDF hashing.
+  See Sec. 8.
+
+The cache is agnostic to its client algorithm.
+We demonstrate it with ReSTIR DI and GI,
+but it applies equally to classical next-event estimation,
+instant radiosity (as in the original thesis),
+or any system that evaluates pairwise point-to-point visibility.
+
+Our contribution is therefore *completion*, not invention:
+robust hashing that eliminates cell-boundary bias,
+collision handling that scales on the GPU,
+multilevel resolution with variance-driven gating,
+and a clean integration path for modern path-tracing pipelines —
+reducing shadow rays without introducing bias.

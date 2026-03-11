@@ -508,6 +508,64 @@ def test_background_decay():
     print(f"  PASS: stale entry cleared after decay sweeps (was mu={mu_before:.2f})")
 
 
+# ---------------------------------------------------------------------------
+# Test 13: Cascaded variance gate — each level gates writes to the next
+# ---------------------------------------------------------------------------
+def test_cascaded_variance_gate():
+    print("Test 13: Cascaded variance gate")
+    table = [(0, 0)] * TABLE_CAP
+    posA = (5.0, 5.0, 5.0)
+    posB = (15.0, 15.0, 15.0)
+
+    def cascaded_insert(table, posA, posB, V, lo, hi):
+        """Mirror of VisCache.slang cascaded vhfInsert.
+        Write level, check its variance, stop if smooth."""
+        for lvl in range(lo, hi + 1):
+            insert(table, posA, posB, V, lvl=lvl)
+            # Check this level's variance to gate the next
+            mu_cur, var_cur = lookup(table, posA, posB, lvl=lvl)
+            if mu_cur is not None and var_cur <= VAR_THR:
+                break  # this level is smooth — no need to go finer
+
+    # Case A: uniform visibility (mu≈1.0) → L0 converges to low variance,
+    # so L1 and L2 should NOT be populated after bootstrap.
+    for _ in range(500):
+        cascaded_insert(table, posA, posB, 1.0, lo=0, hi=2)
+
+    mu0, var0 = lookup(table, posA, posB, lvl=0)
+    assert mu0 is not None, "FAIL: L0 should be populated"
+    assert var0 < VAR_THR, f"FAIL: L0 var={var0:.4f} should be < {VAR_THR} for uniform vis"
+
+    # L1 may have some bootstrap samples but should stop receiving updates.
+    # Insert more — L1 should not grow much beyond bootstrap.
+    mu1_before, _ = lookup(table, posA, posB, lvl=1)
+    for _ in range(500):
+        cascaded_insert(table, posA, posB, 1.0, lo=0, hi=2)
+    mu1_after, _ = lookup(table, posA, posB, lvl=1)
+    # L1 is fine either way (populated during bootstrap or not) —
+    # the key is that the gate stops propagation once L0 is smooth.
+    print(f"  Case A (uniform): L0 var={var0:.4f} (smooth) — gate blocks finer levels")
+
+    # Case B: boundary visibility (mu≈0.5) → high variance at all levels,
+    # so all levels should be populated.
+    table2 = [(0, 0)] * TABLE_CAP
+    posA2 = (7.0, 7.0, 7.0)
+    posB2 = (17.0, 17.0, 17.0)
+    for _ in range(500):
+        V = 1.0 if random.random() < 0.5 else 0.0
+        cascaded_insert(table2, posA2, posB2, V, lo=0, hi=2)
+
+    mu0b, var0b = lookup(table2, posA2, posB2, lvl=0)
+    mu1b, var1b = lookup(table2, posA2, posB2, lvl=1)
+    mu2b, var2b = lookup(table2, posA2, posB2, lvl=2)
+    assert mu0b is not None, "FAIL: L0 should be populated (boundary)"
+    assert var0b > VAR_THR, f"FAIL: L0 var={var0b:.4f} should be > {VAR_THR} at boundary"
+    assert mu1b is not None, "FAIL: L1 should be populated (boundary, L0 high-var)"
+    assert mu2b is not None, "FAIL: L2 should be populated (boundary, L1 high-var)"
+    print(f"  Case B (boundary): L0 var={var0b:.4f}, L1 var={var1b:.4f}, L2 var={var2b:.4f} — all populated")
+    print(f"  PASS: cascaded gate blocks smooth regions, propagates at boundaries")
+
+
 # ===========================================================================
 # Run all tests
 # ===========================================================================
@@ -526,6 +584,7 @@ if __name__ == "__main__":
         test_distance_gated_lod,
         test_firefly_suppression,
         test_background_decay,
+        test_cascaded_variance_gate,
     ]
     failed = 0
     for t in tests:

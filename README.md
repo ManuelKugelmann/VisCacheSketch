@@ -1,6 +1,6 @@
 # Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
 
-**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit](docs/references/Kugelmann2006_ThesisMK.pdf)**
+**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
 
 **Author:** Manuel Kugelmann
 **Target venue:** EGSR / HPG 2026
@@ -10,21 +10,29 @@
 
 ## History
 
-The 2006 Diplomarbeit by MK ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm) suffered multiple problems — side work for financial reasons, theft of personal belongings, overambitious scope, and experiments that were not automated enough — and was never properly finished.
+The 2006 Diplomarbeit by MK ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm, supervisor Alexander Keller) suffered multiple problems — side work for financial reasons, theft of personal belongings, overambitious scope, and experiments that were not automated enough — and was never properly finished.
 
-It included independent development of CV+RRR (estimation with correction; Kalos' earlier work on this was found late), and a spatial-hashing-based cache used in experiments with cached directional irradiance, directional free-ray distribution, and point-to-point visibility. The CV + rarely-correct + hash-cached-estimate combination was used to reduce Instant Radiosity shadow rays to a tiny fraction. Variance-based CV+RRR was formulated as adaptive sampling, along with other unrelated findings.
+The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4) — using a cached prediction as control variate and Russian roulette to decide whether to correct, with generalized variance (tracked explicitly per cache entry) driving RR survival probability as adaptive sampling (Sec. 3.4.1). The framework was applied through many explorative cache experiments — visibility prediction (Sec. 3.2.2), contribution prediction (Sec. 3.2.3), and others — all using general variance estimators. The idea of using variance — not absolute light — to drive sampling rate was inspired by hints in Keller's lectures at Universität Ulm.
 
-See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006_ThesisMK.pdf) for details.
+Using a control variate instead of zero on RR termination is standard Monte Carlo variance reduction — combining two textbook techniques (Knuth 1973; Hammersley and Handscomb 1964). The idea is at least implicit in the "go with the winners" family (Aldous and Vazirani 1994; Grassberger 2002). In the graphics context, Szécsi, Szirmay-Kalos and Kelemen [2003] formalized the non-zero termination estimate for rendering (CV, but with fixed RR probability). Szirmay-Kalos et al. [2005] added variance-driven RR via a splitting/RR framework using a scene-global average radiance estimate. The Kugelmann thesis arrived at the same CV+RR math independently but refined the **estimation source** (per-point spatial cache rather than a scene-global constant) and the **variance signal use** (generalized variance closing the cache-quality → trace-rate loop). The overlap with Szécsi et al. was found late in the writing process.
+
+The spatial grids were visible in the thesis — screenshots show grid cells. What was an unmentioned implementation detail was the use of *spatial hashing* [Teschner et al. 2003] to map grid cells to memory — inspired by Teschner's work to sidestep the curse of dimensionality in naive grids. Spatial hashing was encountered during teaching assistant work on Keller's "Simulation Algorithms" lecture at Universität Ulm, where it was used for broad-phase physical collision detection. The thesis used it but did not describe or frame it as a technique.
+
+The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized in 2006 — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility and exploiting the Bernoulli structure is a contribution of this paper.
+
+The test case was Instant Radiosity [Keller 1997], but the caching method was always algorithm-agnostic: it operates on pairwise queries regardless of the rendering algorithm generating them.
+
+See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006_ThesisMK.pdf) for the thesis and [`docs/references/Szecsi2003_VarianceReductionRR.pdf`](docs/references/Szecsi2003_VarianceReductionRR.pdf) for the Szécsi et al. [2003] paper (also on [ResearchGate](https://www.researchgate.net/publication/221546555_Variance_Reduction_for_Russian-roulette)).
 
 ---
 
 ## Overview
 
-This paper develops the binary visibility experiment from [Kugelmann 2006] into a complete real-time system. The 2006 Diplomarbeit ran three separate cache experiments — irradiance (point, dir) → ℝ, binary visibility (point, point) → {0,1}, and free-path distance (point, dir) → ℝ≥0 — each with CV+RRR correction rates driven by their respective variances, stored in a fixed-resolution single-level spatial hash. This work narrows to binary visibility and deepens the architecture.
+This paper develops the binary visibility prediction from [Kugelmann 2006] into a complete real-time system. The 2006 Diplomarbeit developed a general *prediction-with-correction* framework (Sec. 3.4) applied through many explorative experiments to visibility, contribution, and other cached quantities, with generalized variance-driven adaptive sampling. This work narrows to binary visibility — exploiting Bernoulli structure for free variance — and deepens the architecture with improvements from the intervening two decades.
 
 ### Core mechanism
 
-The **control-variate estimator with Russian roulette (CV+RRR)** converts a spatial visibility cache into an unbiased shadow ray estimator regardless of cache accuracy:
+The **control-variate estimator with Russian roulette (prediction-with-correction (CV+VRRR))** converts a spatial visibility cache into an unbiased shadow ray estimator regardless of cache accuracy:
 
 ```
 if rand < p:
@@ -41,7 +49,7 @@ The **Bernoulli structure** of binary visibility is what makes this clean: varia
 ### The coupling (key architectural property)
 
 The same variance signal drives two reinforcing mechanisms:
-1. **Correction rate** — RR survival probability p in the CV+RRR estimator
+1. **Correction rate** — RR survival probability p in the prediction-with-correction (CV+VRRR) estimator
 2. **Spatial resolution** — write-depth gate determines which LOD levels receive updates
 
 High-variance regions trace more often *and* at finer spatial resolution. Low-variance regions trace rarely and only update the coarse level. This self-regulating behaviour makes the system practical without per-scene tuning. The coupling was absent from the 2006 work where spatial resolution was fixed; it is one of two principal extensions in this paper.
@@ -72,12 +80,12 @@ Source/RenderPasses/
     VisCache.slang      Hash table: PCG3D addressing, lookup, insert, decay
     VisCacheInsert.cs.slang   Batched insert with SM6.5 WaveMatch coalescing
     VisCacheDecay.cs.slang    Background decay sweep
-    ShadingCV.slang          CV+RRR estimator — all three integration points
+    ShadingCV.slang          prediction-with-correction (CV+VRRR) estimator — all three integration points
     VisCache.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
     CMakeLists.txt           Plugin build target
   ReSTIRGIPass/              ReSTIR GI with VisCache revalidation
     ReSTIRGIPass.h/.cpp      Falcor 8.0 host code (full port sketch)
-    SpatialReuse.cs.slang    Spatial reuse kernel with CV+RRR integration
+    SpatialReuse.cs.slang    Spatial reuse kernel with prediction-with-correction (CV+VRRR) integration
     SpatialReuse_VisCache_delta.slang  Original delta reference
     CMakeLists.txt           Plugin build target
 
@@ -118,20 +126,21 @@ TODO.md                      Global task tracker
 
 ## Lineage: Kugelmann 2006
 
-The 2006 Diplomarbeit "Efficient Adaptive Global Illumination Algorithms" (Universität Ulm, supervisor Alexander Keller) established the prediction-with-correction framework used here. Three distinct experiments were conducted:
+The 2006 Diplomarbeit "Efficient Adaptive Global Illumination Algorithms" (Universität Ulm, supervisor Alexander Keller) established the prediction-with-correction framework used here. The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4), applied through many explorative experiments to:
 
-**Experiment 1 — Irradiance:** (point, direction) → ℝ. Continuous incident radiance cached in a fixed-resolution spatial hash. CV+RRR correction rate driven by irradiance variance.
+- **Visibility prediction** (Sec. 3.2.2): (point, point) → {0,1}. Direct ancestor of this paper.
+- **Contribution prediction** (Sec. 3.2.3): predicting full lighting contributions rather than just visibility.
+- And other cached quantities — all using generalized variance estimators.
 
-**Experiment 2 — Binary visibility:** (point, point) → {0,1}. Direct ancestor of this paper. Fixed-resolution hash, CV+RRR with Bernoulli variance. Promising but limited by single-level resolution and offline rendering constraints.
-
-**Experiment 3 — Free-path distance:** (point, direction) → ℝ≥0. Richer than binary — captures partial occlusion. Not pursued here: binary is sufficient for shadow decisions, cheaper to store, and the Bernoulli structure gives variance for free.
+The spatial grids were visible in the thesis (screenshots show grid cells). The grids used spatial hashing [Teschner et al. 2003] internally to map cells to memory — inspired by Teschner's work to sidestep the curse of dimensionality — but hashing itself was an unmentioned implementation detail, encountered during TA work on Keller's "Simulation Algorithms" lecture but not described as a technique in the thesis.
 
 **What this paper adds beyond 2006:**
+- Robust hashing with position-seeded jitter (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020])
 - Variance now governs spatial resolution via write-depth gate (absent in 2006, resolution was fixed)
-- Three-level hash replacing single-level
-- Bernoulli simplification made explicit — var = µ(1−µ), no separate estimator
+- Three-level hash replacing single-level, LOD in the hash key [Gautron 2020, 2021]
+- Bernoulli simplification made explicit — var = µ(1−µ), no separate estimator (not realized in 2006)
 - ReSTIR integration at three points (framework did not exist in 2006)
-- Real-time hardware (inline DXR, SM 6.5)
+- Real-time hardware (inline DXR, SM 6.5, lock-free atomics [Gautron 2021])
 
 ---
 
@@ -297,8 +306,17 @@ git subtree push --prefix=Falcor falcor my-branch
 
 | Paper | Relation |
 |-------|---------|
-| Kugelmann 2006 (Diplomarbeit) | Direct ancestor — experiments (1)(2)(3) |
-| Binder et al. 2018 | Spatial hashing, jitter-quantize, double-hash probe |
+| Kugelmann 2006 (Diplomarbeit) | Direct ancestor — CV+RR with per-point cache, generalized variance-driven adaptive sampling |
+| Aldous & Vazirani 1994 | "Go with the winners" algorithms — CV+RR idea implicit |
+| Grassberger 2002 | "Go with the winners" for general Monte Carlo |
+| Szécsi et al. 2003 | Non-zero termination estimate for rendering (CV, but fixed RR probability) |
+| Szirmay-Kalos et al. 2005 | "Go with the winners" for path tracing — added variance-driven splitting/RR |
+| Hammersley & Handscomb 1964 | Monte Carlo Methods — textbook CV and RR |
+| Knuth 1973 | TAOCP Vol. 3 — double hashing (Sec. 6.4) |
+| Keller 1997 | Instant Radiosity — original 2006 test case |
+| Gautron 2020, 2021 | LOD in hash key, lock-free GPU hash updates |
+| Stotko et al. 2025 (MrHash) | Independent: variance-driven resolution in flat hash (TSDF domain) |
+| Binder et al. 2018 | Spatial hashing, jitter-quantize, fingerprint collision detection |
 | Lin et al. 2022 (GRIS/ReSTIR_PT) | Essential baseline for §11.3 Table 3 ground truth |
 | Bokšanský & Meister 2025 (JCGT) | Concurrent — neural visibility cache for light selection |
 | Liu et al. 2025 (SIGGRAPH) | Orthogonal — Reservoir Splatting for temporal reuse |

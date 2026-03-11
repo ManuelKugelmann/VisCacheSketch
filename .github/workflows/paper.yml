@@ -9,6 +9,10 @@ on:
       - '.github/workflows/paper.yml'
   pull_request:
     branches: ["main", "master"]
+    paths:
+      - 'viscachepaper/**'
+      - 'tests/test_paper_ablations.py'
+      - '.github/workflows/paper.yml'
   workflow_dispatch:
 
 concurrency:
@@ -22,64 +26,27 @@ permissions:
   pull-requests: write
 
 jobs:
-  changes:
-    name: Detect Changes
+  # ── Fast: combine, wrap, deploy, notify — all one runner ──────────
+  paper:
+    name: Build & Deploy
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    outputs:
-      paper: ${{ steps.filter.outputs.paper }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            paper:
-              - 'viscachepaper/**'
-              - 'tests/test_paper_ablations.py'
-              - '.github/workflows/paper.yml'
 
-  paper-ablation-tests:
-    name: Paper Ablation Tests
-    needs: [changes]
-    if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Run paper ablation validations
-        run: python tests/test_paper_ablations.py
-
-  paper:
-    name: Build Combined Markdown
-    needs: [changes]
-    if: always() && (needs.changes.outputs.paper == 'true' || github.event_name != 'pull_request')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Combine sections into single markdown
+      - name: Combine & wrap
         run: |
           python3 viscachepaper/combine_paper.py viscachepaper/paper-combined.md
           LINES=$(wc -l < viscachepaper/paper-combined.md)
           echo "PAPER_LINES=${LINES}" >> $GITHUB_ENV
-          echo "Combined paper: ${LINES} lines"
 
-      - name: Prepare Pages artifact
-        run: |
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/preview
-
-          # Wrap markdown in HTML with client-side rendering
           python3 viscachepaper/wrap_html.py viscachepaper/paper-combined.md _site/preview/paper.html
-          cp viscachepaper/index.html _site/index.html
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          sed "s|paper.html|paper.html?v=${SHORT_SHA}|g" viscachepaper/index.html > _site/index.html
 
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             cp _site/preview/paper.html _site/paper.html
@@ -88,10 +55,13 @@ jobs:
               || cp _site/preview/paper.html _site/paper.html
           fi
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
       - name: Job summary
         run: |
@@ -102,8 +72,8 @@ jobs:
           echo "## Paper Sketch" >> $GITHUB_STEP_SUMMARY
           echo "Combined markdown built (${PAPER_LINES} lines)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [Latest (branch)](${PAGES_URL}/preview/paper.html)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stable (main)](${PAGES_URL}/paper.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Latest (branch)](${PAGES_URL}/preview/paper.html?v=${SHORT_SHA})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stable (main)](${PAGES_URL}/paper.html?v=${SHORT_SHA})" >> $GITHUB_STEP_SUMMARY
           echo "- [Section index](https://github.com/${REPO}/blob/${SHORT_SHA}/viscachepaper/paper-sketch.md)" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
@@ -117,7 +87,7 @@ jobs:
             const repo = context.repo.repo;
             const pagesUrl = `https://${owner}.github.io/${repo}`;
             const sketchUrl = `https://github.com/${owner}/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
-            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/preview/paper.html) | [stable (main)](${pagesUrl}/paper.html) | [section index](${sketchUrl}) | \`${sha}\``;
+            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/preview/paper.html?v=${sha}) | [stable (main)](${pagesUrl}/paper.html?v=${sha}) | [section index](${sketchUrl}) | \`${sha}\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -140,17 +110,13 @@ jobs:
               });
             }
 
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: paper
+  # ── Parallel: ablation tests ──────────────────────────────────────
+  test:
+    name: Ablation Tests
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - run: python3 tests/test_paper_ablations.py
 
   # ── PDF generation (disabled — re-enable for TeX publishing) ──────
   # pdf:

@@ -25,11 +25,6 @@ This is the markdown-based paper sketch for the VisCacheSketch project. Each sec
 | 14 | [Conclusion](sections/14-conclusion.md) | `sections/14-conclusion.md` |
 | — | [References](sections/references.md) | `sections/references.md` |
 
-## PDF generation (dormant)
+## PDF generation
 
-The PDF generator (`generate_paper.py`) is preserved for future TeX-based publishing but is currently disabled in CI. To generate locally:
-
-```bash
-pip install reportlab
-python viscachepaper/generate_paper.py /tmp/paper-draft.pdf
-```
+Moving to LaTeX. The old reportlab-based `generate_paper.py` has been removed.

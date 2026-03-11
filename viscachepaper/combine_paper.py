@@ -40,8 +40,43 @@ def build_stamp():
             sha = "unknown"
     else:
         sha = sha[:7]
+
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    return f"*Combined {ts} | {sha}*"
+
+    # Build repo link for commit
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    sha_full = os.environ.get("GITHUB_SHA", "")
+    if repo and sha_full:
+        sha_link = f"[`{sha}`](https://github.com/{repo}/commit/{sha_full})"
+    else:
+        sha_link = f"`{sha}`"
+
+    parts = [f"**Built:** {ts} | {sha_link}"]
+
+    # Add PR info if available
+    pr_number = ""
+    ref = os.environ.get("GITHUB_REF", "")
+    if ref.startswith("refs/pull/") and ref.endswith("/merge"):
+        pr_number = ref.split("/")[2]
+    if pr_number and repo:
+        parts.append(f"[PR #{pr_number}](https://github.com/{repo}/pull/{pr_number})")
+
+    # Add branch info
+    branch = os.environ.get("GITHUB_HEAD_REF", "").strip()  # PR source branch
+    if not branch:
+        branch = os.environ.get("GITHUB_REF_NAME", "").strip()
+    if not branch:
+        try:
+            branch = subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+        except Exception:
+            branch = ""
+    if branch:
+        parts.append(f"branch: `{branch}`")
+
+    return " | ".join(parts)
 
 
 def combine(output_path):
@@ -57,9 +92,9 @@ def combine(output_path):
 
     combined = "\n\n---\n\n".join(parts)
 
-    # Append build stamp
+    # Prepend build stamp
     stamp = build_stamp()
-    combined += f"\n\n---\n\n{stamp}\n"
+    combined = f"{stamp}\n\n---\n\n{combined}\n"
 
     with open(output_path, "w") as f:
         f.write(combined)
