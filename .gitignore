@@ -30,6 +30,10 @@ captures/
 *.exr
 *.hdr
 
+# VisCache passes copied into Falcor tree by setup.sh (generated, not tracked)
+Falcor/Source/RenderPasses/VisCache/
+Falcor/Source/RenderPasses/ReSTIRPTPass/
+
 # Downloaded test scenes
 media/
 
