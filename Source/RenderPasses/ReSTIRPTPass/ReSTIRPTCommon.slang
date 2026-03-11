@@ -52,6 +52,7 @@ static const float kGeomDepthThresh         = 0.1f;    ///< Temporal: relative d
 static const float kSpatialGeomNormalThresh = 0.5f;    ///< Spatial: dot(N1,N2) threshold (DQLin: 0.5)
 static const float kSpatialGeomDepthThresh  = 0.1f;    ///< Spatial: relative camera-depth threshold (DQLin: 0.1)
 static const float kShadowRayOffset         = 1e-4f;   ///< Ray tMin/tMax offset to avoid self-intersection
+static const float kMinRRTermProb           = 0.05f;   ///< Russian roulette minimum termination probability
 
 // ---------------------------------------------------------------------------
 // Secondary bounce hit data — same as GI version

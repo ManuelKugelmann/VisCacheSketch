@@ -170,7 +170,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         // Russian roulette after bounce 2
         if (bounce >= 2)
         {
-            float q = max(0.05f, 1.0f - luminance(prefixThroughput));
+            float q = max(kMinRRTermProb, 1.0f - luminance(prefixThroughput));
             if (sampleNext1D(sg) < q) break;
             prefixThroughput /= (1.0f - q);
         }
