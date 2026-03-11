@@ -6,6 +6,18 @@
 **Target venue:** EGSR / HPG 2026
 **Status:** Implementation in progress, paper draft in revision
 
+## Quickstart
+
+```bash
+git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && ./setup.sh
+```
+
+On Windows:
+
+```bat
+git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && .\setup.bat
+```
+
 ---
 
 ## History
