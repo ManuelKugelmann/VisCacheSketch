@@ -44,6 +44,7 @@ public:
     PixelStats* getPixelStats() const { return mpPixelStats.get(); }
 
 private:
+    template<class T, class... Args> friend ref<T> Falcor::make_ref(Args&&...);
     ReSTIRPTPass(ref<Device> pDevice, const Properties& props);
     bool parseDictionary(const Properties& props);
     void validateOptions();
