@@ -84,6 +84,13 @@ struct VCFindResult
     uint  total;
 };
 
+struct VCInsertResult
+{
+    bool  valid;        // true if sample was written
+    uint  total;        // post-increment total count
+    float variance;     // post-increment mu*(1-mu)
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // HASH — pcg3d (Jarzynski & Olano, 2020)
 // ═══════════════════════════════════════════════════════════════════
@@ -212,18 +219,26 @@ void vc_overflow_decay(uint slot)
 }
 
 // Add one sample. V=1 → delta=0x00010001, V=0 → delta=0x00000001.
-void vc_add_sample(uint slot, bool visible)
+// Returns post-increment packed value for cascaded variance check.
+uint vc_add_sample(uint slot, bool visible)
 {
     uint delta = visible ? 0x00010001u : 0x00000001u;
     uint prev;
     InterlockedAdd(_VCTable[slot * 2u + 1u], delta, prev);
 
+    uint cur = prev + delta;
+
     // Inline overflow decay: if total exceeds trigger, subtract 1/8.
-    uint newTotal = ((prev & 0xFFFFu) + 1u);
+    uint newTotal = cur & 0xFFFFu;
     if (newTotal > VC_OVERFLOW_TRIGGER)
+    {
         vc_overflow_decay(slot);
+        // Re-read for accurate post-decay value
+        cur = _VCTable[slot * 2u + 1u];
+    }
 
     InterlockedAdd(_VCStats[VC_STAT_INSERTS], 1u);
+    return cur;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -276,8 +291,20 @@ VCFindResult vc_find(uint addr, uint fp)
 // INSERT — CAS fingerprint, add sample, pressure-scaled eviction
 // ═══════════════════════════════════════════════════════════════════
 
-void vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
+VCInsertResult vc_make_insert_result(uint packed)
 {
+    VCInsertResult r;
+    r.valid = true;
+    r.total = packed & 0xFFFFu;
+    float mu = (r.total > 0) ? float(packed >> 16u) / float(r.total) : 0.5;
+    r.variance = mu * (1.0 - mu);
+    return r;
+}
+
+VCInsertResult vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
+{
+    VCInsertResult miss = { false, 0, 1.0 };
+
     uint addr = vc_hash_addr(qA, qB, level, isInf);
     uint fp   = vc_hash_fp  (qA, qB, level, isInf);
 
@@ -298,8 +325,7 @@ void vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
         if (existingFp == fp)
         {
             // Found existing entry — add sample.
-            vc_add_sample(s, visible);
-            return;
+            return vc_make_insert_result(vc_add_sample(s, visible));
         }
 
         if (existingFp == 0u)
@@ -314,8 +340,7 @@ void vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
                 if (prev == VC_TOMBSTONE)
                 {
                     _VCTable[ts * 2u + 1u] = 0u;
-                    vc_add_sample(ts, visible);
-                    return;
+                    return vc_make_insert_result(vc_add_sample(ts, visible));
                 }
                 // Lost race on tombstone — fall through to claim this empty.
             }
@@ -324,8 +349,7 @@ void vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
             InterlockedCompareExchange(_VCTable[s * 2u], 0u, fp, prev);
             if (prev == 0u || prev == fp)
             {
-                vc_add_sample(s, visible);
-                return;
+                return vc_make_insert_result(vc_add_sample(s, visible));
             }
             // Lost race — slot now occupied, continue probing.
             continue;
@@ -344,9 +368,9 @@ void vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
                 uint evictedFp;
                 InterlockedExchange(_VCTable[s * 2u],      fp, evictedFp);
                 InterlockedExchange(_VCTable[s * 2u + 1u], 0u, packed);
-                vc_add_sample(s, visible);
+                uint cur = vc_add_sample(s, visible);
                 InterlockedAdd(_VCStats[VC_STAT_EVICTIONS], 1u);
-                return;
+                return vc_make_insert_result(cur);
             }
         }
 #ifdef VC_STATS_PROBES
@@ -363,11 +387,11 @@ void vc_insert_at_level(int3 qA, int3 qB, bool visible, uint level, uint isInf)
         if (prev == VC_TOMBSTONE)
         {
             _VCTable[ts * 2u + 1u] = 0u;
-            vc_add_sample(ts, visible);
-            return;
+            return vc_make_insert_result(vc_add_sample(ts, visible));
         }
     }
     // Sample lost. Correctness unaffected.
+    return miss;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -490,33 +514,20 @@ void vc_record_internal(float3 posA, float3 endpointB,
     float cellB[VC_NUM_LEVELS] = { _VCCellB.x, _VCCellB.y, _VCCellB.z };
     float angR [VC_NUM_LEVELS] = { _VCAngularRes.x, _VCAngularRes.y, _VCAngularRes.z };
 
-    // Variance gate: read L0 to decide write depth.
-    int3 qA0 = vc_quantize_pos(posA, cellA[di.x]);
-    int3 qB0 = isInf ? vc_quantize_dir(endpointB, angR[di.x])
-                      : vc_quantize_pos(endpointB, cellB[di.x]);
-    uint addr0 = vc_hash_addr(qA0, qB0, di.x, isInf);
-    uint fp0   = vc_hash_fp  (qA0, qB0, di.x, isInf);
-    VCFindResult l0 = vc_find(addr0, fp0);
-
-    uint vmax;
-    if (!l0.found || l0.total < VC_BOOT_THRESHOLD)
-        vmax = di.y; // bootstrap: write all levels
-    else if (l0.variance > _VCVarThreshold)
-        vmax = di.y; // shadow boundary: write all levels
-    else
-        vmax = di.x; // smooth region: coarsest only
-
-    [loop] for (uint lvl = di.x; lvl <= min(di.y, vmax); lvl++)
+    // Coarse-to-fine cascaded variance gate: write each level, then
+    // check its post-increment variance to decide whether to continue.
+    [loop] for (uint lvl = di.x; lvl <= di.y; lvl++)
     {
-        int3 qA = (lvl == di.x) ? qA0 : vc_quantize_pos(posA, cellA[lvl]);
-        int3 qB;
-        if (lvl == di.x)
-            qB = qB0;
-        else
-            qB = isInf ? vc_quantize_dir(endpointB, angR[lvl])
-                       : vc_quantize_pos(endpointB, cellB[lvl]);
+        int3 qA = vc_quantize_pos(posA, cellA[lvl]);
+        int3 qB = isInf ? vc_quantize_dir(endpointB, angR[lvl])
+                        : vc_quantize_pos(endpointB, cellB[lvl]);
 
-        vc_insert_at_level(qA, qB, visible, lvl, isInf);
+        VCInsertResult res = vc_insert_at_level(qA, qB, visible, lvl, isInf);
+
+        // Cascaded gate: if this level is converged, stop propagation.
+        if (res.valid && res.total >= VC_BOOT_THRESHOLD
+            && res.variance <= _VCVarThreshold)
+            break;
     }
 }
 

@@ -222,9 +222,9 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 camPos)
 
 // ---------------------------------------------------------------------------
 // INSERT (called after tracing a shadow ray)
-// Cascaded variance gate: each level's variance gates writes to the next.
-// The coarsest level is always written; finer levels only if the parent
-// level's variance exceeds gVarThreshold (or is still bootstrapping).
+// Coarse-to-fine cascaded variance gate: write L0, check its variance to
+// decide L1, write L1, check its variance to decide L2, etc.
+// Uses the post-increment packed value directly — no extra parent lookup.
 // Single InterlockedAdd keeps vis and total always in sync.
 // Inline overflow decay: subtract 1/8 when total > 0xE000.
 // ---------------------------------------------------------------------------
@@ -237,31 +237,6 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 camPos)
 
     for (int lvl = lo; lvl <= hi; lvl++)
     {
-        // Cascaded gate: for levels above the coarsest, check parent variance
-        if (lvl > lo)
-        {
-            int3 qap = jitterQuantize(posA, kCellA[lvl - 1], 0xAAu ^ uint(lvl - 1));
-            int3 qbp = jitterQuantize(posB, kCellB[lvl - 1], 0xBBu ^ uint(lvl - 1));
-            uint fpp   = vhfFingerprint(qap, qbp, uint(lvl - 1));
-            uint addrp = vhfAddr(qap, qbp, uint(lvl - 1));
-            int  slotp = vhfFindSlot(addrp, fpp, false);
-
-            if (slotp >= 0)
-            {
-                uint totalp = gVHFTable[slotp].packed & 0xFFFFu;
-                if (totalp >= gBootThreshold)
-                {
-                    uint visp  = gVHFTable[slotp].packed >> 16u;
-                    float mup  = float(visp) / float(totalp);
-                    float varp = mup * (1.0f - mup);
-                    if (varp <= gVarThreshold)
-                        break;  // parent is smooth — stop propagation
-                }
-                // else: still bootstrapping — continue writing
-            }
-            // else: parent miss — continue writing (bootstrap)
-        }
-
         int3 qa = jitterQuantize(posA, kCellA[lvl], 0xAAu ^ uint(lvl));
         int3 qb = jitterQuantize(posB, kCellB[lvl], 0xBBu ^ uint(lvl));
 
@@ -290,6 +265,20 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 camPos)
             uint totalHalf = (cur & 0xFFFFu) >> 3u;
             uint sub       = (visHalf << 16u) | totalHalf;
             InterlockedAdd(gVHFTable[slot].packed, -sub);
+            cur = cur - sub;
+        }
+
+        // Cascaded gate: Bernoulli variance mu*(1-mu) of this level
+        // decides whether to continue to the next finer level.
+        // No extra lookup — uses post-increment packed value directly.
+        uint totalCur = cur & 0xFFFFu;
+        if (totalCur >= gBootThreshold)
+        {
+            uint visCur  = cur >> 16u;
+            float muCur  = float(visCur) / float(totalCur);
+            float varCur = muCur * (1.0f - muCur);
+            if (varCur <= gVarThreshold)
+                break;  // this level is smooth — no need to go finer
         }
     }
 }

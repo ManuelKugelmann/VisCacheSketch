@@ -518,14 +518,14 @@ def test_cascaded_variance_gate():
     posB = (15.0, 15.0, 15.0)
 
     def cascaded_insert(table, posA, posB, V, lo, hi):
-        """Mirror of VisCache.slang cascaded vhfInsert."""
+        """Mirror of VisCache.slang cascaded vhfInsert.
+        Write level, check its variance, stop if smooth."""
         for lvl in range(lo, hi + 1):
-            if lvl > lo:
-                mu_prev, var_prev = lookup(table, posA, posB, lvl - 1)
-                if mu_prev is not None and var_prev <= VAR_THR:
-                    break  # parent is smooth — stop propagation
-                # else: bootstrap or high-variance — continue
             insert(table, posA, posB, V, lvl=lvl)
+            # Check this level's variance to gate the next
+            mu_cur, var_cur = lookup(table, posA, posB, lvl=lvl)
+            if mu_cur is not None and var_cur <= VAR_THR:
+                break  # this level is smooth — no need to go finer
 
     # Case A: uniform visibility (mu≈1.0) → L0 converges to low variance,
     # so L1 and L2 should NOT be populated after bootstrap.

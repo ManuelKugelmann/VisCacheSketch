@@ -439,9 +439,11 @@ def build(output_path=None):
     # ── 5 INSERT ────────────────────────────────────────────────────
     S.append(Paragraph("5&nbsp;&nbsp;Insert", sH1))
     S.append(Paragraph(
-        "L0 is read to decide write depth. During bootstrap, all levels are "
-        "written. Once L0 matures, fine levels are written only where L0 variance "
-        "exceeds a threshold &#8212; the same variance signal that drives RR "
+        "Each level&#8217;s post-increment variance gates writes to the next finer level. "
+        "The coarsest level is always written; after each write, if the Bernoulli "
+        "variance &mu;(1&#8722;&mu;) falls below &tau;, propagation stops. During "
+        "bootstrap the variance is above &tau; by construction, so all levels fill "
+        "unconditionally. This is the same variance signal that drives RR "
         "survival probability in Sec.&nbsp;8 (see coupled variance adaptation). "
         "A distance interval gates the LOD range by "
         "target square pixel footprint: skip levels where the cell is below "
