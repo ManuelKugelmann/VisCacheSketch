@@ -45,7 +45,8 @@ jobs:
           PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           mkdir -p _site/preview
           python3 viscachepaper/wrap_html.py viscachepaper/paper-combined.md _site/preview/paper.html
-          cp viscachepaper/index.html _site/index.html
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          sed "s|paper.html|paper.html?v=${SHORT_SHA}|g" viscachepaper/index.html > _site/index.html
 
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             cp _site/preview/paper.html _site/paper.html
@@ -71,8 +72,8 @@ jobs:
           echo "## Paper Sketch" >> $GITHUB_STEP_SUMMARY
           echo "Combined markdown built (${PAPER_LINES} lines)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [Latest (branch)](${PAGES_URL}/preview/paper.html)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stable (main)](${PAGES_URL}/paper.html)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Latest (branch)](${PAGES_URL}/preview/paper.html?v=${SHORT_SHA})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stable (main)](${PAGES_URL}/paper.html?v=${SHORT_SHA})" >> $GITHUB_STEP_SUMMARY
           echo "- [Section index](https://github.com/${REPO}/blob/${SHORT_SHA}/viscachepaper/paper-sketch.md)" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment on PR
@@ -86,7 +87,7 @@ jobs:
             const repo = context.repo.repo;
             const pagesUrl = `https://${owner}.github.io/${repo}`;
             const sketchUrl = `https://github.com/${owner}/${repo}/blob/${context.sha}/viscachepaper/paper-sketch.md`;
-            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/preview/paper.html) | [stable (main)](${pagesUrl}/paper.html) | [section index](${sketchUrl}) | \`${sha}\``;
+            const body = `**Paper sketch built** (${lines} lines) — [preview](${pagesUrl}/preview/paper.html?v=${sha}) | [stable (main)](${pagesUrl}/paper.html?v=${sha}) | [section index](${sketchUrl}) | \`${sha}\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
