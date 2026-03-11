@@ -44,7 +44,7 @@
                 "strategy": "set"
             },
             "toolset": {
-                "value": "host=x86",
+                "value": "host=x64",
                 "strategy": "set"
             }
         },
@@ -74,7 +74,7 @@
                 "strategy": "external"
             },
             "toolset": {
-                "value": "host=x86,v143",
+                "value": "host=x64,v143",
                 "strategy": "external"
             },
             "cacheVariables": {
