@@ -1,5 +1,5 @@
 # Visibility Prediction-with-Correction for Real-Time Path Tracing
-## Multilevel Hashing, Collision Handling, and ReSTIR Integration
+## A Multilevel Spatial Hash Cache with Variance-Driven Adaptation
 
 **M. Kugelmann**
 
