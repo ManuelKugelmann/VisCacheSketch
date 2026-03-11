@@ -60,11 +60,11 @@ mkdir -p "${VISCACHE_DST}"
 cp -r "${SCRIPT_DIR}/Source/RenderPasses/VisCache/"* "${VISCACHE_DST}/"
 log "  Copied: VisCache"
 
-# ReSTIRGIPass
-GI_DST="${FALCOR_ROOT}/Source/RenderPasses/ReSTIRGIPass"
-mkdir -p "${GI_DST}"
-cp -r "${SCRIPT_DIR}/Source/RenderPasses/ReSTIRGIPass/"* "${GI_DST}/"
-log "  Copied: ReSTIRGIPass"
+# ReSTIRPTPass (DQLin ReSTIR PT ported to Falcor 8)
+PT_DST="${FALCOR_ROOT}/Source/RenderPasses/ReSTIRPTPass"
+mkdir -p "${PT_DST}"
+cp -r "${SCRIPT_DIR}/Source/RenderPasses/ReSTIRPTPass/"* "${PT_DST}/"
+log "  Copied: ReSTIRPTPass"
 
 # Scripts
 SCRIPT_DST="${FALCOR_ROOT}/scripts/VisCache"
@@ -93,11 +93,11 @@ else
     log "  Already present: VisCache (skipped)"
 fi
 
-if ! grep -q "add_subdirectory(ReSTIRGIPass)" "${RP_CMAKE}"; then
-    echo "add_subdirectory(ReSTIRGIPass)" >> "${RP_CMAKE}"
-    log "  Added: add_subdirectory(ReSTIRGIPass)"
+if ! grep -q "add_subdirectory(ReSTIRPTPass)" "${RP_CMAKE}"; then
+    echo "add_subdirectory(ReSTIRPTPass)" >> "${RP_CMAKE}"
+    log "  Added: add_subdirectory(ReSTIRPTPass)"
 else
-    log "  Already present: ReSTIRGIPass (skipped)"
+    log "  Already present: ReSTIRPTPass (skipped)"
 fi
 
 # ---------------------------------------------------------------------------

@@ -1266,7 +1266,7 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
         if (!mpEnvMapSampler)
         {
             // [Falcor 8] EnvMapSampler constructor takes device + envmap.
-        mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
+            mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
             lightingChanged = true;
             mRecompile = true;
         }

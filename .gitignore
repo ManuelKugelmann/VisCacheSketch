@@ -5,6 +5,7 @@ out/
 *.dll
 *.pdb
 *.obj
+!Source/RenderPasses/*/Data/**/*.obj
 *.lib
 
 # IDE
