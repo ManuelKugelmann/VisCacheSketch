@@ -44,6 +44,12 @@ enum class ColorFormat
     LogLuvHDR = 1,
 };
 
+FALCOR_ENUM_INFO(ColorFormat, {
+    { ColorFormat::RGBA32F, "RGBA32F" },
+    { ColorFormat::LogLuvHDR, "LogLuvHDR" },
+});
+FALCOR_ENUM_REGISTER(ColorFormat);
+
 enum class MISHeuristic
     // TODO: Remove the ifdefs and the include when Slang supports enum type specifiers.
 #ifdef HOST_CODE
@@ -54,6 +60,13 @@ enum class MISHeuristic
     PowerTwo = 1,    ///< Power heuristic (exponent = 2.0).
     PowerExp = 2,    ///< Power heuristic (variable exponent).
 };
+
+FALCOR_ENUM_INFO(MISHeuristic, {
+    { MISHeuristic::Balance, "Balance" },
+    { MISHeuristic::PowerTwo, "PowerTwo" },
+    { MISHeuristic::PowerExp, "PowerExp" },
+});
+FALCOR_ENUM_REGISTER(MISHeuristic);
 
 // Define tile sizes in pixels.
 // The frame is divided into tiles stored in scanline order, with pixels in tiles enumerated in Morton order.
@@ -75,6 +88,13 @@ enum class ShiftMapping
     RandomReplay = 1,
     Hybrid = 2,
 };
+
+FALCOR_ENUM_INFO(ShiftMapping, {
+    { ShiftMapping::Reconnection, "Reconnection" },
+    { ShiftMapping::RandomReplay, "RandomReplay" },
+    { ShiftMapping::Hybrid, "Hybrid" },
+});
+FALCOR_ENUM_REGISTER(ShiftMapping);
 
 enum class LocalStrategy
 #ifdef HOST_CODE
@@ -98,6 +118,15 @@ enum class ReSTIRMISKind
     ConstantBiased = 4
 };
 
+FALCOR_ENUM_INFO(ReSTIRMISKind, {
+    { ReSTIRMISKind::Constant, "Constant" },
+    { ReSTIRMISKind::Talbot, "Talbot" },
+    { ReSTIRMISKind::Pairwise, "Pairwise" },
+    { ReSTIRMISKind::ConstantBinary, "ConstantBinary" },
+    { ReSTIRMISKind::ConstantBiased, "ConstantBiased" },
+});
+FALCOR_ENUM_REGISTER(ReSTIRMISKind);
+
 enum class SpatialReusePattern
 #ifdef HOST_CODE
     : uint32_t
@@ -107,12 +136,25 @@ enum class SpatialReusePattern
     SmallWindow = 1,
 };
 
+FALCOR_ENUM_INFO(SpatialReusePattern, {
+    { SpatialReusePattern::Default, "Default" },
+    { SpatialReusePattern::SmallWindow, "SmallWindow" },
+});
+FALCOR_ENUM_REGISTER(SpatialReusePattern);
+
 enum class PathSamplingMode
 {
     ReSTIR,
     PathReuse,
     PathTracing
 };
+
+FALCOR_ENUM_INFO(PathSamplingMode, {
+    { PathSamplingMode::ReSTIR, "ReSTIR" },
+    { PathSamplingMode::PathReuse, "PathReuse" },
+    { PathSamplingMode::PathTracing, "PathTracing" },
+});
+FALCOR_ENUM_REGISTER(PathSamplingMode);
 
 enum class PathReusePattern
 {
