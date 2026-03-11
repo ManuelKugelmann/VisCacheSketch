@@ -98,23 +98,27 @@ void ReSTIRGIPass::compile(RenderContext* pCtx, const CompileData& compileData)
 
     uint32_t pixelCount = mFrameDim.x * mFrameDim.y;
 
+    // Use Slang reflection to determine struct sizes (matches PathTracer pattern).
+    // This avoids hardcoding sizes that may diverge from actual Slang struct layout.
+    auto var = mpInitialSamplingPass->getRootVar();
+
     // Reservoir double-buffer for temporal reuse
     mpReservoirBuffer = mpDevice->createStructuredBuffer(
-        kReservoirSize, pixelCount,
+        var["gReservoirs"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal
     );
     mpReservoirBuffer->setName("ReSTIRGI_Reservoirs");
 
     mpPrevReservoirBuffer = mpDevice->createStructuredBuffer(
-        kReservoirSize, pixelCount,
+        var["gReservoirs"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal
     );
     mpPrevReservoirBuffer->setName("ReSTIRGI_PrevReservoirs");
 
     mpSecondaryHitBuffer = mpDevice->createStructuredBuffer(
-        kSecondaryHitSize, pixelCount,
+        var["gSecondaryHits"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal
     );

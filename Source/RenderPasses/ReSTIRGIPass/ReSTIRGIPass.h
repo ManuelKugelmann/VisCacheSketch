@@ -97,13 +97,8 @@ private:
     ref<ComputePass>  mpFinalShadingPass;
 
     // -----------------------------------------------------------------------
-    // Reservoir buffers (sizes must match ReSTIRGICommon.slang structs)
-    // PathReservoir: SecondaryHit (64B) + W,M,wSum,targetPdf (16B) = 80 bytes
-    // SecondaryHit: posW(12) + normalW(12) + Lo(12) + invPDF(4) + wi(12) + pad(4) = 56 bytes
+    // Reservoir buffers (sizes determined by Slang reflection at compile time)
     // -----------------------------------------------------------------------
-    static constexpr size_t kReservoirSize    = 80u;
-    static constexpr size_t kSecondaryHitSize = 56u;
-
     ref<Buffer>       mpReservoirBuffer;       ///< Current-frame reservoirs
     ref<Buffer>       mpPrevReservoirBuffer;   ///< Previous-frame (temporal)
     ref<Buffer>       mpSecondaryHitBuffer;    ///< Secondary hit data (Lo, posW, N)
