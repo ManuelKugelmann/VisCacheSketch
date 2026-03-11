@@ -32,34 +32,15 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRPTCommon.slang
 
 float traceVisibilityRay(float3 origin, float3 target)
 {
     float3 dir = target - origin;
     float dist = length(dir);
-    if (dist < 1e-6f) return 1.0f;
+    if (dist < kDistanceEps) return 1.0f;
     dir /= dist;
-    Ray ray = Ray(origin, dir, 1e-4f, dist - 1e-4f);
+    Ray ray = Ray(origin, dir, kShadowRayOffset, dist - kShadowRayOffset);
     SceneRayQuery<0> rayQuery;
     return rayQuery.traceVisibilityRay(ray) ? 1.0f : 0.0f;
 }
@@ -74,7 +55,7 @@ import RenderPasses.VisCache.RevalidationCommon;
 
 uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 {
-    float angle  = sampleNext1D(sg) * 6.28318530f;
+    float angle  = sampleNext1D(sg) * (2.0f * M_PI);
     float radius = sqrt(sampleNext1D(sg)) * gSpatialRadius;
     int2 offset  = int2(cos(angle) * radius, sin(angle) * radius);
     int2 nbr     = clamp(int2(pixel) + offset, int2(0), int2(gFrameDim) - 1);
@@ -86,22 +67,22 @@ float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
                         inout SampleGenerator sg, out float pHatNoVis)
 {
     pHatNoVis = 0.0f;
-    if (luminance(neighborSample.Lo) < 1e-7f) return 0.0f;
+    if (luminance(neighborSample.Lo) < kLuminanceEps) return 0.0f;
 
     float3 toHit = neighborSample.posW - sd.posW;
     float dist = length(toHit);
-    if (dist < 1e-6f) return 0.0f;
+    if (dist < kDistanceEps) return 0.0f;
 
     float3 dir = toHit / dist;
     float cosTheta = dot(sd.N, dir);
     if (cosTheta <= 0.0f) return 0.0f;
 
     float cosHit = abs(dot(neighborSample.normalW, -dir));
-    float G = cosTheta * cosHit / (dist * dist + 1e-6f);
+    float G = cosTheta * cosHit / (dist * dist + kDistanceEps);
     float3 bsdf = float3(cosTheta / M_PI);
 
     pHatNoVis = evalTargetPdf(bsdf, neighborSample.Lo, G);
-    if (pHatNoVis < 1e-7f) return 0.0f;
+    if (pHatNoVis < kLuminanceEps) return 0.0f;
 
     float V = evaluateVisibility(sd.posW, neighborSample.posW,
                                   bsdf, neighborSample.Lo, G,
@@ -160,12 +141,12 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (!neighbor.isValid()) continue;
 
         if (!geometryValid(sd.N, neighbor.sample.normalW, sd.posW,
-                           neighbor.sample.posW, 0.5f, 0.2f))
+                           neighbor.sample.posW, gCamPos, kSpatialGeomNormalThresh, kSpatialGeomDepthThresh))
             continue;
 
         float pHatNoVis;
         float pHatWithVis = evalTargetAtPixel(sd, neighbor.sample, neighbor.targetPdf, sg, pHatNoVis);
-        if (pHatWithVis < 1e-7f) continue;
+        if (pHatWithVis < kLuminanceEps) continue;
 
         float nbrM = min(neighbor.M, kMaxSpatialM);
         float w = pHatWithVis * neighbor.W * nbrM;

@@ -25,26 +25,7 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRPTCommon.slang
 
 [numthreads(8, 8, 1)]
 void csFinalShading(uint3 dispatchThreadId : SV_DispatchThreadID)
@@ -72,12 +53,12 @@ void csFinalShading(uint3 dispatchThreadId : SV_DispatchThreadID)
             float3 toHit = selected.posW - sd.posW;
             float dist = length(toHit);
 
-            if (dist > 1e-6f)
+            if (dist > kDistanceEps)
             {
                 float3 dir = toHit / dist;
                 float cosTheta = max(dot(sd.N, dir), 0.0f);
                 float cosHit   = abs(dot(selected.normalW, -dir));
-                float G        = cosTheta * cosHit / (dist * dist + 1e-6f);
+                float G        = cosTheta * cosHit / (dist * dist + kDistanceEps);
 
                 // For PT, the contribution uses the stored prefix throughput
                 // which already encodes the multi-bounce BSDF chain.
@@ -87,7 +68,7 @@ void csFinalShading(uint3 dispatchThreadId : SV_DispatchThreadID)
 
                 // Clamp fireflies
                 float lum = luminance(color);
-                if (lum > 50.0f) color *= 50.0f / lum;
+                if (lum > kFireflyClamp) color *= kFireflyClamp / lum;
             }
         }
     }

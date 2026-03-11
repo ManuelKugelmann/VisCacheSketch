@@ -39,34 +39,7 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-// ---------------------------------------------------------------------------
-// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
-// Falcor 8.0's loadShadingData lives in PathTracer/LoadShadingData.slang;
-// we inline the core logic here to avoid coupling to PathTracer internals.
-// ---------------------------------------------------------------------------
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        // Non-triangle fallback (curves, SDF, etc.) — not expected in GI pass
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRGICommon.slang
 
 // ---------------------------------------------------------------------------
 // Trace a secondary indirect bounce from the primary hit.
@@ -91,7 +64,7 @@ void traceSecondaryBounce(const ShadingData sd, inout SampleGenerator sg,
     if (!gScene.materials.getBSDF(sd, lod).sample(sd, sg, bsdfSample, true))
         return;
 
-    if (luminance(bsdfSample.weight) < 1e-7f || bsdfSample.pdf < 1e-7f)
+    if (luminance(bsdfSample.weight) < kLuminanceEps || bsdfSample.pdf < kLuminanceEps)
         return;
 
     bsdfVal = bsdfSample.weight * bsdfSample.pdf; // f * cos / pdf * pdf = f * cos
@@ -116,9 +89,14 @@ void traceSecondaryBounce(const ShadingData sd, inout SampleGenerator sg,
     uint secMaterialID = gScene.getMaterialID(triangleHit.instanceID);
 
     hit.posW    = v.posW;
-    hit.normalW = v.faceNormalW;
     hit.wi      = bsdfSample.wi;
     hit.invPDF  = 1.0f / pdf;
+
+    // Orient normals toward reconnection partner (DQLin: setGIInitialSample)
+    float3 secNormal = v.faceNormalW;
+    if (dot(secNormal, sd.posW - v.posW) < 0.0f)
+        secNormal = -secNormal;
+    hit.normalW = secNormal;
 
     // ----- Radiance at secondary hit: emission + NEE (single-bounce GI) -----
 
@@ -147,7 +125,7 @@ void traceSecondaryBounce(const ShadingData sd, inout SampleGenerator sg,
             // Shadow ray from secondary hit to sampled light
             float3 origin = computeRayOrigin(v.posW, v.faceNormalW);
             Ray shadowRay = Ray(origin, ls.dir, 0.0f,
-                                ls.distance * (1.0f - 1e-4f));
+                                ls.distance * (1.0f - kShadowRayOffset));
 
             SceneRayQuery<0> shadowQuery;
             bool visible = shadowQuery.traceVisibilityRay(shadowRay);
@@ -211,16 +189,16 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
     float  pdf;
     traceSecondaryBounce(sd, sg, secHit, bsdfVal, pdf);
 
-    if (pdf > 1e-7f && luminance(secHit.Lo) > 0.0f)
+    if (pdf > kLuminanceEps && luminance(secHit.Lo) > 0.0f)
     {
         // Reconnection geometry term
         float3 toHit = secHit.posW - sd.posW;
         float  dist  = length(toHit);
-        if (dist > 1e-6f)
+        if (dist > kDistanceEps)
         {
             float3 dir = toHit / dist;
-            float  G   = abs(dot(sd.N, dir)) * abs(dot(secHit.normalW, -dir))
-                        / (dist * dist + 1e-6f);
+            float  G   = max(dot(sd.N, dir), 0.0f) * abs(dot(secHit.normalW, -dir))
+                        / (dist * dist + kDistanceEps);
 
             float pHat = evalTargetPdf(bsdfVal, secHit.Lo, G);
             if (pHat > 0.0f)

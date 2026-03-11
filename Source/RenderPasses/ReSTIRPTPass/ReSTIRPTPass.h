@@ -50,7 +50,6 @@ public:
         uint32_t maxBounces          = 4;       ///< Max path depth (1 = GI only)
         uint32_t numSpatialNeighbors = 5;       ///< k in spatial reuse
         float    spatialRadius       = 30.0f;   ///< Screen-space pixel radius
-        uint32_t numTemporalSamples  = 1;
         bool     enableTemporalReuse = true;
         bool     enableSpatialReuse  = true;
         bool     enableMIS           = true;
@@ -87,14 +86,8 @@ private:
     ref<ComputePass>  mpFinalShadingPass;
 
     // -----------------------------------------------------------------------
-    // Reservoir buffers
-    // PathReservoir for PT is larger: carries reconnection depth + prefix throughput.
-    // SecondaryHit(56B) + W,M,wSum,targetPdf(16B) + prefixThroughput(12B)
-    //   + reconnectDepth(4B) = 88 bytes
+    // Reservoir buffers (sizes determined by Slang reflection at compile time)
     // -----------------------------------------------------------------------
-    static constexpr size_t kReservoirSize    = 96u;  // padded to 16B alignment
-    static constexpr size_t kSecondaryHitSize = 56u;
-
     ref<Buffer>       mpReservoirBuffer;
     ref<Buffer>       mpPrevReservoirBuffer;
     ref<Buffer>       mpSecondaryHitBuffer;

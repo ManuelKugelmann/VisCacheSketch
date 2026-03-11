@@ -15,7 +15,6 @@ import RenderPasses.ReSTIRPTPass.ReSTIRPTCommon;
 
 RWStructuredBuffer<PathReservoir> gReservoirs;
 StructuredBuffer<PathReservoir>   gPrevReservoirs;
-StructuredBuffer<SecondaryHit>    gSecondaryHits;
 Texture2D<float2>                 gMotionVectors;
 Texture2D<PackedHitInfo>          gVBuffer;
 
@@ -26,39 +25,20 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRPTCommon.slang
 
 float evalTargetAtCurrentPixel(ShadingData sd, SecondaryHit prevSample)
 {
-    if (luminance(prevSample.Lo) < 1e-7f) return 0.0f;
+    if (luminance(prevSample.Lo) < kLuminanceEps) return 0.0f;
 
     float3 toHit = prevSample.posW - sd.posW;
     float dist = length(toHit);
-    if (dist < 1e-6f) return 0.0f;
+    if (dist < kDistanceEps) return 0.0f;
 
     float3 dir = toHit / dist;
-    float cosTheta = abs(dot(sd.N, dir));
+    float cosTheta = max(dot(sd.N, dir), 0.0f);
     float cosHit   = abs(dot(prevSample.normalW, -dir));
-    float G        = cosTheta * cosHit / (dist * dist + 1e-6f);
+    float G        = cosTheta * cosHit / (dist * dist + kDistanceEps);
 
     float3 bsdf = float3(cosTheta / M_PI);
     return evalTargetPdf(bsdf, prevSample.Lo, G);
@@ -99,7 +79,7 @@ void csTemporalReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, 0.9f, 0.1f))
+    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, gCamPos, kGeomNormalThresh, kGeomDepthThresh))
     {
         gReservoirs[pixelIdx] = current;
         return;

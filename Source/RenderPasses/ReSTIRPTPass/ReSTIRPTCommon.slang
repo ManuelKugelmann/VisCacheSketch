@@ -7,7 +7,52 @@
 
 #pragma once
 
+import Scene.Scene;
+import Scene.Shading;
+import Scene.ShadingData;
+import Scene.HitInfo;
 import Utils.Math.MathHelpers;
+
+// ---------------------------------------------------------------------------
+// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
+// ---------------------------------------------------------------------------
+ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
+{
+    VertexData v;
+    uint materialID = 0;
+    if (hit.getType() == HitType::Triangle)
+    {
+        const TriangleHit tri = hit.getTriangleHit();
+        v = gScene.getVertexData(tri);
+        materialID = gScene.getMaterialID(tri.instanceID);
+    }
+    else
+    {
+        v.posW = rayOrigin + rayDir;
+        v.normalW = -rayDir;
+        v.faceNormalW = -rayDir;
+        v.tangentW = float4(0, 1, 0, 1);
+        v.texC = float2(0);
+    }
+    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
+}
+
+// ---------------------------------------------------------------------------
+// Firefly clamp threshold (shared across final shading passes)
+// ---------------------------------------------------------------------------
+static const float kFireflyClamp = 50.0f;
+
+// ---------------------------------------------------------------------------
+// Numerical thresholds (named for auditability)
+// ---------------------------------------------------------------------------
+static const float kLuminanceEps      = 1e-7f;   ///< Min radiance to consider non-zero
+static const float kDistanceEps       = 1e-6f;   ///< Min distance to avoid division by zero
+static const float kGeomNormalThresh        = 0.9f;    ///< Temporal: dot(N1,N2) threshold
+static const float kGeomDepthThresh         = 0.1f;    ///< Temporal: relative depth threshold
+static const float kSpatialGeomNormalThresh = 0.5f;    ///< Spatial: dot(N1,N2) threshold (DQLin: 0.5)
+static const float kSpatialGeomDepthThresh  = 0.1f;    ///< Spatial: relative camera-depth threshold (DQLin: 0.1)
+static const float kShadowRayOffset         = 1e-4f;   ///< Ray tMin/tMax offset to avoid self-intersection
+static const float kMinRRTermProb           = 0.05f;   ///< Russian roulette minimum termination probability
 
 // ---------------------------------------------------------------------------
 // Secondary bounce hit data — same as GI version
@@ -101,12 +146,12 @@ float evalTargetPdf(float3 bsdf, float3 Lo, float G)
 
 // Geometry similarity check
 bool geometryValid(float3 N1, float3 N2, float3 P1, float3 P2,
-                   float normalThresh, float depthThresh)
+                   float3 camPos, float normalThresh, float depthThresh)
 {
     if (dot(N1, N2) < normalThresh) return false;
-    float dist = length(P1 - P2);
-    float maxDepth = max(length(P1), length(P2));
-    if (dist > depthThresh * maxDepth) return false;
+    float d1 = length(P1 - camPos);
+    float d2 = length(P2 - camPos);
+    if (abs(d1 - d2) > depthThresh * d1) return false;
     return true;
 }
 

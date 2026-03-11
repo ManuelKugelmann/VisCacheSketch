@@ -32,7 +32,6 @@ ReSTIRGIPass::ReSTIRGIPass(ref<Device> pDevice, const Properties& props)
     // Deserialise ReSTIR params
     if (props.has("numSpatialNeighbors")) mReSTIRParams.numSpatialNeighbors = props["numSpatialNeighbors"];
     if (props.has("spatialRadius"))       mReSTIRParams.spatialRadius       = props["spatialRadius"];
-    if (props.has("numTemporalSamples"))  mReSTIRParams.numTemporalSamples  = props["numTemporalSamples"];
     if (props.has("enableTemporalReuse")) mReSTIRParams.enableTemporalReuse = props["enableTemporalReuse"];
     if (props.has("enableSpatialReuse"))  mReSTIRParams.enableSpatialReuse  = props["enableSpatialReuse"];
     if (props.has("enableMIS"))           mReSTIRParams.enableMIS           = props["enableMIS"];
@@ -59,7 +58,6 @@ Properties ReSTIRGIPass::getProperties() const
     Properties p;
     p["numSpatialNeighbors"] = mReSTIRParams.numSpatialNeighbors;
     p["spatialRadius"]       = mReSTIRParams.spatialRadius;
-    p["numTemporalSamples"]  = mReSTIRParams.numTemporalSamples;
     p["enableTemporalReuse"] = mReSTIRParams.enableTemporalReuse;
     p["enableSpatialReuse"]  = mReSTIRParams.enableSpatialReuse;
     p["enableMIS"]           = mReSTIRParams.enableMIS;
@@ -100,23 +98,27 @@ void ReSTIRGIPass::compile(RenderContext* pCtx, const CompileData& compileData)
 
     uint32_t pixelCount = mFrameDim.x * mFrameDim.y;
 
+    // Use Slang reflection to determine struct sizes (matches PathTracer pattern).
+    // This avoids hardcoding sizes that may diverge from actual Slang struct layout.
+    auto var = mpInitialSamplingPass->getRootVar();
+
     // Reservoir double-buffer for temporal reuse
     mpReservoirBuffer = mpDevice->createStructuredBuffer(
-        kReservoirSize, pixelCount,
+        var["gReservoirs"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal
     );
     mpReservoirBuffer->setName("ReSTIRGI_Reservoirs");
 
     mpPrevReservoirBuffer = mpDevice->createStructuredBuffer(
-        kReservoirSize, pixelCount,
+        var["gReservoirs"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal
     );
     mpPrevReservoirBuffer->setName("ReSTIRGI_PrevReservoirs");
 
     mpSecondaryHitBuffer = mpDevice->createStructuredBuffer(
-        kSecondaryHitSize, pixelCount,
+        var["gSecondaryHits"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal
     );
@@ -220,7 +222,6 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
         vars["gVBuffer"]            = pVBuffer;
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gPrevReservoirs"]     = mpPrevReservoirBuffer;
-        vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
         vars["gMotionVectors"]      = pMotionVec;
         vars["PerFrameCB"]["gFrameDim"]   = mFrameDim;
         vars["PerFrameCB"]["gFrameCount"] = mFrameCount;

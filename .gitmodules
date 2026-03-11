@@ -16,3 +16,6 @@
 [submodule "Falcor/external/vulkan-headers"]
 	path = Falcor/external/vulkan-headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers
+[submodule "refs/DQLin_ReSTIR_PT"]
+	path = refs/DQLin_ReSTIR_PT
+	url = https://github.com/DQLin/ReSTIR_PT.git

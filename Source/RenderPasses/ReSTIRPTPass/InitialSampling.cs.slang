@@ -34,26 +34,7 @@ cbuffer PerFrameCB
 #define MAX_BOUNCES 4
 #endif
 
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRPTCommon.slang
 
 [numthreads(8, 8, 1)]
 void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
@@ -100,7 +81,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (!gScene.materials.getBSDF(curSD, lod).sample(curSD, sg, bsdfSample, true))
             break;
 
-        if (luminance(bsdfSample.weight) < 1e-7f || bsdfSample.pdf < 1e-7f)
+        if (luminance(bsdfSample.weight) < kLuminanceEps || bsdfSample.pdf < kLuminanceEps)
             break;
 
         // Trace ray to next bounce
@@ -138,7 +119,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
             {
                 Ray shadowRay = Ray(
                     computeRayOrigin(v.posW, v.faceNormalW),
-                    ls.dir, 0.0f, ls.distance * (1.0f - 1e-4f));
+                    ls.dir, 0.0f, ls.distance * (1.0f - kShadowRayOffset));
                 SceneRayQuery<0> shadowQuery;
                 if (shadowQuery.traceVisibilityRay(shadowRay))
                 {
@@ -153,7 +134,11 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         {
             SecondaryHit candidate;
             candidate.posW    = v.posW;
-            candidate.normalW = v.faceNormalW;
+            // Orient normal toward reconnection partner (DQLin: setGIInitialSample)
+            float3 rcNormal = v.faceNormalW;
+            if (dot(rcNormal, sd.posW - v.posW) < 0.0f)
+                rcNormal = -rcNormal;
+            candidate.normalW = rcNormal;
             candidate.Lo      = Lo;
             candidate.invPDF  = 1.0f / prefixPdf;
             candidate.wi      = bsdfSample.wi;
@@ -162,11 +147,11 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
             // Geometry term for reconnection from primary hit to this vertex
             float3 toHit = v.posW - sd.posW;
             float  dist  = length(toHit);
-            if (dist > 1e-6f)
+            if (dist > kDistanceEps)
             {
                 float3 dir = toHit / dist;
-                float  G = abs(dot(sd.N, dir)) * abs(dot(v.faceNormalW, -dir))
-                          / (dist * dist + 1e-6f);
+                float  G = max(dot(sd.N, dir), 0.0f) * abs(dot(v.faceNormalW, -dir))
+                          / (dist * dist + kDistanceEps);
 
                 float pHat = evalTargetPdf(prefixThroughput, Lo, G);
                 if (pHat > 0.0f)
@@ -185,7 +170,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         // Russian roulette after bounce 2
         if (bounce >= 2)
         {
-            float q = max(0.05f, 1.0f - luminance(prefixThroughput));
+            float q = max(kMinRRTermProb, 1.0f - luminance(prefixThroughput));
             if (sampleNext1D(sg) < q) break;
             prefixThroughput /= (1.0f - q);
         }

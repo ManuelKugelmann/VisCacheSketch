@@ -103,20 +103,38 @@ void ReSTIRDIPass::execute(RenderContext* pCtx, const RenderData& rd)
     auto pColor   = rd.getTexture("color");
     if (!pVBuffer || !pColor) return;
 
+    // Propagate render option changes to the render graph refresh mechanism
+    if (mOptionsChanged)
+    {
+        auto& dict = rd.getDictionary();
+        auto flags = dict.getValue(kRenderPassRefreshFlags, Falcor::RenderPassRefreshFlags::None);
+        flags |= Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
+        dict[Falcor::kRenderPassRefreshFlags] = flags;
+        mOptionsChanged = false;
+    }
+
     // Retrieve VisCache buffers if any VisCache feature is active
     if (isVisCacheActive())
         retrieveVisCacheBuffers(rd);
+
+    // RTXDI lifecycle: beginFrame → prepare → update → shade → endFrame
+    // beginFrame initialises light collections, handles resolution changes,
+    // loads shaders, and prepares GPU resources for the current frame.
+    mpRTXDI->beginFrame(pCtx, mFrameDim);
 
     // Step 1: Prepare surface data for RTXDI
     prepareSurfaceData(pCtx, pVBuffer);
 
     // Step 2: Run RTXDI (initial candidates, temporal reuse, spatial reuse)
-    // This is Falcor's built-in RTXDI pipeline — vanilla ReSTIR DI.
     mpRTXDI->update(pCtx, rd.getTexture("motionVectors"));
 
     // Step 3: Final shading (evaluate BSDF * Li * V for selected samples)
     // In VisCache mode, V(P,L) is replaced by CV+RRR gated visibility.
     finalShading(pCtx, pVBuffer, rd);
+
+    // endFrame increments frame counter and swaps surface buffers —
+    // required for correct temporal reuse across frames.
+    mpRTXDI->endFrame(pCtx);
 }
 
 // ============================================================================

@@ -76,20 +76,23 @@ void ReSTIRPTPass::compile(RenderContext* pCtx, const CompileData& compileData)
 
     uint32_t pixelCount = mFrameDim.x * mFrameDim.y;
 
+    // Use Slang reflection to determine struct sizes (matches PathTracer pattern).
+    auto var = mpInitialSamplingPass->getRootVar();
+
     mpReservoirBuffer = mpDevice->createStructuredBuffer(
-        kReservoirSize, pixelCount,
+        var["gReservoirs"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal);
     mpReservoirBuffer->setName("ReSTIRPT_Reservoirs");
 
     mpPrevReservoirBuffer = mpDevice->createStructuredBuffer(
-        kReservoirSize, pixelCount,
+        var["gReservoirs"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal);
     mpPrevReservoirBuffer->setName("ReSTIRPT_PrevReservoirs");
 
     mpSecondaryHitBuffer = mpDevice->createStructuredBuffer(
-        kSecondaryHitSize, pixelCount,
+        var["gSecondaryHits"], pixelCount,
         ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
         MemoryType::DeviceLocal);
     mpSecondaryHitBuffer->setName("ReSTIRPT_SecondaryHits");
@@ -172,7 +175,6 @@ void ReSTIRPTPass::execute(RenderContext* pCtx, const RenderData& rd)
         vars["gVBuffer"]        = pVBuffer;
         vars["gReservoirs"]     = mpReservoirBuffer;
         vars["gPrevReservoirs"] = mpPrevReservoirBuffer;
-        vars["gSecondaryHits"]  = mpSecondaryHitBuffer;
         vars["gMotionVectors"]  = pMotionVec;
         vars["PerFrameCB"]["gFrameDim"]   = mFrameDim;
         vars["PerFrameCB"]["gFrameCount"] = mFrameCount;
