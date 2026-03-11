@@ -79,7 +79,7 @@ void csTemporalReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, kGeomNormalThresh, kGeomDepthThresh))
+    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, gCamPos, kGeomNormalThresh, kGeomDepthThresh))
     {
         gReservoirs[pixelIdx] = current;
         return;

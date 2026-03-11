@@ -29,6 +29,10 @@ cbuffer PerFrameCB
     uint2 gFrameDim;
 };
 
+static const float kFireflyClamp    = 50.0f;
+static const float kDistanceEps     = 1e-6f;
+static const float kShadowRayOffset = 1e-4f;
+
 // ---------------------------------------------------------------------------
 // traceShadowRay — required by ShadingCV.slang's evalDirectLightingCV().
 // ---------------------------------------------------------------------------
@@ -53,10 +57,6 @@ float3 evalBRDF(ShadingData sd, float3 L) { return float3(0); }
 import RenderPasses.VisCache.VisCache;
 import RenderPasses.VisCache.ShadingCV;
 #endif
-
-static const float kFireflyClamp    = 50.0f;
-static const float kDistanceEps     = 1e-6f;
-static const float kShadowRayOffset = 1e-4f;
 
 // ---------------------------------------------------------------------------
 // Main kernel: for each pixel, evaluate the RTXDI-selected light sample.

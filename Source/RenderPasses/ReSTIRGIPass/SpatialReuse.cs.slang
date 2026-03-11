@@ -126,19 +126,6 @@ float evalTargetAtPixel(ShadingData sd, SecondaryHit neighborSample,
 }
 
 // ---------------------------------------------------------------------------
-// Talbot MIS weight [Talbot et al. 2005]
-// ---------------------------------------------------------------------------
-#if USE_MIS
-float computeTalbotMISWeight(float targetPdfHere, float M_here,
-                              float targetPdfThere, float M_there)
-{
-    float num   = M_here * targetPdfHere;
-    float denom = num + M_there * targetPdfThere;
-    return (denom > 0.0f) ? (num / denom) : 0.0f;
-}
-#endif
-
-// ---------------------------------------------------------------------------
 // Main spatial reuse kernel
 // ---------------------------------------------------------------------------
 [numthreads(8, 8, 1)]
@@ -185,9 +172,6 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
     }
 
-    // Track total neighbor M for MIS denominator
-    float totalNeighborM = 0.0f;
-
     // ---------------------------------------------------------------
     // Spatial reuse loop: k neighbors
     // ---------------------------------------------------------------
@@ -203,7 +187,7 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (!neighbor.isValid()) continue;
 
         // Geometry validation: reject neighbors with different surfaces
-        if (!geometryValid(sd.N, neighbor.sample.normalW, sd.posW, neighbor.sample.posW, kSpatialGeomNormalThresh, kSpatialGeomDepthThresh))
+        if (!geometryValid(sd.N, neighbor.sample.normalW, sd.posW, neighbor.sample.posW, gCamPos, kSpatialGeomNormalThresh, kSpatialGeomDepthThresh))
             continue;
 
         // Evaluate target function for neighbor's sample at this pixel
@@ -221,7 +205,6 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         merged.M    += nbrM;
         merged.wSum += w;
-        totalNeighborM += nbrM;
 
         if (merged.wSum > 0.0f && sampleNext1D(sg) * merged.wSum < w)
         {

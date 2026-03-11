@@ -57,8 +57,8 @@ static const float kLuminanceEps      = 1e-7f;   ///< Min radiance to consider n
 static const float kDistanceEps       = 1e-6f;   ///< Min distance to avoid division by zero
 static const float kGeomNormalThresh        = 0.9f;    ///< Temporal: dot(N1,N2) threshold
 static const float kGeomDepthThresh         = 0.1f;    ///< Temporal: relative depth threshold
-static const float kSpatialGeomNormalThresh = 0.5f;    ///< Spatial: looser normal threshold for neighbor selection
-static const float kSpatialGeomDepthThresh  = 0.2f;    ///< Spatial: looser depth threshold for neighbor selection
+static const float kSpatialGeomNormalThresh = 0.5f;    ///< Spatial: dot(N1,N2) threshold (DQLin: 0.5)
+static const float kSpatialGeomDepthThresh  = 0.1f;    ///< Spatial: relative camera-depth threshold (DQLin: 0.1)
 static const float kShadowRayOffset         = 1e-4f;   ///< Ray tMin/tMax offset to avoid self-intersection
 
 // ---------------------------------------------------------------------------
@@ -154,14 +154,15 @@ float evalTargetPdf(float3 bsdf, float3 Lo, float G)
 // ---------------------------------------------------------------------------
 // Geometry similarity check for temporal/spatial reuse validity
 // ---------------------------------------------------------------------------
-bool geometryValid(float3 N1, float3 N2, float3 P1, float3 P2, float normalThresh, float depthThresh)
+bool geometryValid(float3 N1, float3 N2, float3 P1, float3 P2,
+                   float3 camPos, float normalThresh, float depthThresh)
 {
-    // Normal check
+    // Normal check (DQLin: dot(N1,N2) >= threshold)
     if (dot(N1, N2) < normalThresh) return false;
-    // Depth / position proximity check (relative)
-    float dist = length(P1 - P2);
-    float maxDepth = max(length(P1), length(P2));
-    if (dist > depthThresh * maxDepth) return false;
+    // Camera-relative depth check (DQLin: |d_cam(P1) - d_cam(P2)| < thresh * d_cam(P1))
+    float d1 = length(P1 - camPos);
+    float d2 = length(P2 - camPos);
+    if (abs(d1 - d2) > depthThresh * d1) return false;
     return true;
 }
 

@@ -105,7 +105,7 @@ void csTemporalReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     // Geometry validation: reject if surface changed significantly
-    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, kGeomNormalThresh, kGeomDepthThresh))
+    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, gCamPos, kGeomNormalThresh, kGeomDepthThresh))
     {
         // Geometry mismatch — discard temporal history
         gReservoirs[pixelIdx] = current;

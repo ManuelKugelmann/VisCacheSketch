@@ -141,7 +141,7 @@ void csSpatialReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (!neighbor.isValid()) continue;
 
         if (!geometryValid(sd.N, neighbor.sample.normalW, sd.posW,
-                           neighbor.sample.posW, kSpatialGeomNormalThresh, kSpatialGeomDepthThresh))
+                           neighbor.sample.posW, gCamPos, kSpatialGeomNormalThresh, kSpatialGeomDepthThresh))
             continue;
 
         float pHatNoVis;
