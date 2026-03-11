@@ -44,8 +44,9 @@ float traceShadowRay(float3 origin, float3 target)
     return rayQuery.traceVisibilityRay(ray) ? 1.0f : 0.0f;
 }
 
-// Dummy evalBRDF to satisfy ShadingCV.slang dependency (not used by
-// evalDirectLightingCV — it takes pre-computed BSDF value).
+// Dummy evalBRDF satisfies Slang linker for ShadingCV.slang import.
+// Only evalRevalidationCV() is called here (not evalDirectLightingCV()),
+// so this stub is never invoked at runtime.
 float3 evalBRDF(ShadingData sd, float3 L) { return float3(0); }
 
 #if USE_VISCACHE
@@ -54,17 +55,6 @@ import RenderPasses.VisCache.ShadingCV;
 #endif
 
 static const float kFireflyClamp = 50.0f;
-
-// ---------------------------------------------------------------------------
-// Helper: load ShadingData from HitInfo.
-// ---------------------------------------------------------------------------
-ShadingData loadSD(const HitInfo hit, float3 viewDir)
-{
-    TriangleHit tri = hit.getTriangleHit();
-    VertexData v = gScene.getVertexData(tri);
-    uint materialID = gScene.getMaterialID(tri.instanceID);
-    return gScene.materials.prepareShadingData(v, materialID, viewDir);
-}
 
 // ---------------------------------------------------------------------------
 // Main kernel: for each pixel, evaluate the RTXDI-selected light sample.
@@ -80,13 +70,13 @@ void csFinalShading(uint3 dispatchThreadId : SV_DispatchThreadID)
     HitInfo hitInfo = HitInfo(gVBuffer[pixel]);
     if (hitInfo.isValid() && hitInfo.getType() == HitType::Triangle)
     {
+        float3 camPos = gScene.camera.getPosition();
         TriangleHit tri = hitInfo.getTriangleHit();
         VertexData v = gScene.getVertexData(tri);
-        float3 camPos = gScene.camera.getPosition();
         float3 viewDir = normalize(camPos - v.posW);
+        uint materialID = gScene.getMaterialID(tri.instanceID);
 
-        ShadingData sd = gScene.materials.prepareShadingData(
-            v, gScene.getMaterialID(tri.instanceID), viewDir);
+        ShadingData sd = gScene.materials.prepareShadingData(v, materialID, viewDir);
 
         SampleGenerator sg = SampleGenerator::create(pixel, gRTXDI.frameIndex);
 

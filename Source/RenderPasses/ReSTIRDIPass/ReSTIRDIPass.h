@@ -9,7 +9,7 @@
  *   3. LightSel:  RTXDI target function uses cached mu for light
  *                 candidate weighting (§11.1), plus CV+RRR shadow gating.
  *
- * Vanilla mode is bit-identical to Falcor's RTXDIPass — useful as a
+ * Vanilla mode mirrors Falcor's RTXDIPass pipeline — useful as a
  * reference baseline for ablation studies.
  ***************************************************************************/
 
