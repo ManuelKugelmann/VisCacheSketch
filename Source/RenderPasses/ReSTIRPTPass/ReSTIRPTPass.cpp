@@ -4,6 +4,7 @@
  **************************************************************************/
 #include "ReSTIRPTPass.h"
 #include "RenderGraph/RenderPassHelpers.h"
+#include "RenderGraph/RenderPassStandardFlags.h"
 #include "Core/AssetResolver.h"
 #include <fstream>
 
@@ -428,7 +429,7 @@ void ReSTIRPTPass::validateOptions()
     if (mParams.specularRoughnessThreshold < 0.f || mParams.specularRoughnessThreshold > 1.f)
     {
         logError("'specularRoughnessThreshold' has invalid value. Clamping to range [0,1].");
-        mParams.specularRoughnessThreshold = clamp(mParams.specularRoughnessThreshold, 0.f, 1.f);
+        mParams.specularRoughnessThreshold = math::clamp(mParams.specularRoughnessThreshold, 0.f, 1.f);
     }
 
     // Static parameters.
@@ -579,7 +580,7 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
 
     if (mpScene)
     {
-        if (is_set(pScene->getPrimitiveTypes(), PrimitiveTypeFlags::Custom)) logError("This render pass does not support custom primitives.");
+        if (pScene->hasGeometryType(GeometryType::Custom)) logError("This render pass does not support custom primitives.");
 
         // check if the scene is dynamic
         bool enableRobustSettingsByDefault = mpScene->hasAnimation() && mpScene->isAnimated();
@@ -796,7 +797,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
             dirty |= widget.var("Candidate Samples", mStaticParams.candidateSamples, 1u, 64u);
             widget.tooltip("Number candidate samples for ReSTIR PT.\n");
 
-            if (auto group = widget.group("Shift Mapping Options", true))
+            if (auto subgroup = widget.group("Shift Mapping Options", true))
             {
                 if (widget.dropdown("Shift Mapping", kShiftMappingList, reinterpret_cast<uint32_t&>(mStaticParams.shiftStrategy)))
                 {
@@ -814,7 +815,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 
         if (mStaticParams.pathSamplingMode == PathSamplingMode::ReSTIR && mStaticParams.shiftStrategy == ShiftMapping::Hybrid)
         {
-            if (auto group = widget.group("Local Strategies", true))
+            if (auto subgroup = widget.group("Local Strategies", true))
             {
                 bool enableRoughnessCondition = mParams.localStrategyType & (uint32_t)LocalStrategy::RoughnessCondition;
                 bool enableDistanceCondition = mParams.localStrategyType & (uint32_t)LocalStrategy::DistanceCondition;
@@ -828,7 +829,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
                 }
             }
 
-            if (auto group = widget.group("Classification thresholds", true))
+            if (auto subgroup = widget.group("Classification thresholds", true))
             {
                 dirty |= widget.var("Near field distance", mParams.nearFieldDistance, 0.f, 100.f);
                 dirty |= widget.var("Specular roughness threshold", mParams.specularRoughnessThreshold, 0.f, 1.f);
@@ -847,7 +848,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
         }
         else if (mStaticParams.pathSamplingMode == PathSamplingMode::ReSTIR && mEnableSpatialReuse)
         {
-            if (auto group = widget.group("Spatial reuse controls", true))
+            if (auto subgroup = widget.group("Spatial reuse controls", true))
             {
                 dirty |= widget.var("Num Spatial Rounds", mNumSpatialRounds, 1, 5);
                 dirty |= widget.dropdown("Spatial Reuse Pattern", kSpatialReusePatternList, reinterpret_cast<uint32_t&>(mSpatialReusePattern));
@@ -870,7 +871,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 
         if (mStaticParams.pathSamplingMode == PathSamplingMode::ReSTIR && mEnableTemporalReuse)
         {
-            if (auto group = widget.group("Temporal reuse controls", true))
+            if (auto subgroup = widget.group("Temporal reuse controls", true))
             {
                 dirty |= widget.var("Temporal History Length", mTemporalHistoryLength, 0, 100);
                 dirty |= widget.checkbox("Use M capping", mUseMaxHistory);
@@ -963,7 +964,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 
             if (mpScene && mpScene->useEmissiveLights())
             {
-                if (auto group = widget.group("Emissive sampler"))
+                if (auto subgroup = widget.group("Emissive sampler"))
                 {
                     if (widget.dropdown("Emissive sampler", kEmissiveSamplerList, (uint32_t&)mStaticParams.emissiveSampler))
                     {
@@ -974,7 +975,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 
                     if (mpEmissiveSampler)
                     {
-                        if (mpEmissiveSampler->renderUI(group)) mOptionsChanged = true;
+                        mpEmissiveSampler->renderUI(subgroup);
                     }
                 }
             }
@@ -1067,7 +1068,7 @@ bool ReSTIRPTPass::renderStatsUI(Gui::Widgets& widget)
     if (auto g = widget.group("Statistics"))
     {
         // Show ray stats
-        dirty |= mpPixelStats->renderUI(g);
+        mpPixelStats->renderUI(g);
     }
     return dirty;
 }
@@ -1127,11 +1128,11 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
 
         // [Falcor 8] mpDevice->createStructuredBuffer replaces Buffer::createStructured.
         if (mStaticParams.shiftStrategy == ShiftMapping::Hybrid && (!mReconnectionDataBuffer ||
-            mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getElementSize() != 512 ||
-            !mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getElementSize() != 256))
+            mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getStructSize() != 512 ||
+            !mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getStructSize() != 256))
         {
             mReconnectionDataBuffer = mpDevice->createStructuredBuffer(var["reconnectionDataBuffer"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
-            //printf("rcDataSize size: %d\n", mReconnectionDataBuffer->getElementSize());
+            //printf("rcDataSize size: %d\n", mReconnectionDataBuffer->getStructSize());
         }
         if (mStaticParams.shiftStrategy != ShiftMapping::Hybrid)
             mReconnectionDataBuffer = nullptr;
@@ -1140,12 +1141,12 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         uint32_t pathTreeReservoirSize = 128;
 
         if (mpOutputReservoirs &&
-            (mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse && mpOutputReservoirs->getElementSize() != pathTreeReservoirSize ||
-                mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse && mpOutputReservoirs->getElementSize() != baseReservoirSize ||
+            (mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse && mpOutputReservoirs->getStructSize() != pathTreeReservoirSize ||
+                mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse && mpOutputReservoirs->getStructSize() != baseReservoirSize ||
                 mpTemporalReservoirs.size() != mStaticParams.samplesPerPixel && mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse))
         {
             mpOutputReservoirs = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
-            //printf("reservoir size: %d\n", mpOutputReservoirs->getElementSize());
+            //printf("reservoir size: %d\n", mpOutputReservoirs->getStructSize());
 
             if (mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse)
             {
@@ -1171,7 +1172,7 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         if (!mpOutputReservoirs || reservoirCount != mpOutputReservoirs->getElementCount())
         {
             mpOutputReservoirs = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
-            //printf("reservoir size: %d\n", mpOutputReservoirs->getElementSize());
+            //printf("reservoir size: %d\n", mpOutputReservoirs->getStructSize());
 
             if (mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse)
             {
@@ -1292,7 +1293,7 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
         if (!mpEmissiveSampler)
         {
             const auto& pLights = mpScene->getLightCollection(pRenderContext);
-            assert(pLights && pLights->getActiveLightCount() > 0);
+            assert(pLights && pLights->getActiveLightCount(pRenderContext) > 0);
             assert(!mpEmissiveSampler);
 
             // [Falcor 8] Emissive samplers take (RenderContext*, ref<ILightCollection>) via getILightCollection.
@@ -1332,7 +1333,7 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
 
     if (mpEmissiveSampler)
     {
-        lightingChanged |= mpEmissiveSampler->update(pRenderContext);
+        lightingChanged |= mpEmissiveSampler->update(pRenderContext, mpScene->getILightCollection(pRenderContext));
         auto defines = mpEmissiveSampler->getDefines();
         if (mpTracePass->getProgram()->addDefines(defines)) mRecompile = true;
         if (mpSpatialPathRetracePass->getProgram()->addDefines(defines)) mRecompile = true;
@@ -1350,7 +1351,7 @@ void ReSTIRPTPass::setShaderData(const ShaderVar& var, const RenderData& renderD
     // Bind static resources that don't change per frame.
     if (mVarsChanged)
     {
-        if (isPathTracer && mpEnvMapSampler) mpEnvMapSampler->setShaderData(var["envMapSampler"]);
+        if (isPathTracer && mpEnvMapSampler) mpEnvMapSampler->bindShaderData(var["envMapSampler"]);
     }
 
     // Bind runtime data.
@@ -1392,8 +1393,7 @@ void ReSTIRPTPass::setShaderData(const ShaderVar& var, const RenderData& renderD
     if (isPathTracer && mpEmissiveSampler)
     {
         // TODO: Do we have to bind this every frame?
-        bool success = mpEmissiveSampler->setShaderData(var["emissiveSampler"]);
-        if (!success) FALCOR_THROW("Failed to bind emissive light sampler");
+        mpEmissiveSampler->bindShaderData(var["emissiveSampler"]);
     }
 }
 
@@ -1478,7 +1478,7 @@ void ReSTIRPTPass::endFrame(RenderContext* pRenderContext, const RenderData& ren
     {
         PixelStats::Stats stats;
         mpPixelStats->getStats(stats);
-        mAccumulatedShadowRayCount += (uint64_t)stats.shadowRays;
+        mAccumulatedShadowRayCount += (uint64_t)stats.visibilityRays;
         mAccumulatedClosestHitRayCount += (uint64_t)stats.closestHitRays;
         mAccumulatedRayCount += (uint64_t)stats.totalRays;
     }
@@ -1550,7 +1550,7 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
     // [Falcor 8] bindShaderDataForRaytracing replaces setRaytracingShaderData.
     mpScene->bindShaderDataForRaytracing(pRenderContext, var);
 
-    if (mVarsChanged) mpSampleGenerator->setShaderData(var);
+    if (mVarsChanged) mpSampleGenerator->bindShaderData(var);
 
     mpPixelStats->prepareProgram(pass->getProgram(), var);
     mpPixelDebug->prepareProgram(pass->getProgram(), var);
