@@ -134,7 +134,11 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         {
             SecondaryHit candidate;
             candidate.posW    = v.posW;
-            candidate.normalW = v.faceNormalW;
+            // Orient normal toward reconnection partner (DQLin: setGIInitialSample)
+            float3 rcNormal = v.faceNormalW;
+            if (dot(rcNormal, sd.posW - v.posW) < 0.0f)
+                rcNormal = -rcNormal;
+            candidate.normalW = rcNormal;
             candidate.Lo      = Lo;
             candidate.invPDF  = 1.0f / prefixPdf;
             candidate.wi      = bsdfSample.wi;

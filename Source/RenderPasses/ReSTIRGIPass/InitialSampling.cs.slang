@@ -89,9 +89,14 @@ void traceSecondaryBounce(const ShadingData sd, inout SampleGenerator sg,
     uint secMaterialID = gScene.getMaterialID(triangleHit.instanceID);
 
     hit.posW    = v.posW;
-    hit.normalW = v.faceNormalW;
     hit.wi      = bsdfSample.wi;
     hit.invPDF  = 1.0f / pdf;
+
+    // Orient normals toward reconnection partner (DQLin: setGIInitialSample)
+    float3 secNormal = v.faceNormalW;
+    if (dot(secNormal, sd.posW - v.posW) < 0.0f)
+        secNormal = -secNormal;
+    hit.normalW = secNormal;
 
     // ----- Radiance at secondary hit: emission + NEE (single-bounce GI) -----
 
