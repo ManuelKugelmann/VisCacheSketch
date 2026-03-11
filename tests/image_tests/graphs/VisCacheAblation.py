@@ -23,7 +23,7 @@ def _make_viscache(overrides={}):
 
 
 def _make_gi_graph(name, vc_overrides={}):
-    """ReSTIR PT (single-bounce GI) graph — feature flags come from VisCache via dict."""
+    """Single-bounce ReSTIR PT graph (subsumes ReSTIR GI) — feature flags come from VisCache via dict."""
     g = RenderGraph(name)
     VisCache = _make_viscache(vc_overrides)
     g.addPass(VisCache, "VisCache")

@@ -21,7 +21,7 @@ for i <- 0 to K_NEIGHBORS do
 
 ## 10.1 Path Sharing
 
-ReSTIR GI concentrates selections: a good path gets selected by many pixels in the reuse radius. All need to revalidate visibility to the *same* Q from nearby shading points. At L0 quantization (43), nearby points hash to the same cell. The first pixel to trace populates the entry; subsequent pixels find it cached within the same frame.
+ReSTIR spatial reuse concentrates selections: a good path gets selected by many pixels in the reuse radius. All need to revalidate visibility to the *same* Q from nearby shading points. At L0 quantization (43), nearby points hash to the same cell. The first pixel to trace populates the entry; subsequent pixels find it cached within the same frame.
 
 With 50–100 pixels selecting the same path, they fall into ~3–5 L0 cells. Total traces: ~3–5 instead of ~50–100. This is the strongest architectural argument for L0's coarse resolution — it maximizes sharing across pixels that selected the same reused path.
 

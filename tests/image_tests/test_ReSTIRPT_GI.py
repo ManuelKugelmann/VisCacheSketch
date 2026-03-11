@@ -7,44 +7,44 @@ IMAGE_TEST = {
 import sys
 sys.path.append('..')
 from helpers import render_frames
-from graphs.ReSTIRPT import (ReSTIRPT_GI_Vanilla, ReSTIRPT_GI_CVRRRLocal,
-                              ReSTIRPT_GI_VisCacheReval, ReSTIRPT_GI_VisCacheLightSel,
-                              ReSTIRPT_GI_VisCacheFull)
+from graphs.ReSTIRPT import (ReSTIRPT1_Vanilla, ReSTIRPT1_CVRRRLocal,
+                              ReSTIRPT1_VisCacheReval, ReSTIRPT1_VisCacheLightSel,
+                              ReSTIRPT1_VisCacheFull)
 from falcor import *
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT (single-bounce GI) — vanilla baseline (unconditional shadow rays)
+# ReSTIR PT maxBounces=1 — vanilla baseline
 # ---------------------------------------------------------------------------
-m.addGraph(ReSTIRPT_GI_Vanilla)
+m.addGraph(ReSTIRPT1_Vanilla)
 m.loadScene('Arcade/Arcade.pyscene')
 render_frames(m, 'vanilla', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT (single-bounce GI) — local CV+RRR (reservoir-local mu, no hash table)
+# ReSTIR PT maxBounces=1 — local CV+RRR (reservoir-local mu, no hash table)
 # ---------------------------------------------------------------------------
-m.removeGraph(ReSTIRPT_GI_Vanilla)
-m.addGraph(ReSTIRPT_GI_CVRRRLocal)
+m.removeGraph(ReSTIRPT1_Vanilla)
+m.addGraph(ReSTIRPT1_CVRRRLocal)
 render_frames(m, 'cvrrr_local', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT (single-bounce GI) — VisCache CV+RRR revalidation (S11.3)
+# ReSTIR PT maxBounces=1 — VisCache CV+RRR revalidation
 # ---------------------------------------------------------------------------
-m.removeGraph(ReSTIRPT_GI_CVRRRLocal)
-m.addGraph(ReSTIRPT_GI_VisCacheReval)
+m.removeGraph(ReSTIRPT1_CVRRRLocal)
+m.addGraph(ReSTIRPT1_VisCacheReval)
 render_frames(m, 'viscache_reval', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT (single-bounce GI) — VisCache light pre-selection only (S11.1, no S11.3)
+# ReSTIR PT maxBounces=1 — VisCache light pre-selection only
 # ---------------------------------------------------------------------------
-m.removeGraph(ReSTIRPT_GI_VisCacheReval)
-m.addGraph(ReSTIRPT_GI_VisCacheLightSel)
+m.removeGraph(ReSTIRPT1_VisCacheReval)
+m.addGraph(ReSTIRPT1_VisCacheLightSel)
 render_frames(m, 'viscache_lightsel', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT (single-bounce GI) — VisCache full (S11.1 + S11.3)
+# ReSTIR PT maxBounces=1 — VisCache full (revalidation + light selection)
 # ---------------------------------------------------------------------------
-m.removeGraph(ReSTIRPT_GI_VisCacheLightSel)
-m.addGraph(ReSTIRPT_GI_VisCacheFull)
+m.removeGraph(ReSTIRPT1_VisCacheLightSel)
+m.addGraph(ReSTIRPT1_VisCacheFull)
 render_frames(m, 'viscache_full', frames=[1, 16, 64])
 
 exit()

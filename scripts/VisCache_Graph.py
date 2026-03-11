@@ -110,9 +110,9 @@ def render_graph_VisCache():
     })
     g.addPass(pt, "PathTracer")
 
-    # ReSTIR PT with CV+RRR revalidation (§11.3 / §12)
+    # ReSTIR PT maxBounces=1 with CV+RRR revalidation (§9.3 / §10)
+    # Single-bounce: equivalent to ReSTIR GI but with hybrid shift for specular.
     # Source: DQLin/ReSTIR_PT ported to Falcor 8.0
-    # maxBounces=1 → single-bounce GI (equivalent to ReSTIR GI)
     restirpt = createPass("ReSTIRPTPass", {
         "maxBounces":              1,
         "numSpatialNeighbors":     5,

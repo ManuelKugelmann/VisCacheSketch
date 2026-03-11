@@ -1,6 +1,6 @@
 """
 VisCache_Baselines.py  —  Automated baseline capture script
-Runs all ReSTIR variant baselines (DI/PT × Vanilla/LocalCVRRR/VisCache).
+Runs all ReSTIR variant baselines (DI/PT1/PT × Vanilla/LocalCVRRR/VisCache).
 
 Usage:
     Mogwai.exe --headless --script scripts/VisCache_Baselines.py --scene Bistro_Interior.pyscene
@@ -33,7 +33,7 @@ _VC_DEFAULTS = {
 # Each entry: (name, pass_type, needs_viscache, pass_overrides, vc_overrides)
 # ---------------------------------------------------------------------------
 BASELINE_CONFIGS = [
-    # --- ReSTIR GI (single-bounce PT) ---
+    # --- ReSTIR PT maxBounces=1 (subsumes ReSTIR GI) ---
     ("GI_Vanilla", "ReSTIRPTPass", False, {
         'maxBounces': 1,
         'enableVisCacheRevalidation': False,

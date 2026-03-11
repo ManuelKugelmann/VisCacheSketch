@@ -9,7 +9,8 @@ sys.path.append('..')
 from helpers import render_frames
 from graphs.ReSTIRPT import (ReSTIRPT_Vanilla, ReSTIRPT_CVRRRLocal,
                               ReSTIRPT_VisCacheReval, ReSTIRPT_VisCacheLightSel,
-                              ReSTIRPT_VisCacheFull)
+                              ReSTIRPT_VisCacheFull,
+                              ReSTIRPT1_Vanilla, ReSTIRPT1_VisCacheFull)
 from falcor import *
 
 # ---------------------------------------------------------------------------
@@ -46,5 +47,17 @@ render_frames(m, 'viscache_lightsel', frames=[1, 16, 64])
 m.removeGraph(ReSTIRPT_VisCacheLightSel)
 m.addGraph(ReSTIRPT_VisCacheFull)
 render_frames(m, 'viscache_full', frames=[1, 16, 64])
+
+# ---------------------------------------------------------------------------
+# ReSTIR PT maxBounces=1 — subsumes ReSTIR GI tests.
+# Single-bounce vanilla + full VisCache to verify GI-equivalent path.
+# ---------------------------------------------------------------------------
+m.removeGraph(ReSTIRPT_VisCacheFull)
+m.addGraph(ReSTIRPT1_Vanilla)
+render_frames(m, 'pt1_vanilla', frames=[1, 16, 64])
+
+m.removeGraph(ReSTIRPT1_Vanilla)
+m.addGraph(ReSTIRPT1_VisCacheFull)
+render_frames(m, 'pt1_viscache_full', frames=[1, 16, 64])
 
 exit()

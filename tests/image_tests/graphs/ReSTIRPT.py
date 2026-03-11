@@ -127,12 +127,15 @@ def render_graph_ReSTIRPT_VisCacheFull():
 
 
 # ---------------------------------------------------------------------------
-# Single-bounce GI variants (maxBounces=1, equivalent to ReSTIR GI)
+# Single-bounce (maxBounces=1) — subsumes ReSTIR GI tests.
+# ReSTIR PT at maxBounces=1 produces the same estimator as ReSTIR GI but
+# with the hybrid shift (reconnection + random replay) that also handles
+# specular first bounces.
 # ---------------------------------------------------------------------------
 
-def render_graph_ReSTIRPT_GI_Vanilla():
-    """ReSTIR PT (single-bounce GI) — vanilla (unconditional shadow rays, no VisCache)."""
-    g = RenderGraph("ReSTIRPT_GI_Vanilla")
+def render_graph_ReSTIRPT1_Vanilla():
+    """ReSTIR PT maxBounces=1 — vanilla (no VisCache)."""
+    g = RenderGraph("ReSTIRPT1_Vanilla")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
@@ -153,9 +156,9 @@ def render_graph_ReSTIRPT_GI_Vanilla():
     return g
 
 
-def render_graph_ReSTIRPT_GI_CVRRRLocal():
-    """ReSTIR PT (single-bounce GI) — local CV+RRR (reservoir-local mu, no hash table)."""
-    g = RenderGraph("ReSTIRPT_GI_CVRRRLocal")
+def render_graph_ReSTIRPT1_CVRRRLocal():
+    """ReSTIR PT maxBounces=1 — local CV+RRR (reservoir-local mu, no hash table)."""
+    g = RenderGraph("ReSTIRPT1_CVRRRLocal")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
@@ -178,9 +181,9 @@ def render_graph_ReSTIRPT_GI_CVRRRLocal():
     return g
 
 
-def render_graph_ReSTIRPT_GI_VisCacheReval():
-    """ReSTIR PT (single-bounce GI) — VisCache CV+RRR revalidation (S11.3)."""
-    g = RenderGraph("ReSTIRPT_GI_VisCacheReval")
+def render_graph_ReSTIRPT1_VisCacheReval():
+    """ReSTIR PT maxBounces=1 — VisCache CV+RRR revalidation."""
+    g = RenderGraph("ReSTIRPT1_VisCacheReval")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
@@ -204,9 +207,9 @@ def render_graph_ReSTIRPT_GI_VisCacheReval():
     return g
 
 
-def render_graph_ReSTIRPT_GI_VisCacheLightSel():
-    """ReSTIR PT (single-bounce GI) — VisCache light pre-selection only (S11.1, no S11.3)."""
-    g = RenderGraph("ReSTIRPT_GI_VisCacheLightSel")
+def render_graph_ReSTIRPT1_VisCacheLightSel():
+    """ReSTIR PT maxBounces=1 — VisCache light pre-selection only."""
+    g = RenderGraph("ReSTIRPT1_VisCacheLightSel")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
@@ -230,9 +233,9 @@ def render_graph_ReSTIRPT_GI_VisCacheLightSel():
     return g
 
 
-def render_graph_ReSTIRPT_GI_VisCacheFull():
-    """ReSTIR PT (single-bounce GI) — VisCache revalidation + light selection (S11.1 + S11.3)."""
-    g = RenderGraph("ReSTIRPT_GI_VisCacheFull")
+def render_graph_ReSTIRPT1_VisCacheFull():
+    """ReSTIR PT maxBounces=1 — VisCache revalidation + light selection."""
+    g = RenderGraph("ReSTIRPT1_VisCacheFull")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
@@ -256,23 +259,19 @@ def render_graph_ReSTIRPT_GI_VisCacheFull():
     return g
 
 
-# ---------------------------------------------------------------------------
-# Multi-bounce PT graph instances
-# ---------------------------------------------------------------------------
+# Multi-bounce (maxBounces=4)
 ReSTIRPT_Vanilla = render_graph_ReSTIRPT_Vanilla()
 ReSTIRPT_CVRRRLocal = render_graph_ReSTIRPT_CVRRRLocal()
 ReSTIRPT_VisCacheReval = render_graph_ReSTIRPT_VisCacheReval()
 ReSTIRPT_VisCacheLightSel = render_graph_ReSTIRPT_VisCacheLightSel()
 ReSTIRPT_VisCacheFull = render_graph_ReSTIRPT_VisCacheFull()
 
-# ---------------------------------------------------------------------------
-# Single-bounce GI graph instances
-# ---------------------------------------------------------------------------
-ReSTIRPT_GI_Vanilla = render_graph_ReSTIRPT_GI_Vanilla()
-ReSTIRPT_GI_CVRRRLocal = render_graph_ReSTIRPT_GI_CVRRRLocal()
-ReSTIRPT_GI_VisCacheReval = render_graph_ReSTIRPT_GI_VisCacheReval()
-ReSTIRPT_GI_VisCacheLightSel = render_graph_ReSTIRPT_GI_VisCacheLightSel()
-ReSTIRPT_GI_VisCacheFull = render_graph_ReSTIRPT_GI_VisCacheFull()
+# Single-bounce (maxBounces=1) — replaces former ReSTIR GI tests
+ReSTIRPT1_Vanilla = render_graph_ReSTIRPT1_Vanilla()
+ReSTIRPT1_CVRRRLocal = render_graph_ReSTIRPT1_CVRRRLocal()
+ReSTIRPT1_VisCacheReval = render_graph_ReSTIRPT1_VisCacheReval()
+ReSTIRPT1_VisCacheLightSel = render_graph_ReSTIRPT1_VisCacheLightSel()
+ReSTIRPT1_VisCacheFull = render_graph_ReSTIRPT1_VisCacheFull()
 
 try: m.addGraph(ReSTIRPT_Vanilla)
 except NameError: None
