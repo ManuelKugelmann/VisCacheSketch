@@ -94,7 +94,7 @@ float vhfLightSelectionWeight(float3 shadingPos, float3 lightPos,
 // ---------------------------------------------------------------------------
 // GI revalidation variant (§12): contribution-weighted RR for
 // V(P, Q) where Q is a neighbor's secondary hit.
-// Called inside the spatial reuse loop in ReSTIRGIPass.
+// Called inside the spatial reuse loop in ReSTIRPTPass.
 // Expected traces: ~0.5–1.0 per pixel at k=5 neighbors (vs. 5.0 unoptimised).
 // ---------------------------------------------------------------------------
 float evalRevalidationCV(float3 P, float3 Q,

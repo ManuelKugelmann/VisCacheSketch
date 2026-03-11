@@ -3,7 +3,7 @@
  *
  * Falcor 8.0 — ReSTIR PT (multi-bounce path reuse) with VisCache.
  *
- * Structure mirrors ReSTIRGIPass but extends initial sampling to trace
+ * Structure mirrors ReSTIRPTPass but extends initial sampling to trace
  * multi-bounce paths and stores reconnection vertex at the chosen depth.
  * VisCache features are independently toggleable for ablation.
  ***************************************************************************/
@@ -112,9 +112,9 @@ void ReSTIRPTPass::createPasses()
     defines.add("USE_SPATIAL_REUSE", mParams.enableSpatialReuse ? "1" : "0");
     defines.add("USE_MIS", mParams.enableMIS ? "1" : "0");
 
-    // Reuse the same shader files as ReSTIRGIPass — the MAX_BOUNCES define
+    // Reuse the same shader files as ReSTIRPTPass — the MAX_BOUNCES define
     // controls whether multi-bounce paths are traced in initial sampling.
-    // When MAX_BOUNCES=1, this is identical to ReSTIRGIPass (single-bounce GI).
+    // When MAX_BOUNCES=1, this gives single-bounce GI behavior.
     {
         ProgramDesc desc;
         desc.addShaderLibrary("RenderPasses/ReSTIRPTPass/InitialSampling.cs.slang")

@@ -1,7 +1,7 @@
 /***************************************************************************
  * TemporalReuse.cs.slang  (ReSTIR PT — multi-bounce)
  *
- * Same structure as ReSTIRGIPass/TemporalReuse but with extended reservoir.
+ * Same structure as ReSTIRPTPass/TemporalReuse but with extended reservoir.
  ***************************************************************************/
 
 import Scene.Scene;

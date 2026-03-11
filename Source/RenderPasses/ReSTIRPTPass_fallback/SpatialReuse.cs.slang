@@ -1,7 +1,7 @@
 /***************************************************************************
  * SpatialReuse.cs.slang  (ReSTIR PT — multi-bounce)
  *
- * Same structure as ReSTIRGIPass/SpatialReuse.cs.slang but imports
+ * Same structure as ReSTIRPTPass/SpatialReuse.cs.slang but imports
  * ReSTIRPTCommon (with extended PathReservoir carrying prefix throughput).
  *
  * VisCache modes (independently toggled via defines):

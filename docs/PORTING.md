@@ -1,4 +1,4 @@
-# DQLin/ReSTIR_PT → Falcor 8.0 Port Guide
+# DQLin/ReSTIR_PT → Falcor 8.0 Port Guide (ReSTIRPTPass)
 
 **Status: PORTED** — All shaders and host code have been ported to Falcor 8.0.
 Remaining: GPU verification on Bistro (see §6 checklist below).
@@ -65,13 +65,13 @@ RenderPassReflection reflect(const CompileData& compileData) override;
 ```cpp
 // Old (5.2)
 extern "C" __declspec(dllexport) void getPasses(Falcor::RenderPassLibrary& lib) {
-    lib.registerClass("ReSTIRGIPass", "...", ReSTIRGIPass::create);
+    lib.registerClass("ReSTIRPTPass", "...", ReSTIRPTPass::create);
 }
 
 // New (8.0)
-FALCOR_PLUGIN_CLASS(ReSTIRGIPass, "ReSTIRGIPass", "...");
+FALCOR_PLUGIN_CLASS(ReSTIRPTPass, "ReSTIRPTPass", "...");
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry) {
-    registry.registerClass<RenderPass, ReSTIRGIPass>();
+    registry.registerClass<RenderPass, ReSTIRPTPass>();
 }
 ```
 
@@ -82,20 +82,20 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
 Replace the entire CMakeLists.txt with the Falcor 8 plugin pattern:
 
 ```cmake
-add_plugin(ReSTIRGIPass)
-target_sources(ReSTIRGIPass PRIVATE
-    ReSTIRGIPass.h
-    ReSTIRGIPass.cpp
+add_plugin(ReSTIRPTPass)
+target_sources(ReSTIRPTPass PRIVATE
+    ReSTIRPTPass.h
+    ReSTIRPTPass.cpp
 )
-target_copy_shaders(ReSTIRGIPass
+target_copy_shaders(ReSTIRPTPass
     # list all .slang files
 )
-target_link_libraries(ReSTIRGIPass PRIVATE Falcor)
+target_link_libraries(ReSTIRPTPass PRIVATE Falcor)
 ```
 
 Then add to `Source/RenderPasses/CMakeLists.txt`:
 ```cmake
-add_subdirectory(ReSTIRGIPass)
+add_subdirectory(ReSTIRPTPass)
 ```
 
 ---
@@ -118,8 +118,8 @@ Once the base port compiles and produces correct output on Bistro:
 
 1. Add `#import "../VisCache/VisCache"` at the top of `SpatialReuse.cs.slang`
 2. Replace the visibility ray block with `evalRevalidationCV()` — see
-   `Source/RenderPasses/ReSTIRGIPass/SpatialReuse_VisCache_delta.slang`
-3. In `ReSTIRGIPass::execute()`, call `retrieveVisCacheBuffers(renderData)` before
+   `Source/RenderPasses/ReSTIRPTPass/SpatialReuse_VisCache_delta.slang`
+3. In `ReSTIRPTPass::execute()`, call `retrieveVisCacheBuffers(renderData)` before
    dispatching the spatial reuse compute shader — see delta file.
 4. Verify ground truth: disable VisCache (`useVisCacheRevalidation = false`) and
    confirm the ported pass matches DQLin paper figures on Bistro.

@@ -100,5 +100,5 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/
 ## Render Passes
 
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass
-- `Source/RenderPasses/ReSTIRGIPass/` — ReSTIR GI integration pass
+- `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin's ReSTIR PT [Lin et al. SIGGRAPH 2022] ported to Falcor 8; supports single-bounce GI with maxBounces=1 and multi-bounce path tracing with higher values)
 - These get copied into Falcor's source tree during CI build

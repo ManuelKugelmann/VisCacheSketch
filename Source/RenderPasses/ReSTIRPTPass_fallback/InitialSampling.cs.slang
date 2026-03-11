@@ -4,7 +4,7 @@
  * Traces a full path (up to MAX_BOUNCES), selects a reconnection vertex
  * via reservoir streaming, and stores the path prefix + reconnection data.
  *
- * When MAX_BOUNCES=1, this reduces to single-bounce GI (ReSTIRGIPass).
+ * When MAX_BOUNCES=1, this reduces to single-bounce GI behavior.
  ***************************************************************************/
 
 import Scene.Scene;

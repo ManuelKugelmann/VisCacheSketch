@@ -3,11 +3,11 @@
  *
  * Falcor 8.0 RenderPass — ReSTIR PT (path tracing with path reuse).
  *
- * Extends ReSTIRGIPass from single-bounce to multi-bounce path reuse,
+ * Extends single-bounce ReSTIR GI to multi-bounce path reuse,
  * following DQLin's "Generalized Resampled Importance Sampling:
  * Foundations of ReSTIR" (SIGGRAPH 2022).
  *
- * Key difference from ReSTIRGIPass:
+ * Key difference from single-bounce ReSTIR GI:
  *   - GI: stores one secondary hit, reconnects at bounce 1.
  *   - PT: stores a reconnection vertex at any bounce depth,
  *         carries full path prefix throughput.
@@ -78,7 +78,7 @@ private:
     void bindVisCacheToPass(const ref<ComputePass>& pass);
 
     // -----------------------------------------------------------------------
-    // Compute passes (same structure as ReSTIRGIPass, extended for multi-bounce)
+    // Compute passes (same structure as ReSTIRPTPass, extended for multi-bounce)
     // -----------------------------------------------------------------------
     ref<ComputePass>  mpInitialSamplingPass;
     ref<ComputePass>  mpTemporalReusePass;

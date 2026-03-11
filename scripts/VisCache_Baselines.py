@@ -1,6 +1,6 @@
 """
 VisCache_Baselines.py  —  Automated baseline capture script
-Runs all ReSTIR variant baselines (DI/GI/PT × Vanilla/LocalCVRRR/VisCache).
+Runs all ReSTIR variant baselines (DI/PT × Vanilla/LocalCVRRR/VisCache).
 
 Usage:
     Mogwai.exe --headless --script scripts/VisCache_Baselines.py --scene Bistro_Interior.pyscene
@@ -33,32 +33,37 @@ _VC_DEFAULTS = {
 # Each entry: (name, pass_type, needs_viscache, pass_overrides, vc_overrides)
 # ---------------------------------------------------------------------------
 BASELINE_CONFIGS = [
-    # --- ReSTIR GI ---
-    ("GI_Vanilla", "ReSTIRGIPass", False, {
+    # --- ReSTIR GI (single-bounce PT) ---
+    ("GI_Vanilla", "ReSTIRPTPass", False, {
+        'maxBounces': 1,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation':    False,
         'enableVisCacheLightSelection': False,
     }, {}),
-    ("GI_CVRRRLocal", "ReSTIRGIPass", False, {
+    ("GI_CVRRRLocal", "ReSTIRPTPass", False, {
+        'maxBounces': 1,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation':    True,
         'enableVisCacheLightSelection': False,
         'visCacheContribThreshold':   0.01,
         'visCachePMin':               0.05,
     }, {}),
-    ("GI_VisCacheReval", "ReSTIRGIPass", True, {
+    ("GI_VisCacheReval", "ReSTIRPTPass", True, {
+        'maxBounces': 1,
         'enableCVRRRRevalidation': False,
     }, {
         'enableVisCacheRevalidation':   True,
         'enableVisCacheLightSelection': False,
     }),
-    ("GI_VisCacheLightSel", "ReSTIRGIPass", True, {
+    ("GI_VisCacheLightSel", "ReSTIRPTPass", True, {
+        'maxBounces': 1,
         'enableCVRRRRevalidation': False,
     }, {
         'enableVisCacheRevalidation':   False,
         'enableVisCacheLightSelection': True,
     }),
-    ("GI_VisCacheFull", "ReSTIRGIPass", True, {
+    ("GI_VisCacheFull", "ReSTIRPTPass", True, {
+        'maxBounces': 1,
         'enableCVRRRRevalidation': False,
     }, {
         'enableVisCacheRevalidation':   True,

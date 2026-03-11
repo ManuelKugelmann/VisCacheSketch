@@ -83,8 +83,8 @@ Source/RenderPasses/
     ShadingCV.slang          prediction-with-correction (CV+VRRR) estimator — all three integration points
     VisCache.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
     CMakeLists.txt           Plugin build target
-  ReSTIRGIPass/              ReSTIR GI with VisCache revalidation
-    ReSTIRGIPass.h/.cpp      Falcor 8.0 host code (full port sketch)
+  ReSTIRPTPass/              ReSTIR PT with VisCache revalidation (DQLin's ReSTIR PT [SIGGRAPH 2022] ported to Falcor 8; maxBounces=1 for single-bounce GI, higher for multi-bounce PT)
+    ReSTIRPTPass.h/.cpp      Falcor 8.0 host code (full port sketch)
     SpatialReuse.cs.slang    Spatial reuse kernel with prediction-with-correction (CV+VRRR) integration
     SpatialReuse_VisCache_delta.slang  Original delta reference
     CMakeLists.txt           Plugin build target
@@ -204,7 +204,7 @@ cd VisCacheSketch
 Each root setup script:
 1. Calls Falcor's own setup (submodule init, packman deps, git hooks;
    Windows also generates VS2022 `.sln`)
-2. Copies VisCache and ReSTIRGIPass plugins into the Falcor tree
+2. Copies VisCache and ReSTIRPTPass plugins into the Falcor tree
 3. Patches CMake to register the plugins
 4. Runs CPU unit tests
 
