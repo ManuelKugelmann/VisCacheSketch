@@ -44,12 +44,12 @@ def eval_local_revalidation(mu, bsdf, Lo, G, V_gt, contrib_threshold, p_min, rng
 
 
 def eval_target_pdf(bsdf, Lo, G):
-    """Python mirror of evalTargetPdf from ReSTIRGICommon.slang."""
+    """Python mirror of evalTargetPdf from ReSTIRPTCommon.slang."""
     return luminance([bsdf[i] * Lo[i] for i in range(3)]) * G
 
 
 def geometry_valid(N1, N2, P1, P2, normal_thresh, dist_thresh):
-    """Python mirror of geometryValid from ReSTIRGICommon.slang."""
+    """Python mirror of geometryValid from ReSTIRPTCommon.slang."""
     dot_n = sum(N1[i] * N2[i] for i in range(3))
     diff = [P1[i] - P2[i] for i in range(3)]
     dist = math.sqrt(sum(d * d for d in diff))

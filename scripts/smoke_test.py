@@ -23,7 +23,7 @@ import sys
 
 EXPECTED_PASSES = [
     "VisCachePass",
-    "ReSTIRGIPass",
+    "ReSTIRPTPass",
 ]
 
 # ---------------------------------------------------------------------------
@@ -57,15 +57,15 @@ try:
         'enableVisCacheLightSelection': True,
     })
     g.addPass(VisCache, "VisCache")
-    ReSTIRGI = createPass("ReSTIRGIPass")
-    g.addPass(ReSTIRGI, "ReSTIRGI")
+    ReSTIRPT = createPass("ReSTIRPTPass", {'maxBounces': 1})
+    g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False})
     g.addPass(ToneMapper, "ToneMapper")
 
     g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
-    g.addEdge("VBuffer.vbuffer", "ReSTIRGI.vbuffer")
-    g.addEdge("VBuffer.mvec", "ReSTIRGI.motionVectors")
-    g.addEdge("ReSTIRGI.color", "ToneMapper.src")
+    g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
+    g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
+    g.addEdge("ReSTIRPT.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
 
     print("  OK: graph built and wired")
