@@ -6,8 +6,8 @@ def render_graph_ReSTIRDI_Vanilla():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidationidation': False,
-        'enableVisCacheLightSelectionection': False,
+        'enableVisCacheRevalidation': False,
+        'enableVisCacheLightSelection': False,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -29,8 +29,8 @@ def render_graph_ReSTIRDI_VisCacheRevalidation():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidationidation': True,
-        'enableVisCacheLightSelectionection': False,
+        'enableVisCacheRevalidation': True,
+        'enableVisCacheLightSelection': False,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -53,8 +53,8 @@ def render_graph_ReSTIRDI_VisCacheLightSelection():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidationidation': False,
-        'enableVisCacheLightSelectionection': True,
+        'enableVisCacheRevalidation': False,
+        'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -77,8 +77,8 @@ def render_graph_ReSTIRDI_VisCacheFull():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidationidation': True,
-        'enableVisCacheLightSelectionection': True,
+        'enableVisCacheRevalidation': True,
+        'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
