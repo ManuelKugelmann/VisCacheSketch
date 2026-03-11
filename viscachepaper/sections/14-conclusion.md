@@ -1,21 +1,14 @@
 # 14. Conclusion
 
-Twenty years ago, a thesis [Kugelmann 2006]
-cached pairwise binary visibility in spatial hashing grids
-[Teschner et al. 2003]
-and corrected predictions via variance-driven adaptive sampling
-(prediction-with-correction:
-control variate + Russian roulette on the residual
-[Szécsi et al. 2003; Szirmay-Kalos et al. 2005]).
-The method was always algorithm-agnostic:
+We have described a visibility cache that stores
+pairwise binary predictions in a flat, multilevel spatial hash table,
+corrects them stochastically via prediction-with-correction
+(control variate + variance-driven Russian roulette
+[Szécsi et al. 2003; Szirmay-Kalos et al. 2005; Kugelmann 2006]),
+and operates entirely lock-free on the GPU.
+The method is algorithm-agnostic:
 it operates on pairwise (point, point) → {0,1} queries
 regardless of what generates them.
-The idea was limited by
-fixed-resolution single-level hashing and offline CPU execution.
-We have described the engineering —
-drawing on two decades of developments in GPU hashing,
-lock-free atomics, and multilevel spatial data structures —
-required to make it practical in a real-time path tracer.
 
 The key additions, each built on specific prior work:
 
@@ -25,9 +18,9 @@ The key additions, each built on specific prior work:
 
 - **LOD in the hash key** (from [Gautron 2020, 2021]). Level index in the hash input; multiple resolutions in one flat table. Prior multilevel approaches — separate tables [Müller et al. 2022], octree subdivision [Popov et al. 2013], hierarchical cascades — were all more complex and performed worse for our access pattern.
 
-- **Coupled variance adaptation** (extending [Kugelmann 2006]'s adaptive sampling; independently paralleled by [Stotko et al. 2025]). [Kugelmann 2006] already used variance to drive the correction rate. We narrow to binary visibility where Bernoulli variance (var = μ(1−μ)) requires no separate variance estimator — an optimization not exploited in the original thesis — and add a second use of the same signal: write-depth gating drives spatial resolution. This coupling is self-regulating and only becomes possible with a multilevel cache.
+- **Coupled variance adaptation** (extending [Kugelmann 2006]; independently paralleled by [Stotko et al. 2025]). Bernoulli variance (var = μ(1−μ)) requires no separate accumulator. The same signal drives both the correction rate and write-depth gating for spatial resolution. This coupling is self-regulating and only becomes possible with a multilevel cache.
 
-The cache is algorithm-agnostic. We demonstrated integration with ReSTIR DI and GI [Bitterli et al. 2020; Ouyang et al. 2021] as one natural client, but the same cache applies to instant radiosity (as in the original thesis), classical next-event estimation, or any method evaluating pairwise visibility.
+The cache is algorithm-agnostic. We demonstrated integration with ReSTIR DI and GI [Bitterli et al. 2020; Ouyang et al. 2021] as one natural client, but the same cache applies to instant radiosity, classical next-event estimation, or any method evaluating pairwise visibility.
 
 Key observations: (1) ReSTIR GI's selection concentration aligns with coarse cache cells, enabling within-frame amortization of revalidation traces — but this is a happy property of the integration, not of the cache itself; (2) contribution-weighted RR gates revalidation by perceptual importance rather than raw visibility variance; (3) the design degrades gracefully — every failure mode falls back to unoptimized baseline tracing, so the cache can never make things worse.
 

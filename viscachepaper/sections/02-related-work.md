@@ -1,38 +1,18 @@
 # 2. Related Work
 
-## 2.1 Foundation: Kugelmann [2006]
+## 2.1 Prediction-with-Correction for Visibility
 
-This paper builds directly on [Kugelmann 2006],
-a thesis on adaptive global illumination that developed a general framework
-called *predictions with correction at random* (Sec. 3.4 of the thesis) —
-using a cached prediction as control variate
-and Russian roulette to decide whether to correct,
-with variance driving adaptive sampling (Sec. 3.4.1).
-The framework was applied through many explorative cache experiments —
-visibility prediction (Sec. 3.2.2),
-contribution prediction (Sec. 3.2.3), and others,
-using spatial grids for grouping nearby samples —
-the grids were visible in the thesis results,
-but the underlying use of spatial hashing [Teschner et al. 2003]
-to map cells to memory was an unmentioned implementation detail.
-The test case was Robust Instant Global Illumination [Keller 1997],
-but the caching method itself was always algorithm-agnostic —
-it operates on pairwise queries
-regardless of the rendering algorithm generating them.
-The visibility prediction component is the direct ancestor of this work.
-The thesis was broader
-(visibility + contribution prediction, unbiased light cuts,
-adaptive global illumination)
-but shallower in each area:
-fixed-resolution spatial grids,
-variance driving only the correction rate, CPU-only implementation.
-We narrow to binary visibility and deepen it
-with improvements from subsequent work:
-formal spatial hashing [Teschner et al. 2003] with robust addressing
-(modifying [Binder et al. 2018], hash quality from [Jarzynski & Olano 2020]),
-fingerprint-based collision handling ([Binder et al. 2018])
-with GPU-parallel lock-free updates ([Gautron 2021]),
-LOD level encoded in the hash key ([Gautron 2020]),
+[Kugelmann 2006] cached pairwise visibility in spatial hash grids
+and corrected predictions via variance-driven Russian roulette
+(control variate on the residual),
+demonstrating the concept on instant radiosity at CPU speeds.
+That work used fixed-resolution grids and single-level hashing.
+We narrow to binary visibility and deepen the hashing:
+robust addressing (modifying [Binder et al. 2018],
+hash quality from [Jarzynski & Olano 2020]),
+fingerprint-based collision handling
+with GPU-parallel lock-free updates [Gautron 2021],
+LOD level encoded in the hash key [Gautron 2020],
 and variance-driven spatial resolution
 (independently paralleled by [Stotko et al. 2025]).
 
@@ -147,15 +127,9 @@ via a splitting/RR framework ("go with the winners" for path tracing),
 using a scene-global average radiance estimate
 (from total emitted power and average albedo) on termination.
 
-Kugelmann [2006] arrived at the same CV+RR math independently
-as *predictions with correction at random* (thesis Sec. 3.4),
-but with two refinements that make the technique practical:
-(a) the **estimation source** is a per-point spatial cache
-rather than a scene-global constant —
-a good local prediction gives near-zero residual variance,
-while a global average helps little;
-(b) **variance** drives the RR survival probability
-as adaptive sampling (Sec. 3.4.1),
+[Kugelmann 2006] refined the estimation source
+to a per-point spatial cache (rather than a scene-global constant)
+and used variance to drive RR survival probability,
 closing the loop between cache quality and trace rate.
 By narrowing to binary visibility, we exploit Bernoulli structure:
 var = μ(1−μ) is free from the mean alone,
@@ -199,8 +173,7 @@ and note compatibility with Area ReSTIR [Zhang et al. 2024]
 and Reservoir Splatting [Liu et al. 2025],
 but these are *integration targets*,
 not related work in the visibility caching sense.
-The same cache applies equally to instant radiosity
-(as in [Kugelmann 2006]),
+The same cache applies equally to instant radiosity,
 classical path tracing with next-event estimation,
 or any algorithm evaluating pairwise visibility.
 ReSTIR is a particularly good fit because spatial reuse

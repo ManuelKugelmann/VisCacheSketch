@@ -1,6 +1,6 @@
 # 9. ReSTIR Integration
 
-The visibility cache is algorithm-agnostic: it reduces shadow-ray cost for any method that evaluates pairwise point-to-point visibility. The original thesis [Kugelmann 2006] applied it to instant radiosity; it works equally well with classical next-event estimation or photon mapping. ReSTIR [Bitterli et al. 2020; Ouyang et al. 2021] is not related work but a particularly good integration target — spatial reuse concentrates many pixels onto the same light or secondary hit, and a world-space cache amortizes their shared visibility queries automatically. We demonstrate three integration points, all using the same hash table.
+The visibility cache is algorithm-agnostic: it reduces shadow-ray cost for any method that evaluates pairwise point-to-point visibility — classical next-event estimation, instant radiosity, or photon mapping. ReSTIR [Bitterli et al. 2020; Ouyang et al. 2021] is not related work but a particularly good integration target — spatial reuse concentrates many pixels onto the same light or secondary hit, and a world-space cache amortizes their shared visibility queries automatically. We demonstrate three integration points, all using the same hash table.
 
 ## 9.1 Cache-Informed Light Selection
 

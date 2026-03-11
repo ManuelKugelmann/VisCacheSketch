@@ -254,20 +254,13 @@ def build(output_path=None):
         "(16<super>3</super> voxels, ~32&nbsp;MB, single resolution, offline).",
         sB0))
     S.append(Paragraph(
-        "<b>Kugelmann [2006]</b> explored three independent cache experiments "
-        "within a spatial hash grid [Teschner et al. 2003]: "
-        "(1)&nbsp;irradiance (point,&nbsp;direction)&nbsp;&#8594;&nbsp;&#8477;, "
-        "(2)&nbsp;binary visibility "
-        "(point,&nbsp;point)&nbsp;&#8594;&nbsp;{0,1}, and "
-        "(3)&nbsp;free-path distance "
-        "(point,&nbsp;direction)&nbsp;&#8594;&nbsp;&#8477;<sub>&#8805;0</sub> "
-        "&#8212; each with CV+RRR correction rates driven by their respective "
-        "variances, in a fixed-resolution single-level hash applied to "
-        "shadow-test reduction in robust instant global illumination. "
-        "The binary visibility experiment is the direct ancestor of this work. "
-        "Two decades of hardware evolution &#8212; GPU ray tracing, wave "
-        "intrinsics &#8212; and the ReSTIR framework provide the context that "
-        "makes the 2006 experiment practical as a real-time system.",
+        "<b>Kugelmann [2006]</b> cached pairwise visibility in spatial hash grids "
+        "[Teschner et al. 2003] and corrected predictions via variance-driven "
+        "Russian roulette, demonstrating the concept on instant radiosity "
+        "at CPU speeds with fixed-resolution single-level hashing. "
+        "We narrow to binary visibility and deepen the hashing with "
+        "robust addressing, fingerprint collision handling, "
+        "multilevel LOD, and GPU-parallel lock-free updates.",
         sB))
     S.append(Paragraph(
         "Concurrent with this work, Bok&#353;ansk&#253; and Meister [2025] "

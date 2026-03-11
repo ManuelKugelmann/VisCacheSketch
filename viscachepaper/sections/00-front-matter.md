@@ -1,5 +1,5 @@
-# Revisiting Visibility Prediction-with-Correction for Real-Time Path Tracing
-## Robust Hashing, Collision Handling, and ReSTIR Integration for a Two-Decade-Old Idea
+# Visibility Prediction-with-Correction for Real-Time Path Tracing
+## Multilevel Hashing, Collision Handling, and ReSTIR Integration
 
 **M. Kugelmann**
 

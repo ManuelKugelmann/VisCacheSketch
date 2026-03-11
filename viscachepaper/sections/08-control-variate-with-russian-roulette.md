@@ -1,7 +1,6 @@
 # 8. Prediction with Correction
 
-The core estimator, which we call *prediction-with-correction*
-following the naming in [Kugelmann 2006]
+The core estimator, *prediction-with-correction*
 (shorthand: CV+VRRR —
 Control Variate + Variance-driven Russian Roulette Residual),
 combines two standard Monte Carlo techniques:
@@ -13,18 +12,13 @@ Szécsi et al. [2003] formalized the non-zero termination estimate
 for rendering (CV+RR, but with fixed RR probability);
 Szirmay-Kalos et al. [2005] added variance-driven RR
 via the "go with the winners" splitting/RR framework.
-[Kugelmann 2006] arrived at the same math independently
-(thesis Sec. 3.4, "predictions with correction at random")
-but refined the **estimation source** —
+[Kugelmann 2006] refined the **estimation source** —
 per-point cached predictions rather than a scene-global average —
 and the **variance signal use** —
-variance drives RR survival probability
-as adaptive sampling (Sec. 3.4.1).
+variance drives RR survival probability as adaptive sampling.
 The per-point cache is what makes the technique effective:
 a good spatial prediction gives near-zero residual variance,
 while a scene-global average helps little.
-The idea of using variance — not absolute light — to drive sampling rate
-was inspired by hints in Keller's lectures at Universität Ulm.
 We do not claim the CV+RR math as new.
 We apply prediction-with-correction to a multilevel cache
 where the same variance signal now also drives spatial resolution (Sec. 5),
@@ -71,9 +65,6 @@ The technique is agnostic to the source of μ;
 cache quality affects only efficiency, never correctness.
 
 **Why binary visibility.**
-[Kugelmann 2006] explored many cached quantities
-through explorative experiments —
-visibility prediction, contribution prediction, and others.
 We focus on binary visibility for three reasons:
 (1) binary is sufficient for shadow-ray decisions —
 the ray either hits or misses;
@@ -85,8 +76,7 @@ whether from ReSTIR reservoirs, instant radiosity VPLs,
 or classical next-event estimation.
 
 **Variance as adaptive sampling.**
-Already in [Kugelmann 2006],
-variance drove the RR survival probability —
+Variance drives the RR survival probability —
 high-uncertainty regions trace more, low-uncertainty regions trace less.
 By narrowing to binary visibility, we exploit Bernoulli structure:
 var = μ(1−μ) is free from the mean alone, requiring no separate accumulator.
