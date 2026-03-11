@@ -1,5 +1,5 @@
 # Visibility Prediction-with-Correction for Real-Time Path Tracing
-## Unbiased Shadow Ray Reduction with a Variance-Driven Multilevel Hash Cache
+## Unbiased Adaptive Shadow Ray Reduction with a Variance-Driven Multilevel Hash Cache
 
 **M. Kugelmann**
 
