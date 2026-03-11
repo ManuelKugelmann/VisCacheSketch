@@ -10,7 +10,7 @@
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
-static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum
+static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum (last two accumulated but not read back yet)
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
@@ -191,7 +191,6 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     auto vars = mpDecayPass->getRootVar();
     vars["DecayCB"]["gDecayOffset"] = offset;
     vars["DecayCB"]["gDecayStride"] = stride;
-    vars["DecayCB"]["gDecayFactor"] = 0.875f;
     vars["gVHFTable"]    = mpHashTable;
     vars["gTableCapacity"] = mParams.tableCapacity;
 

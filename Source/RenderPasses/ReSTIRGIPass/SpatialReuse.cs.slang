@@ -39,31 +39,7 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-// ---------------------------------------------------------------------------
-// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
-// ---------------------------------------------------------------------------
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRGICommon.slang
 
 // ---------------------------------------------------------------------------
 // Visibility ray trace — core implementation used by both vanilla and
@@ -102,7 +78,7 @@ import RenderPasses.VisCache.RevalidationCommon;
 // ---------------------------------------------------------------------------
 uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 {
-    float angle  = sampleNext1D(sg) * 6.28318530f;
+    float angle  = sampleNext1D(sg) * (2.0f * M_PI);
     float radius = sqrt(sampleNext1D(sg)) * gSpatialRadius;
     int2 offset  = int2(cos(angle) * radius, sin(angle) * radius);
     int2 nbr     = int2(pixel) + offset;

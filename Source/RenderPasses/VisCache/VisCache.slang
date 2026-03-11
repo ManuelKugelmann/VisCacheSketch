@@ -214,7 +214,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 camPos)
         best.level = lvl;
         best.valid = true;
 
-        if (var < 0.01f) break;  // converged — no need to go finer
+        if (var <= gVarThreshold) break;  // converged — no need to go finer
     }
 
     return best;

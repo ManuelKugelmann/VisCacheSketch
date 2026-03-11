@@ -10,7 +10,45 @@
 
 #pragma once
 
+import Scene.Scene;
+import Scene.Shading;
+import Scene.ShadingData;
+import Scene.HitInfo;
 import Utils.Math.MathHelpers;
+
+// ---------------------------------------------------------------------------
+// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
+// Falcor 8.0's loadShadingData lives in PathTracer/LoadShadingData.slang;
+// we inline the core logic here to avoid coupling to PathTracer internals.
+// ---------------------------------------------------------------------------
+ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
+{
+    VertexData v;
+    uint materialID = 0;
+
+    if (hit.getType() == HitType::Triangle)
+    {
+        const TriangleHit tri = hit.getTriangleHit();
+        v = gScene.getVertexData(tri);
+        materialID = gScene.getMaterialID(tri.instanceID);
+    }
+    else
+    {
+        // Non-triangle fallback (curves, SDF, etc.) — not expected in GI pass
+        v.posW = rayOrigin + rayDir;
+        v.normalW = -rayDir;
+        v.faceNormalW = -rayDir;
+        v.tangentW = float4(0, 1, 0, 1);
+        v.texC = float2(0);
+    }
+
+    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
+}
+
+// ---------------------------------------------------------------------------
+// Firefly clamp threshold (shared across final shading passes)
+// ---------------------------------------------------------------------------
+static const float kFireflyClamp = 50.0f;
 
 // ---------------------------------------------------------------------------
 // Secondary bounce hit data — stored per pixel, reused across frames/neighbors

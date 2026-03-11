@@ -20,7 +20,7 @@ cbuffer DecayCB
 {
     uint gDecayOffset;   // Which slice of the table to process this frame
     uint gDecayStride;   // = tableCapacity / decayPeriod
-    float gDecayFactor;  // 0.875 = subtract 1/8 of both counters
+    // Decay strength is hardcoded as >> 3u (= subtract 1/8, factor 0.875).
 }
 
 [numthreads(64, 1, 1)]

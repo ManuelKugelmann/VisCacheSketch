@@ -32,26 +32,7 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRPTCommon.slang
 
 float traceVisibilityRay(float3 origin, float3 target)
 {
@@ -74,7 +55,7 @@ import RenderPasses.VisCache.RevalidationCommon;
 
 uint2 selectNeighbor(uint2 pixel, uint index, inout SampleGenerator sg)
 {
-    float angle  = sampleNext1D(sg) * 6.28318530f;
+    float angle  = sampleNext1D(sg) * (2.0f * M_PI);
     float radius = sqrt(sampleNext1D(sg)) * gSpatialRadius;
     int2 offset  = int2(cos(angle) * radius, sin(angle) * radius);
     int2 nbr     = clamp(int2(pixel) + offset, int2(0), int2(gFrameDim) - 1);

@@ -53,6 +53,8 @@ import RenderPasses.VisCache.VisCache;
 import RenderPasses.VisCache.ShadingCV;
 #endif
 
+static const float kFireflyClamp = 50.0f;
+
 // ---------------------------------------------------------------------------
 // Helper: load ShadingData from HitInfo.
 // ---------------------------------------------------------------------------
@@ -122,7 +124,7 @@ void csFinalShading(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         // Clamp fireflies
         float lum = luminance(color);
-        if (lum > 50.0f) color *= 50.0f / lum;
+        if (lum > kFireflyClamp) color *= kFireflyClamp / lum;
     }
 
     gColorOutput[pixel] = float4(color, 1.0f);

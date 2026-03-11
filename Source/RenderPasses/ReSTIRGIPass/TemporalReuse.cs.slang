@@ -23,7 +23,7 @@ import RenderPasses.ReSTIRGIPass.ReSTIRGICommon;
 // ---------------------------------------------------------------------------
 RWStructuredBuffer<PathReservoir> gReservoirs;
 StructuredBuffer<PathReservoir>   gPrevReservoirs;
-StructuredBuffer<SecondaryHit>    gSecondaryHits;
+StructuredBuffer<SecondaryHit>    gSecondaryHits;  // bound but unused — kept for DQLin port fidelity
 Texture2D<float2>                 gMotionVectors;
 Texture2D<PackedHitInfo>          gVBuffer;
 
@@ -34,31 +34,7 @@ cbuffer PerFrameCB
     float3 gCamPos;
 };
 
-// ---------------------------------------------------------------------------
-// Helper: load ShadingData from HitInfo (Falcor 8.0 standalone pattern).
-// ---------------------------------------------------------------------------
-ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
-{
-    VertexData v;
-    uint materialID = 0;
-
-    if (hit.getType() == HitType::Triangle)
-    {
-        const TriangleHit tri = hit.getTriangleHit();
-        v = gScene.getVertexData(tri);
-        materialID = gScene.getMaterialID(tri.instanceID);
-    }
-    else
-    {
-        v.posW = rayOrigin + rayDir;
-        v.normalW = -rayDir;
-        v.faceNormalW = -rayDir;
-        v.tangentW = float4(0, 1, 0, 1);
-        v.texC = float2(0);
-    }
-
-    return gScene.materials.prepareShadingData(v, materialID, -rayDir);
-}
+// loadSD() is defined in ReSTIRGICommon.slang
 
 // ---------------------------------------------------------------------------
 // Evaluate the target function for the previous frame's sample at the

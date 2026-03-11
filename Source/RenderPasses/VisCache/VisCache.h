@@ -92,8 +92,6 @@ private:
     {
         float hitRate     = 0.f;
         float raySavings  = 0.f;
-        float loadFactor  = 0.f;
-        float avgProbeLen = 0.f;
         float evictRate   = 0.f;
     } mStats;
 

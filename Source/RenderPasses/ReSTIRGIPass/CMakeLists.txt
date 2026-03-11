@@ -8,7 +8,6 @@ target_sources(ReSTIRGIPass PRIVATE
     TemporalReuse.cs.slang
     SpatialReuse.cs.slang
     FinalShading.cs.slang
-    SpatialReuse_VisCache_delta.slang
 )
 
 target_copy_shaders(ReSTIRGIPass RenderPasses/ReSTIRGIPass)
