@@ -29,16 +29,16 @@ cbuffer PerFrameCB
 
 float evalTargetAtCurrentPixel(ShadingData sd, SecondaryHit prevSample)
 {
-    if (luminance(prevSample.Lo) < 1e-7f) return 0.0f;
+    if (luminance(prevSample.Lo) < kLuminanceEps) return 0.0f;
 
     float3 toHit = prevSample.posW - sd.posW;
     float dist = length(toHit);
-    if (dist < 1e-6f) return 0.0f;
+    if (dist < kDistanceEps) return 0.0f;
 
     float3 dir = toHit / dist;
     float cosTheta = abs(dot(sd.N, dir));
     float cosHit   = abs(dot(prevSample.normalW, -dir));
-    float G        = cosTheta * cosHit / (dist * dist + 1e-6f);
+    float G        = cosTheta * cosHit / (dist * dist + kDistanceEps);
 
     float3 bsdf = float3(cosTheta / M_PI);
     return evalTargetPdf(bsdf, prevSample.Lo, G);
@@ -79,7 +79,7 @@ void csTemporalReuse(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, 0.9f, 0.1f))
+    if (!geometryValid(sd.N, prev.sample.normalW, sd.posW, prev.sample.posW, kGeomNormalThresh, kGeomDepthThresh))
     {
         gReservoirs[pixelIdx] = current;
         return;

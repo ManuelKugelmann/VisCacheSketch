@@ -64,7 +64,7 @@ void traceSecondaryBounce(const ShadingData sd, inout SampleGenerator sg,
     if (!gScene.materials.getBSDF(sd, lod).sample(sd, sg, bsdfSample, true))
         return;
 
-    if (luminance(bsdfSample.weight) < 1e-7f || bsdfSample.pdf < 1e-7f)
+    if (luminance(bsdfSample.weight) < kLuminanceEps || bsdfSample.pdf < kLuminanceEps)
         return;
 
     bsdfVal = bsdfSample.weight * bsdfSample.pdf; // f * cos / pdf * pdf = f * cos
@@ -120,7 +120,7 @@ void traceSecondaryBounce(const ShadingData sd, inout SampleGenerator sg,
             // Shadow ray from secondary hit to sampled light
             float3 origin = computeRayOrigin(v.posW, v.faceNormalW);
             Ray shadowRay = Ray(origin, ls.dir, 0.0f,
-                                ls.distance * (1.0f - 1e-4f));
+                                ls.distance * (1.0f - kShadowRayOffset));
 
             SceneRayQuery<0> shadowQuery;
             bool visible = shadowQuery.traceVisibilityRay(shadowRay);
@@ -184,16 +184,16 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
     float  pdf;
     traceSecondaryBounce(sd, sg, secHit, bsdfVal, pdf);
 
-    if (pdf > 1e-7f && luminance(secHit.Lo) > 0.0f)
+    if (pdf > kLuminanceEps && luminance(secHit.Lo) > 0.0f)
     {
         // Reconnection geometry term
         float3 toHit = secHit.posW - sd.posW;
         float  dist  = length(toHit);
-        if (dist > 1e-6f)
+        if (dist > kDistanceEps)
         {
             float3 dir = toHit / dist;
             float  G   = abs(dot(sd.N, dir)) * abs(dot(secHit.normalW, -dir))
-                        / (dist * dist + 1e-6f);
+                        / (dist * dist + kDistanceEps);
 
             float pHat = evalTargetPdf(bsdfVal, secHit.Lo, G);
             if (pHat > 0.0f)

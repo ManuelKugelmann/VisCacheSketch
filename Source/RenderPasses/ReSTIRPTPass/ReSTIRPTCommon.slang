@@ -43,6 +43,17 @@ ShadingData loadSD(const HitInfo hit, float3 rayOrigin, float3 rayDir)
 static const float kFireflyClamp = 50.0f;
 
 // ---------------------------------------------------------------------------
+// Numerical thresholds (named for auditability)
+// ---------------------------------------------------------------------------
+static const float kLuminanceEps      = 1e-7f;   ///< Min radiance to consider non-zero
+static const float kDistanceEps       = 1e-6f;   ///< Min distance to avoid division by zero
+static const float kGeomNormalThresh        = 0.9f;    ///< Temporal: dot(N1,N2) threshold
+static const float kGeomDepthThresh         = 0.1f;    ///< Temporal: relative depth threshold
+static const float kSpatialGeomNormalThresh = 0.5f;    ///< Spatial: looser normal threshold for neighbor selection
+static const float kSpatialGeomDepthThresh  = 0.2f;    ///< Spatial: looser depth threshold for neighbor selection
+static const float kShadowRayOffset         = 1e-4f;   ///< Ray tMin/tMax offset to avoid self-intersection
+
+// ---------------------------------------------------------------------------
 // Secondary bounce hit data — same as GI version
 // ---------------------------------------------------------------------------
 struct SecondaryHit

@@ -70,12 +70,12 @@ void csFinalShading(uint3 dispatchThreadId : SV_DispatchThreadID)
             float3 toHit = selected.posW - sd.posW;
             float  dist  = length(toHit);
 
-            if (dist > 1e-6f)
+            if (dist > kDistanceEps)
             {
                 float3 dir = toHit / dist;
                 float  cosTheta = max(dot(sd.N, dir), 0.0f);
                 float  cosHit   = abs(dot(selected.normalW, -dir));
-                float  G        = cosTheta * cosHit / (dist * dist + 1e-6f);
+                float  G        = cosTheta * cosHit / (dist * dist + kDistanceEps);
 
                 // BSDF evaluation at primary hit
                 // DQLin uses diffuse approximation for reconnection:

@@ -52,7 +52,8 @@ float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
                              inout SampleGenerator sg)
 {
     // Reservoir-local visibility estimate
-    float mu = (pHatNoVis > 1e-7f) ? clamp(neighborTargetPdf / pHatNoVis, 0.0f, 1.0f)
+    static const float kLumEps = 1e-7f;
+    float mu = (pHatNoVis > kLumEps) ? clamp(neighborTargetPdf / pHatNoVis, 0.0f, 1.0f)
                                      : 0.5f;  // no data -> uncertain
 
     // Contribution-weighted residual bound (same as VisCache path)

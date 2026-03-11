@@ -50,7 +50,6 @@ public:
     {
         uint32_t numSpatialNeighbors = 5;      ///< k in spatial reuse
         float    spatialRadius       = 30.0f;   ///< Screen-space pixel radius
-        uint32_t numTemporalSamples  = 1;       ///< Temporal reuse candidates
         bool     enableTemporalReuse = true;
         bool     enableSpatialReuse  = true;
         bool     enableMIS           = true;    ///< Talbot MIS for spatial

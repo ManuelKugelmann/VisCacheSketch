@@ -81,7 +81,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (!gScene.materials.getBSDF(curSD, lod).sample(curSD, sg, bsdfSample, true))
             break;
 
-        if (luminance(bsdfSample.weight) < 1e-7f || bsdfSample.pdf < 1e-7f)
+        if (luminance(bsdfSample.weight) < kLuminanceEps || bsdfSample.pdf < kLuminanceEps)
             break;
 
         // Trace ray to next bounce
@@ -119,7 +119,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
             {
                 Ray shadowRay = Ray(
                     computeRayOrigin(v.posW, v.faceNormalW),
-                    ls.dir, 0.0f, ls.distance * (1.0f - 1e-4f));
+                    ls.dir, 0.0f, ls.distance * (1.0f - kShadowRayOffset));
                 SceneRayQuery<0> shadowQuery;
                 if (shadowQuery.traceVisibilityRay(shadowRay))
                 {
@@ -143,11 +143,11 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
             // Geometry term for reconnection from primary hit to this vertex
             float3 toHit = v.posW - sd.posW;
             float  dist  = length(toHit);
-            if (dist > 1e-6f)
+            if (dist > kDistanceEps)
             {
                 float3 dir = toHit / dist;
                 float  G = abs(dot(sd.N, dir)) * abs(dot(v.faceNormalW, -dir))
-                          / (dist * dist + 1e-6f);
+                          / (dist * dist + kDistanceEps);
 
                 float pHat = evalTargetPdf(prefixThroughput, Lo, G);
                 if (pHat > 0.0f)

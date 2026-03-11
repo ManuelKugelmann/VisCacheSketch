@@ -36,10 +36,10 @@ float traceShadowRay(float3 origin, float3 target)
 {
     float3 dir  = target - origin;
     float  dist = length(dir);
-    if (dist < 1e-6f) return 1.0f;
+    if (dist < kDistanceEps) return 1.0f;
     dir /= dist;
 
-    Ray ray = Ray(origin, dir, 1e-4f, dist - 1e-4f);
+    Ray ray = Ray(origin, dir, kShadowRayOffset, dist - kShadowRayOffset);
     SceneRayQuery<0> rayQuery;
     return rayQuery.traceVisibilityRay(ray) ? 1.0f : 0.0f;
 }
@@ -54,7 +54,9 @@ import RenderPasses.VisCache.VisCache;
 import RenderPasses.VisCache.ShadingCV;
 #endif
 
-static const float kFireflyClamp = 50.0f;
+static const float kFireflyClamp    = 50.0f;
+static const float kDistanceEps     = 1e-6f;
+static const float kShadowRayOffset = 1e-4f;
 
 // ---------------------------------------------------------------------------
 // Main kernel: for each pixel, evaluate the RTXDI-selected light sample.
