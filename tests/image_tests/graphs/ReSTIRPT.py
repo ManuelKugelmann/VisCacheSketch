@@ -7,9 +7,9 @@ def render_graph_ReSTIRPT_Vanilla():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 4,
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheRevalidationidation': False,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheLightSelectionection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -23,16 +23,16 @@ def render_graph_ReSTIRPT_Vanilla():
     return g
 
 
-def render_graph_ReSTIRPT_CVRRRLocal():
+def render_graph_ReSTIRPT_CVRRRRevalidation():
     """ReSTIR PT — local CV+RRR (reservoir-local mu, no hash table)."""
-    g = RenderGraph("ReSTIRPT_CVRRRLocal")
+    g = RenderGraph("ReSTIRPT_CVRRRRevalidation")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 4,
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheRevalidationidation': False,
         'enableCVRRRRevalidation': True,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheLightSelectionection': False,
         'visCacheContribThreshold': 0.01,
         'visCachePMin': 0.05,
     })
@@ -48,18 +48,18 @@ def render_graph_ReSTIRPT_CVRRRLocal():
     return g
 
 
-def render_graph_ReSTIRPT_VisCacheReval():
+def render_graph_ReSTIRPT_VisCacheRevalidation():
     """ReSTIR PT — VisCache CV+RRR revalidation (S11.3)."""
-    g = RenderGraph("ReSTIRPT_VisCacheReval")
+    g = RenderGraph("ReSTIRPT_VisCacheRevalidation")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 4,
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheRevalidationidation': True,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheLightSelectionection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -74,18 +74,18 @@ def render_graph_ReSTIRPT_VisCacheReval():
     return g
 
 
-def render_graph_ReSTIRPT_VisCacheLightSel():
+def render_graph_ReSTIRPT_VisCacheLightSelection():
     """ReSTIR PT — VisCache light pre-selection only (S11.1, no S11.3)."""
-    g = RenderGraph("ReSTIRPT_VisCacheLightSel")
+    g = RenderGraph("ReSTIRPT_VisCacheLightSelection")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 4,
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheRevalidationidation': False,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': True,
+        'enableVisCacheLightSelectionection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -109,9 +109,9 @@ def render_graph_ReSTIRPT_VisCacheFull():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 4,
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheRevalidationidation': True,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': True,
+        'enableVisCacheLightSelectionection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -140,9 +140,9 @@ def render_graph_ReSTIRPT1_Vanilla():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 1,
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheRevalidationidation': False,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheLightSelectionection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -156,16 +156,16 @@ def render_graph_ReSTIRPT1_Vanilla():
     return g
 
 
-def render_graph_ReSTIRPT1_CVRRRLocal():
+def render_graph_ReSTIRPT1_CVRRRRevalidation():
     """ReSTIR PT maxBounces=1 — local CV+RRR (reservoir-local mu, no hash table)."""
-    g = RenderGraph("ReSTIRPT1_CVRRRLocal")
+    g = RenderGraph("ReSTIRPT1_CVRRRRevalidation")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 1,
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheRevalidationidation': False,
         'enableCVRRRRevalidation': True,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheLightSelectionection': False,
         'visCacheContribThreshold': 0.01,
         'visCachePMin': 0.05,
     })
@@ -181,18 +181,18 @@ def render_graph_ReSTIRPT1_CVRRRLocal():
     return g
 
 
-def render_graph_ReSTIRPT1_VisCacheReval():
+def render_graph_ReSTIRPT1_VisCacheRevalidation():
     """ReSTIR PT maxBounces=1 — VisCache CV+RRR revalidation."""
-    g = RenderGraph("ReSTIRPT1_VisCacheReval")
+    g = RenderGraph("ReSTIRPT1_VisCacheRevalidation")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 1,
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheRevalidationidation': True,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheLightSelectionection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -207,18 +207,18 @@ def render_graph_ReSTIRPT1_VisCacheReval():
     return g
 
 
-def render_graph_ReSTIRPT1_VisCacheLightSel():
+def render_graph_ReSTIRPT1_VisCacheLightSelection():
     """ReSTIR PT maxBounces=1 — VisCache light pre-selection only."""
-    g = RenderGraph("ReSTIRPT1_VisCacheLightSel")
+    g = RenderGraph("ReSTIRPT1_VisCacheLightSelection")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 1,
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheRevalidationidation': False,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': True,
+        'enableVisCacheLightSelectionection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -242,9 +242,9 @@ def render_graph_ReSTIRPT1_VisCacheFull():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxBounces': 1,
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheRevalidationidation': True,
         'enableCVRRRRevalidation': False,
-        'enableVisCacheLightSelection': True,
+        'enableVisCacheLightSelectionection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -261,16 +261,16 @@ def render_graph_ReSTIRPT1_VisCacheFull():
 
 # Multi-bounce (maxBounces=4)
 ReSTIRPT_Vanilla = render_graph_ReSTIRPT_Vanilla()
-ReSTIRPT_CVRRRLocal = render_graph_ReSTIRPT_CVRRRLocal()
-ReSTIRPT_VisCacheReval = render_graph_ReSTIRPT_VisCacheReval()
-ReSTIRPT_VisCacheLightSel = render_graph_ReSTIRPT_VisCacheLightSel()
+ReSTIRPT_CVRRRRevalidation = render_graph_ReSTIRPT_CVRRRRevalidation()
+ReSTIRPT_VisCacheRevalidation = render_graph_ReSTIRPT_VisCacheRevalidation()
+ReSTIRPT_VisCacheLightSelection = render_graph_ReSTIRPT_VisCacheLightSelection()
 ReSTIRPT_VisCacheFull = render_graph_ReSTIRPT_VisCacheFull()
 
 # Single-bounce (maxBounces=1) — replaces former ReSTIR GI tests
 ReSTIRPT1_Vanilla = render_graph_ReSTIRPT1_Vanilla()
-ReSTIRPT1_CVRRRLocal = render_graph_ReSTIRPT1_CVRRRLocal()
-ReSTIRPT1_VisCacheReval = render_graph_ReSTIRPT1_VisCacheReval()
-ReSTIRPT1_VisCacheLightSel = render_graph_ReSTIRPT1_VisCacheLightSel()
+ReSTIRPT1_CVRRRRevalidation = render_graph_ReSTIRPT1_CVRRRRevalidation()
+ReSTIRPT1_VisCacheRevalidation = render_graph_ReSTIRPT1_VisCacheRevalidation()
+ReSTIRPT1_VisCacheLightSelection = render_graph_ReSTIRPT1_VisCacheLightSelection()
 ReSTIRPT1_VisCacheFull = render_graph_ReSTIRPT1_VisCacheFull()
 
 try: m.addGraph(ReSTIRPT_Vanilla)

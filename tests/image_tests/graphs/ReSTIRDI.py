@@ -6,8 +6,8 @@ def render_graph_ReSTIRDI_Vanilla():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidation': False,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheRevalidationidation': False,
+        'enableVisCacheLightSelectionection': False,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -21,16 +21,16 @@ def render_graph_ReSTIRDI_Vanilla():
     return g
 
 
-def render_graph_ReSTIRDI_VisCacheReval():
+def render_graph_ReSTIRDI_VisCacheRevalidation():
     """ReSTIR DI — VisCache CV+RRR shadow ray gating (S11.3)."""
-    g = RenderGraph("ReSTIRDI_VisCacheReval")
+    g = RenderGraph("ReSTIRDI_VisCacheRevalidation")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidation': True,
-        'enableVisCacheLightSelection': False,
+        'enableVisCacheRevalidationidation': True,
+        'enableVisCacheLightSelectionection': False,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -45,16 +45,16 @@ def render_graph_ReSTIRDI_VisCacheReval():
     return g
 
 
-def render_graph_ReSTIRDI_VisCacheLightSel():
+def render_graph_ReSTIRDI_VisCacheLightSelection():
     """ReSTIR DI — VisCache light pre-selection only (S11.1, no S11.3)."""
-    g = RenderGraph("ReSTIRDI_VisCacheLightSel")
+    g = RenderGraph("ReSTIRDI_VisCacheLightSelection")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidation': False,
-        'enableVisCacheLightSelection': True,
+        'enableVisCacheRevalidationidation': False,
+        'enableVisCacheLightSelectionection': True,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -77,8 +77,8 @@ def render_graph_ReSTIRDI_VisCacheFull():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidation': True,
-        'enableVisCacheLightSelection': True,
+        'enableVisCacheRevalidationidation': True,
+        'enableVisCacheLightSelectionection': True,
     })
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -94,8 +94,8 @@ def render_graph_ReSTIRDI_VisCacheFull():
 
 
 ReSTIRDI_Vanilla = render_graph_ReSTIRDI_Vanilla()
-ReSTIRDI_VisCacheReval = render_graph_ReSTIRDI_VisCacheReval()
-ReSTIRDI_VisCacheLightSel = render_graph_ReSTIRDI_VisCacheLightSel()
+ReSTIRDI_VisCacheRevalidation = render_graph_ReSTIRDI_VisCacheRevalidation()
+ReSTIRDI_VisCacheLightSelection = render_graph_ReSTIRDI_VisCacheLightSelection()
 ReSTIRDI_VisCacheFull = render_graph_ReSTIRDI_VisCacheFull()
 try: m.addGraph(ReSTIRDI_Vanilla)
 except NameError: None
