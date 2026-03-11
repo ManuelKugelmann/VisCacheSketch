@@ -59,11 +59,11 @@ if not exist "%VISCACHE_DST%" mkdir "%VISCACHE_DST%"
 xcopy "%SCRIPT_DIR%Source\RenderPasses\VisCache\*" "%VISCACHE_DST%\" /s /y /q
 echo [VisCache]   Copied: VisCache
 
-: ReSTIRGIPass
-set GI_DST=%FALCOR_ROOT%\Source\RenderPasses\ReSTIRGIPass
+: ReSTIRPTPass
+set GI_DST=%FALCOR_ROOT%\Source\RenderPasses\ReSTIRPTPass
 if not exist "%GI_DST%" mkdir "%GI_DST%"
-xcopy "%SCRIPT_DIR%Source\RenderPasses\ReSTIRGIPass\*" "%GI_DST%\" /s /y /q
-echo [VisCache]   Copied: ReSTIRGIPass
+xcopy "%SCRIPT_DIR%Source\RenderPasses\ReSTIRPTPass\*" "%GI_DST%\" /s /y /q
+echo [VisCache]   Copied: ReSTIRPTPass
 
 : Scripts
 set SCRIPT_DST=%FALCOR_ROOT%\scripts\VisCache
@@ -96,12 +96,12 @@ if errorlevel 1 (
     echo [VisCache]   Already present: VisCache (skipped)
 )
 
-findstr /c:"add_subdirectory(ReSTIRGIPass)" "%RP_CMAKE%" >nul 2>&1
+findstr /c:"add_subdirectory(ReSTIRPTPass)" "%RP_CMAKE%" >nul 2>&1
 if errorlevel 1 (
-    echo add_subdirectory(ReSTIRGIPass)>> "%RP_CMAKE%"
-    echo [VisCache]   Added: add_subdirectory(ReSTIRGIPass)
+    echo add_subdirectory(ReSTIRPTPass)>> "%RP_CMAKE%"
+    echo [VisCache]   Added: add_subdirectory(ReSTIRPTPass)
 ) else (
-    echo [VisCache]   Already present: ReSTIRGIPass (skipped)
+    echo [VisCache]   Already present: ReSTIRPTPass (skipped)
 )
 
 : ---------------------------------------------------------------------------

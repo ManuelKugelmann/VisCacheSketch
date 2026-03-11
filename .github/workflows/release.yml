@@ -149,8 +149,8 @@ jobs:
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
           Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRPTPass" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/ReSTIRPTPass/*" "$Falcor/Source/RenderPasses/ReSTIRPTPass/" -Recurse -Force
 
           New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
           Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
@@ -160,8 +160,8 @@ jobs:
           if ($content -notmatch "add_subdirectory\(VisCache\)") {
             Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
-          if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
+          if ($content -notmatch "add_subdirectory\(ReSTIRPTPass\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRPTPass)"
           }
 
           $extCmake = "$Falcor/external/CMakeLists.txt"
