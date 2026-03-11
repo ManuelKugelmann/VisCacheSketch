@@ -93,6 +93,10 @@ Add the GitHub MCP server for structured access:
 claude mcp add --transport http github https://api.githubcopilot.com/mcp/
 ```
 
+## Workflow
+
+- Work step by step for large edits — break changes into small, incremental Edit calls rather than attempting a single massive Write
+
 ## Render Passes
 
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass

@@ -1,13 +1,20 @@
 /***************************************************************************
  # Copyright (c) 2022, Daqi Lin.  All rights reserved.
+ # Ported to Falcor 8.0 API for VisCacheSketch (2026).
  **************************************************************************/
 #include "ReSTIRPTPass.h"
 #include "RenderGraph/RenderPassHelpers.h"
+#include "Core/AssetResolver.h"
 #include <fstream>
+
+// [Falcor 8] Plugin registration replaces getPasses/getProjDir.
+extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
+{
+    registry.registerClass<RenderPass, ReSTIRPTPass>();
+}
 
 namespace
 {
-    const char kDesc[] = "Path tracer using DXR 1.1 TraceRayInline";
 
     const std::string kGeneratePathsFilename = "RenderPasses/ReSTIRPTPass/GeneratePaths.cs.slang";
     const std::string kTracePassFilename = "RenderPasses/ReSTIRPTPass/TracePass.cs.slang";
@@ -202,187 +209,123 @@ namespace
     const uint32_t kNeighborOffsetCount = 8192;
 }
 
-// Don't remove this. it's required for hot-reload to function properly
-extern "C" __declspec(dllexport) const char* getProjDir()
+// [Falcor 8] Factory method (called by the plugin system via FALCOR_PLUGIN_CLASS).
+ref<ReSTIRPTPass> ReSTIRPTPass::create(ref<Device> pDevice, const Properties& props)
 {
-    return PROJECT_DIR;
+    return make_ref<ReSTIRPTPass>(pDevice, props);
 }
 
-extern "C" __declspec(dllexport) void getPasses(Falcor::RenderPassLibrary & lib)
+ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
+    : RenderPass(pDevice)
 {
-    lib.registerClass("ReSTIRPTPass", kDesc, ReSTIRPTPass::create);
-    ScriptBindings::registerBinding(ReSTIRPTPass::registerBindings);
-}
-
-
-void ReSTIRPTPass::updateDict(const Dictionary& dict)
-{
-    // cleanToDefaultValue
-    bool needToReset = parseDictionary(dict);
-    if (needToReset)
+    if (!mpDevice->isFeatureSupported(Device::SupportedFeatures::RaytracingTier1_1))
     {
-        validateOptions();
-        mOptionsChanged = true;
-        mRecompile = true;
-        mParams.frameCount = 0;
-        mAccumulatedShadowRayCount = 0;
-        mAccumulatedClosestHitRayCount = 0;
-        mAccumulatedRayCount = 0;
-    }
-}
-
-void ReSTIRPTPass::initDict()
-{
-    Init();
-    mOptionsChanged = true;
-    mRecompile = true;
-    mParams.frameCount = 0;
-}
-
-void ReSTIRPTPass::registerBindings(pybind11::module& m)
-{
-    //pybind11::enum_<ColorFormat> colorFormat(m, "ColorFormat");
-    //colorFormat.value("RGBA32F", ColorFormat::RGBA32F);
-    //colorFormat.value("LogLuvHDR", ColorFormat::LogLuvHDR);
-
-    //pybind11::enum_<MISHeuristic> misHeuristic(m, "MISHeuristic");
-    //misHeuristic.value("Balance", MISHeuristic::Balance);
-    //misHeuristic.value("PowerTwo", MISHeuristic::PowerTwo);
-    //misHeuristic.value("PowerExp", MISHeuristic::PowerExp);
-
-    pybind11::enum_<ShiftMapping> shiftMapping(m, "ShiftMapping");
-    shiftMapping.value("Reconnection", ShiftMapping::Reconnection);
-    shiftMapping.value("RandomReplay", ShiftMapping::RandomReplay);
-    shiftMapping.value("Hybrid", ShiftMapping::Hybrid);
-
-    pybind11::enum_<ReSTIRMISKind> misKind(m, "ReSTIRMISKind");
-    misKind.value("Constant", ReSTIRMISKind::Constant);
-    misKind.value("Talbot", ReSTIRMISKind::Talbot);
-    misKind.value("Pairwise", ReSTIRMISKind::Pairwise);
-    misKind.value("ConstantBinary", ReSTIRMISKind::ConstantBinary);
-    misKind.value("ConstantBiased", ReSTIRMISKind::ConstantBiased);
-
-    pybind11::enum_<PathSamplingMode> pathSamplingMode(m, "PathSamplingMode");
-    pathSamplingMode.value("ReSTIR", PathSamplingMode::ReSTIR);
-    pathSamplingMode.value("PathReuse", PathSamplingMode::PathReuse);
-    pathSamplingMode.value("PathTracing", PathSamplingMode::PathTracing);
-
-    pybind11::enum_<SpatialReusePattern> spatialReusePattern(m, "SpatialReusePattern");
-    spatialReusePattern.value("Default", SpatialReusePattern::Default);
-    spatialReusePattern.value("SmallWindow", SpatialReusePattern::SmallWindow);
-
-    pybind11::class_<ReSTIRPTPass, RenderPass, ReSTIRPTPass::SharedPtr> pass(m, "ReSTIRPTPass");
-    pass.def_property_readonly("pixelStats", &ReSTIRPTPass::getPixelStats);
-
-    pass.def_property("useFixedSeed",
-        [](const ReSTIRPTPass* pt) { return pt->mParams.useFixedSeed ? true : false; },
-        [](ReSTIRPTPass* pt, bool value) { pt->mParams.useFixedSeed = value ? 1 : 0; }
-    );
-    pass.def_property("fixedSeed",
-        [](const ReSTIRPTPass* pt) { return pt->mParams.fixedSeed; },
-        [](ReSTIRPTPass* pt, uint32_t value) { pt->mParams.fixedSeed = value; }
-    );
-}
-
-std::string ReSTIRPTPass::getDesc() { return kDesc; }
-
-ReSTIRPTPass::SharedPtr ReSTIRPTPass::create(RenderContext* pRenderContext, const Dictionary& dict)
-{
-    return SharedPtr(new ReSTIRPTPass(dict));
-}
-
-ReSTIRPTPass::ReSTIRPTPass(const Dictionary& dict)
-{
-    if (!gpDevice->isFeatureSupported(Device::SupportedFeatures::RaytracingTier1_1))
-    {
-        throw std::exception("Raytracing Tier 1.1 is not supported by the current device");
+        FALCOR_THROW("Raytracing Tier 1.1 is not supported by the current device");
     }
 
-    parseDictionary(dict);
+    parseDictionary(props);
     validateOptions();
 
-    // load N-rook patterns (for Bekaert-style path reuse)
+    // Load N-rook patterns (for Bekaert-style path reuse).
+    // [Falcor 8] Use AssetResolver instead of findFileInDataDirectories.
+    auto fullpath = AssetResolver::getDefaultResolver().resolvePath("16RooksPattern256.txt");
+    if (fullpath.empty())
+        FALCOR_THROW("Could not find 16RooksPattern256.txt data file");
+    FILE* f = fopen(fullpath.string().c_str(), "r");
+    if (!f)
+        FALCOR_THROW("Could not open {}", fullpath.string());
 
-    std::string fullpath;
-    findFileInDataDirectories("16RooksPattern256.txt", fullpath);
-    FILE* f = fopen(fullpath.c_str(), "r");
-
-    std::vector<byte> NRookArray(65536);
+    std::vector<uint8_t> NRookArray(65536);
     for (int i = 0; i < 8192; i++)
     {
         for (int j = 0; j < 8; j++)
         {
             int temp1, temp2;
             fscanf(f, "%d %d", &temp1, &temp2);
-            NRookArray[8 * i + j] = (temp2 << 4) | temp1;
+            NRookArray[8 * i + j] = (uint8_t)((temp2 << 4) | temp1);
         }
     }
     fclose(f);
 
-    mNRooksPatternBuffer = Buffer::create(65536, ResourceBindFlags::ShaderResource, Buffer::CpuAccess::None, NRookArray.data());
+    // [Falcor 8] Buffer::create -> mpDevice->createBuffer
+    mNRooksPatternBuffer = mpDevice->createBuffer(65536, ResourceBindFlags::ShaderResource, MemoryType::DeviceLocal, NRookArray.data());
 
     // Create sample generator.
-    mpSampleGenerator = SampleGenerator::create(mStaticParams.sampleGenerator);
+    // [Falcor 8] SampleGenerator::create takes device.
+    mpSampleGenerator = SampleGenerator::create(mpDevice, mStaticParams.sampleGenerator);
 
     // Create neighbor offset texture.
     mpNeighborOffsets = createNeighborOffsetTexture(kNeighborOffsetCount);
 
     // Create programs.
+    // [Falcor 8] ComputePass::create takes device; ProgramDesc replaces Program::Desc.
     auto defines = mStaticParams.getDefines(*this);
 
-    mpGeneratePaths = ComputePass::create(kGeneratePathsFilename, "main", defines, false);
-    mpReflectTypes = ComputePass::create(kReflectTypesFile, "main", defines, false);
+    mpGeneratePaths = ComputePass::create(mpDevice, kGeneratePathsFilename, "main", defines, false);
+    mpReflectTypes = ComputePass::create(mpDevice, kReflectTypesFile, "main", defines, false);
 
     {
-        Program::Desc desc;
-        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel("6_5");
-        mpTracePass = ComputePass::create(desc, defines, false);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpTracePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
     {
-        Program::Desc desc;
-        desc.addShaderLibrary(kSpatialPathRetraceFile).csEntry("main").setShaderModel("6_5");
-        mpSpatialPathRetracePass = ComputePass::create(desc, defines, false);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kSpatialPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpSpatialPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
     {
-        Program::Desc desc;
-        desc.addShaderLibrary(kTemporalPathRetraceFile).csEntry("main").setShaderModel("6_5");
-        mpTemporalPathRetracePass = ComputePass::create(desc, defines, false);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kTemporalPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpTemporalPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
     {
-        Program::Desc desc;
-        desc.addShaderLibrary(kSpatialReusePassFile).csEntry("main").setShaderModel("6_5");
-        mpSpatialReusePass = ComputePass::create(desc, defines, false);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kSpatialReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpSpatialReusePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
     {
-        Program::Desc desc;
-        desc.addShaderLibrary(kTemporalReusePassFile).csEntry("main").setShaderModel("6_5");
-        mpTemporalReusePass = ComputePass::create(desc, defines, false);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kTemporalReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpTemporalReusePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
     {
-        Program::Desc desc;
-        desc.addShaderLibrary(kComputePathReuseMISWeightsFile).csEntry("main").setShaderModel("6_5");
-        mpComputePathReuseMISWeightsPass = ComputePass::create(desc, defines, false);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kComputePathReuseMISWeightsFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpComputePathReuseMISWeightsPass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
     // Allocate resources that don't change in size.
-    mpCounters = Buffer::create((size_t)Counters::kCount * sizeof(uint32_t), Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None);
-    mpCountersReadback = Buffer::create((size_t)Counters::kCount * sizeof(uint32_t), Resource::BindFlags::None, Buffer::CpuAccess::Read);
+    // [Falcor 8] mpDevice->createBuffer replaces Buffer::create.
+    mpCounters = mpDevice->createBuffer(
+        (size_t)Counters::kCount * sizeof(uint32_t),
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+        MemoryType::DeviceLocal
+    );
+    mpCountersReadback = mpDevice->createBuffer(
+        (size_t)Counters::kCount * sizeof(uint32_t),
+        ResourceBindFlags::None,
+        MemoryType::ReadBack
+    );
 
-    mpPixelStats = PixelStats::create();
-    mpPixelDebug = PixelDebug::create(1000);
+    // [Falcor 8] PixelStats/PixelDebug take device in constructor.
+    mpPixelStats = std::make_unique<PixelStats>(mpDevice);
+    mpPixelDebug = std::make_unique<PixelDebug>(mpDevice, 1000);
 
-    mpReadbackFence = GpuFence::create();
+    // [Falcor 8] mpDevice->createFence replaces GpuFence::create.
+    mpReadbackFence = mpDevice->createFence();
 }
 
-bool ReSTIRPTPass::parseDictionary(const Dictionary& dict)
+// [Falcor 8] Dictionary → Properties.
+bool ReSTIRPTPass::parseDictionary(const Properties& props)
 {
     bool needToReset = true;
-    for (const auto& [key, value] : dict)
+    for (const auto& [key, value] : props)
     {
         if (key == kSamplesPerPixel) mStaticParams.samplesPerPixel = value;
         else if (key == kMaxSurfaceBounces) mStaticParams.maxSurfaceBounces = value;
@@ -440,19 +383,19 @@ bool ReSTIRPTPass::parseDictionary(const Dictionary& dict)
         else if (key == kCandidateSamples) mStaticParams.candidateSamples = value;
         else if (key == kTemporalUpdateForDynamicScene) mStaticParams.temporalUpdateForDynamicScene = value;
         else if (key == kEnableRayStats) mEnableRayStats = value;
-        else logWarning("Unknown field '" + key + "' in ReSTIRPTPass dictionary");
+        else logWarning("Unknown field '{}' in ReSTIRPTPass properties.", key);
     }
 
     // Check for deprecated bounces configuration.
-    if (dict.keyExists("maxBounces"))
+    if (props.has("maxBounces"))
     {
         logWarning("'maxBounces' is deprecated. Use 'maxSurfaceBounces' instead.");
-        if (!dict.keyExists(kMaxSurfaceBounces)) mStaticParams.maxSurfaceBounces = dict["maxBounces"];
+        if (!props.has(kMaxSurfaceBounces)) mStaticParams.maxSurfaceBounces = props["maxBounces"];
     }
-    if (dict.keyExists("maxNonSpecularBounces"))
+    if (props.has("maxNonSpecularBounces"))
     {
         logWarning("'maxNonSpecularBounces' is deprecated. Use 'maxDiffuseBounces' instead.");
-        if (!dict.keyExists(kMaxDiffuseBounces)) mStaticParams.maxDiffuseBounces = dict["maxNonSpecularBounces"];
+        if (!props.has(kMaxDiffuseBounces)) mStaticParams.maxDiffuseBounces = props["maxNonSpecularBounces"];
     }
 
     // Initialize the other bounce counts to 'maxSurfaceBounces' if they weren't explicitly set.
@@ -466,13 +409,13 @@ bool ReSTIRPTPass::parseDictionary(const Dictionary& dict)
         mStaticParams.maxSurfaceBounces < mStaticParams.maxTransmissionBounces;
 
     // Show a warning if maxSurfaceBounces will be adjusted in validateOptions().
-    if ((dict.keyExists("maxSurfaceBounces") || dict.keyExists("maxBounces")) && maxSurfaceBouncesNeedsAdjustment)
+    if ((props.has("maxSurfaceBounces") || props.has("maxBounces")) && maxSurfaceBouncesNeedsAdjustment)
     {
         logWarning("'maxSurfaceBounces' is set lower than 'maxDiffuseBounces', 'maxSpecularBounces' or 'maxTransmissionBounces' and will be increased.");
     }
 
     // Show a warning for deprecated 'useNestedDielectrics'.
-    if (dict.keyExists("useNestedDielectrics"))
+    if (props.has("useNestedDielectrics"))
     {
         logWarning("'useNestedDielectrics' is deprecated. Support for nested dielectrics is always enabled now.");
     }
@@ -532,14 +475,16 @@ void ReSTIRPTPass::validateOptions()
     }
 }
 
-Dictionary ReSTIRPTPass::getScriptingDictionary()
+// [Falcor 8] getScriptingDictionary → getProperties, Dictionary → Properties.
+Properties ReSTIRPTPass::getProperties() const
 {
-    if (auto lightBVHSampler = std::dynamic_pointer_cast<LightBVHSampler>(mpEmissiveSampler))
+    // [Falcor 8] dynamic_cast on raw pointer instead of dynamic_pointer_cast.
+    if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
     {
         mLightBVHOptions = lightBVHSampler->getOptions();
     }
 
-    Dictionary d;
+    Properties d;
     d[kSamplesPerPixel] = mStaticParams.samplesPerPixel;
     d[kMaxSurfaceBounces] = mStaticParams.maxSurfaceBounces;
     d[kMaxDiffuseBounces] = mStaticParams.maxDiffuseBounces;
@@ -600,17 +545,6 @@ Dictionary ReSTIRPTPass::getScriptingDictionary()
     return d;
 }
 
-Dictionary ReSTIRPTPass::getSpecializedScriptingDictionary()
-{
-    Dictionary d;
-    d[kMaxSurfaceBounces] = mStaticParams.maxSurfaceBounces;
-    d[kSpatialMisKind] = mStaticParams.spatialMisKind;
-    d[kTemporalMisKind] = mStaticParams.temporalMisKind;
-    d[kShiftStrategy] = mStaticParams.shiftStrategy;
-
-    return d;
-}
-
 RenderPassReflection ReSTIRPTPass::reflect(const CompileData& compileData)
 {
     RenderPassReflection reflector;
@@ -635,7 +569,8 @@ void ReSTIRPTPass::compile(RenderContext* pContext, const CompileData& compileDa
     mVarsChanged = true;
 }
 
-void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const Scene::SharedPtr& pScene)
+// [Falcor 8] Scene::SharedPtr → const ref<Scene>&.
+void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
     mpScene = pScene;
     mParams.frameCount = 0;
@@ -652,7 +587,8 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const Scene::SharedPt
         mStaticParams.temporalUpdateForDynamicScene = enableRobustSettingsByDefault;
 
         // Prepare our programs for the scene.
-        Shader::DefineList defines = mpScene->getSceneDefines();
+        // [Falcor 8] Shader::DefineList → DefineList.
+        DefineList defines = mpScene->getSceneDefines();
 
         mpGeneratePaths->getProgram()->addDefines(defines);
         mpTracePass->getProgram()->addDefines(defines);
@@ -801,7 +737,8 @@ void ReSTIRPTPass::renderUI(Gui::Widgets& widget)
     }
 }
 
-Texture::SharedPtr ReSTIRPTPass::createNeighborOffsetTexture(uint32_t sampleCount)
+// [Falcor 8] Return ref<Texture>; use mpDevice->createTexture1D.
+ref<Texture> ReSTIRPTPass::createNeighborOffsetTexture(uint32_t sampleCount)
 {
     std::unique_ptr<int8_t[]> offsets(new int8_t[sampleCount * 2]);
     const int R = 254;
@@ -822,26 +759,15 @@ Texture::SharedPtr ReSTIRPTPass::createNeighborOffsetTexture(uint32_t sampleCoun
         offsets[index++] = int8_t((v - 0.5f) * R);
     }
 
-    return Texture::create1D(sampleCount, ResourceFormat::RG8Snorm, 1, 1, offsets.get());
+    return mpDevice->createTexture1D(sampleCount, ResourceFormat::RG8Snorm, 1, 1, offsets.get());
 }
 
 bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 {
     bool dirty = false;
 
-    if (mpScene && mpScene->hasAnimation())
-    {
-        if (gpFramework->getGlobalClock().isPaused())
-        {
-            if (widget.button("Resume Animation"))
-                gpFramework->getGlobalClock().play();
-        }
-        else
-        {
-            if (widget.button("Pause Animation"))
-                gpFramework->getGlobalClock().pause();
-        }
-    }
+    // [Falcor 8] gpFramework removed; animation control is handled by the host application.
+    // Animation play/pause UI removed (no gpFramework->getGlobalClock() in Falcor 8).
 
     dirty |= widget.checkbox("Direct lighting (ReSTIR DI)", mUseDirectLighting);
 
@@ -1001,7 +927,8 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 
         if (widget.dropdown("Sample generator", SampleGenerator::getGuiDropdownList(), mStaticParams.sampleGenerator))
         {
-            mpSampleGenerator = SampleGenerator::create(mStaticParams.sampleGenerator);
+            // [Falcor 8] SampleGenerator::create takes device.
+            mpSampleGenerator = SampleGenerator::create(mpDevice, mStaticParams.sampleGenerator);
             dirty = true;
         }
 
@@ -1198,11 +1125,12 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
     if (mStaticParams.pathSamplingMode != PathSamplingMode::PathTracing)
     {
 
+        // [Falcor 8] mpDevice->createStructuredBuffer replaces Buffer::createStructured.
         if (mStaticParams.shiftStrategy == ShiftMapping::Hybrid && (!mReconnectionDataBuffer ||
             mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getElementSize() != 512 ||
             !mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getElementSize() != 256))
         {
-            mReconnectionDataBuffer = Buffer::createStructured(var["reconnectionDataBuffer"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+            mReconnectionDataBuffer = mpDevice->createStructuredBuffer(var["reconnectionDataBuffer"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             //printf("rcDataSize size: %d\n", mReconnectionDataBuffer->getElementSize());
         }
         if (mStaticParams.shiftStrategy != ShiftMapping::Hybrid)
@@ -1216,14 +1144,14 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
                 mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse && mpOutputReservoirs->getElementSize() != baseReservoirSize ||
                 mpTemporalReservoirs.size() != mStaticParams.samplesPerPixel && mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse))
         {
-            mpOutputReservoirs = Buffer::createStructured(var["outputReservoirs"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+            mpOutputReservoirs = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             //printf("reservoir size: %d\n", mpOutputReservoirs->getElementSize());
 
             if (mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse)
             {
                 mpTemporalReservoirs.resize(mStaticParams.samplesPerPixel);
                 for (uint32_t i = 0; i < mStaticParams.samplesPerPixel; i++)
-                    mpTemporalReservoirs[i] = Buffer::createStructured(var["outputReservoirs"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+                    mpTemporalReservoirs[i] = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             }
             mVarsChanged = true;
         }
@@ -1232,7 +1160,7 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         {
             if (!mPathReuseMISWeightBuffer)
             {
-                mPathReuseMISWeightBuffer = Buffer::createStructured(var["misWeightBuffer"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+                mPathReuseMISWeightBuffer = mpDevice->createStructuredBuffer(var["misWeightBuffer"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
                 mVarsChanged = true;
             }
             mpTemporalReservoirs.clear();
@@ -1242,18 +1170,18 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         // Allocate path buffers.
         if (!mpOutputReservoirs || reservoirCount != mpOutputReservoirs->getElementCount())
         {
-            mpOutputReservoirs = Buffer::createStructured(var["outputReservoirs"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+            mpOutputReservoirs = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             //printf("reservoir size: %d\n", mpOutputReservoirs->getElementSize());
 
             if (mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse)
             {
-                mPathReuseMISWeightBuffer = Buffer::createStructured(var["misWeightBuffer"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+                mPathReuseMISWeightBuffer = mpDevice->createStructuredBuffer(var["misWeightBuffer"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             }
             else
             {
                 mpTemporalReservoirs.resize(mStaticParams.samplesPerPixel);
                 for (uint32_t i = 0; i < mStaticParams.samplesPerPixel; i++)
-                    mpTemporalReservoirs[i] = Buffer::createStructured(var["outputReservoirs"], reservoirCount, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess, Buffer::CpuAccess::None, nullptr, false);
+                    mpTemporalReservoirs[i] = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             }
             mVarsChanged = true;
         }
@@ -1261,7 +1189,8 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
 
     if (!mpTemporalVBuffer || mpTemporalVBuffer->getHeight() != mParams.frameDim.y || mpTemporalVBuffer->getWidth() != mParams.frameDim.x)
     {
-        mpTemporalVBuffer = Texture::create2D(mParams.frameDim.x, mParams.frameDim.y, mpScene->getHitInfo().getFormat(), 1, 1);
+        // [Falcor 8] mpDevice->createTexture2D replaces Texture::create2D.
+        mpTemporalVBuffer = mpDevice->createTexture2D(mParams.frameDim.x, mParams.frameDim.y, mpScene->getHitInfo().getFormat(), 1, 1);
     }
 }
 
@@ -1278,8 +1207,9 @@ void ReSTIRPTPass::preparePathTracer(const RenderData& renderData)
     // Create path tracer parameter block if needed.
     if (!mpPathTracerBlock || mVarsChanged)
     {
+        // [Falcor 8] ParameterBlock::create takes device.
         auto reflector = mpTracePass->getProgram()->getReflector()->getParameterBlock("gPathTracer");
-        mpPathTracerBlock = ParameterBlock::create(reflector);
+        mpPathTracerBlock = ParameterBlock::create(mpDevice, reflector);
         assert(mpPathTracerBlock);
         mVarsChanged = true;
     }
@@ -1294,7 +1224,7 @@ void ReSTIRPTPass::preparePathTracer(const RenderData& renderData)
 void ReSTIRPTPass::resetLighting()
 {
     // Retain the options for the emissive sampler.
-    if (auto lightBVHSampler = std::dynamic_pointer_cast<LightBVHSampler>(mpEmissiveSampler))
+    if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
     {
         mLightBVHOptions = lightBVHSampler->getOptions();
     }
@@ -1335,7 +1265,8 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
     {
         if (!mpEnvMapSampler)
         {
-            mpEnvMapSampler = EnvMapSampler::create(pRenderContext, mpScene->getEnvMap());
+            // [Falcor 8] EnvMapSampler constructor takes device + envmap.
+        mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
             lightingChanged = true;
             mRecompile = true;
         }
@@ -1364,16 +1295,17 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
             assert(pLights && pLights->getActiveLightCount() > 0);
             assert(!mpEmissiveSampler);
 
+            // [Falcor 8] Emissive samplers take (RenderContext*, ref<ILightCollection>) via getILightCollection.
             switch (mStaticParams.emissiveSampler)
             {
             case EmissiveLightSamplerType::Uniform:
-                mpEmissiveSampler = EmissiveUniformSampler::create(pRenderContext, mpScene);
+                mpEmissiveSampler = std::make_unique<EmissiveUniformSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
                 break;
             case EmissiveLightSamplerType::LightBVH:
-                mpEmissiveSampler = LightBVHSampler::create(pRenderContext, mpScene, mLightBVHOptions);
+                mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext), mLightBVHOptions);
                 break;
             case EmissiveLightSamplerType::Power:
-                mpEmissiveSampler = EmissivePowerSampler::create(pRenderContext, mpScene);
+                mpEmissiveSampler = std::make_unique<EmissivePowerSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
                 break;
             default:
                 logError("Unknown emissive light sampler type");
@@ -1387,7 +1319,7 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
         if (mpEmissiveSampler)
         {
             // Retain the options for the emissive sampler.
-            if (auto lightBVHSampler = std::dynamic_pointer_cast<LightBVHSampler>(mpEmissiveSampler))
+            if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
             {
                 mLightBVHOptions = lightBVHSampler->getOptions();
             }
@@ -1461,7 +1393,7 @@ void ReSTIRPTPass::setShaderData(const ShaderVar& var, const RenderData& renderD
     {
         // TODO: Do we have to bind this every frame?
         bool success = mpEmissiveSampler->setShaderData(var["emissiveSampler"]);
-        if (!success) throw std::exception("Failed to bind emissive light sampler");
+        if (!success) FALCOR_THROW("Failed to bind emissive light sampler");
     }
 }
 
@@ -1575,7 +1507,7 @@ void ReSTIRPTPass::endFrame(RenderContext* pRenderContext, const RenderData& ren
 
 void ReSTIRPTPass::generatePaths(RenderContext* pRenderContext, const RenderData& renderData, int sampleId)
 {
-    PROFILE("generatePaths");
+    FALCOR_PROFILE(pRenderContext, "generatePaths");
 
     // Check shader assumptions.
     // We launch one thread group per screen tile, with threads linearly indexed.
@@ -1593,7 +1525,8 @@ void ReSTIRPTPass::generatePaths(RenderContext* pRenderContext, const RenderData
     auto var = mpGeneratePaths->getRootVar()["CB"]["gPathGenerator"];
     setShaderData(var, renderData, false, true);
 
-    mpGeneratePaths["gScene"] = mpScene->getParameterBlock();
+    // [Falcor 8] bindShaderData replaces getParameterBlock.
+    mpScene->bindShaderData(mpGeneratePaths->getRootVar()["gScene"]);
     var["gSampleId"] = sampleId;
 
     // Launch one thread per pixel.
@@ -1601,9 +1534,10 @@ void ReSTIRPTPass::generatePaths(RenderContext* pRenderContext, const RenderData
     mpGeneratePaths->execute(pRenderContext, { mParams.screenTiles.x * tileSize, mParams.screenTiles.y, 1u });
 }
 
-void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& renderData, const ComputePass::SharedPtr& pass, const std::string& passName, int sampleID)
+// [Falcor 8] ComputePass::SharedPtr → const ref<ComputePass>&.
+void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& renderData, const ref<ComputePass>& pass, const std::string& passName, int sampleID)
 {
-    PROFILE(passName);
+    FALCOR_PROFILE(pRenderContext, passName);
 
     // Additional specialization. This shouldn't change resource declarations.
     bool outputDebug = renderData[kOutputDebug] != nullptr;
@@ -1613,7 +1547,8 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
 
     // Bind global resources.
     auto var = pass->getRootVar();
-    mpScene->setRaytracingShaderData(pRenderContext, var);
+    // [Falcor 8] bindShaderDataForRaytracing replaces setRaytracingShaderData.
+    mpScene->bindShaderDataForRaytracing(pRenderContext, var);
 
     if (mVarsChanged) mpSampleGenerator->setShaderData(var);
 
@@ -1633,9 +1568,10 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
 {
     bool isPathReuseMISWeightComputation = spatialRoundId == -1;
 
-    PROFILE(isTemporalReuse ? "temporalReuse" : (isPathReuseMISWeightComputation ? "MISWeightComputation" : "spatialReuse"));
+    FALCOR_PROFILE(pRenderContext, isTemporalReuse ? "temporalReuse" : (isPathReuseMISWeightComputation ? "MISWeightComputation" : "spatialReuse"));
 
-    ComputePass::SharedPtr pass = isPathReuseMISWeightComputation ? mpComputePathReuseMISWeightsPass : (isTemporalReuse ? mpTemporalReusePass : mpSpatialReusePass);
+    // [Falcor 8] ref<ComputePass> replaces ComputePass::SharedPtr.
+    ref<ComputePass> pass = isPathReuseMISWeightComputation ? mpComputePathReuseMISWeightsPass : (isTemporalReuse ? mpTemporalReusePass : mpSpatialReusePass);
 
     if (isPathReuseMISWeightComputation)
     {
@@ -1718,8 +1654,9 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     }
     var["gIsLastRound"] = mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse || isLastRound;
 
-    pass["gScene"] = mpScene->getParameterBlock();
-    pass["gPathTracer"] = mpPathTracerBlock;
+    // [Falcor 8] bindShaderData replaces getParameterBlock.
+    mpScene->bindShaderData(pass->getRootVar()["gScene"]);
+    pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1733,8 +1670,9 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
 
 void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t restir_i, const RenderData& renderData, bool temporalReuse /*= false*/, int spatialRoundId /*= 0*/)
 {
-    PROFILE(temporalReuse ? "temporalPathRetrace" : "spatialPathRetrace");
-    ComputePass::SharedPtr pass = (temporalReuse ? mpTemporalPathRetracePass : mpSpatialPathRetracePass);
+    FALCOR_PROFILE(pRenderContext, temporalReuse ? "temporalPathRetrace" : "spatialPathRetrace");
+    // [Falcor 8] ref<ComputePass> replaces ComputePass::SharedPtr.
+    ref<ComputePass> pass = (temporalReuse ? mpTemporalPathRetracePass : mpSpatialPathRetracePass);
 
     // Check shader assumptions.
     // We launch one thread group per screen tile, with threads linearly indexed.
@@ -1784,8 +1722,9 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         var["gFeatureBasedRejection"] = mFeatureBasedRejection;
     }
 
-    pass["gScene"] = mpScene->getParameterBlock();
-    pass["gPathTracer"] = mpPathTracerBlock;
+    // [Falcor 8] bindShaderData replaces getParameterBlock.
+    mpScene->bindShaderData(pass->getRootVar()["gScene"]);
+    pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1797,9 +1736,10 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     }
 }
 
-Program::DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) const
+// [Falcor 8] Program::DefineList → DefineList.
+DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) const
 {
-    Program::DefineList defines;
+    DefineList defines;
 
     // Path tracer configuration.
     defines.add("SAMPLES_PER_PIXEL", std::to_string(samplesPerPixel)); // 0 indicates a variable sample count

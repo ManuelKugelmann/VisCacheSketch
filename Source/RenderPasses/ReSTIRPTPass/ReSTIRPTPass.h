@@ -140,7 +140,7 @@ private:
     // Configuration
     RestirPathTracerParams          mParams;                    ///< Runtime path tracer parameters.
     StaticParams                    mStaticParams;              ///< Static parameters. These are set as compile-time constants in the shaders.
-    LightBVHSampler::Options        mLightBVHOptions;           ///< Current options for the light BVH sampler.
+    mutable LightBVHSampler::Options mLightBVHOptions;           ///< Current options for the light BVH sampler.
 
     // Internal state
     ref<Scene>                      mpScene;                    ///< The current scene, or nullptr if no scene loaded.
