@@ -220,7 +220,6 @@ void ReSTIRGIPass::execute(RenderContext* pCtx, const RenderData& rd)
         vars["gVBuffer"]            = pVBuffer;
         vars["gReservoirs"]         = mpReservoirBuffer;
         vars["gPrevReservoirs"]     = mpPrevReservoirBuffer;
-        vars["gSecondaryHits"]      = mpSecondaryHitBuffer;
         vars["gMotionVectors"]      = pMotionVec;
         vars["PerFrameCB"]["gFrameDim"]   = mFrameDim;
         vars["PerFrameCB"]["gFrameCount"] = mFrameCount;

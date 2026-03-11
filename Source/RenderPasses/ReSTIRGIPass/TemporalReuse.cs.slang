@@ -23,7 +23,6 @@ import RenderPasses.ReSTIRGIPass.ReSTIRGICommon;
 // ---------------------------------------------------------------------------
 RWStructuredBuffer<PathReservoir> gReservoirs;
 StructuredBuffer<PathReservoir>   gPrevReservoirs;
-StructuredBuffer<SecondaryHit>    gSecondaryHits;  // bound but unused — kept for DQLin port fidelity
 Texture2D<float2>                 gMotionVectors;
 Texture2D<PackedHitInfo>          gVBuffer;
 

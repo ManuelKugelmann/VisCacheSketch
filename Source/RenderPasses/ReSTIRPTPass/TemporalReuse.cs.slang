@@ -15,7 +15,6 @@ import RenderPasses.ReSTIRPTPass.ReSTIRPTCommon;
 
 RWStructuredBuffer<PathReservoir> gReservoirs;
 StructuredBuffer<PathReservoir>   gPrevReservoirs;
-StructuredBuffer<SecondaryHit>    gSecondaryHits;
 Texture2D<float2>                 gMotionVectors;
 Texture2D<PackedHitInfo>          gVBuffer;
 
