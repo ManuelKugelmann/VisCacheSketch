@@ -59,7 +59,7 @@ def get_camera_at_frame(frame, total_frames):
 
 
 # ---------------------------------------------------------------------------
-# Build graph: full VisCache + ReSTIR GI (same as VisCache_Graph baseline)
+# Build graph: full VisCache + ReSTIR PT (same as VisCache_Graph baseline)
 # ---------------------------------------------------------------------------
 import importlib.util, sys
 

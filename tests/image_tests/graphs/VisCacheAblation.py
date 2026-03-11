@@ -23,25 +23,26 @@ def _make_viscache(overrides={}):
 
 
 def _make_gi_graph(name, vc_overrides={}):
-    """ReSTIR GI graph — feature flags come from VisCache via dict."""
+    """Single-bounce ReSTIR PT graph (subsumes ReSTIR GI) — feature flags come from VisCache via dict."""
     g = RenderGraph(name)
     VisCache = _make_viscache(vc_overrides)
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
-    ReSTIRGI = createPass("ReSTIRGIPass", {
+    ReSTIRPT = createPass("ReSTIRPTPass", {
+        'maxBounces': 1,
         'enableCVRRRRevalidation': False,
     })
-    g.addPass(ReSTIRGI, "ReSTIRGI")
+    g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
     g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
-    g.addEdge("VBuffer.vbuffer", "ReSTIRGI.vbuffer")
-    g.addEdge("VBuffer.mvec", "ReSTIRGI.motionVectors")
-    g.addEdge("ReSTIRGI.color", "ToneMapper.src")
+    g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
+    g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
+    g.addEdge("ReSTIRPT.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
-    g.markOutput("ReSTIRGI.color")
+    g.markOutput("ReSTIRPT.color")
     return g
 
 

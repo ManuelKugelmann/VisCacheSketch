@@ -110,9 +110,11 @@ def render_graph_VisCache():
     })
     g.addPass(pt, "PathTracer")
 
-    # ReSTIR GI with CV+RRR revalidation (§11.3 / §12)
+    # ReSTIR PT maxBounces=1 with CV+RRR revalidation (§9.3 / §10)
+    # Single-bounce: equivalent to ReSTIR GI but with hybrid shift for specular.
     # Source: DQLin/ReSTIR_PT ported to Falcor 8.0
-    restirgi = createPass("ReSTIRGIPass", {
+    restirpt = createPass("ReSTIRPTPass", {
+        "maxBounces":              1,
         "numSpatialNeighbors":     5,
         "spatialRadius":           30,
         "numInitialSamples":       1,
@@ -120,7 +122,7 @@ def render_graph_VisCache():
         "contribThreshold":        0.01,
         "revalidationPMin":        0.05,
     })
-    g.addPass(restirgi, "ReSTIRGIPass")
+    g.addPass(restirpt, "ReSTIRPTPass")
 
     # NRD denoiser
     nrd = createPass("NRDPass", {
@@ -146,11 +148,11 @@ def render_graph_VisCache():
     g.addEdge("GBufferRT.linearZ",                   "RTXDIPass.linearZ")
     g.addEdge("GBufferRT.mvec",                      "RTXDIPass.mvec")
     g.addEdge("RTXDIPass.color",                     "PathTracer.directLighting")
-    g.addEdge("PathTracer.color",                    "ReSTIRGIPass.color")
-    g.addEdge("GBufferRT.vbuffer",                   "ReSTIRGIPass.vbuffer")
-    g.addEdge("GBufferRT.mvec",                      "ReSTIRGIPass.mvec")
-    g.addEdge("ReSTIRGIPass.color",                  "NRDPass.diffuseRadianceHitDist")
-    g.addEdge("ReSTIRGIPass.specularColor",          "NRDPass.specularRadianceHitDist")
+    g.addEdge("PathTracer.color",                    "ReSTIRPTPass.color")
+    g.addEdge("GBufferRT.vbuffer",                   "ReSTIRPTPass.vbuffer")
+    g.addEdge("GBufferRT.mvec",                      "ReSTIRPTPass.mvec")
+    g.addEdge("ReSTIRPTPass.color",                  "NRDPass.diffuseRadianceHitDist")
+    g.addEdge("ReSTIRPTPass.specularColor",          "NRDPass.specularRadianceHitDist")
     g.addEdge("GBufferRT.linearZ",                   "NRDPass.viewZ")
     g.addEdge("GBufferRT.normW",                     "NRDPass.normalRoughness")
     g.addEdge("GBufferRT.mvec",                      "NRDPass.mvec")
@@ -161,7 +163,7 @@ def render_graph_VisCache():
 
     # Secondary outputs for analysis
     g.markOutput("VisCache.hitRate")    # scalar stats texture (if implemented)
-    g.markOutput("ReSTIRGIPass.debugVis")   # optional per-pixel V visualisation
+    g.markOutput("ReSTIRPTPass.debugVis")   # optional per-pixel V visualisation
 
     return g
 
