@@ -48,11 +48,11 @@ float evalTargetAtCurrentPixel(ShadingData sd, SecondaryHit prevSample)
     if (dist < kDistanceEps) return 0.0f;
 
     float3 dir = toHit / dist;
-    float  cosTheta = abs(dot(sd.N, dir));
+    float  cosTheta = max(dot(sd.N, dir), 0.0f);
     float  cosHit   = abs(dot(prevSample.normalW, -dir));
     float  G        = cosTheta * cosHit / (dist * dist + kDistanceEps);
 
-    // Approximate BSDF as diffuse (consistent with DQLin's reconnection approach)
+    // Diffuse BSDF approximation (reconnection-based target function)
     float3 bsdf = float3(cosTheta / M_PI);
 
     return evalTargetPdf(bsdf, prevSample.Lo, G);

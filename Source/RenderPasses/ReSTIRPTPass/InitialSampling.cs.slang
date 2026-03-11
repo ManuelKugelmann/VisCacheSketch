@@ -146,7 +146,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
             if (dist > kDistanceEps)
             {
                 float3 dir = toHit / dist;
-                float  G = abs(dot(sd.N, dir)) * abs(dot(v.faceNormalW, -dir))
+                float  G = max(dot(sd.N, dir), 0.0f) * abs(dot(v.faceNormalW, -dir))
                           / (dist * dist + kDistanceEps);
 
                 float pHat = evalTargetPdf(prefixThroughput, Lo, G);

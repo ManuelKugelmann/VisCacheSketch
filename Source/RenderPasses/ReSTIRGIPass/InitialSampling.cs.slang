@@ -192,7 +192,7 @@ void csInitialSampling(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (dist > kDistanceEps)
         {
             float3 dir = toHit / dist;
-            float  G   = abs(dot(sd.N, dir)) * abs(dot(secHit.normalW, -dir))
+            float  G   = max(dot(sd.N, dir), 0.0f) * abs(dot(secHit.normalW, -dir))
                         / (dist * dist + kDistanceEps);
 
             float pHat = evalTargetPdf(bsdfVal, secHit.Lo, G);
