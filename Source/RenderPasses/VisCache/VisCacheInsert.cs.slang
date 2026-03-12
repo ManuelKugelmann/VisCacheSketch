@@ -44,10 +44,35 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
 
+        // --- Read-before-write contention gate (mirrors vhfInsertRange) ---
+        // Must happen before WaveMatch — all lanes need to agree on skip.
+        int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+        if (slot >= 0)
+        {
+            uint packed = gVHFTable[slot].packed;
+            uint total  = packed & 0xFFFFu;
+            if (total >= gBootThreshold)
+            {
+                uint vis  = packed >> 16u;
+                float mu  = float(vis) / float(total);
+                float var = mu * (1.0f - mu);
+
+                // Converged: skip this and all finer levels.
+                if (var <= gVarThreshold)
+                    break;
+
+                // Mature high-variance: throttle writes (boot/total).
+                float pWrite = float(gBootThreshold) / float(total);
+                uint coin = pcg3d(uint3(addr, uint(lvl), total)).x;
+                if (float(coin) / 4294967295.0f >= pWrite)
+                    continue;
+            }
+        }
+
         // SM 6.5 WaveMatch: identify lanes targeting the same cell
         // and let only the first lane in each group perform the atomic.
-        // This reduces atomic contention ~16x at L0 where many pixels
-        // share the same 10m cell.
+        // This reduces atomic contention ~16x at coarse levels where
+        // many pixels share the same cell.
         uint4 match = WaveMatch(addr);
         if (WaveMultiPrefixCountBits(true, match) == 0u)
         {
@@ -57,22 +82,23 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
             uint totalSum = countbits(match.x) + countbits(match.y)
                           + countbits(match.z) + countbits(match.w);
 
-            int slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
-            if (slot >= 0)
+            // Re-find slot with insert allowed (may need to allocate)
+            int wslot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
+            if (wslot >= 0)
             {
-                if (gVHFTable[slot].fingerprint == 0u)
-                    gVHFTable[slot].fingerprint = fp;
+                if (gVHFTable[wslot].fingerprint == 0u)
+                    gVHFTable[wslot].fingerprint = fp;
 
                 uint delta = (visSum << 16u) | totalSum;
                 uint prev;
-                InterlockedAdd(gVHFTable[slot].packed, delta, prev);
+                InterlockedAdd(gVHFTable[wslot].packed, delta, prev);
 
-                // Inline overflow decay (see VisCache.slang §8)
+                // Inline overflow decay (see VisCache.slang)
                 uint cur = prev + delta;
                 if ((cur & 0xFFFFu) > 0xE000u)
                 {
                     uint sub = ((cur >> 19u) << 16u) | ((cur & 0xFFFFu) >> 3u);
-                    InterlockedAdd(gVHFTable[slot].packed, -sub);
+                    InterlockedAdd(gVHFTable[wslot].packed, -sub);
                 }
             }
         }
