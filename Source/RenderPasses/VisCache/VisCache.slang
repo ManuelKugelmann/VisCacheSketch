@@ -110,8 +110,8 @@ uint vhfAddr(int3 qa, int3 qb, uint lvl)
 uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 {
     uint3 h = pcg3d(uint3(
-        uint(qa.x) ^ uint(qb.x) + 7u,
-        uint(qa.y) ^ uint(qb.y) + 13u,
+        (uint(qa.x) ^ uint(qb.x)) + 7u,
+        (uint(qa.y) ^ uint(qb.y)) + 13u,
         (uint(qa.z) ^ uint(qb.z)) + lvl * 0xdeadbeefu
     ));
     return h.x ^ h.y ^ h.z;
@@ -332,8 +332,8 @@ float vhfDeterministicXi(float3 posA, float3 posB, int hiLvl)
     int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(hiLvl));
     // Third hash chain (salt 0xCCu) — independent of addr/fingerprint chains
     uint3 h = pcg3d(uint3(
-        uint(qa.x) ^ uint(qb.x) + 0xCCu,
-        uint(qa.y) ^ uint(qb.y) + 0xCCu,
+        (uint(qa.x) ^ uint(qb.x)) + 0xCCu,
+        (uint(qa.y) ^ uint(qb.y)) + 0xCCu,
         (uint(qa.z) ^ uint(qb.z)) + uint(hiLvl) * 0x13371337u
     ));
     return float(h.x) / 4294967295.0f; // [0, 1]
