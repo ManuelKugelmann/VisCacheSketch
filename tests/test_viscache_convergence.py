@@ -37,8 +37,10 @@ K_MU_MIN    = 0.05
 K_FOOT_MIN  = 4.0
 K_FOOT_MAX  = 64.0
 
-CELL_A = [10.0, 1.25, 0.08]
-CELL_B = [10.0, 2.50, 0.62]
+# Symmetric cell sizes — both endpoints use the same cell size per level.
+# Matches VisCache.slang vhfCellSize(): geometric progression, coarse to fine.
+# Future: independent per-endpoint LOD (see docs/INDEPENDENT_ENDPOINT_LOD.md).
+CELL = [10.0, 1.25, 0.08]
 
 def pcg(x):
     x = (x * 747796405 + 2891336453) & 0xFFFFFFFF
@@ -90,8 +92,8 @@ def find_slot(table, addr0, fp, allow_insert):
     return -1
 
 def insert(table, posA, posB, V, lvl=0):
-    qa = jitter_quantize(posA, CELL_A[lvl], 0xAA ^ lvl)
-    qb = jitter_quantize(posB, CELL_B[lvl], 0xBB ^ lvl)
+    qa = jitter_quantize(posA, CELL[lvl], 0xAA ^ lvl)
+    qb = jitter_quantize(posB, CELL[lvl], 0xBB ^ lvl)
     fp   = vhf_fp(qa, qb, lvl)
     addr = vhf_addr(qa, qb, lvl)
     slot = find_slot(table, addr, fp, allow_insert=True)
@@ -111,8 +113,8 @@ def insert(table, posA, posB, V, lvl=0):
     return True
 
 def lookup(table, posA, posB, lvl=0):
-    qa = jitter_quantize(posA, CELL_A[lvl], 0xAA ^ lvl)
-    qb = jitter_quantize(posB, CELL_B[lvl], 0xBB ^ lvl)
+    qa = jitter_quantize(posA, CELL[lvl], 0xAA ^ lvl)
+    qb = jitter_quantize(posB, CELL[lvl], 0xBB ^ lvl)
     fp   = vhf_fp(qa, qb, lvl)
     addr = vhf_addr(qa, qb, lvl)
     slot = find_slot(table, addr, fp, allow_insert=False)

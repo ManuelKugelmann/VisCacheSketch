@@ -48,3 +48,25 @@ could further improve budget allocation
 by incorporating per-ray traversal cost,
 backing off RR when rays are cheap
 and being more aggressive when BVH traversal is expensive.
+**Independent per-endpoint LOD.**
+The current design uses a shared level index —
+both endpoints are quantized at the same cell size,
+enabling canonicalization (Sec. 4.5).
+A natural extension is independent LOD per endpoint:
+replacing the 1D key `(qa, qb, lvl)` with a 2D key
+`(qa, qb, lvlA, lvlB)`,
+where each endpoint is quantized at its own level's cell size.
+A sharp shadow boundary from a large area light
+needs fine resolution on the shading point
+but only coarse resolution on the light —
+the entry would live at (lvlA=2, lvlB=0) instead of (2, 2).
+A 3-way split variance cascade
+(refine A, refine B, refine both)
+would determine which (lvlA, lvlB) pairs to populate,
+with coarse entries already established as mixed
+skipped on insert and left to decay for revalidation.
+The current 1D cascade is the diagonal of the N × N LOD grid,
+so the extension is backward-compatible.
+Canonicalization would require restriction
+to the diagonal (lvlA = lvlB) or
+symmetric level assignment.

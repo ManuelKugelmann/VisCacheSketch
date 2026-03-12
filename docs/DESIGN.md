@@ -26,16 +26,10 @@ L0 cells (10m) are shared by many pixels — without coalescing, hundreds of thr
 ### Distance-gated range
 Heuristic: project cell size to screen pixels, gate levels to those within [kFootprintMin=4, kFootprintMax=64] pixels. Not a principled FoV/CoC formula — see future work. Produces stable 2–3 active levels for typical interior/exterior traversal at 2–20m.
 
-### Asymmetric cell sizes
-Endpoint A (shading point): finer — BRDF is view-dependent, geometric normal matters at fine scale.
-Endpoint B (light/secondary hit): coarser — emission is spatially coherent, slight positional error tolerable.
+### Symmetric cell sizes with canonicalization
+Both endpoints use the same cell size per level. This enables bidirectional canonicalization (lexicographic swap merges V(A,B) and V(B,A) into one entry) and is natural for GI revalidation where both endpoints are surfaces.
 
-Breaks for GI revalidation (B = surface). Options:
-1. Symmetric cells at L2 value (0.08m both) — more correct, higher memory pressure
-2. Separate CELL_GI[3] configuration — correct, more complex
-3. Status quo — acceptable if GI revalidation MSE is within tolerance
-
-**Decision:** status quo pending ablation. Revisit if GI revalidation MSE is anomalous vs. DI.
+**Decision:** symmetric cells (current implementation). Independent per-endpoint LOD — where each endpoint can be at a different level — is designed as a future extension (see `docs/INDEPENDENT_ENDPOINT_LOD.md`). The 2D key `(lvlA, lvlB)` subsumes the asymmetric cell size idea: rather than different cell size tables per endpoint, endpoints simply reside at different levels of the same table.
 
 ---
 
@@ -105,5 +99,5 @@ Richer than binary — captures partial occlusion, useful for participating medi
 ### Joint irradiance + visibility cache
 2006 approach — cached both quantities in the same hash. Would allow CV+RRR correction of both indirect illumination and direct visibility in one system. Interesting but doubles the entry size and halves the effective cache capacity for each quantity. Not in this paper.
 
-### Symmetric cell sizes for GI revalidation
-CELL_GI[3] configuration with symmetric A=B sizes for (point, point) queries where B is a surface rather than a light. Low priority pending ablation results.
+### Independent per-endpoint LOD (2D cascade)
+Replace single `lvl` in hash key with `(lvlA, lvlB)`. Each endpoint quantized at its own level's cell size. 3-way split variance cascade: when (a, b) has high variance, spawn (a+1, b), (a, b+1), (a+1, b+1). Coarse entries with many samples + high variance skipped on insert (decay revalidates). BFS over N×N grid, variance-gated pruning. Current 1D cascade is the diagonal. See `docs/INDEPENDENT_ENDPOINT_LOD.md` for full design.

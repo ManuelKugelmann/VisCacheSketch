@@ -17,19 +17,19 @@ V=1 adds 0x00010001; V=0 adds 0x00000001. Single InterlockedAdd — both counter
 
 ## 3.2 LOD Configuration
 
-Three levels with LOD index encoded in the hash key (Sec. 4.3). Default: asymmetric — endpoint A (shading point) refines faster than B (light/secondary hit), matching the common unidirectional PT case where roles are known. Cell sizes in world units; no scene bounds needed. Optional: symmetric cell sizes for bidirectional use cases or when canonicalization (Sec. 4.5) is enabled.
+N levels (default N=3) with LOD index encoded in the hash key (Sec. 4.3). Both endpoints use the same cell size per level — symmetric quantization. This enables bidirectional canonicalization (Sec. 4.5): lexicographic swap merges V(A,B) and V(B,A) into one entry, doubling effective cache utilization for symmetric queries. Cell sizes in world units; no scene bounds needed.
 
-| Level | Cell A | Cell B | ≈ px @ 5 m |
-|---|---|---|---|
-| L0 | 10 m | 10 m | ~107 |
-| L1 | 1.25 m | 2.5 m | ~13 / ~27 |
-| L2 | 8 cm | 62 cm | ~0.9 / ~6.7 |
+| Level | Cell size | ≈ px @ 5 m |
+|---|---|---|
+| L0 | 10 m | ~107 |
+| L1 | 1.25 m | ~13 |
+| L2 | 8 cm | ~0.9 |
 
-> **Table 1.** Asymmetric cell sizes (default). Symmetric variant uses Cell A for both endpoints. Pixel column shows projected Cell A / Cell B side length at 5 m distance, 90° HFoV, 1080p. L2 Cell A is subpixel at 5 m because L2 is only active at close range (distance-gated, Sec. 5).
+> **Table 1.** Symmetric cell sizes (N=3). Both endpoints are quantized at the same cell size per level, enabling canonicalization (Sec. 4.5). Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. L2 is subpixel at 5 m because L2 is only active at close range (distance-gated, Sec. 5). Cell sizes follow a geometric progression from coarse (L0) to fine (L_N-1); the number of levels N is a compile-time constant.
 
 Cell sizes are calibrated for primary viewing distances of 2–20 m in mixed exterior/interior scenes (Bistro, Sponza). Scenes at substantially different scales (tabletop close-ups, city-scale flyovers) would benefit from camera-adaptive cell sizing via FoV and circle of confusion — deferred to future work.
 
-**LOD asymmetry.** Cell sizes are asymmetric: endpoint A (shading point) is quantized more finely than endpoint B (light source or secondary hit). This is justified for direct illumination where the shading point exhibits more spatial variation (view-dependent BRDF, geometric normal) than the light source (spatially coherent emission). For GI revalidation (Sec. 9), where B is also a surface point, symmetric cells may be more appropriate — we defer this investigation, noting that at L2 both endpoints are typically close spatially, limiting the impact.
+**Why symmetric.** Both endpoints use the same cell size at each level. This is required for canonicalization (Sec. 4.5) and natural for GI revalidation (Sec. 9), where both endpoints are surface points. A future extension — independent per-endpoint LOD levels with a 2D key `(lvlA, lvlB)` — could allow each endpoint to be resolved at a different level (see Sec. 14, Future Work). In the current design, the variance-gated cascade (Sec. 5) determines the shared level, and the distance-gated range (Sec. 5) gates which levels are active.
 
 **Why a flat hash, not a hierarchy.** Prior multilevel approaches — separate tables per level, octree subdivision [Popov et al. 2013], hierarchical cascade grids — add structural complexity: pointer management, multi-table eviction coordination, variable-depth traversal. A single flat table with level-in-key (Sec. 4.3) is simpler, has uniform access cost, and allows entries at all levels to compete for capacity under one eviction policy. This design emerged after experimenting with alternatives; the flat table consistently performed better for our access pattern (many parallel inserts/lookups with variable level mix).
 
