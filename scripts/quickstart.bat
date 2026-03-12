@@ -63,17 +63,19 @@ echo [release] Querying latest release from %REPO%...
 
 REM Use curl to fetch release JSON, then PowerShell to parse it.
 REM Two-step approach avoids all cmd/PowerShell pipe escaping issues.
+REM Query /releases (not /releases/latest) so we also find prereleases (dev-latest).
 set "API_JSON=%TEMP%\vc-release-%RANDOM%.json"
-curl -fsSL -o "!API_JSON!" "https://api.github.com/repos/%REPO%/releases/latest"
+curl -fsSL -o "!API_JSON!" "https://api.github.com/repos/%REPO%/releases?per_page=5"
 if errorlevel 1 (
-    echo [release] No release found (API returned 404). Skipping download.
+    echo [release] No releases found (API error). Skipping download.
     echo [release] This is normal for first-time setup or pre-release branches.
     del "!API_JSON!" 2>nul
     goto :step2
 )
 REM Parse JSON with PowerShell — use -Command with semicolons, no pipes needed.
 REM .Where() method avoids the | pipe character entirely (requires PS 4+).
-for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$r = Get-Content -Raw '!API_JSON!'; $j = ConvertFrom-Json $r; $m = $j.assets.Where({$_.name -match 'viscache-windows.*Release.*\.tar\.gz'}); if ($m.Count) { $m[0].browser_download_url } else { 'NONE' }"`) do set "DOWNLOAD_URL=%%U"
+REM Searches across all releases (stable first, then prereleases) for a matching asset.
+for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$releases = Get-Content -Raw '!API_JSON!' | ConvertFrom-Json; foreach ($rel in $releases) { $m = $rel.assets.Where({$_.name -match 'viscache-windows.*Release.*\.tar\.gz'}); if ($m.Count) { $m[0].browser_download_url; return } }; 'NONE'"`) do set "DOWNLOAD_URL=%%U"
 del "!API_JSON!" 2>nul
 
 if "%DOWNLOAD_URL%"=="NONE" (

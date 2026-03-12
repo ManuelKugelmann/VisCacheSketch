@@ -515,7 +515,52 @@ jobs:
         run: ccache -s
 
   # ---------------------------------------------------------------------------
-  # Release — triggered on v* tags after successful builds
+  # Dev prerelease — rolling "latest build" on every push to main/master
+  # ---------------------------------------------------------------------------
+  dev-release:
+    name: Dev Prerelease
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    needs: [windows-vs2022]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download VS2022 Release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: falcor-windows-vs2022-Release
+          path: release-bin/
+
+      - name: Package release archive
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          ARCHIVE="viscache-windows-vs2022-Release-${SHORT_SHA}.tar.gz"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+          tar -czf "${ARCHIVE}" -C release-bin .
+          ls -lh "${ARCHIVE}"
+
+      - name: Delete old dev-latest release
+        run: |
+          gh release delete dev-latest --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create dev-latest prerelease
+        run: |
+          gh release create dev-latest "${{ env.ARCHIVE }}" \
+            --title "Dev Build (${GITHUB_SHA::8})" \
+            --notes "Automated prerelease from \`${GITHUB_SHA::8}\` on \`${GITHUB_REF_NAME}\`.
+
+          Latest successful build — updated on every push to main.
+          **Not a stable release.** Use tagged \`v*\` releases for production." \
+            --prerelease \
+            --target "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Tagged release — triggered on v* tags after successful builds
   # ---------------------------------------------------------------------------
   release:
     name: Create Release
