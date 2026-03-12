@@ -6,7 +6,7 @@ VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denois
 
 ## Project History
 
-See the **History** section at the top of `README.md`. The 2006 Diplomarbeit (`docs/references/Kugelmann2006_ThesisMK.pdf`, referred to as "thesismk") is the direct ancestor of this work — it established CV+RRR, spatial-hash caching, and the shadow ray reduction approach. This project extends that into a real-time system with multilevel hashing and ReSTIR integration.
+See the **Background** section in `README.md`. The 2006 Diplomarbeit (`docs/references/Kugelmann2006_ThesisMK.pdf`, referred to as "thesismk") is the direct ancestor of this work — it established CV+RRR, spatial-hash caching, and the shadow ray reduction approach. This project extends that into a real-time system with multilevel hashing and ReSTIR integration.
 
 ## Falcor Subtree Policy
 
