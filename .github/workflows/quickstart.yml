@@ -5,14 +5,14 @@ on:
     branches: ["main", "master"]
     paths:
       - 'scripts/quickstart.bat'
-      - 'scripts/bootstrap.ps1'
+      - 'scripts/bootstrap.bat'
       - 'scripts/run-tests.*'
       - '.github/workflows/quickstart.yml'
   pull_request:
     branches: ["main", "master"]
     paths:
       - 'scripts/quickstart.bat'
-      - 'scripts/bootstrap.ps1'
+      - 'scripts/bootstrap.bat'
       - 'scripts/run-tests.*'
       - '.github/workflows/quickstart.yml'
   workflow_dispatch:
@@ -23,10 +23,10 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # PowerShell bootstrap (Windows) — tests the irm | iex one-liner flow
+  # bootstrap.bat (Windows) — tests the curl one-liner flow
   # ---------------------------------------------------------------------------
   bootstrap-windows:
-    name: Bootstrap (Windows, PowerShell)
+    name: Bootstrap (Windows)
     runs-on: windows-2022
     steps:
       - name: Checkout (for local bootstrap script)
@@ -40,39 +40,33 @@ jobs:
       - name: Show git version
         run: git --version
 
-      - name: Test bootstrap.ps1 (first run — clone)
-        shell: pwsh
+      - name: Test bootstrap.bat (first run — clone)
+        shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          # Simulate the one-liner but point at the local checkout
-          # (we can't irm from raw.githubusercontent for the PR branch)
-          & "${{ github.workspace }}\scripts\bootstrap.ps1" -Dir VCS-test -Branch ${{ github.sha }} -SkipScenes
-        env:
-          # quickstart.bat will fail at release download (no release for PR SHA) —
-          # that's expected; we just verify clone + CPU tests work
-          QUICKSTART_SKIP_RELEASE: "1"
+          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.sha }} --skip-scenes
         continue-on-error: true
 
       - name: Verify clone succeeded
-        shell: pwsh
+        shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          if (!(Test-Path "VCS-test\.git")) { throw "Clone did not create .git" }
-          Write-Host "Clone OK"
+          if not exist "VCS-test\.git" (echo Clone did not create .git & exit /b 1)
+          echo Clone OK
 
-      - name: Test bootstrap.ps1 (re-run — idempotent pull)
-        shell: pwsh
+      - name: Test bootstrap.bat (re-run — idempotent pull)
+        shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          & "${{ github.workspace }}\scripts\bootstrap.ps1" -Dir VCS-test -Branch ${{ github.sha }} -SkipScenes
+          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.sha }} --skip-scenes
         continue-on-error: true
 
       - name: Verify repo still valid after re-run
-        shell: pwsh
+        shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          if (!(Test-Path "VCS-test\.git")) { throw ".git missing after re-run" }
-          Write-Host "Idempotent re-run OK"
+          if not exist "VCS-test\.git" (echo .git missing after re-run & exit /b 1)
+          echo Idempotent re-run OK
 
   # ---------------------------------------------------------------------------
   # CPU tests via run-tests scripts (Linux + Windows)

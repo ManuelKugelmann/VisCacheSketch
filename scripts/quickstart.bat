@@ -14,8 +14,8 @@ REM Optional: PowerShell 5+ (used for JSON parsing via built-in cmdlets)
 REM
 REM Idempotent: safe to re-run. Skips steps that are already complete.
 REM
-REM One-liner (PowerShell, idempotent):
-REM   irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.ps1 | iex
+REM One-liner (cmd or PowerShell, idempotent):
+REM   curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
 REM
 REM WSL alternative (runs .sh scripts directly):
 REM     wsl bash scripts/download_scenes.sh

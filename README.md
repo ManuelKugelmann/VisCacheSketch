@@ -136,7 +136,7 @@ init required.
 
 See `tests/test_viscache_convergence.py` for CPU unit tests (no GPU required).
 
-Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
+Requirements: git 2.43+, Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
 
 ---
 

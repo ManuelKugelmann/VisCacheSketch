@@ -22,17 +22,10 @@ Get VisCacheSketch running on Windows in under 10 minutes.
 
 All one-liners below are **idempotent** — safe to re-run. They clone on first run and pull updates on subsequent runs.
 
-**PowerShell one-liner (recommended):**
-
-```powershell
-irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.ps1 | iex
-```
-
-**cmd one-liner:**
+**One-liner (paste into cmd or PowerShell):**
 
 ```bat
-if not exist VisCacheSketch git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
-cd VisCacheSketch && git pull && scripts\quickstart.bat
+curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
 ```
 
 This will:
@@ -49,12 +42,12 @@ scripts\quickstart.bat --scene Sponza      &REM launch with Sponza instead of Bi
 scripts\quickstart.bat --skip-scenes       &REM skip scene download (faster)
 ```
 
-**PowerShell with options:**
+**With options:**
 
-```powershell
-irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.ps1 | iex -Scene Sponza
-# Or after first run:
-.\scripts\bootstrap.ps1 -Scene Sponza -SkipScenes
+```bat
+curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat --scene Sponza
+REM Or after first run:
+scripts\bootstrap.bat --scene Sponza --skip-scenes
 ```
 
 ## Option B: Build from source
