@@ -96,11 +96,15 @@ scripts/
   VisCache_Reference.py         1024 spp path tracer ground truth capture
   VisCache_Stress.py            Disocclusion flythrough stress test
   smoke_test.py                 Headless plugin registration + graph wiring test
-  download_scenes.sh            Download Bistro + Sponza test scenes
+  download_scenes.sh/.bat       Download Bistro + Sponza + VeachAjar test scenes
   run_paper_experiments.sh      Run all captures for the paper (end-to-end)
+  run-tests.sh/.bat             Run all CPU algorithm tests (no GPU required)
+  quickstart.bat                One-click: download release + scenes + run
 
 tests/
-  test_viscache_convergence.py    CPU unit tests (5 tests, no GPU required)
+  test_viscache_convergence.py  CPU algorithm tests (14 tests, no GPU required)
+  test_restir_variants.py       ReSTIR integration tests (12 tests, no GPU required)
+  test_paper_ablations.py       Ablation config validation (17 tests, no GPU required)
 
 paper/
   TODO.md                    Revision checklist (28 items, 4 critical)
@@ -218,11 +222,42 @@ Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU wit
 
 ---
 
+## Quickstart
+
+**One-liner (paste into cmd or PowerShell):**
+
+```bat
+git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && scripts\quickstart.bat
+```
+
+This downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro.
+
+**Options:**
+
+```bat
+scripts\quickstart.bat --scene Sponza          &REM launch with Sponza instead
+scripts\quickstart.bat --skip-scenes           &REM skip scene download
+scripts\run-tests.bat                          &REM run 43 CPU tests only
+scripts\run-tests.bat quick                    &REM convergence tests only (14)
+scripts\download_scenes.bat --yes              &REM download all scenes non-interactively
+```
+
+**Linux / WSL:**
+
+```bash
+git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch
+bash scripts/download_scenes.sh        # interactive scene download
+bash scripts/run-tests.sh              # 43 CPU algorithm tests
+bash scripts/run-tests.sh quick        # convergence only (14 tests)
+```
+
+---
+
 ## Using a release
 
 Download a release archive from the [Releases page](https://github.com/ManuelKugelmann/VisCacheSketch/releases). Archives are named `viscache-windows-<config>-<sha>.tar.gz`.
 
-### Quick start
+### Manual setup
 
 ```bash
 # Extract
@@ -268,10 +303,19 @@ The version tag is auto-generated as `dev-YYYYMMDD-HHMMSS-<sha8>` from the commi
 
 ### Scenes
 
-The release does not include test scenes. Download separately:
+The release does not include test scenes. Use the download script:
 
-- **Bistro** (Amazon Lumberyard) — primary benchmark scene
-- **Sponza** (Crytek) — secondary benchmark
+```bat
+scripts\download_scenes.bat              &REM Windows (interactive)
+scripts\download_scenes.bat --yes        &REM Windows (download all)
+bash scripts/download_scenes.sh          &REM Linux / WSL
+```
+
+Available scenes:
+- **Arcade** — bundled with Falcor (copied automatically)
+- **Bistro** (Amazon Lumberyard, ~3.2 GB) — primary benchmark
+- **Sponza** (Crytek, ~70 MB) — secondary benchmark
+- **VeachAjar** (Bitterli/DQLin, ~62 MB) — ReSTIR PT test scene
 
 Place `.pyscene` files anywhere and pass `--scene path/to/file`.
 
