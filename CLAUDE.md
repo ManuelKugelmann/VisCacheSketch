@@ -10,7 +10,7 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 ## Scripting
 
 - **Prefer `.bat` over `.ps1`** for Windows scripts. PowerShell execution policies block `.ps1` by default. `.bat` works everywhere (cmd, PowerShell, CI).
-- Bootstrap one-liner: `curl -sL <url>/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat`
+- Bootstrap one-liner: `cmd /c "curl -sL <url>/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat"`
 
 ## Falcor Subtree Policy
 

@@ -39,20 +39,13 @@ This self-regulating behaviour makes the system practical without per-scene tuni
 
 The cache is algorithm-agnostic — it operates on pairwise (point, point) → {0,1} queries regardless of the rendering algorithm generating them.
 
-### Key additions beyond [Kugelmann 2006]
+### Key additions beyond [Kugelmann 2006][r-kugelmann]
 
-- **Position-seeded jitter** intrinsic box filter across cell boundaries, based on [Binder et al. 2018] [Jarzynski & Olano 2020]
-- **Collision handling** fingerprint detection based on [Binder et al. 2018], double-hash probing, pressure-scaled eviction
-- **LOD in the hash key** multiple resolutions in one flat table [Gautron 2020], [Gautron 2021]
-- **Coupled variance adaptation** — Bernoulli variance drives both correction rate and write-depth gating (independently paralleled by [Stotko et al. 2025])
+- **Position-seeded jitter** intrinsic box filter across cell boundaries, based on [Binder et al. 2018][r-binder] [Jarzynski & Olano 2020][r-jarzynski]
+- **Collision handling** fingerprint detection based on [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
+- **LOD in the hash key** multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
+- **Coupled variance adaptation** — Bernoulli variance drives both correction rate and write-depth gating (independently paralleled by [Stotko et al. 2025][r-stotko])
 - **ReSTIR integration** at three points: DI candidate selection, post-shading correction, revalidation
-
-[Kugelmann 2006]: docs/references/Kugelmann2006_ThesisMK.pdf
-[Binder et al. 2018]: https://doi.org/10.1145/3214745.3214806
-[Jarzynski & Olano 2020]: https://jcgt.org/published/0009/03/02/
-[Gautron 2020]: https://doi.org/10.1145/3388767.3407365
-[Gautron 2021]: https://link.springer.com/chapter/10.1007/978-1-4842-7185-8_41
-[Stotko et al. 2025]: https://arxiv.org/abs/2511.21459
 
 ### ReSTIR integration
 
@@ -67,7 +60,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 ## Quickstart
 
 ```bat
-curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat"
 ```
 
 Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, fetches test scenes, runs CPU tests, and launches Mogwai with Bistro. See **[Getting Started](docs/GETTING_STARTED.md)** for build-from-source, Linux/WSL, and release usage.
