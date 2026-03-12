@@ -59,14 +59,8 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 
 ## Quickstart
 
-**cmd:**
 ```bat
-curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
-```
-
-**PowerShell:**
-```powershell
-curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o "$env:TEMP\vc-bootstrap.bat"; & "$env:TEMP\vc-bootstrap.bat"
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat"
 ```
 
 Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, fetches test scenes, runs CPU tests, and launches Mogwai with Bistro. See **[Getting Started](docs/GETTING_STARTED.md)** for build-from-source, Linux/WSL, and release usage.
