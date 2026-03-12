@@ -1,6 +1,6 @@
 # Visibility Prediction-with-Correction for Real-Time Path Tracing
 
-**Unbiased Adaptive Shadow Ray Reduction with a Filtered Multi-Level Hash Cache**
+**Unbiased Visibility Prediction with a Filtered Adaptive Multi-Level Hash Cache**
 
 **[Paper draft](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
 
@@ -15,7 +15,7 @@ Most shadow rays in real-time path tracing are redundant — nearby surface poin
 
 ### Core mechanism
 
-The **prediction-with-correction (Control Variate + Variance-driven Russian Roulette Residual = CV+VRRR)** estimator converts any visibility prediction into an unbiased shadow ray estimator:
+The **prediction-with-correction** (**C**ontrol **V**ariate + **V**ariance-driven **R**ussian **R**oulette **R**esidual) estimator converts any visibility prediction into an unbiased shadow ray estimator:
 
 ```
 variance = µ(1 − µ)
@@ -31,7 +31,7 @@ The **Bernoulli structure** of binary visibility makes this easy: The same scala
 
 The variance signal drives two reinforcing mechanisms:
 1. **Correction rate** — variance steers the number of samples via RR
-2. **Spatial resolution** — sample count and variance determine which LOD levels of the cache get writes
+2. **Spatial resolution** — sample count and variance determine which resolution levels of the cache get writes
 
 High-variance regions trace more often *and* at finer spatial resolution.
 Low-variance regions trace rarely and only update the coarse level.
@@ -41,11 +41,13 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 
 ### Key additions beyond [Kugelmann 2006][r-kugelmann]
 
-- **Position-seeded jitter** intrinsic box filter across cell boundaries, based on [Binder et al. 2018][r-binder] [Jarzynski & Olano 2020][r-jarzynski]
-- **Collision handling** fingerprint detection based on [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
-- **LOD in the hash key** multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
-- **Coupled variance adaptation** — Bernoulli variance drives both correction rate and write-depth gating (independently paralleled by [Stotko et al. 2025][r-stotko])
-- **ReSTIR integration** at three points: DI candidate selection, post-shading correction, revalidation
+- **Position Jitter as Filtering** intrinsic box filter across cell boundaries, based on [Binder et al. 2018][r-binder] 
+- **Good and Fast Hash** - based on PCG3D[Jarzynski & Olano 2020][r-jarzynski]
+- **Hash Collision Handling** - fingerprint like [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
+- **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
+- **Coupled variance adaptation** - variance drives both correction rate and write-depth gating like in [Stotko et al. 2025][r-stotko])
+- **GPU implementation** using Nvidia Falcor
+- **ReSTIR integration** example based on Falcor RTXDI and ReSTIR PT.
 
 ### ReSTIR integration
 
@@ -79,9 +81,9 @@ Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, 
 | [Binder et al. 2018][r-binder] | Spatial hashing, jitter-quantize, fingerprint collision detection |
 | [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
-| [Stotko et al. 2025 (MrHash)][r-stotko] | Independent: variance-driven resolution in flat hash (TSDF domain) |
+| [Stotko et al. 2025 (MrHash)][r-stotko] | Parallels - variance-driven resolution in flat hash (TSDF domain) |
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
-| [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Concurrent — neural visibility cache for light selection |
+| [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
 
 [r-kugelmann]: docs/references/Kugelmann2006_ThesisMK.pdf
 [r-szecsi]: https://www.researchgate.net/publication/221546555_Variance_Reduction_for_Russian-roulette
