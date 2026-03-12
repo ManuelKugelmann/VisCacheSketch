@@ -2,114 +2,57 @@
 
 ## Project Overview
 
-VisCacheSketch (VisCache) — Visibility Cache for real-time path tracing denoising, built as Falcor render passes.
+VisCacheSketch — Visibility Prediction-with-Correction for real-time path tracing. Flat multilevel spatial hash cache with lock-free atomic updates, Bernoulli variance-driven adaptive sampling. Built as Falcor 8.0 render passes.
 
-## Project History
-
-See the **Background** section in `README.md`. The 2006 Diplomarbeit (`docs/references/Kugelmann2006_ThesisMK.pdf`, referred to as "thesismk") is the direct ancestor of this work — it established CV+RRR, spatial-hash caching, and the shadow ray reduction approach. This project extends that into a real-time system with multilevel hashing and ReSTIR integration.
-
-## Falcor Subtree Policy
-
-- Falcor is in `Falcor/` (added as a git subtree, not a submodule)
-- **Keep Falcor files as close to the NVIDIA original as possible.** Do not add project-specific logic (hooks, VisCache paths, etc.) into Falcor's own scripts or source files. All VisCache-specific setup belongs in our root scripts (`setup.sh`, `setup.bat`). This makes subtree pulls/pushes clean and avoids merge conflicts with upstream.
-- The only acceptable Falcor modifications are upstream bug fixes or changes needed for the Falcor fork itself (ManuelKugelmann/Falcor)
-- Two `.gitmodules` files exist (root and `Falcor/.gitmodules`) — use `sync-submodules.sh` to keep them in sync (see README)
-
-## Build System
-
-- Falcor's internal submodules must be shallow-cloned since subtree squash strips `.gitmodules`
-- NVIDIA packman fetches binary dependencies (CUDA, D3D12 Agility SDK, nvtt, slang, etc.)
-- After packman pull on Linux, `libnvtt.so.30106` must be copied to `libnvtt.so` (see `Falcor/setup.sh`)
-- Root setup scripts (`setup.sh`, `setup.bat`) call Falcor's own setup, then copy VisCache plugins
-- CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
-- Windows builds require SDK 10.0.19041.0 (available on `windows-2022` runner, NOT `windows-latest`)
-
-## Paper Sketch Workflow
-
-- **`viscachepaper/sections/*.md`** are the current WIP paper content. Edit these directly.
-- `viscachepaper/paper-sketch.md` is just an index/TOC linking to the section files — not paper content itself.
-- CI (`paper.yml`) auto-combines `sections/*.md` (sorted by filename) into `paper-combined.md` and deploys an HTML preview to GitHub Pages.
-- **PDF generation** is moving to LaTeX. The old reportlab-based `generate_paper.py` has been removed.
-- To show a PDF visually in chat, convert to PNG first:
-  ```bash
-  pdftoppm -png -r 200 -f 1 -l 1 /tmp/paper.pdf /tmp/page
-  # Then Read /tmp/page-1.png
-  ```
-  Reading a PDF directly with the Read tool parses content but does **not** show a visual image in chat.
+Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)).
+2006 ancestor: `docs/references/Kugelmann2006_ThesisMK.pdf` ("thesismk").
 
 ## Scripting
 
-- **Prefer `.bat` over `.ps1`** for Windows scripts. PowerShell execution policies block `.ps1` by default, making them unreliable for one-liners. `.bat` files work everywhere (cmd, PowerShell, CI) without policy issues.
+- **Prefer `.bat` over `.ps1`** for Windows scripts. PowerShell execution policies block `.ps1` by default. `.bat` works everywhere (cmd, PowerShell, CI).
 - Bootstrap one-liner: `curl -sL <url>/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat`
+
+## Falcor Subtree Policy
+
+- Falcor is in `Falcor/` (git subtree, not submodule)
+- **Keep Falcor files as close to the NVIDIA original as possible.** All VisCache-specific setup belongs in root scripts (`setup.sh`, `setup.bat`), not in Falcor's own files.
+- Only acceptable Falcor modifications: upstream bug fixes or changes for ManuelKugelmann/Falcor fork
+- Two `.gitmodules` files exist (root and `Falcor/.gitmodules`) — use `sync-submodules.sh` to keep in sync
+
+## Build System
+
+- Falcor submodules: shallow-cloned (subtree squash strips `.gitmodules`)
+- NVIDIA packman fetches binary deps (CUDA, D3D12 Agility SDK, nvtt, slang)
+- Linux: `libnvtt.so.30106` → `libnvtt.so` copy (see `Falcor/setup.sh`)
+- CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
+- Windows: SDK 10.0.19041.0 required (`windows-2022` runner, NOT `windows-latest`)
+
+## Paper Workflow
+
+- `viscachepaper/sections/*.md` — WIP paper content (edit directly)
+- `viscachepaper/paper-sketch.md` — index/TOC only
+- CI (`paper.yml`) combines sections into `paper-combined.md` → GitHub Pages
+- PDF generation moving to LaTeX
 
 ## CI
 
-- Workflows (separate, path-scoped triggers):
-  - `.github/workflows/paper.yml` — Combines `viscachepaper/sections/*.md` into `paper-combined.md`, deploys to GitHub Pages, comments on PRs (PDF generation preserved but commented out for future TeX publishing)
-  - `.github/workflows/validate.yml` — Algorithm validation tests (`tests/`, `Source/RenderPasses/`)
-  - `.github/workflows/build.yml` — Binary builds + release (`Source/`, `Falcor/`, `scripts/`, `CMakeLists.txt`, `setup.*`)
-  - `.github/workflows/quickstart.yml` — Bootstrap idempotency + CPU tests on Windows/Linux
+- `.github/workflows/paper.yml` — Paper combine + GitHub Pages deploy
+- `.github/workflows/validate.yml` — Algorithm validation tests
+- `.github/workflows/build.yml` — Binary builds + release
+- `.github/workflows/quickstart.yml` — Bootstrap idempotency + CPU tests
 - Runs on: `ubuntu-22.04` (Linux/GCC), `windows-2022` (VS2022 + Ninja/MSVC)
-
-## GitHub Interaction from Claude Code Web
-
-`gh` CLI is **not pre-installed** in Claude Code web environments. Use these alternatives:
-
-### Option 1: curl + GitHub REST API (works now, no auth needed for public repos)
-```bash
-# Check CI status for a commit
-curl -s "https://api.github.com/repos/OWNER/REPO/commits/SHA/check-runs" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for cr in data['check_runs']:
-    print(f'{cr[\"conclusion\"]:>10}  {cr[\"name\"]}')
-"
-
-# View PR details
-curl -s "https://api.github.com/repos/OWNER/REPO/pulls/NUMBER"
-
-# List PR check runs
-curl -s "https://api.github.com/repos/OWNER/REPO/commits/SHA/check-runs"
-```
-
-Note: Unauthenticated GitHub API has a 60 req/hour rate limit per IP.
-
-### Option 2: WebFetch tool
-Claude Code's built-in WebFetch can fetch GitHub pages and API endpoints directly.
-
-### Option 3: Install gh via SessionStart hook
-Create `.claude/settings.json` with a hook to install gh on session start:
-```json
-{
-  "hooks": {
-    "SessionStart": [{
-      "matcher": "startup",
-      "hooks": [{
-        "type": "command",
-        "command": "command -v gh || (curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /usr/share/keyrings/githubcli-archive-keyring.gpg > /dev/null && echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages focal main' | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt-get update && sudo apt-get install -y gh)"
-      }]
-    }]
-  }
-}
-```
-
-### Option 4: GitHub MCP Server
-Add the GitHub MCP server for structured access:
-```bash
-claude mcp add --transport http github https://api.githubcopilot.com/mcp/
-```
-
-## Line Endings
-
-- `.gitattributes` normalizes all text to LF in the repo (`* text=auto eol=lf`), except `.bat` files which stay CRLF.
-- The Edit and Write tools silently strip `\r`. This is fine now that the repo is LF-normalized, but be aware if any CRLF files are ever added.
-
-## Workflow
-
-- Work step by step for large edits — break changes into small, incremental Edit calls rather than attempting a single massive Write
 
 ## Render Passes
 
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass
-- `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin's ReSTIR PT [Lin et al. SIGGRAPH 2022] ported to Falcor 8; supports single-bounce GI with maxBounces=1 and multi-bounce path tracing with higher values)
-- These get copied into Falcor's source tree during CI build
+- `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin [Lin et al. SIGGRAPH 2022] ported to Falcor 8)
+- Copied into Falcor source tree during setup/CI
+
+## Line Endings
+
+- `.gitattributes`: LF everywhere, CRLF for `.bat` files
+- Edit/Write tools strip `\r` — fine since repo is LF-normalized
+
+## Workflow
+
+- Work step by step for large edits — small incremental Edit calls, not massive Write

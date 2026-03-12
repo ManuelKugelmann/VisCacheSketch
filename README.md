@@ -1,6 +1,8 @@
-# Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
+# Visibility Prediction-with-Correction for Real-Time Path Tracing
 
-**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)** | **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)**
+**Unbiased Adaptive Shadow Ray Reduction with a Filtered Multi-Level Hash Cache**
+
+**[Paper draft](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[Getting Started](docs/GETTING_STARTED.md)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
 
 **Author:** Manuel Kugelmann
 **Target venue:** EGSR / HPG 2026
@@ -8,13 +10,23 @@
 
 ---
 
+## Quickstart
+
+```bat
+curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
+```
+
+Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, fetches test scenes, runs CPU tests, and launches Mogwai with Bistro. See **[Getting Started](docs/GETTING_STARTED.md)** for build-from-source, Linux/WSL, and release usage.
+
+---
+
 ## Overview
 
-This paper develops the binary visibility prediction from [Kugelmann 2006] into a complete real-time system, narrowing to binary visibility — exploiting Bernoulli structure for free variance — and deepening the architecture with improvements from the intervening two decades.
+Most shadow rays in real-time path tracing are redundant — nearby surface points querying the same light region overwhelmingly agree on the outcome. We store binary visibility predictions in a flat, multilevel spatial hash table with 8-byte entries and lock-free atomic updates, and correct cached predictions stochastically so that the estimator remains unbiased regardless of cache quality.
 
 ### Core mechanism
 
-The **control-variate estimator with Russian roulette (prediction-with-correction (CV+VRRR))** converts a spatial visibility cache into an unbiased shadow ray estimator regardless of cache accuracy:
+The **prediction-with-correction (CV+VRRR)** estimator converts a spatial visibility cache into an unbiased shadow ray estimator:
 
 ```
 if rand < p:
@@ -26,315 +38,33 @@ else:
 
 where `p = clamp(var / varThreshold, pMin, 1.0)` and `var = µ(1 − µ)`.
 
-The **Bernoulli structure** of binary visibility is what makes this clean: variance is fully determined by the cached mean — no separate variance estimator needed. The same scalar µ gives you both the cached estimate and the variance, enabling joint adaptation of correction rate and spatial resolution with a single threshold.
+The **Bernoulli structure** of binary visibility makes this clean: variance is fully determined by the cached mean — no separate variance estimator needed. The same scalar µ gives both the cached estimate and the variance, enabling joint adaptation of correction rate and spatial resolution with a single threshold.
 
-### The coupling (key architectural property)
+### Coupled variance adaptation
 
 The same variance signal drives two reinforcing mechanisms:
-1. **Correction rate** — RR survival probability p in the prediction-with-correction (CV+VRRR) estimator
+1. **Correction rate** — RR survival probability p
 2. **Spatial resolution** — write-depth gate determines which LOD levels receive updates
 
-High-variance regions trace more often *and* at finer spatial resolution. Low-variance regions trace rarely and only update the coarse level. This self-regulating behaviour makes the system practical without per-scene tuning. The coupling was absent from the 2006 work where spatial resolution was fixed; it is one of two principal extensions in this paper.
+High-variance regions trace more often *and* at finer spatial resolution. Low-variance regions trace rarely and only update the coarse level. This self-regulating behaviour makes the system practical without per-scene tuning.
 
-### Three ReSTIR integration points
+### Key additions beyond Kugelmann [2006]
 
-A single shared hash table serves three integration points:
+- **Position-seeded jitter** (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020]) — intrinsic box filter across cell boundaries
+- **Collision handling** — fingerprint detection, double-hash probing, pressure-scaled eviction, WaveMatch coalescing (SM 6.5)
+- **LOD in the hash key** [Gautron 2020, 2021] — multiple resolutions in one flat table
+- **Coupled variance adaptation** — Bernoulli variance drives both correction rate and write-depth gating (independently paralleled by [Stotko et al. 2025])
+- **ReSTIR integration** at three points: DI candidate selection, post-shading correction, GI revalidation
+
+### ReSTIR integration
 
 | Point | Section | What it replaces | Benefit |
 |-------|---------|-----------------|---------|
-| DI candidate selection | §11.1 | V=1 assumption in RIS target | µ-weighted selection, better candidates |
-| Post-shading correction | §11.2 | Unconditional shadow ray | ~88% shadow ray reduction |
-| GI revalidation | §11.3 | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
-
----
-
-## Background
-
-The 2006 Diplomarbeit by Manuel Kugelmann ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm, supervisor Alexander Keller) suffered multiple problems — side work for financial reasons, theft of personal belongings, overambitious scope, and experiments that were not automated enough — and was never properly finished.
-
-The thesis developed a general framework called *predictions with correction at random* (Sec. 3.4) — using a spatial hash map cached prediction as control variate and Russian roulette to decide whether to correct, with generalized variance (tracked explicitly per cache entry) driving RR survival probability as adaptive sampling (Sec. 3.4.1). The framework was applied through many explorative cache experiments — visibility prediction (Sec. 3.2.2), contribution prediction (Sec. 3.2.3), and others — all using general variance estimators. The approach of using variance — not absolute light — to drive sampling rate and the use of a spatial hash map for the cache was inspired by hints on the role of variance and the "curse of dimensionality" in Keller's lectures at Universität Ulm.
-
-Using a control variate instead of zero on RR termination is standard Monte Carlo variance reduction — combining two textbook techniques (Knuth 1973; Hammersley and Handscomb 1964). The idea is at least implicit in the "go with the winners" family (Aldous and Vazirani 1994; Grassberger 2002). In the graphics context, Szécsi, Szirmay-Kalos and Kelemen [2003] formalized the non-zero termination estimate for rendering (CV, but with fixed RR probability). Szirmay-Kalos et al. [2005] added variance-driven RR via a splitting/RR framework using a scene-global average radiance estimate. The Kugelmann thesis arrived at the same CV+RRR math independently but refined the **estimation source** (per-point spatial cache rather than a scene-global constant) and the **variance signal use** (variance measuring the cache-quality → trace-rate loop). The overlap with Szécsi et al. was found late in the writing process and contributed to the overambitious search for other possible new contributions.
-
-The spatial grids of the hash map were visible in the thesis — screenshots show grid cells. What was an unmentioned implementation detail was the use of *spatial hashing* to map grid cells to memory. The practical inspiration came from **ODE** (Open Dynamics Engine, Russell Smith, 2001–2004), whose `dHashSpace` uses spatial hashing for broad-phase collision detection. Kugelmann encountered ODE's hash spaces through deep use of ODE during a Universität Ulm student course project (*Animal Race*, a 3D racing game, Jan–Oct 2005; hosted at [animalrace.bitcraft.org](http://animalrace.bitcraft.org/)). The key insight transferred was that spatial hashing sidesteps the curse of dimensionality in naive uniform grids — map an unbounded 3D domain to a fixed-size hash table without allocating empty cells. ODE's approach is likely rooted in [Teschner et al. 2003]'s "Optimized Spatial Hashing for Collision Detection of Deformable Objects," which formalized the technique for deformable-body simulation. The thesis adopted the same idea for caching illumination quantities but did not describe or frame it as a technique.
-
-The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized in 2006 — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility allows exploiting the Bernoulli structure.
-
-The test case in 2006 was Instant Radiosity [Keller 1997], but the caching for CV+RRR is algorithm-agnostic: it operates on pairwise queries regardless of the rendering algorithm generating them.
-
-See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006_ThesisMK.pdf) for the thesis and [`docs/references/Szecsi2003_VarianceReductionRR.pdf`](docs/references/Szecsi2003_VarianceReductionRR.pdf) for the Szécsi et al. [2003] paper (also on [ResearchGate](https://www.researchgate.net/publication/221546555_Variance_Reduction_for_Russian-roulette)).
-
-**What this paper adds beyond 2006:**
-- Robust hashing with position-seeded jitter (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020])
-- Variance now governs spatial resolution via write-depth gate (absent in 2006, resolution was fixed)
-- Three-level hash replacing single-level, LOD in the hash key [Gautron 2020, 2021]
-- Bernoulli simplification made explicit — var = µ(1−µ), no separate estimator (not realized in 2006)
-- ReSTIR integration at three points (framework did not exist in 2006)
-- Real-time hardware (inline DXR, SM 6.5, lock-free atomics [Gautron 2021])
-
----
-
-## Quickstart
-
-> **Requires:** git 2.43+ ([download](https://git-scm.com)), Python 3.8+, Windows 10+ or WSL
-
-**One-liner (idempotent — safe to re-run):**
-
-```bat
-curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
-```
-
-This clones (or pulls if already cloned), downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro. See **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)** for full details.
-
-**Options:**
-
-```bat
-scripts\quickstart.bat --scene Sponza          &REM launch with Sponza instead
-scripts\quickstart.bat --skip-scenes           &REM skip scene download
-scripts\run-tests.bat                          &REM run 43 CPU tests only
-scripts\run-tests.bat quick                    &REM convergence tests only (14)
-scripts\download_scenes.bat --yes              &REM download all scenes non-interactively
-```
-
-**Linux / WSL:**
-
-```bash
-# Idempotent: clone or pull
-[ -d VisCacheSketch ] && git -C VisCacheSketch pull || git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
-cd VisCacheSketch
-bash scripts/download_scenes.sh        # interactive scene download
-bash scripts/run-tests.sh              # 43 CPU algorithm tests
-bash scripts/run-tests.sh quick        # convergence only (14 tests)
-```
-
----
-
-## Build instructions
-
-```bash
-# Clone (Falcor is included as a subtree — no extra flags needed)
-git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
-cd VisCacheSketch
-
-# Linux:
-./setup.sh
-
-# Windows:
-.\setup.bat
-```
-
-Each root setup script:
-1. Calls Falcor's own setup (submodule init, packman deps, git hooks;
-   Windows also generates VS2022 `.sln`)
-2. Copies VisCache and ReSTIRPTPass plugins into the Falcor tree
-3. Patches CMake to register the plugins
-4. Runs CPU unit tests
-
-`Falcor` is a git subtree of the ManuelKugelmann/Falcor fork (Falcor 8.0
-with DQLin/ReSTIR_PT ported in). It lives directly in the repo — no submodule
-init required.
-
-See `tests/test_viscache_convergence.py` for CPU unit tests (no GPU required).
-
-Requirements: git 2.43+, Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU with DXR 1.1 (RTX 20xx minimum, RTX 30xx/40xx recommended for SM 6.5).
-
----
-
-## Using a release
-
-Download a release archive from the [Releases page](https://github.com/ManuelKugelmann/VisCacheSketch/releases). Archives are named `viscache-windows-<config>-<sha>.tar.gz`.
-
-### Manual setup
-
-```bash
-# Extract
-tar xzf viscache-windows-Release-*.tar.gz
-
-# Run with a scene (interactive)
-Mogwai.exe --script scripts/VisCache/VisCache_Graph.py --scene path/to/Bistro_Interior.pyscene
-
-# Run headless (no window — for capture/batch)
-Mogwai.exe --headless --script scripts/VisCache/VisCache_Graph.py --scene path/to/scene.pyscene
-```
-
-### Running ablation captures
-
-```bash
-# All 10 ablation configs (§15) — 200 warmup + 16 capture frames each
-Mogwai.exe --headless --script scripts/VisCache/VisCache_Ablation.py --scene Bistro_Interior.pyscene
-# Output: captures/ablation/<config>/frame_NNNN.exr
-
-# All 14 baseline configs (DI/GI/PT × vanilla/local/reval/lightsel/full)
-Mogwai.exe --headless --script scripts/VisCache/VisCache_Baselines.py --scene Bistro_Interior.pyscene
-# Output: captures/baselines/<pass>_<config>/frame_NNNN.exr
-```
-
-### Running a smoke test
-
-```bash
-# Verify plugins loaded and graph wiring works (no scene needed, exits immediately)
-Mogwai.exe --headless --script scripts/VisCache/smoke_test.py
-```
-
-### Triggering a manual release
-
-Go to **Actions > Release > Run workflow** on GitHub. Inputs:
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `commit_sha` | HEAD of selected branch | Specific commit to build |
-| `config` | Release | Release or Debug build |
-| `prerelease` | false | Mark as pre-release on GitHub |
-
-The version tag is auto-generated as `dev-YYYYMMDD-HHMMSS-<sha8>` from the commit timestamp and short SHA. No manual tagging needed.
-
-### Scenes
-
-The release does not include test scenes. Use the download script:
-
-```bat
-scripts\download_scenes.bat              &REM Windows (interactive)
-scripts\download_scenes.bat --yes        &REM Windows (download all)
-bash scripts/download_scenes.sh          &REM Linux / WSL
-```
-
-Available scenes:
-- **Arcade** — bundled with Falcor (copied automatically)
-- **Bistro** (Amazon Lumberyard, ~3.2 GB) — primary benchmark
-- **Sponza** (Crytek, ~70 MB) — secondary benchmark
-- **VeachAjar** (Bitterli/DQLin, ~62 MB) — ReSTIR PT test scene
-
-Place `.pyscene` files anywhere and pass `--scene path/to/file`.
-
-### Submodule sync (subtree workflow)
-
-Because Falcor is a git subtree (not a submodule), there are **two** `.gitmodules` files:
-- **Root `.gitmodules`** — what git actually reads for submodule config
-- **`Falcor/.gitmodules`** — what upstream Falcor maintains
-
-These must stay in sync. The pre-commit hook blocks commits if they diverge.
-Use `sync-submodules.sh` to fix:
-
-```bash
-# After pulling upstream Falcor (Falcor/.gitmodules is authoritative):
-git subtree pull --prefix=Falcor falcor master --squash
-./sync-submodules.sh from-upstream
-git add .gitmodules && git commit --amend --no-edit
-
-# Before pushing to upstream Falcor (root .gitmodules is authoritative):
-./sync-submodules.sh to-upstream
-git add Falcor/.gitmodules
-git commit -m "sync submodules for upstream"
-git subtree push --prefix=Falcor falcor my-branch
-
-# Just check (no changes):
-./sync-submodules.sh check
-```
-
----
-
-## Repository structure
-
-```
-Falcor/                      Git subtree — ManuelKugelmann/Falcor fork
-                             (Falcor 8.0 + ported DQLin/ReSTIR_PT)
-  .gitmodules                Falcor's own submodule file (upstream-facing)
-  setup.bat / setup.sh       Falcor's original: submodule init + packman deps
-  setup_vs2022.bat           Falcor's original: setup.bat + CMake VS2022 configure
-
-Source/RenderPasses/
-  VisCache/             Complete Falcor 8.0 RenderPass plugin
-    VisCache.slang      Hash table: PCG3D addressing, lookup, insert, decay
-    VisCacheInsert.cs.slang   Batched insert with SM6.5 WaveMatch coalescing
-    VisCacheDecay.cs.slang    Background decay sweep
-    ShadingCV.slang          prediction-with-correction (CV+VRRR) estimator — all three integration points
-    VisCache.h/.cpp     Falcor 8 host: buffer management, PI auto-tuner, UI
-    CMakeLists.txt           Plugin build target
-  ReSTIRPTPass/              ReSTIR PT with VisCache revalidation (DQLin's ReSTIR PT [SIGGRAPH 2022] ported to Falcor 8; maxBounces=1 for single-bounce GI, higher for multi-bounce PT)
-    ReSTIRPTPass.h/.cpp      Falcor 8.0 host code (full port sketch)
-    SpatialReuse.cs.slang    Spatial reuse kernel with prediction-with-correction (CV+VRRR) integration
-    SpatialReuse_VisCache_delta.slang  Original delta reference
-    CMakeLists.txt           Plugin build target
-
-scripts/
-  VisCache_Graph.py             Mogwai render graph (interactive + ablation presets)
-  VisCache_Ablation.py          Automated ablation capture (10 configs, §15)
-  VisCache_Baselines.py         Automated baseline capture (14 DI/GI/PT configs)
-  VisCache_Reference.py         1024 spp path tracer ground truth capture
-  VisCache_Stress.py            Disocclusion flythrough stress test
-  smoke_test.py                 Headless plugin registration + graph wiring test
-  download_scenes.sh/.bat       Download Bistro + Sponza + VeachAjar test scenes
-  run_paper_experiments.sh      Run all captures for the paper (end-to-end)
-  run-tests.sh/.bat             Run all CPU algorithm tests (no GPU required)
-  quickstart.bat                One-click: download release + scenes + run
-
-tests/
-  test_viscache_convergence.py  CPU algorithm tests (14 tests, no GPU required)
-  test_restir_variants.py       ReSTIR integration tests (12 tests, no GPU required)
-  test_paper_ablations.py       Ablation config validation (17 tests, no GPU required)
-
-paper/
-  TODO.md                    Revision checklist (28 items, 4 critical)
-  RESEARCH_NOTES.md          Design decisions, framing discussions, open questions
-  CITATIONS.md               Citation integration plan for all 6 additions
-
-docs/
-  PORTING.md                 DQLin/ReSTIR_PT → Falcor 8.0 port guide
-  ABLATION.md                Ablation matrix and per-config metric targets
-  DESIGN.md                  Architecture decisions and tradeoffs
-  references/                 Reference PDFs (auto-downloaded + own papers)
-  multilevel-visibility-hash-filter-paper.pdf
-
-.gitmodules                  Root submodule config (mirrors Falcor/.gitmodules)
-.githooks/pre-commit         Blocks commits if .gitmodules files are out of sync
-sync-submodules.sh           Bidirectional sync between root and Falcor .gitmodules
-setup.sh                     Linux setup: calls Falcor/setup.sh + VisCache plugin copy
-setup.bat                    Windows setup: calls Falcor/setup_vs2022.bat + VisCache plugin copy
-TODO.md                      Global task tracker
-```
-
----
-
-## Hash table design
-
-**Three LOD levels** with asymmetric cell sizes:
-
-| Level | Cell A (shading pt) | Cell B (light/secondary) |
-|-------|--------------------|-----------------------|
-| L0 (coarse) | 10.0 m | 10.0 m |
-| L1 (mid)    | 1.25 m | 2.50 m |
-| L2 (fine)   | 0.08 m | 0.62 m |
-
-Asymmetry justified for DI (B = light, spatially coherent emission). GI revalidation (B = surface) may warrant symmetric cells — flagged for future work.
-
-Cell sizes calibrated for primary viewing distances 2–20 m (Bistro, Sponza). Camera-adaptive sizing via FoV + CoC is future work.
-
-**Addressing:** PCG3D hash [Jarzynski & Olano 2020], jitter-before-quantize [Binder et al. 2018], double-hash probe (max 8 steps), pressure-scaled eviction (steps 0–1 protected).
-
-**Entry format:** 8 bytes — uint fingerprint + packed [vis:16 | total:16].
-
-**SM 6.5 WaveMatch:** coalesces threads targeting the same L0 cell into a single atomic — ~16× reduction in L0 contention.
-
----
-
-## Ablation matrix
-
-| Config | Toggle | Primary claim |
-|--------|--------|--------------|
-| Full | — | Baseline |
-| −A | Distance-gated LOD off | LOD gate reduces insert cost in smooth regions |
-| −B | Variance-gated depth off | Fine levels only needed at shadow boundaries |
-| −C | WaveMatch off | SM6.5 reduces L0 atomic contention ~16× |
-| −D | Decay off | Prevents mean drift after 1K+ frames |
-| −E | Pressure eviction off | Protects probe chain length |
-| −AB | Both A and B off | Maximum table pressure stress |
-| Finest-only | minLevel=maxLevel=2 | Multilevel necessary for GI amortization |
-| Coarsest-only | minLevel=maxLevel=0 | Coarse level insufficient for shadow boundaries |
-| No-cache | VisCache disabled | Full-retrace baseline |
-
-Ablation −B (variance gate) is the most important: must show negligible MSE gain at measurable insert cost increase.
-
-Finest-only tests the central architectural claim: without coarse levels, within-frame GI path-sharing amortization breaks (50–100 pixels → 50–100 distinct L2 cells instead of 3–5 L0 cells).
+| DI candidate selection | §9.1 | V=1 assumption in RIS target | µ-weighted selection, better candidates |
+| Post-shading correction | §9.2 | Unconditional shadow ray | ~88% shadow ray reduction |
+| GI revalidation | §9.3 | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
+
+The cache is algorithm-agnostic — it operates on pairwise (point, point) → {0,1} queries regardless of the rendering algorithm generating them.
 
 ---
 
@@ -342,22 +72,14 @@ Finest-only tests the central architectural claim: without coarse levels, within
 
 | Paper | Relation |
 |-------|---------|
-| Kugelmann 2006 (Diplomarbeit) | Direct ancestor — CV+RR with per-point cache, generalized variance-driven adaptive sampling |
-| Aldous & Vazirani 1994 | "Go with the winners" algorithms — CV+RR idea implicit |
-| Grassberger 2002 | "Go with the winners" for general Monte Carlo |
-| Szécsi et al. 2003 | Non-zero termination estimate for rendering (CV, but fixed RR probability) |
-| Szirmay-Kalos et al. 2005 | "Go with the winners" for path tracing — added variance-driven splitting/RR |
-| Hammersley & Handscomb 1964 | Monte Carlo Methods — textbook CV and RR |
-| Knuth 1973 | TAOCP Vol. 3 — double hashing (Sec. 6.4) |
-| Teschner et al. 2003 | Spatial hashing for deformable-body collision detection — foundational technique adopted by ODE and the 2006 thesis |
-| Smith 2001–2004 (ODE) | Open Dynamics Engine — `dHashSpace` broad-phase collision via spatial hashing; practical inspiration for thesis cache |
-| Keller 1997 | Instant Radiosity — original 2006 test case |
-| Gautron 2020, 2021 | LOD in hash key, lock-free GPU hash updates |
-| Stotko et al. 2025 (MrHash) | Independent: variance-driven resolution in flat hash (TSDF domain) |
+| Kugelmann 2006 (Diplomarbeit) | Direct ancestor — CV+RR with per-point spatial cache, variance-driven adaptive sampling |
+| Szécsi et al. 2003 | Non-zero termination estimate for rendering (CV, fixed RR probability) |
+| Szirmay-Kalos et al. 2005 | Variance-driven splitting/RR for path tracing |
+| Teschner et al. 2003 | Spatial hashing for collision detection — foundational technique |
+| Smith 2001–2004 (ODE) | `dHashSpace` broad-phase collision via spatial hashing; practical inspiration for 2006 thesis |
 | Binder et al. 2018 | Spatial hashing, jitter-quantize, fingerprint collision detection |
-| Lin et al. 2022 (GRIS/ReSTIR_PT) | Essential baseline for §11.3 Table 3 ground truth |
-| Bokšanský & Meister 2025 (JCGT) | Concurrent — neural visibility cache for light selection |
-| Liu et al. 2025 (SIGGRAPH) | Orthogonal — Reservoir Splatting for temporal reuse |
-| Zhang et al. 2024 (SIGGRAPH) | Orthogonal — Area ReSTIR for DOF/AA |
-| Müller et al. 2022 (instant-ngp) | Hash grid backbone used by Bokšanský & Meister |
+| Gautron 2020, 2021 | LOD in hash key, lock-free GPU hash updates |
 | Jarzynski & Olano 2020 (JCGT) | PCG3D hash function |
+| Stotko et al. 2025 (MrHash) | Independent: variance-driven resolution in flat hash (TSDF domain) |
+| Lin et al. 2022 (GRIS/ReSTIR_PT) | Baseline for GI revalidation |
+| Bokšanský & Meister 2025 (JCGT) | Concurrent — neural visibility cache for light selection |
