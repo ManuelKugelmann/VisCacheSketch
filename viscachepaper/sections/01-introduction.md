@@ -48,7 +48,7 @@ with two decades of hashing and GPU advances:
   fingerprint-based detection but replaces linear probing
   with double hashing, adds pressure-scaled eviction
   to self-heal long probe chains,
-  and uses inline overflow decay via atomic CAS
+  and uses inline overflow decay via atomic subtraction
   to keep counters bounded while preserving the mean ratio.
   An 8-byte entry format enables single-InterlockedAdd updates
   and WaveMatch coalescing (SM 6.5) for ~16× reduction
@@ -59,7 +59,8 @@ with two decades of hashing and GPU advances:
   encodes resolution level directly into the hash function
   so multiple levels coexist in one flat table —
   no separate tables, no tree, no indirection.
-  Distance-gated level selection acts as a clipmap.
+  A variance-gated cascade inserts coarse-to-fine,
+  stopping when a level converges — no distance heuristic needed.
   See Secs. 3, 5.
 
 - **Coupled variance adaptation** extends the original thesis's

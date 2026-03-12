@@ -41,7 +41,7 @@ All measurements at 1920×1080, 1 spp, RTX 4090, driver 560.x, DXR 1.1. Referenc
 |---|---|---|---|
 | Full system (L0+L1+L2, var gate, warp red.) | red | red | red |
 | − variance gate (always write all levels) | red | red | red |
-| − distance LOD (all levels at all distances) | red | red | red |
+| − maturity gate (always write, no SE check) | red | red | red |
 | − warp reduction (per-thread atomics only) | red | red | red |
 | L0 only (coarsest, 10 m cells) | red | red | red |
 | L2 only (finest, 8 cm cells) | red | red | red |
