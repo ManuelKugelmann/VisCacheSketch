@@ -30,6 +30,12 @@ import Scene.RaytracingInline;
 import Rendering.Materials.IsotropicGGX;
 import Rendering.RTXDI.RTXDI;
 import Utils.Sampling.TinyUniformSampleGenerator;
+import Utils.Sampling.SampleGenerator;
+
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCache;
+float3 gCamPos;
+#endif
 
 RWTexture2D<float4> gColor;
 RWTexture2D<float4> gEmission;
@@ -81,15 +87,53 @@ struct FinalShading
             bool valid = gRTXDI.getFinalSample(pixel, dir, distance, Li);
 
             // Check light visibility.
+            float visWeight = 1.f;
             if (valid)
             {
-                // Create a DXR 1.1 query object to trace a ray (the <1> means use alpha testing)
+                float3 origin = sd.computeRayOrigin();
+                float3 lightPos = origin + dir * distance;
+
+#if USE_VISCACHE
+                // VisCache CV+RRR: probabilistic shadow ray gating.
+                SampleGenerator sg = SampleGenerator(pixel, gRTXDI.frameIndex);
+                VHFResult r = vhfLookup(origin, lightPos, gCamPos);
+                if (!r.valid)
+                {
+                    // Cold miss — unconditional trace, insert.
+                    SceneRayQuery<1> rayQuery;
+                    const Ray ray = Ray(origin, dir, 0.f, distance);
+                    float V = rayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
+                    vhfInsert(origin, lightPos, V, gCamPos);
+                    visWeight = V;
+                }
+                else
+                {
+                    float contrib = luminance(Li) * max(r.mu, 1.f - r.mu);
+                    float pFloor  = clamp(contrib / gFireflyBudget, gPMin, 1.f);
+                    float p       = clamp(r.var / gVarThreshold, pFloor, 1.f);
+
+                    if (sampleNext1D(sg) < p)
+                    {
+                        SceneRayQuery<1> rayQuery;
+                        const Ray ray = Ray(origin, dir, 0.f, distance);
+                        float V = rayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
+                        vhfInsert(origin, lightPos, V, gCamPos);
+                        visWeight = r.mu + (V - r.mu) / p;
+                    }
+                    else
+                    {
+                        visWeight = r.mu;
+                    }
+                }
+                if (visWeight <= 0.f) valid = false;
+#else
                 SceneRayQuery<1> rayQuery;
-                const Ray ray = Ray(sd.computeRayOrigin(), dir, 0.f, distance);
+                const Ray ray = Ray(origin, dir, 0.f, distance);
                 if (!rayQuery.traceVisibilityRay(ray))
                 {
                     valid = false;
                 }
+#endif
             }
 
             // Evaluate diffuse and specular lobes.
@@ -100,10 +144,10 @@ struct FinalShading
                 TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, gRTXDI.frameIndex);
 
                 sd.mtl.setActiveLobes((uint)LobeType::DiffuseReflection);
-                diffuse = mi.eval(sd, dir, sg) * Li;
+                diffuse = mi.eval(sd, dir, sg) * Li * visWeight;
 
                 sd.mtl.setActiveLobes((uint)LobeType::SpecularReflection);
-                specular = mi.eval(sd, dir, sg) * Li;
+                specular = mi.eval(sd, dir, sg) * Li * visWeight;
 
                 hitT = distance;
             }

@@ -38,6 +38,12 @@ import PathTracerNRD;
 
 import Utils.NVAPI; // TODO(@skallweit) this is currently needed to make g_NvidiaExt visible
 
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCache;
+import Utils.Sampling.SampleGenerator;
+float3 gCamPos;
+#endif
+
 ParameterBlock<PathTracer> gPathTracer;
 #if USE_SER
 ReorderingScheduler gScheduler;
@@ -123,6 +129,36 @@ struct VisibilityQuery : IVisibilityQuery
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
         return sceneRayQuery.traceVisibilityRay(ray);
     }
+
+#if USE_VISCACHE
+    /// CV+RRR visibility query with VisCache. Returns weighted visibility
+    /// (1.0 = fully visible, 0.0 = fully occluded, fractional = CV estimate).
+    float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg)
+    {
+        float3 lightPos = ray.origin + ray.dir * ray.tMax;
+
+        VHFResult r = vhfLookup(ray.origin, lightPos, gCamPos);
+        if (!r.valid)
+        {
+            // Cold miss — unconditional trace and insert.
+            SceneRayQuery<kUseAlphaTest> sceneRayQuery;
+            float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
+            vhfInsert(ray.origin, lightPos, V, gCamPos);
+            return V;
+        }
+
+        // Adaptive RR probability from variance.
+        float p = clamp(r.var / gVarThreshold, gPMin, 1.f);
+        if (sampleNext1D(sg) < p)
+        {
+            SceneRayQuery<kUseAlphaTest> sceneRayQuery;
+            float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
+            vhfInsert(ray.origin, lightPos, V, gCamPos);
+            return r.mu + (V - r.mu) / p;
+        }
+        return r.mu;
+    }
+#endif
 };
 
 /** Helper function to create a HitInfo from a HitObject.

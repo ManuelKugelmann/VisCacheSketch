@@ -1009,8 +1009,13 @@ struct PathTracer
                     }
 
                     logTraceRay(PixelStatsRayType::Visibility);
+#if USE_VISCACHE
+                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg);
+                    if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
+#else
                     bool visible = vq.traceVisibilityRay(ray);
                     if (visible) addToPathContribution(path, Lr);
+#endif
                 }
             }
         }

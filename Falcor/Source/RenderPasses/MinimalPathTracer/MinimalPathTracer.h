@@ -95,4 +95,8 @@ private:
         ref<RtBindingTable> pBindingTable;
         ref<RtProgramVars> pVars;
     } mTracer;
+
+    // VisCache integration — hash table + params read from InternalDictionary.
+    ref<Buffer> mpVHFTable;
+    bool mVisCacheAvailable = false;
 };
