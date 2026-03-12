@@ -390,20 +390,40 @@ float vhfCommitRange(float3 posA, float3 posB, float V,
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Maturity gate: returned by vhfMaturityGate() to tell callers whether to
-// write (cold) or skip (mature). "Mature" = enough samples that additional
-// writes have diminishing returns. Decay periodically revalidates by halving
-// counts, which temporarily un-matures entries for fresh sampling.
+// Maturity gate: "mature" = standard error of the mean is small enough
+// that additional writes have diminishing returns.
 //
-// No coin flip, no variance check here — variance only matters for the
-// *cascade* gate (whether to descend to finer levels), not for write gating.
+//   SE = sqrt(mu*(1-mu) / n)  ≤  SE_threshold
+//   ⟹  n ≥ mu*(1-mu) / SE_threshold²
+//
+// We use SE_threshold² = gVarThreshold / gBootThreshold, which gives:
+//   requiredSamples = mu*(1-mu) * gBootThreshold / gVarThreshold
+//
+// Examples (boot=32, varThr=0.1):
+//   mu=1.0  → var=0.00, required=0    → mature immediately (unanimous)
+//   mu=0.95 → var=0.05, required=16   → mature quickly (19:1 split)
+//   mu=0.50 → var=0.25, required=80   → needs more (shadow boundary)
+//   mu=0.70 → var=0.21, required=67   → intermediate
+//
+// Decay periodically halves counts, temporarily un-maturing entries for
+// fresh sampling (revalidation). No coin flip needed.
 // ---------------------------------------------------------------------------
 bool vhfIsMature(uint addr, uint fp)
 {
     int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
     if (slot < 0) return false;  // no entry → cold
-    uint total = gVHFTable[slot].packed & 0xFFFFu;
-    return total >= gBootThreshold;
+
+    uint packed = gVHFTable[slot].packed;
+    uint total  = packed & 0xFFFFu;
+    if (total < 2u) return false;  // need at least 2 samples for variance
+
+    uint  vis = packed >> 16u;
+    float mu  = float(vis) / float(total);
+    float var = mu * (1.0f - mu);
+
+    // Required samples scales with variance: high-var cells need more.
+    float required = var * float(gBootThreshold) / gVarThreshold;
+    return float(total) >= required;
 }
 
 /// Inline overflow decay — subtract 1/8 of both counters when total > 0xE000.
