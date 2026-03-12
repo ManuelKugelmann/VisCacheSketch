@@ -88,7 +88,7 @@ in the hash function for real-time ray-traced AO,
 with viewing-distance-based cell size selection.
 We adopt this design:
 level index in the hash key,
-multiple resolutions in one flat table, distance-gated selection.
+multiple resolutions in one flat table, variance-gated cascade (Sec. 5).
 Prior multilevel hash approaches —
 separate tables per level [Müller et al. 2022],
 octree-like hierarchical indirection, dense multi-resolution grids —

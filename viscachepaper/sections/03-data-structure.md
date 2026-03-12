@@ -19,15 +19,23 @@ V=1 adds 0x00010001; V=0 adds 0x00000001. Single InterlockedAdd — both counter
 
 N levels (default N=3) with LOD index encoded in the hash key (Sec. 4.3). Both endpoints use the same cell size per level — symmetric quantization. This enables bidirectional canonicalization (Sec. 4.5): lexicographic swap merges V(A,B) and V(B,A) into one entry, doubling effective cache utilization for symmetric queries. Cell sizes in world units; no scene bounds needed.
 
+Cell sizes follow a geometric progression from cell_coarse (L0) to cell_fine (L_{N-1}):
+
+```
+cell_size(l) = cell_coarse × exp(l/(N-1) × ln(cell_fine / cell_coarse))
+```
+
+Three runtime cbuffer parameters control the LOD ramp: N (level count), cell_coarse, and cell_fine. Example configuration for mixed interior/exterior scenes (Bistro, Sponza) at primary viewing distances 2–20 m:
+
 | Level | Cell size | ≈ px @ 5 m |
 |---|---|---|
 | L0 | 10 m | ~107 |
-| L1 | 1.25 m | ~13 |
-| L2 | 8 cm | ~0.9 |
+| L1 | ~1.26 m | ~14 |
+| L2 | 16 cm | ~1.7 |
 
-> **Table 1.** Symmetric cell sizes (N=3, runtime configurable). Both endpoints are quantized at the same cell size per level, enabling canonicalization (Sec. 4.5). Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. L2 is subpixel at 5 m; it populates only where the variance-gated cascade (Sec. 5) propagates past L1. Cell sizes follow a geometric progression from coarse (L0) to fine (L_{N-1}); N, cell_coarse, and cell_fine are runtime cbuffer parameters.
+> **Table 1.** Symmetric cell sizes (N=3, cell_coarse=10 m, cell_fine=0.16 m). Both endpoints are quantized at the same cell size per level, enabling canonicalization (Sec. 4.5). Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. L2 is near-pixel at typical viewing distances; it populates only where the variance-gated cascade (Sec. 5) propagates past L1. All three parameters are scene-dependent tuning knobs — there are no universal correct values.
 
-Cell sizes are calibrated for primary viewing distances of 2–20 m in mixed exterior/interior scenes (Bistro, Sponza). Scenes at substantially different scales (tabletop close-ups, city-scale flyovers) would benefit from camera-adaptive cell sizing via FoV and circle of confusion — deferred to future work.
+Scenes at substantially different scales (tabletop close-ups, city-scale flyovers) would benefit from camera-adaptive cell sizing via FoV and circle of confusion — deferred to future work.
 
 **Why symmetric.** Both endpoints use the same cell size at each level. This is required for canonicalization (Sec. 4.5) and natural for GI revalidation (Sec. 9), where both endpoints are surface points. A future extension — independent per-endpoint LOD levels with a 2D key `(lvlA, lvlB)` — could allow each endpoint to be resolved at a different level (see Sec. 14, Future Work). In the current design, the variance-gated cascade (Sec. 5) determines which levels are written: coarse levels converge first, and propagation stops when variance drops below τ. A maturity gate (SE-based) skips entries with enough samples, and decay periodically revalidates.
 

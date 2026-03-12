@@ -130,15 +130,25 @@ into persistent bright bands.
 
 **Adaptive Pmin (contribution-weighted survival floor).**
 Scale the survival floor by shading contribution:
-pfloor = clamp(luminance(fs·Le·G) / firefly_budget, Pmin, 1).
+pfloor = clamp(luminance(fs·Le·G) · max(μ, 1−μ) / firefly_budget, Pmin, 1).
+The max(μ, 1−μ) term is the maximum possible residual magnitude:
+the CV+RRR estimator returns μ + (V−μ)/p,
+and since V ∈ {0,1} the worst-case correction is max(μ, 1−μ)/p.
+Near-certain entries (μ≈0 or μ≈1) have small residuals
+and tolerate aggressive RR;
+uncertain entries (μ≈0.5) have larger residuals
+and need higher pfloor.
+This is the same factor that appears in Algorithm 4 (Sec. 10).
 firefly_budget is the maximum tolerable absolute luminance (cd/m²)
 from a single amplified sample.
 Example:
-with firefly_budget = 10 and shading contribution luminance 50,
+with firefly_budget = 10 and shading contribution luminance 50 at μ=0.5,
+effective contribution = 50 × 0.5 = 25,
 pfloor = 1 — the ray is always traced,
-preventing a 1000-luminance firefly.
-A dim contribution of luminance 0.1 gets pfloor = 0.01 —
-aggressive RR is safe because even 100× amplification
+preventing a 500-luminance firefly.
+A dim contribution of luminance 0.1 at μ=0.9 gets
+effective contribution = 0.1 × 0.9 = 0.09, pfloor ≈ 0.009 —
+aggressive RR is safe because even 111× amplification
 produces only luminance 10. Unbiased.
 
 **Connection to zero-variance theory.**
