@@ -190,15 +190,15 @@ P2_near = [0.1, 0.0, 0.0]
 P2_far = [10.0, 0.0, 0.0]
 
 # Same normal, near → accept
-check("geometryValid: same normal, near → accept",
+check("geometryValid: same normal, near -> accept",
       geometry_valid(N_up, N_up, P1, P2_near, 0.5, 0.2))
 
 # Opposite normal → reject
-check("geometryValid: opposite normal → reject",
+check("geometryValid: opposite normal -> reject",
       not geometry_valid(N_up, N_down, P1, P2_near, 0.5, 0.2))
 
 # Same normal, far → reject
-check("geometryValid: same normal, far → reject",
+check("geometryValid: same normal, far -> reject",
       not geometry_valid(N_up, N_up, P1, P2_far, 0.5, 0.2))
 
 # ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ p_hat_tiny = 1e-8
 mu_default = 0.5  # fallback when pHatNoVis < 1e-7
 check("mu fallback when pHatNoVis ≈ 0",
       p_hat_tiny < 1e-7,
-      f"pHatNoVis={p_hat_tiny} < 1e-7 → mu defaults to {mu_default}")
+      f"pHatNoVis={p_hat_tiny} < 1e-7 -> mu defaults to {mu_default}")
 
 # neighborTargetPdf > pHatNoVis → mu clamps to 1.0
 mu_clamped = min(max(0.8 / 0.5, 0.0), 1.0)

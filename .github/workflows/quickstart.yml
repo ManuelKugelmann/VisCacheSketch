@@ -40,12 +40,13 @@ jobs:
       - name: Show git version
         run: git --version
 
+      # Use the branch name for clone (--branch requires a ref, not a SHA).
+      # For PRs use head_ref (source branch), for pushes use ref_name (e.g. "main").
       - name: Test bootstrap.bat (first run — clone)
         shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.sha }} --skip-scenes
-        continue-on-error: true
+          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
 
       - name: Verify clone succeeded
         shell: cmd
@@ -58,8 +59,7 @@ jobs:
         shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.sha }} --skip-scenes
-        continue-on-error: true
+          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
 
       - name: Verify repo still valid after re-run
         shell: cmd
