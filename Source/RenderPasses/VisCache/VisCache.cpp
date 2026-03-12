@@ -27,14 +27,14 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("varThreshold"))   mParams.varThreshold   = props["varThreshold"];
     if (props.has("pMin"))           mParams.pMin           = props["pMin"];
     if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
+    if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
+    if (props.has("cellCoarse"))     mParams.cellCoarse     = props["cellCoarse"];
+    if (props.has("cellFine"))       mParams.cellFine       = props["cellFine"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
-    if (props.has("minLevel"))       mParams.minLevel       = props["minLevel"];
-    if (props.has("maxLevel"))       mParams.maxLevel       = props["maxLevel"];
 
     // VisCache feature + ablation toggles
     if (props.has("enableVisCacheRevalidation"))    mParams.enableVisCacheRevalidation    = props["enableVisCacheRevalidation"];
     if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
-    if (props.has("enableVisCacheDistanceLOD"))     mParams.enableVisCacheDistanceLOD     = props["enableVisCacheDistanceLOD"];
     if (props.has("enableVisCacheVarianceGate"))    mParams.enableVisCacheVarianceGate    = props["enableVisCacheVarianceGate"];
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
@@ -56,14 +56,14 @@ Properties VisCache::getProperties() const
     p["varThreshold"]  = mParams.varThreshold;
     p["pMin"]          = mParams.pMin;
     p["fireflyBudget"] = mParams.fireflyBudget;
+    p["numLevels"]     = mParams.numLevels;
+    p["cellCoarse"]    = mParams.cellCoarse;
+    p["cellFine"]      = mParams.cellFine;
     p["decayPeriod"]   = mParams.decayPeriod;
-    p["minLevel"]      = mParams.minLevel;
-    p["maxLevel"]      = mParams.maxLevel;
 
     // VisCache feature + ablation toggles
     p["enableVisCacheRevalidation"]    = mParams.enableVisCacheRevalidation;
     p["enableVisCacheLightSelection"]  = mParams.enableVisCacheLightSelection;
-    p["enableVisCacheDistanceLOD"]     = mParams.enableVisCacheDistanceLOD;
     p["enableVisCacheVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
@@ -149,15 +149,15 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfPMin"]         = mParams.pMin;
     dict["vhfBootThreshold"]= mParams.bootThreshold;
     dict["vhfFireflyBudget"]= mParams.fireflyBudget;
-    dict["vhfMinLevel"]     = mParams.minLevel;
-    dict["vhfMaxLevel"]     = mParams.maxLevel;
+    dict["vhfNumLevels"]    = mParams.numLevels;
+    dict["vhfCellCoarse"]   = mParams.cellCoarse;
+    dict["vhfCellFine"]     = mParams.cellFine;
 
     // Feature + ablation toggles — downstream passes read these
     dict["vhfEnableRevalidation"]    = mParams.enableVisCacheRevalidation;
     dict["vhfEnableLightSelection"]  = mParams.enableVisCacheLightSelection;
     dict["vhfEnableWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
-    dict["vhfEnableDistanceLOD"]     = mParams.enableVisCacheDistanceLOD;
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
 
@@ -250,6 +250,10 @@ void VisCache::renderUI(Gui::Widgets& widget)
     widget.var("pMin",             mParams.pMin,           0.01f, 0.5f,  0.005f);
     widget.var("Var threshold",    mParams.varThreshold,   0.01f, 0.5f,  0.01f);
     widget.var("Firefly budget",   mParams.fireflyBudget,  0.001f, 1.0f, 0.005f);
+    widget.separator();
+    widget.var("Num LOD levels",   mParams.numLevels,      1u, 16u);
+    widget.var("Cell coarse (m)",  mParams.cellCoarse,     0.1f, 100.0f, 0.5f);
+    widget.var("Cell fine (m)",    mParams.cellFine,       0.01f, 10.0f, 0.01f);
     widget.var("Decay period max", mParams.decayPeriodMax, 15u, 2000u);
     widget.separator();
 
@@ -261,12 +265,9 @@ void VisCache::renderUI(Gui::Widgets& widget)
     // Ablation toggles
     if (auto g = widget.group("Ablation toggles", /*open=*/false))
     {
-        g.checkbox("A: Distance-gated LOD",   mParams.enableVisCacheDistanceLOD);
         g.checkbox("B: Variance-gated depth", mParams.enableVisCacheVarianceGate);
         g.checkbox("C: Warp reduction",       mParams.enableVisCacheWarpReduction);
         g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
-        g.var("Min LOD level", mParams.minLevel, 0, 2);
-        g.var("Max LOD level", mParams.maxLevel, 0, 2);
     }
 }

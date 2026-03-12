@@ -6,43 +6,16 @@
  *
  * N-level spatial hash table caching pairwise visibility between
  * arbitrary endpoint pairs A and B (canonical symmetric cell sizes).
+ * Scale-agnostic: level count and cell range are runtime parameters.
  *
  * Addressing: jitter-before-quantize [Binder et al. 2018]
  * Hash:       PCG3D [Jarzynski & Olano 2020]
- * LOD:        distance-gated coarse-to-fine [Gautron 2020]
+ * LOD:        full cascade L0..N-1, variance-gated (no distance heuristic)
+ * Contention: read-before-write skip at converged entries
  * Estimator:  CV+RRR [Szirmay-Kalos et al. 2005 / Kugelmann 2006]
  ***************************************************************************/
 
 #pragma once
-
-// ---------------------------------------------------------------------------
-// Cell sizes (world units).
-// Canonical: both endpoints A and B use the same cell size per level.
-// Geometric progression from coarse (L0) to fine (L_max), base factor ~8×.
-// Calibrated for viewing distances 2–20 m, mixed scenes (Bistro, Sponza).
-//
-// Symmetric cells enable canonicalization (V(A,B) == V(B,A)).
-// Future: independent per-endpoint LOD — see docs/INDEPENDENT_ENDPOINT_LOD.md.
-// ---------------------------------------------------------------------------
-static const uint  kNumLevels    = 3;
-static const float kCellCoarse   = 10.0f;   ///< L0 cell size (metres)
-static const float kCellFine     = 0.16f;   ///< L_{max} cell size (metres)
-
-/// Cell size for level `lvl` — geometric interpolation, coarse to fine.
-float vhfCellSize(int lvl)
-{
-    float t = (kNumLevels <= 1) ? 0.f : float(lvl) / float(kNumLevels - 1);
-    return kCellCoarse * exp(t * log(kCellFine / kCellCoarse));
-}
-
-// Maximum cell size below which contention is acceptable.
-// Coarser levels cover huge world regions → many threads hit the same cell
-// → atomics contention. Skip levels where cell > this threshold.
-static const float kMaxUsableCellSize = 20.0f;  // metres
-
-// LOD footprint bounds (pixels) for distance-gated selection
-static const float kFootprintMin = 4.0f;
-static const float kFootprintMax = 64.0f;
 
 // ---------------------------------------------------------------------------
 // Entry: 8 bytes — fingerprint + packed (vis:16 | total:16)
@@ -74,8 +47,18 @@ cbuffer VisCacheParams
     float  gVarThreshold;    ///< Variance below which we stop refining (0.1)
     float  gPMin;            ///< Minimum RR survival probability (0.05)
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
-    float3 gCamPos;          ///< Camera position (per-frame, for LOD selection)
+    uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
+    float  gCellCoarse;      ///< L0 cell size (world units)
+    float  gCellFine;        ///< L_{N-1} cell size (world units)
 };
+
+/// Cell size for level `lvl` — geometric interpolation, coarse to fine.
+/// Scale-agnostic: driven entirely by gCellCoarse, gCellFine, gNumLevels.
+float vhfCellSize(int lvl)
+{
+    float t = (gNumLevels <= 1u) ? 0.f : float(lvl) / float(gNumLevels - 1u);
+    return gCellCoarse * exp(t * log(gCellFine / gCellCoarse));
+}
 
 RWStructuredBuffer<VHFEntry> gVHFTable;
 
@@ -174,49 +157,27 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 }
 
 // ===========================================================================
-// LOD selection — separated from core lookup/insert so callers can override.
+// LOD selection — full cascade L0..N-1, variance gate handles the rest.
+//
+// No distance heuristic, no static contention threshold.
+// Coarse levels converge fast (many updates) → read-before-write in insert
+// skips the atomic once converged. This is dynamic contention avoidance:
+// contention at L0 is self-limiting because L0 converges quickly.
 // ===========================================================================
 
-/// Lowest usable level — skip levels where cell > kMaxUsableCellSize
-/// to avoid heavy atomic contention at coarse LODs.
-int vhfMinUsableLevel()
+/// Full cascade: always L0..N-1. The variance gate in lookup and the
+/// read-before-write skip in insert handle level selection dynamically.
+void vhfLOD(out int loLvl, out int hiLvl)
 {
-    for (int lvl = 0; lvl < int(kNumLevels); lvl++)
-        if (vhfCellSize(lvl) <= kMaxUsableCellSize) return lvl;
-    return int(kNumLevels) - 1;
+    loLvl = 0;
+    hiLvl = int(gNumLevels) - 1;
 }
 
-// ---------------------------------------------------------------------------
-// Camera-distance LOD [Gautron, SIGGRAPH Talks 2020]
-// Default strategy: projected cell footprint in pixels.
-// Clamps coarse end to skip contention-prone levels.
-// ---------------------------------------------------------------------------
-void vhfLOD_Camera(float3 posA, float3 camPos, out int loLvl, out int hiLvl)
-{
-    float d = length(posA - camPos);
-    int minLvl = vhfMinUsableLevel();
-    loLvl = clamp(int(log2(d / kFootprintMax)), minLvl, int(kNumLevels) - 1);
-    hiLvl = clamp(int(log2(d / kFootprintMin)), minLvl, int(kNumLevels) - 1);
-}
-
-/// Full cascade — all usable levels (skips contention-prone coarse end).
-void vhfLOD_Full(out int loLvl, out int hiLvl)
-{
-    loLvl = vhfMinUsableLevel();
-    hiLvl = int(kNumLevels) - 1;
-}
-
-/// Fixed single level — caller picks.
+/// Fixed single level — for ablation (single-level testing).
 void vhfLOD_Fixed(int level, out int loLvl, out int hiLvl)
 {
-    loLvl = clamp(level, 0, int(kNumLevels) - 1);
+    loLvl = clamp(level, 0, int(gNumLevels) - 1);
     hiLvl = loLvl;
-}
-
-/// Default LOD using gCamPos from cbuffer.
-void vhfLOD(float3 posA, out int loLvl, out int hiLvl)
-{
-    vhfLOD_Camera(posA, gCamPos, loLvl, hiLvl);
 }
 
 // ===========================================================================
@@ -267,11 +228,11 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
     return best;
 }
 
-/// Convenience: lookup using default LOD (camera-distance via cbuffer).
-VHFResult vhfLookup(float3 posA, float3 posB, float3 camPos)
+/// Convenience: lookup using full cascade.
+VHFResult vhfLookup(float3 posA, float3 posB)
 {
     int lo, hi;
-    vhfLOD_Camera(posA, camPos, lo, hi);
+    vhfLOD(lo, hi);
     return vhfLookupRange(posA, posB, lo, hi);
 }
 
@@ -280,7 +241,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 camPos)
 // Eliminates inline duplication in consumer passes.
 //
 // Minimal signature: two arbitrary endpoints A, B of a visibility query.
-// camPos comes from VisCacheParams cbuffer (same for all pixels in a frame).
+// LOD is full cascade (L0..N-1); contention handled by read-before-write.
 //
 // Usage (any pass):
 //   VHFGateResult g = vhfGate(posA, posB, rand01);
@@ -303,12 +264,12 @@ struct VHFGateResult
 /// posA, posB: arbitrary endpoints of the visibility query.
 /// xi: uniform random in [0,1) for RR coin flip.
 /// contribLuminance > 0 enables firefly-aware adaptive pMin (§10.1).
-/// Uses default camera-distance LOD from cbuffer.
+/// Uses full cascade LOD.
 VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f)
 {
     int lo, hi;
-    vhfLOD(posA, lo, hi);
+    vhfLOD(lo, hi);
     return vhfGateRange(posA, posB, lo, hi, xi, contribLuminance);
 }
 
@@ -384,18 +345,18 @@ VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
                                     float contribLuminance = 0.f)
 {
     int lo, hi;
-    vhfLOD(posA, lo, hi);
+    vhfLOD(lo, hi);
     float xi = vhfDeterministicXi(posA, posB, hi);
     return vhfGateRange(posA, posB, lo, hi, xi, contribLuminance);
 }
 
 /// Phase 2: after tracing, compute final CV+RRR weight and insert into cache.
-/// Uses default camera-distance LOD from cbuffer.
+/// Uses full cascade LOD.
 /// Returns fractional visWeight in [0, 1].
 float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
 {
     int lo, hi;
-    vhfLOD(posA, lo, hi);
+    vhfLOD(lo, hi);
     vhfInsertRange(posA, posB, V, lo, hi);
     return g.mu + (V - g.mu) * g.invP;
 }
@@ -416,7 +377,13 @@ float vhfCommitRange(float3 posA, float3 posB, float V,
 // INSERT with explicit LOD range.
 // Coarse-to-fine cascaded variance gate: write L0, check its variance to
 // decide L1, write L1, check its variance to decide L2, etc.
-// Uses the post-increment packed value directly — no extra parent lookup.
+//
+// Dynamic contention avoidance (read-before-write):
+// Before the InterlockedAdd, read the entry. If it's already converged
+// (total >= boot AND var <= threshold), skip the atomic entirely.
+// Coarse levels get many updates → converge fast → further writes are
+// skipped → contention is self-limiting. No static threshold needed.
+//
 // Single InterlockedAdd keeps vis and total always in sync.
 // Inline overflow decay: subtract 1/8 when total > 0xE000.
 // ---------------------------------------------------------------------------
@@ -439,6 +406,24 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
         // Set fingerprint if slot was empty
         if (gVHFTable[slot].fingerprint == 0u)
             gVHFTable[slot].fingerprint = fp;
+
+        // --- Read-before-write contention skip ---
+        // If this entry is already converged, skip the atomic.
+        // This is the primary dynamic contention avoidance mechanism:
+        // coarse levels converge fast (many threads → many samples),
+        // so they self-limit after convergence — no static threshold needed.
+        {
+            uint packed = gVHFTable[slot].packed;
+            uint total  = packed & 0xFFFFu;
+            if (total >= gBootThreshold)
+            {
+                uint vis    = packed >> 16u;
+                float mu    = float(vis) / float(total);
+                float var   = mu * (1.0f - mu);
+                if (var <= gVarThreshold)
+                    break;  // converged — skip this and all finer levels
+            }
+        }
 
         // Atomic packed increment: vis in high 16 bits, total in low 16 bits
         uint delta = (visVal << 16u) | 1u;
@@ -473,10 +458,10 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
     }
 }
 
-/// Convenience: insert using camera-distance LOD.
-void vhfInsert(float3 posA, float3 posB, float V, float3 camPos)
+/// Convenience: insert using full cascade.
+void vhfInsert(float3 posA, float3 posB, float V)
 {
     int lo, hi;
-    vhfLOD_Camera(posA, camPos, lo, hi);
+    vhfLOD(lo, hi);
     vhfInsertRange(posA, posB, V, lo, hi);
 }

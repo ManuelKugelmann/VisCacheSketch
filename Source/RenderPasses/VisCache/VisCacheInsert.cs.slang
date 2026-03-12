@@ -23,8 +23,6 @@ struct PendingInsert
 
 StructuredBuffer<PendingInsert>  gPendingInserts;
 RWStructuredBuffer<uint>         gPendingCount;   // [0] = count
-cbuffer InsertCB { float3 gCamPos; uint _p; }
-
 [numthreads(64, 1, 1)]
 void csInsert(uint3 tid : SV_DispatchThreadID)
 {
@@ -33,9 +31,9 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
 
     PendingInsert ins = gPendingInserts[tid.x];
 
-    // Distance-gated LOD range
+    // Full cascade — read-before-write in VisCache.slang handles contention.
     int lo, hi;
-    vhfLOD_Camera(ins.posA, gCamPos, lo, hi);
+    vhfLOD(lo, hi);
 
     for (int lvl = lo; lvl <= hi; lvl++)
     {

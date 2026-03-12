@@ -109,12 +109,12 @@ for pass_name in ["DI", "GI", "PT"]:
 # All 5 ablation bools must be settable via createPass() properties.
 # ---------------------------------------------------------------------------
 viscache_ablation_keys = {
-    "enableVisCacheDistanceLOD", "enableVisCacheVarianceGate",
+    "enableVisCacheVarianceGate",
     "enableVisCacheWarpReduction", "enableVisCacheDecay",
     "enableVisCachePressureEvict"
 }
-check("VisCache ablation: 5 toggles (A–E) are property-accessible",
-      len(viscache_ablation_keys) == 5,
+check("VisCache ablation: 4 toggles (B–E) are property-accessible",
+      len(viscache_ablation_keys) == 4,
       f"keys={sorted(viscache_ablation_keys)}")
 
 # Each ablation disables exactly one feature while keeping others on
@@ -122,8 +122,8 @@ for key in sorted(viscache_ablation_keys):
     defaults = {k: True for k in viscache_ablation_keys}
     defaults[key] = False
     active_count = sum(1 for v in defaults.values() if v)
-    check(f"VisCache ablation: disabling {key} keeps {active_count}/5 active",
-          active_count == 4,
+    check(f"VisCache ablation: disabling {key} keeps {active_count}/4 active",
+          active_count == 3,
           f"{key}=False, rest=True")
 
 # ---------------------------------------------------------------------------
@@ -133,8 +133,8 @@ for key in sorted(viscache_ablation_keys):
 viscache_all_keys = viscache_ablation_keys | {
     "enableVisCacheRevalidation", "enableVisCacheLightSelection"
 }
-check("VisCache: 7 enableVisCache* flags (5 ablation + 2 feature)",
-      len(viscache_all_keys) == 7,
+check("VisCache: 6 enableVisCache* flags (4 ablation + 2 feature)",
+      len(viscache_all_keys) == 6,
       f"keys={sorted(viscache_all_keys)}")
 
 check("VisCache: all flags use enableVisCache prefix",

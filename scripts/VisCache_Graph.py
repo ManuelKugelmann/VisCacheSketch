@@ -24,9 +24,6 @@ def set_ablation(visCache, cfg):
 
 ABLATION_FULL = {}  # All features on — paper result
 
-ABLATION_MINUS_A = {   # Disable distance-gated LOD
-    "enableVisCacheDistanceLOD": False,
-}
 ABLATION_MINUS_B = {   # Disable variance-gated write depth
     "enableVisCacheVarianceGate": False,
 }
@@ -39,13 +36,8 @@ ABLATION_MINUS_D = {   # Disable inline CAS decay
 ABLATION_MINUS_E = {   # Disable pressure-scaled eviction
     "enableVisCachePressureEvict": False,
 }
-ABLATION_FINEST_ONLY = {   # Multilevel vs. finest-level-only comparison
-    "minLevel": 2,
-    "maxLevel": 2,
-}
-ABLATION_COARSEST_ONLY = {
-    "minLevel": 0,
-    "maxLevel": 0,
+ABLATION_SINGLE_LEVEL = {   # Single-level (N=1) vs. multilevel comparison
+    "numLevels": 1,
 }
 
 ACTIVE_ABLATION = ABLATION_FULL   # <-- CHANGE THIS LINE
@@ -76,13 +68,13 @@ def render_graph_VisCache():
         "fireflyBudget":   0.05,
         "decayPeriod":     300,       # auto-tuned by PI controller
         "decayPeriodMax":  600,
-        "minLevel":        0,
-        "maxLevel":        2,
+        "numLevels":       3,
+        "cellCoarse":      10.0,
+        "cellFine":        0.16,
         "enableVisCacheRevalidation":   True,
         "enableVisCacheLightSelection": True,
         "enableVisCacheWarpReduction":  True,
         "enableVisCacheVarianceGate":   True,
-        "enableVisCacheDistanceLOD":    True,
         "enableVisCacheDecay":          True,
         "enableVisCachePressureEvict":  True,
     })

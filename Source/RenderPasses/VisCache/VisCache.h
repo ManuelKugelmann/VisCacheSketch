@@ -47,17 +47,17 @@ public:
         float    varThreshold    = 0.10f;       ///< Variance gate for write depth
         float    pMin            = 0.05f;       ///< Min RR survival probability
         float    fireflyBudget   = 0.05f;       ///< Adaptive pMin scale
+        uint32_t numLevels       = 3u;          ///< Arbitrary N LOD levels
+        float    cellCoarse      = 10.0f;       ///< L0 cell size (world units)
+        float    cellFine        = 0.16f;       ///< L_{N-1} cell size (world units)
         uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=off)
         uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling
         bool     enableVisCacheRevalidation    = true;  ///< CV+RRR shadow ray gating (§11.3)
         bool     enableVisCacheLightSelection = true;  ///< Cached mu in target function (§11.1)
         bool     enableVisCacheWarpReduction  = true;  ///< SM 6.5 WaveMatch (ablation C)
         bool     enableVisCacheVarianceGate   = true;  ///< Ablation B
-        bool     enableVisCacheDistanceLOD    = true;  ///< Ablation A
         bool     enableVisCacheDecay          = true;  ///< Ablation D
         bool     enableVisCachePressureEvict  = true;  ///< Ablation E
-        int      minLevel              = 0;     ///< For finest-only: set to 2
-        int      maxLevel              = 2;     ///< For coarsest-only: set to 0
     };
 
     const Params& getParams() const { return mParams; }

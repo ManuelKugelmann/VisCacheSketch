@@ -34,13 +34,21 @@ OVERFLOW_TH = 0xE000
 P_MIN       = 0.05
 FIREFLY_BDG = 0.05
 K_MU_MIN    = 0.05
-K_FOOT_MIN  = 4.0
-K_FOOT_MAX  = 64.0
 
-# Symmetric cell sizes — both endpoints use the same cell size per level.
-# Matches VisCache.slang vhfCellSize(): geometric progression, coarse to fine.
-# Future: independent per-endpoint LOD (see docs/INDEPENDENT_ENDPOINT_LOD.md).
-CELL = [10.0, 1.25, 0.08]
+# Scale-agnostic: N levels, geometric from coarse to fine (symmetric A=B).
+NUM_LEVELS  = 3
+CELL_COARSE = 10.0
+CELL_FINE   = 0.16
+
+def cell_size(lvl):
+    """Mirror of VisCache.slang vhfCellSize — geometric interpolation."""
+    if NUM_LEVELS <= 1:
+        return CELL_COARSE
+    t = lvl / (NUM_LEVELS - 1)
+    return CELL_COARSE * math.exp(t * math.log(CELL_FINE / CELL_COARSE))
+
+# Precompute for backward compat with tests that index CELL_SIZES[lvl]
+CELL_SIZES = [cell_size(i) for i in range(NUM_LEVELS)]
 
 def pcg(x):
     x = (x * 747796405 + 2891336453) & 0xFFFFFFFF
@@ -92,8 +100,9 @@ def find_slot(table, addr0, fp, allow_insert):
     return -1
 
 def insert(table, posA, posB, V, lvl=0):
-    qa = jitter_quantize(posA, CELL[lvl], 0xAA ^ lvl)
-    qb = jitter_quantize(posB, CELL[lvl], 0xBB ^ lvl)
+    cs = cell_size(lvl)
+    qa = jitter_quantize(posA, cs, 0xAA ^ lvl)
+    qb = jitter_quantize(posB, cs, 0xBB ^ lvl)
     fp   = vhf_fp(qa, qb, lvl)
     addr = vhf_addr(qa, qb, lvl)
     slot = find_slot(table, addr, fp, allow_insert=True)
@@ -113,8 +122,9 @@ def insert(table, posA, posB, V, lvl=0):
     return True
 
 def lookup(table, posA, posB, lvl=0):
-    qa = jitter_quantize(posA, CELL[lvl], 0xAA ^ lvl)
-    qb = jitter_quantize(posB, CELL[lvl], 0xBB ^ lvl)
+    cs = cell_size(lvl)
+    qa = jitter_quantize(posA, cs, 0xAA ^ lvl)
+    qb = jitter_quantize(posB, cs, 0xBB ^ lvl)
     fp   = vhf_fp(qa, qb, lvl)
     addr = vhf_addr(qa, qb, lvl)
     slot = find_slot(table, addr, fp, allow_insert=False)
@@ -128,11 +138,9 @@ def lookup(table, posA, posB, lvl=0):
     mu  = vis / total
     return mu, mu * (1.0 - mu)
 
-def distance_gated_lod(d):
-    """Mirror of VisCache.slang LOD selection."""
-    lo = max(0, min(2, int(math.floor(math.log2(max(d, 1e-6) / K_FOOT_MAX)))))
-    hi = max(0, min(2, int(math.floor(math.log2(max(d, 1e-6) / K_FOOT_MIN)))))
-    return lo, hi
+def full_cascade_lod():
+    """Mirror of VisCache.slang vhfLOD — full cascade L0..N-1."""
+    return 0, NUM_LEVELS - 1
 
 def background_decay(table, frame, decay_period):
     """Mirror of VisCacheDecay.cs.slang stride-based sweep."""
@@ -402,30 +410,36 @@ def test_multilevel_independence():
         print(f"  PASS: L{lvl} gt={gt:.2f}  mu={mu:.4f}  err={err:.4f}")
 
 # ---------------------------------------------------------------------------
-# Test 10: Distance-gated LOD selection
+# Test 10: Full-cascade LOD + geometric cell size interpolation
 # ---------------------------------------------------------------------------
 def test_distance_gated_lod():
-    print("Test 10: Distance-gated LOD selection")
-    # Very close → fine levels available
-    lo, hi = distance_gated_lod(1.0)
-    assert lo == 0, f"FAIL: d=1.0 expected lo=0 got {lo}"
-    # At d=1.0: log2(1/64)=-6 → clamp 0, log2(1/4)=-2 → clamp 0
-    # Both clamp to 0 at very short range
+    print("Test 10: Full-cascade LOD + cell size interpolation")
+    # Full cascade always returns (0, N-1)
+    lo, hi = full_cascade_lod()
+    assert lo == 0, f"FAIL: expected lo=0 got {lo}"
+    assert hi == NUM_LEVELS - 1, f"FAIL: expected hi={NUM_LEVELS-1} got {hi}"
 
-    # Medium distance → should include level 1
-    lo, hi = distance_gated_lod(16.0)
-    # log2(16/64)=log2(0.25)=-2 → clamp 0
-    # log2(16/4)=log2(4)=2 → clamp 2
-    assert lo == 0, f"FAIL: d=16 expected lo=0 got {lo}"
-    assert hi == 2, f"FAIL: d=16 expected hi=2 got {hi}"
+    # Cell sizes: geometric interpolation, coarse to fine
+    assert abs(cell_size(0) - CELL_COARSE) < 1e-6, f"FAIL: L0 should be CELL_COARSE={CELL_COARSE}"
+    assert abs(cell_size(NUM_LEVELS - 1) - CELL_FINE) < 1e-6, f"FAIL: L{NUM_LEVELS-1} should be CELL_FINE={CELL_FINE}"
 
-    # Far distance → coarse only
-    lo, hi = distance_gated_lod(256.0)
-    # log2(256/64)=2, log2(256/4)=6→clamp 2
-    assert lo == 2, f"FAIL: d=256 expected lo=2 got {lo}"
-    assert hi == 2, f"FAIL: d=256 expected hi=2 got {hi}"
+    # Monotonically decreasing
+    for i in range(NUM_LEVELS - 1):
+        assert cell_size(i) > cell_size(i + 1), f"FAIL: cell_size({i})={cell_size(i)} <= cell_size({i+1})={cell_size(i+1)}"
 
-    print(f"  PASS: LOD bounds correct for d=1, 16, 256")
+    # Works with arbitrary N
+    import types
+    saved = NUM_LEVELS
+    for n in [1, 2, 5, 8]:
+        globals()['NUM_LEVELS'] = n
+        cs0 = cell_size(0)
+        csN = cell_size(max(0, n - 1))
+        assert abs(cs0 - CELL_COARSE) < 1e-6, f"FAIL: N={n} L0 != CELL_COARSE"
+        if n > 1:
+            assert abs(csN - CELL_FINE) < 1e-6, f"FAIL: N={n} L{n-1} != CELL_FINE"
+    globals()['NUM_LEVELS'] = saved
+
+    print(f"  PASS: full cascade (0, {NUM_LEVELS-1}), cell sizes monotonic, N-agnostic")
 
 # ---------------------------------------------------------------------------
 # Test 11: Firefly-suppressed RR clamps high-contribution traces
