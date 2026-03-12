@@ -4,8 +4,8 @@
  * Visibility Cache — Core Data Structure
  * Kugelmann 2026, extending Kugelmann 2006
  *
- * Three-level spatial hash table caching pairwise visibility between
- * surface regions and light/secondary-hit regions.
+ * N-level spatial hash table caching pairwise visibility between
+ * arbitrary endpoint pairs A and B (canonical symmetric cell sizes).
  *
  * Addressing: jitter-before-quantize [Binder et al. 2018]
  * Hash:       PCG3D [Jarzynski & Olano 2020]
@@ -16,14 +16,28 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Cell sizes (world units) — calibrated for viewing distances 2–20 m,
-// exterior/interior mixed scenes (Bistro, Sponza).
-// Asymmetric: endpoint A (shading point) finer than B (light/secondary hit).
-// See §5.2 and future-work note on camera-adaptive scaling.
+// Cell sizes (world units).
+// Canonical: both endpoints A and B use the same cell size per level.
+// Geometric progression from coarse (L0) to fine (L_max), base factor ~8×.
+// Calibrated for viewing distances 2–20 m, mixed scenes (Bistro, Sponza).
+//
+// Future work: asymmetric A/B cell sizes (shading point finer than light).
 // ---------------------------------------------------------------------------
 static const uint  kNumLevels    = 3;
-static const float kCellA[3]     = { 10.0f, 1.25f, 0.08f };  // metres
-static const float kCellB[3]     = { 10.0f, 2.50f, 0.62f };
+static const float kCellCoarse   = 10.0f;   ///< L0 cell size (metres)
+static const float kCellFine     = 0.16f;   ///< L_{max} cell size (metres)
+
+/// Cell size for level `lvl` — geometric interpolation, coarse to fine.
+float vhfCellSize(int lvl)
+{
+    float t = (kNumLevels <= 1) ? 0.f : float(lvl) / float(kNumLevels - 1);
+    return kCellCoarse * exp(t * log(kCellFine / kCellCoarse));
+}
+
+// Maximum cell size below which contention is acceptable.
+// Coarser levels cover huge world regions → many threads hit the same cell
+// → atomics contention. Skip levels where cell > this threshold.
+static const float kMaxUsableCellSize = 20.0f;  // metres
 
 // LOD footprint bounds (pixels) for distance-gated selection
 static const float kFootprintMin = 4.0f;
@@ -162,21 +176,32 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 // LOD selection — separated from core lookup/insert so callers can override.
 // ===========================================================================
 
+/// Lowest usable level — skip levels where cell > kMaxUsableCellSize
+/// to avoid heavy atomic contention at coarse LODs.
+int vhfMinUsableLevel()
+{
+    for (int lvl = 0; lvl < int(kNumLevels); lvl++)
+        if (vhfCellSize(lvl) <= kMaxUsableCellSize) return lvl;
+    return int(kNumLevels) - 1;
+}
+
 // ---------------------------------------------------------------------------
 // Camera-distance LOD [Gautron, SIGGRAPH Talks 2020]
 // Default strategy: projected cell footprint in pixels.
+// Clamps coarse end to skip contention-prone levels.
 // ---------------------------------------------------------------------------
 void vhfLOD_Camera(float3 posA, float3 camPos, out int loLvl, out int hiLvl)
 {
     float d = length(posA - camPos);
-    loLvl = clamp(int(log2(d / kFootprintMax)), 0, int(kNumLevels) - 1);
-    hiLvl = clamp(int(log2(d / kFootprintMin)), 0, int(kNumLevels) - 1);
+    int minLvl = vhfMinUsableLevel();
+    loLvl = clamp(int(log2(d / kFootprintMax)), minLvl, int(kNumLevels) - 1);
+    hiLvl = clamp(int(log2(d / kFootprintMin)), minLvl, int(kNumLevels) - 1);
 }
 
-/// Full cascade — always scan all levels (L0 → L_max).
+/// Full cascade — all usable levels (skips contention-prone coarse end).
 void vhfLOD_Full(out int loLvl, out int hiLvl)
 {
-    loLvl = 0;
+    loLvl = vhfMinUsableLevel();
     hiLvl = int(kNumLevels) - 1;
 }
 
@@ -212,8 +237,9 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
 
     for (int lvl = loLvl; lvl <= hiLvl; lvl++)
     {
-        int3 qa = jitterQuantize(posA, kCellA[lvl], 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(posB, kCellB[lvl], 0xBBu ^ uint(lvl));
+        float cs = vhfCellSize(lvl);
+        int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(lvl));
+        int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(lvl));
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
@@ -368,8 +394,9 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
 
     for (int lvl = loLvl; lvl <= hiLvl; lvl++)
     {
-        int3 qa = jitterQuantize(posA, kCellA[lvl], 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(posB, kCellB[lvl], 0xBBu ^ uint(lvl));
+        float cs = vhfCellSize(lvl);
+        int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(lvl));
+        int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(lvl));
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));

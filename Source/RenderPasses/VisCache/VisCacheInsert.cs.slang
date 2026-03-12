@@ -35,12 +35,13 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
 
     // Distance-gated LOD range
     int lo, hi;
-    vhfDistLOD(ins.posA, gCamPos, lo, hi);
+    vhfLOD_Camera(ins.posA, gCamPos, lo, hi);
 
     for (int lvl = lo; lvl <= hi; lvl++)
     {
-        int3 qa = jitterQuantize(ins.posA, kCellA[lvl], 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(ins.posB, kCellB[lvl], 0xBBu ^ uint(lvl));
+        float cs = vhfCellSize(lvl);
+        int3 qa = jitterQuantize(ins.posA, cs, 0xAAu ^ uint(lvl));
+        int3 qb = jitterQuantize(ins.posB, cs, 0xBBu ^ uint(lvl));
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
