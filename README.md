@@ -1,6 +1,6 @@
 # Unbiased World-Space Visibility Caching for Real-Time ReSTIR Path Tracing
 
-**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
+**[Paper sketch](viscachepaper/paper-sketch.md)** | **[Combined paper](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)** | **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)**
 
 **Author:** Manuel Kugelmann
 **Target venue:** EGSR / HPG 2026
@@ -230,7 +230,7 @@ Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU wit
 git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && scripts\quickstart.bat
 ```
 
-This downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro.
+This clones the repo, downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro. See **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)** for full details.
 
 **Options:**
 
