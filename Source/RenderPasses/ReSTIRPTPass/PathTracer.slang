@@ -40,6 +40,14 @@ uint getAllowedBSDFFlags(bool isSpecularBounce)
     else return -1;
 }
 
+/// Porting shim: DQLin's getBSDFLobes(sd) -> Falcor 8.0 IMaterialInstance.getLobeTypes(sd).
+uint getBSDFLobes(const ShadingData sd)
+{
+    let lod = ExplicitLodTextureSampler(0.0f);
+    let mi = gScene.materials.getMaterialInstance(sd, lod);
+    return mi.getLobeTypes(sd);
+}
+
 struct PathTracer
 {
     RestirPathTracerParams params;                  ///< Runtime parameters.
