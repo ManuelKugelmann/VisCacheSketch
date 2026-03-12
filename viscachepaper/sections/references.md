@@ -36,6 +36,8 @@
 
 - [Müller et al. 2022] T. Müller, A. Evans, C. Schied, and A. Keller. "Instant Neural Graphics Primitives with a Multiresolution Hash Encoding." *ACM Trans. Graph.*, 41(4):102, 2022.
 
+- [ODE / Smith 2001] R. Smith. *Open Dynamics Engine (ODE)*. 2001–2004. `dHashSpace` broad-phase collision detection via spatial hashing. [https://ode.org/](https://ode.org/)
+
 - [Ouyang et al. 2021] Y. Ouyang, S. Liu, M. Kettunen, M. Pharr, and J. Pantaleoni. "ReSTIR GI: Path Resampling for Real-Time Path Tracing." *Computer Graphics Forum*, 40(8):17–29, 2021.
 
 - [Popov et al. 2013] S. Popov, R. Ramamoorthi, F. Durand, and G. Drettakis. "Adaptive Quantization Visibility Caching." *Eurographics Symposium on Rendering*, 2013.
