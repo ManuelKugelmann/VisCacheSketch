@@ -21,7 +21,8 @@
 // Geometric progression from coarse (L0) to fine (L_max), base factor ~8×.
 // Calibrated for viewing distances 2–20 m, mixed scenes (Bistro, Sponza).
 //
-// Future work: asymmetric A/B cell sizes (shading point finer than light).
+// Symmetric cells enable canonicalization (V(A,B) == V(B,A)).
+// Future: independent per-endpoint LOD — see docs/INDEPENDENT_ENDPOINT_LOD.md.
 // ---------------------------------------------------------------------------
 static const uint  kNumLevels    = 3;
 static const float kCellCoarse   = 10.0f;   ///< L0 cell size (metres)
