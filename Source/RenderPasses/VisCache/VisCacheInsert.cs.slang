@@ -31,11 +31,8 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
 
     PendingInsert ins = gPendingInserts[tid.x];
 
-    // Full cascade — read-before-write in VisCache.slang handles contention.
-    int lo, hi;
-    vhfLOD(lo, hi);
-
-    for (int lvl = lo; lvl <= hi; lvl++)
+    // Full cascade L0..N-1 with maturity gate + WaveMatch coalescing.
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);
         int3 qa, qb;

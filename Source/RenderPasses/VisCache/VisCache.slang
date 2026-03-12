@@ -11,7 +11,7 @@
  * Addressing: jitter-before-quantize [Binder et al. 2018]
  * Hash:       PCG3D [Jarzynski & Olano 2020]
  * LOD:        full cascade L0..N-1, variance-gated (no distance heuristic)
- * Contention: read-before-write skip at converged entries
+ * Contention: maturity gate skips entries with enough samples
  * Estimator:  CV+RRR [Szirmay-Kalos et al. 2005 / Kugelmann 2006]
  ***************************************************************************/
 
@@ -53,7 +53,6 @@ cbuffer VisCacheParams
 };
 
 /// Cell size for level `lvl` — geometric interpolation, coarse to fine.
-/// Scale-agnostic: driven entirely by gCellCoarse, gCellFine, gNumLevels.
 float vhfCellSize(int lvl)
 {
     float t = (gNumLevels <= 1u) ? 0.f : float(lvl) / float(gNumLevels - 1u);
@@ -85,9 +84,7 @@ uint3 pcg3d(uint3 v)
 // ---------------------------------------------------------------------------
 int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 {
-    // Quantize without jitter first to get a stable base index
     int3 baseIdx = int3(floor(pos / cellSize));
-    // Deterministic per-cell jitter in [−0.5, +0.5) cell widths
     uint3 r = pcg3d(uint3(baseIdx) ^ seed);
     float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
     return int3(floor((pos + jitter * cellSize) / cellSize));
@@ -102,7 +99,6 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
 {
     qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
     qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
-    // Lexicographic swap: ensure qa <= qb so (A,B) and (B,A) are identical.
     if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
     {
         int3 tmp = qa; qa = qb; qb = tmp;
@@ -110,8 +106,7 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
 }
 
 // ---------------------------------------------------------------------------
-// Address and fingerprint functions
-// Two different hash chains to keep them independent [Binder et al. 2018].
+// Address and fingerprint — two independent hash chains [Binder et al. 2018].
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
@@ -137,13 +132,12 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // Double-hash probe sequence [Binder et al. 2018]
 // h2 is derived from fingerprint (odd, ensures full table coverage).
 // Pressure-scaled eviction: steps 0–1 protected, step ≥2 may evict.
-// Returns slot index, or -1 if probe exhausted.
 // ---------------------------------------------------------------------------
 static const uint kMaxProbe = 8u;
 
 int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 {
-    uint h2 = fp | 1u;  // odd step
+    uint h2 = fp | 1u;
     for (uint i = 0u; i < kMaxProbe; i++)
     {
         uint slot = (addr0 + i * h2) & (gTableCapacity - 1u);
@@ -154,15 +148,12 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 
         if (allowInsert)
         {
-            // Empty slot: take it
             if (efp == 0u && gVHFTable[slot].packed == 0u)
                 return int(slot);
 
-            // Pressure-scaled eviction: never evict steps 0–1
             if (i >= 2u)
             {
                 uint total = gVHFTable[slot].packed & 0xFFFFu;
-                // Eviction threshold doubles each step — long chains self-heal
                 uint threshold = 4u << (i - 2u);
                 if (total < threshold)
                     return int(slot);
@@ -173,39 +164,11 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 }
 
 // ===========================================================================
-// LOD selection — full cascade L0..N-1, variance gate handles the rest.
-//
-// No distance heuristic, no static contention threshold.
-// Coarse levels converge fast (many updates) → read-before-write in insert
-// skips the atomic once converged. This is dynamic contention avoidance:
-// contention at L0 is self-limiting because L0 converges quickly.
+// LOOKUP — coarse-to-fine cascade L0..N-1.
+// Returns the finest mature result. Stops on: no entry, too few samples,
+// or low variance (converged region — finer levels would agree).
 // ===========================================================================
-
-/// Full cascade: always L0..N-1. The variance gate in lookup and the
-/// read-before-write skip in insert handle level selection dynamically.
-void vhfLOD(out int loLvl, out int hiLvl)
-{
-    loLvl = 0;
-    hiLvl = int(gNumLevels) - 1;
-}
-
-/// Fixed single level — for ablation (single-level testing).
-void vhfLOD_Fixed(int level, out int loLvl, out int hiLvl)
-{
-    loLvl = clamp(level, 0, int(gNumLevels) - 1);
-    hiLvl = loLvl;
-}
-
-// ===========================================================================
-// Core LOOKUP — explicit LOD range, no LOD policy dependency.
-// ===========================================================================
-
-// ---------------------------------------------------------------------------
-// Coarse-to-fine LOOKUP with explicit LOD range.
-// Returns the finest converged result within [loLvl, hiLvl].
-// Four stopping conditions: level bounds, no entry, too few samples, low var.
-// ---------------------------------------------------------------------------
-VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
+VHFResult vhfLookup(float3 posA, float3 posB)
 {
     VHFResult best;
     best.mu    = 0.5f;
@@ -213,7 +176,7 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
     best.level = -1;
     best.valid = false;
 
-    for (int lvl = loLvl; lvl <= hiLvl; lvl++)
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);
         int3 qa, qb;
@@ -223,11 +186,11 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
         uint addr = vhfAddr(qa, qb, uint(lvl));
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
 
-        if (slot < 0) break;  // no entry at this level — stop
+        if (slot < 0) break;
 
         VHFEntry e  = gVHFTable[slot];
         uint total  = e.packed & 0xFFFFu;
-        if (total < gBootThreshold) break;  // too few samples — not trusted
+        if (total < gBootThreshold) break;
 
         uint  vis = e.packed >> 16u;
         float mu  = float(vis) / float(total);
@@ -244,30 +207,18 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
     return best;
 }
 
-/// Convenience: lookup using full cascade.
-VHFResult vhfLookup(float3 posA, float3 posB)
-{
-    int lo, hi;
-    vhfLOD(lo, hi);
-    return vhfLookupRange(posA, posB, lo, hi);
-}
-
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // Two-phase gate/commit API — core CV+RRR estimator.
-// Eliminates inline duplication in consumer passes.
-//
-// Minimal signature: two arbitrary endpoints A, B of a visibility query.
-// LOD is full cascade (L0..N-1); contention handled by read-before-write.
 //
 // Usage (any pass):
-//   VHFGateResult g = vhfGate(posA, posB, rand01);
+//   VHFGateResult g = vhfGateDeterministic(posA, posB);
 //   if (g.shouldTrace) {
-//       float V = <pass-specific trace call>;
+//       float V = <trace>;
 //       visWeight = vhfCommit(posA, posB, V, g);
 //   } else {
 //       visWeight = g.visWeight;
 //   }
-// ---------------------------------------------------------------------------
+// ===========================================================================
 struct VHFGateResult
 {
     bool  shouldTrace;  ///< true = caller must trace and call vhfCommit
@@ -277,29 +228,16 @@ struct VHFGateResult
 };
 
 /// Phase 1: lookup + RR decision.
-/// posA, posB: arbitrary endpoints of the visibility query.
 /// xi: uniform random in [0,1) for RR coin flip.
-/// contribLuminance > 0 enables firefly-aware adaptive pMin (§10.1).
-/// Uses full cascade LOD.
+/// contribLuminance > 0 enables firefly-aware adaptive pMin.
 VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f)
 {
-    int lo, hi;
-    vhfLOD(lo, hi);
-    return vhfGateRange(posA, posB, lo, hi, xi, contribLuminance);
-}
-
-/// Phase 1 with explicit LOD range — core, LOD-agnostic.
-VHFGateResult vhfGateRange(float3 posA, float3 posB,
-                            int loLvl, int hiLvl,
-                            float xi, float contribLuminance = 0.f)
-{
     VHFGateResult g;
-    VHFResult r = vhfLookupRange(posA, posB, loLvl, hiLvl);
+    VHFResult r = vhfLookup(posA, posB);
 
     if (!r.valid)
     {
-        // Cold miss — always trace. mu=0, invP=1 → commit returns V directly.
         g.shouldTrace = true;
         g.visWeight   = 0.f;
         g.mu          = 0.f;
@@ -307,7 +245,6 @@ VHFGateResult vhfGateRange(float3 posA, float3 posB,
         return g;
     }
 
-    // Compute RR probability.
     float pFloor = gPMin;
     if (contribLuminance > 0.f)
     {
@@ -318,75 +255,49 @@ VHFGateResult vhfGateRange(float3 posA, float3 posB,
 
     if (xi < p)
     {
-        // Trace correction ray.
         g.shouldTrace = true;
-        g.visWeight   = 0.f;  // placeholder — caller uses vhfCommit
+        g.visWeight   = 0.f;
         g.mu          = r.mu;
         g.invP        = 1.f / p;
     }
     else
     {
-        // No trace — use cached mean.
         g.shouldTrace = false;
         g.visWeight   = r.mu;
         g.mu          = r.mu;
-        g.invP        = 0.f;  // unused
+        g.invP        = 0.f;
     }
     return g;
 }
 
 // ---------------------------------------------------------------------------
 // Deterministic xi — derive RR coin flip from quantized cell coordinates.
-// Same (posA, posB) pair always gets the same xi within the finest usable
-// level, eliminating temporal flicker from stochastic RR.
-// No frame index: the cache's own convergence drives temporal adaptation.
+// Same (posA, posB) pair always gets the same xi, eliminating temporal flicker.
 // ---------------------------------------------------------------------------
-float vhfDeterministicXi(float3 posA, float3 posB, int hiLvl)
+float vhfDeterministicXi(float3 posA, float3 posB)
 {
+    int hiLvl = int(gNumLevels) - 1;
     float cs = vhfCellSize(hiLvl);
     int3 qa, qb;
     vhfQuantizePair(posA, posB, cs, uint(hiLvl), qa, qb);
-    // Third hash chain (salt 0xCCu) — independent of addr/fingerprint chains
     uint3 h = pcg3d(uint3(
         (uint(qa.x) ^ uint(qb.x)) + 0xCCu,
         (uint(qa.y) ^ uint(qb.y)) + 0xCCu,
         (uint(qa.z) ^ uint(qb.z)) + uint(hiLvl) * 0x13371337u
     ));
-    return float(h.x) / 4294967295.0f; // [0, 1]
+    return float(h.x) / 4294967295.0f;
 }
 
 /// Phase 1 with deterministic xi — no external random number needed.
-/// Same cell pair always gets the same RR decision → no temporal flicker.
 VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
                                     float contribLuminance = 0.f)
 {
-    int lo, hi;
-    vhfLOD(lo, hi);
-    float xi = vhfDeterministicXi(posA, posB, hi);
-    return vhfGateRange(posA, posB, lo, hi, xi, contribLuminance);
-}
-
-/// Phase 2: after tracing, compute final CV+RRR weight and insert into cache.
-/// Uses full cascade LOD.
-/// Returns fractional visWeight in [0, 1].
-float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
-{
-    int lo, hi;
-    vhfLOD(lo, hi);
-    vhfInsertRange(posA, posB, V, lo, hi);
-    return g.mu + (V - g.mu) * g.invP;
-}
-
-/// Phase 2 with explicit LOD range.
-float vhfCommitRange(float3 posA, float3 posB, float V,
-                      int loLvl, int hiLvl, VHFGateResult g)
-{
-    vhfInsertRange(posA, posB, V, loLvl, hiLvl);
-    return g.mu + (V - g.mu) * g.invP;
+    float xi = vhfDeterministicXi(posA, posB);
+    return vhfGate(posA, posB, xi, contribLuminance);
 }
 
 // ===========================================================================
-// Core INSERT — explicit LOD range, no LOD policy dependency.
+// INSERT — coarse-to-fine cascade L0..N-1 with two gates.
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -411,23 +322,21 @@ float vhfCommitRange(float3 posA, float3 posB, float V,
 bool vhfIsMature(uint addr, uint fp)
 {
     int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
-    if (slot < 0) return false;  // no entry → cold
+    if (slot < 0) return false;
 
     uint packed = gVHFTable[slot].packed;
     uint total  = packed & 0xFFFFu;
-    if (total < 2u) return false;  // need at least 2 samples for variance
+    if (total < 2u) return false;
 
     uint  vis = packed >> 16u;
     float mu  = float(vis) / float(total);
     float var = mu * (1.0f - mu);
 
-    // Required samples scales with variance: high-var cells need more.
     float required = var * float(gBootThreshold) / gVarThreshold;
     return float(total) >= required;
 }
 
-/// Inline overflow decay — subtract 1/8 of both counters when total > 0xE000.
-/// Returns the post-decay packed value (for cascaded variance gate check).
+/// Inline overflow decay — subtract 1/8 when total > 0xE000.
 uint vhfOverflowDecay(int slot, uint cur)
 {
     if ((cur & 0xFFFFu) > 0xE000u)
@@ -442,24 +351,19 @@ uint vhfOverflowDecay(int slot, uint cur)
 }
 
 // ---------------------------------------------------------------------------
-// INSERT with explicit LOD range.
-// Coarse-to-fine cascade with two gates:
+// INSERT — coarse-to-fine cascade with two gates:
 //
-// 1. Maturity gate (before write): if total >= boot, skip — the entry has
-//    enough samples. Decay periodically halves counts, temporarily un-maturing
-//    entries for fresh sampling. No coin flip needed.
+// 1. Maturity gate (before write): skip entries with enough samples.
+//    Decay periodically halves counts for revalidation.
 //
-// 2. Cascaded variance gate (after write): if var <= threshold, stop descending
-//    to finer levels — this region is smooth, finer detail is wasteful.
-//
-// Single InterlockedAdd keeps vis and total always in sync.
-// Inline overflow decay: subtract 1/8 when total > 0xE000.
+// 2. Cascaded variance gate (after write): if this level is smooth,
+//    stop descending — finer levels would agree.
 // ---------------------------------------------------------------------------
-void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
+void vhfInsert(float3 posA, float3 posB, float V)
 {
     uint visVal = (V > 0.5f) ? 1u : 0u;
 
-    for (int lvl = loLvl; lvl <= hiLvl; lvl++)
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);
         int3 qa, qb;
@@ -472,13 +376,11 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
         if (vhfIsMature(addr, fp)) continue;
 
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
-        if (slot < 0) continue;  // table full at this cell — skip
+        if (slot < 0) continue;
 
-        // Set fingerprint if slot was empty
         if (gVHFTable[slot].fingerprint == 0u)
             gVHFTable[slot].fingerprint = fp;
 
-        // Atomic packed increment: vis in high 16 bits, total in low 16 bits
         uint delta = (visVal << 16u) | 1u;
         uint prev;
         InterlockedAdd(gVHFTable[slot].packed, delta, prev);
@@ -493,15 +395,14 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
             float muCur  = float(visCur) / float(totalCur);
             float varCur = muCur * (1.0f - muCur);
             if (varCur <= gVarThreshold)
-                break;  // this level is smooth — no need to go finer
+                break;
         }
     }
 }
 
-/// Convenience: insert using full cascade.
-void vhfInsert(float3 posA, float3 posB, float V)
+/// Phase 2: after tracing, insert into cache and compute CV+RRR weight.
+float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
 {
-    int lo, hi;
-    vhfLOD(lo, hi);
-    vhfInsertRange(posA, posB, V, lo, hi);
+    vhfInsert(posA, posB, V);
+    return g.mu + (V - g.mu) * g.invP;
 }

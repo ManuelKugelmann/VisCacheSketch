@@ -149,7 +149,7 @@ def lookup(table, posA, posB, lvl=0):
     return mu, mu * (1.0 - mu)
 
 def full_cascade_lod():
-    """Mirror of VisCache.slang vhfLOD — full cascade L0..N-1."""
+    """Full cascade L0..N-1 (VisCache always uses this)."""
     return 0, NUM_LEVELS - 1
 
 def background_decay(table, frame, decay_period):
