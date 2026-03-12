@@ -51,7 +51,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 [Binder et al. 2018]: https://doi.org/10.1145/3214745.3214806
 [Jarzynski & Olano 2020]: https://jcgt.org/published/0009/03/02/
 [Gautron 2020]: https://doi.org/10.1145/3388767.3407365
-[2021]: https://link.springer.com/chapter/10.1007/978-1-4842-7185-8_41
+[Gautron 2021]: https://link.springer.com/chapter/10.1007/978-1-4842-7185-8_41
 [Stotko et al. 2025]: https://arxiv.org/abs/2511.21459
 
 ### ReSTIR integration
