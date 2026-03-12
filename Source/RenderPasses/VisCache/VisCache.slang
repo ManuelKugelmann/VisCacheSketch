@@ -131,7 +131,7 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // ---------------------------------------------------------------------------
 // Double-hash probe sequence [Binder et al. 2018]
 // h2 is derived from fingerprint (odd, ensures full table coverage).
-// Pressure-scaled eviction: steps 0–1 protected, step ≥2 may evict.
+// Pressure-scaled eviction: steps 0–2 protected, step ≥3 may evict.
 // ---------------------------------------------------------------------------
 static const uint kMaxProbe = 8u;
 
@@ -151,10 +151,10 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
             if (efp == 0u && gVHFTable[slot].packed == 0u)
                 return int(slot);
 
-            if (i >= 2u)
+            if (i >= 3u)
             {
                 uint total = gVHFTable[slot].packed & 0xFFFFu;
-                uint threshold = 4u << (i - 2u);
+                uint threshold = 8u << (i - 3u);
                 if (total < threshold)
                     return int(slot);
             }

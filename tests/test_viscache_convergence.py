@@ -104,9 +104,9 @@ def find_slot(table, addr0, fp, allow_insert):
         if allow_insert:
             if efp == 0 and packed == 0:
                 return slot
-            if i >= 2:
+            if i >= 3:
                 total = packed & 0xFFFF
-                threshold = 4 << (i - 2)
+                threshold = 8 << (i - 3)
                 if total < threshold:
                     return slot
     return -1
@@ -370,30 +370,30 @@ def test_pressure_eviction():
     for i in range(MAX_PROBE):
         slot = (test_addr + i * step) & (TABLE_CAP - 1)
         fake_fp = 0xBEEF0000 + i
-        total = 3 if i < 4 else 20  # steps 0-3: low total; steps 4-7: high
+        total = 5 if i < 5 else 20  # steps 0-4: low total; steps 5-7: high
         packed = total  # vis=0, total=total
         table[slot] = (fake_fp, packed)
 
-    # Steps 0-1 are protected (never evicted)
-    # Step 2: threshold=4, total=3 < 4 → should be evictable
-    # Step 3: threshold=8, total=3 < 8 → should be evictable
-    # find_slot should return step 2 (first evictable)
+    # Steps 0-2 are protected (never evicted)
+    # Step 3: threshold=8, total=5 < 8 → should be evictable
+    # Step 4: threshold=16, total=5 < 16 → should be evictable
+    # find_slot should return step 3 (first evictable)
     slot = find_slot(table, test_addr, test_fp, allow_insert=True)
-    expected_slot = (test_addr + 2 * step) & (TABLE_CAP - 1)
+    expected_slot = (test_addr + 3 * step) & (TABLE_CAP - 1)
     assert slot == expected_slot, (
-        f"FAIL: expected eviction at probe step 2 (slot {expected_slot}), "
+        f"FAIL: expected eviction at probe step 3 (slot {expected_slot}), "
         f"got slot {slot}"
     )
 
-    # Now set step 2's total above threshold so it's protected
-    table[expected_slot] = (0xBEEF0002, 5)  # total=5 >= threshold=4
+    # Now set step 3's total above threshold so it's protected
+    table[expected_slot] = (0xBEEF0003, 9)  # total=9 >= threshold=8
     slot = find_slot(table, test_addr, test_fp, allow_insert=True)
-    expected_slot_3 = (test_addr + 3 * step) & (TABLE_CAP - 1)
-    assert slot == expected_slot_3, (
-        f"FAIL: expected eviction at probe step 3 (slot {expected_slot_3}), "
+    expected_slot_4 = (test_addr + 4 * step) & (TABLE_CAP - 1)
+    assert slot == expected_slot_4, (
+        f"FAIL: expected eviction at probe step 4 (slot {expected_slot_4}), "
         f"got slot {slot}"
     )
-    print(f"  PASS: eviction respects graduated thresholds at probe depth 2+")
+    print(f"  PASS: eviction respects graduated thresholds at probe depth 3+")
 
 # ---------------------------------------------------------------------------
 # Test 9: Multi-level LOD independence
