@@ -91,7 +91,7 @@ Coalesces threads targeting the same L0 cell (10m grid — many pixels share the
 Auto-tunes `decayPeriod` (frames per full table sweep) based on eviction/insert ratio. Target: evict ~10% of inserts. Fast action: tunes down to 15 frames. Static scenes: tunes up to decayPeriodMax (default 600). Quality knobs (varThreshold, pMin) are never auto-tuned — only the decay rate.
 
 ### Mogwai graph ordering
-VisCache must execute before PathTracer, RTXDIPass, ReSTIRGIPass. It owns the table buffer; downstream passes retrieve it via InternalDictionary. If VisCache is not in the graph, all three downstream passes fall back to V=1 / full retrace with a logWarning.
+VisCache must execute before PathTracer, RTXDIPass, ReSTIRPTPass. It owns the table buffer; downstream passes retrieve it via InternalDictionary. If VisCache is not in the graph, all three downstream passes fall back to V=1 / full retrace with a logWarning.
 
 ---
 

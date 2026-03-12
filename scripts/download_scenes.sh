@@ -155,6 +155,62 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5. VeachAjar — Bitterli's rendering resources, converted to OBJ by DQLin
+#    Original scene: https://benedikt-bitterli.me/resources/ (Tungsten/PLY)
+#    DQLin converted to OBJ + added teapot variants and animated door for
+#    the ReSTIR PT demo. We fetch from DQLin's repo (the only OBJ source).
+# ---------------------------------------------------------------------------
+VEACHAJAR_REPO="https://github.com/DQLin/ReSTIR_PT"
+VEACHAJAR_SUBPATH="Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar"
+VEACHAJAR_DEST="$ROOT_DIR/Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar"
+
+if [ -d "$VEACHAJAR_DEST/models" ] && [ -d "$VEACHAJAR_DEST/textures" ]; then
+    echo "[scenes] VeachAjar already exists, skipping"
+else
+    echo ""
+    echo "[scenes] === VeachAjar (Bitterli scene, DQLin OBJ conversion) ==="
+    echo "[scenes] Source: github.com/DQLin/ReSTIR_PT"
+    echo "[scenes] Original: benedikt-bitterli.me/resources (veach-ajar)"
+    echo "[scenes] Size: ~62 MB (OBJ models + textures)"
+    echo "[scenes] Destination: Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/"
+    echo ""
+    read -rp "[scenes] Download VeachAjar? [y/N] " yn
+    case "$yn" in
+        [Yy]*)
+            echo "[scenes] Cloning DQLin/ReSTIR_PT (sparse, models+textures only)..."
+            VEACH_TMPDIR="$(mktemp -d /tmp/veach-ajar.XXXXXX)"
+
+            git clone --depth 1 --filter=blob:none --sparse \
+                "$VEACHAJAR_REPO" "$VEACH_TMPDIR/repo" 2>&1
+
+            cd "$VEACH_TMPDIR/repo"
+            git sparse-checkout set "$VEACHAJAR_SUBPATH/models" "$VEACHAJAR_SUBPATH/textures" 2>&1
+            cd "$ROOT_DIR"
+
+            # Copy models and textures to destination
+            mkdir -p "$VEACHAJAR_DEST/models" "$VEACHAJAR_DEST/textures"
+
+            if [ -d "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/models" ]; then
+                cp -r "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/models/"* "$VEACHAJAR_DEST/models/"
+            else
+                echo "[scenes] ERROR: models/ not found in cloned repo" >&2
+                rm -rf "$VEACH_TMPDIR"
+                exit 1
+            fi
+
+            if [ -d "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/textures" ]; then
+                cp -r "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/textures/"* "$VEACHAJAR_DEST/textures/"
+            fi
+
+            rm -rf "$VEACH_TMPDIR"
+            echo "[scenes] VeachAjar ready at $VEACHAJAR_DEST"
+            echo "[scenes] Note: .pyscene wrappers (DQLin/Falcor format) are in the repo."
+            ;;
+        *) echo "[scenes] Skipping VeachAjar" ;;
+    esac
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

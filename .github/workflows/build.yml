@@ -128,9 +128,9 @@ jobs:
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
           Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
-          # Copy ReSTIRGIPass plugin
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
+          # Copy ReSTIRPTPass plugin
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRPTPass" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/ReSTIRPTPass/*" "$Falcor/Source/RenderPasses/ReSTIRPTPass/" -Recurse -Force
 
           # Copy scripts
           New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
@@ -142,8 +142,8 @@ jobs:
           if ($content -notmatch "add_subdirectory\(VisCache\)") {
             Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
-          if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
+          if ($content -notmatch "add_subdirectory\(ReSTIRPTPass\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRPTPass)"
           }
 
           # ------------------------------------------------------------------
@@ -311,8 +311,8 @@ jobs:
           New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
           Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
 
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRGIPass" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/ReSTIRGIPass/*" "$Falcor/Source/RenderPasses/ReSTIRGIPass/" -Recurse -Force
+          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRPTPass" -Force | Out-Null
+          Copy-Item "Source/RenderPasses/ReSTIRPTPass/*" "$Falcor/Source/RenderPasses/ReSTIRPTPass/" -Recurse -Force
 
           New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
           Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
@@ -322,8 +322,8 @@ jobs:
           if ($content -notmatch "add_subdirectory\(VisCache\)") {
             Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
           }
-          if ($content -notmatch "add_subdirectory\(ReSTIRGIPass\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRGIPass)"
+          if ($content -notmatch "add_subdirectory\(ReSTIRPTPass\)") {
+            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRPTPass)"
           }
 
           # ------------------------------------------------------------------
@@ -482,16 +482,16 @@ jobs:
           FALCOR="${{ env.FALCOR_DIR }}"
           mkdir -p "${FALCOR}/Source/RenderPasses/VisCache"
           cp -r Source/RenderPasses/VisCache/* "${FALCOR}/Source/RenderPasses/VisCache/"
-          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRGIPass"
-          cp -r Source/RenderPasses/ReSTIRGIPass/* "${FALCOR}/Source/RenderPasses/ReSTIRGIPass/"
+          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRPTPass"
+          cp -r Source/RenderPasses/ReSTIRPTPass/* "${FALCOR}/Source/RenderPasses/ReSTIRPTPass/"
           mkdir -p "${FALCOR}/scripts/VisCache"
           cp -r scripts/* "${FALCOR}/scripts/VisCache/"
           RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
           if ! grep -q "add_subdirectory(VisCache)" "$RP_CMAKE"; then
             echo "add_subdirectory(VisCache)" >> "$RP_CMAKE"
           fi
-          if ! grep -q "add_subdirectory(ReSTIRGIPass)" "$RP_CMAKE"; then
-            echo "add_subdirectory(ReSTIRGIPass)" >> "$RP_CMAKE"
+          if ! grep -q "add_subdirectory(ReSTIRPTPass)" "$RP_CMAKE"; then
+            echo "add_subdirectory(ReSTIRPTPass)" >> "$RP_CMAKE"
           fi
 
       - name: CMake Configure

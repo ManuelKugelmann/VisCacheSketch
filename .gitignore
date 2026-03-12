@@ -29,8 +29,14 @@ captures/
 *.exr
 *.hdr
 
-# Downloaded test scenes
+# VisCache passes copied into Falcor tree by setup.sh (generated, not tracked)
+Falcor/Source/RenderPasses/VisCache/
+Falcor/Source/RenderPasses/ReSTIRPTPass/
+
+# Downloaded test scenes (use scripts/download_scenes.sh)
 media/
+Source/RenderPasses/*/Data/VeachAjar/models/
+Source/RenderPasses/*/Data/VeachAjar/textures/
 
 # Downloaded reference papers — tracked in git (LFS recommended for large PDFs)
 # docs/references/

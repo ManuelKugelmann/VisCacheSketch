@@ -3,7 +3,7 @@
  *
  * Falcor 8.0 RenderPass implementation.
  * All GPU resources allocated here; hash table exposed to downstream
- * passes (PathTracer, RTXDIPass, ReSTIRGIPass) via InternalDictionary.
+ * passes (PathTracer, RTXDIPass, ReSTIRPTPass) via InternalDictionary.
  ***************************************************************************/
 
 #include "VisCache.h"
@@ -140,7 +140,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 {
     // ----------------------------------------------------------------
     // Expose hash table to downstream passes via InternalDictionary.
-    // PathTracer, RTXDIPass, and ReSTIRGIPass retrieve these.
+    // PathTracer, RTXDIPass, and ReSTIRPTPass retrieve these.
     // ----------------------------------------------------------------
     auto& dict = renderData.getDictionary();
     dict["vhfTable"]        = mpHashTable;
