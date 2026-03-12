@@ -9,8 +9,13 @@ REM   2. Download test scenes (Arcade, Bistro, Sponza)
 REM   3. Run smoke test
 REM   4. Launch Mogwai with selected scene
 REM
-REM Requires: curl, tar, python3 (for tests), git (for VeachAjar)
+REM Requires: curl, tar, python3 (for tests), git 2.43+ (for VeachAjar sparse clone)
 REM Optional: PowerShell 5+ (used for JSON parsing via built-in cmdlets)
+REM
+REM Idempotent: safe to re-run. Skips steps that are already complete.
+REM
+REM One-liner (PowerShell, idempotent):
+REM   irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.ps1 | iex
 REM
 REM WSL alternative (runs .sh scripts directly):
 REM     wsl bash scripts/download_scenes.sh
@@ -56,11 +61,11 @@ where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
 
 echo [release] Querying latest release from %REPO%...
 
-REM Use PowerShell to parse JSON (available on all modern Windows)
-for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command ^
-    "$r = Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases/latest'; ^
-     $a = $r.assets | Where-Object { $_.name -match 'viscache-windows.*Release.*\.tar\.gz' } | Select-Object -First 1; ^
-     if ($a) { $a.browser_download_url } else { 'NONE' }"`) do set "DOWNLOAD_URL=%%U"
+REM Use PowerShell to parse JSON (available on all modern Windows).
+REM NOTE: Pipes are written as -Command "..." with no literal | in the for /f
+REM backtick to avoid cmd.exe interpreting | as a shell pipe.
+set "PS_CMD=$r = Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases/latest'; $a = $r.assets ^| Where-Object { $_.name -match 'viscache-windows.*Release.*\\.tar\\.gz' } ^| Select-Object -First 1; if ($a) { $a.browser_download_url } else { 'NONE' }"
+for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "!PS_CMD!"`) do set "DOWNLOAD_URL=%%U"
 
 if "%DOWNLOAD_URL%"=="NONE" (
     echo [release] ERROR: No Windows Release asset found in latest release.

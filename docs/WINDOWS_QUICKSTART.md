@@ -12,7 +12,7 @@ Get VisCacheSketch running on Windows in under 10 minutes.
 | CUDA | 12.x | 12.x |
 | GPU | RTX 20xx (DXR 1.1) | RTX 30xx/40xx (SM 6.5, WaveMatch) |
 | Python | 3.8+ | 3.10+ |
-| Git | Any | Latest |
+| Git | 2.43+ | Latest ([git-scm.com](https://git-scm.com)) |
 
 **VS2022 workloads** (via Visual Studio Installer):
 - "Desktop development with C++"
@@ -20,17 +20,27 @@ Get VisCacheSketch running on Windows in under 10 minutes.
 
 ## Option A: One-click quickstart (pre-built release)
 
-**Paste into cmd or PowerShell:**
+All one-liners below are **idempotent** — safe to re-run. They clone on first run and pull updates on subsequent runs.
+
+**PowerShell one-liner (recommended):**
+
+```powershell
+irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.ps1 | iex
+```
+
+**cmd one-liner:**
 
 ```bat
-git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && scripts\quickstart.bat
+if not exist VisCacheSketch git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
+cd VisCacheSketch && git pull && scripts\quickstart.bat
 ```
 
 This will:
-1. Download the latest pre-built release (Mogwai + plugins)
-2. Download test scenes (Bistro ~3.2 GB, Sponza ~70 MB)
-3. Run 43 CPU algorithm tests
-4. Launch Mogwai with Bistro
+1. Clone the repo (or pull latest if already cloned)
+2. Download the latest pre-built release (Mogwai + plugins)
+3. Download test scenes (Bistro ~3.2 GB, Sponza ~70 MB)
+4. Run 43 CPU algorithm tests
+5. Launch Mogwai with Bistro
 
 **Quickstart options:**
 
@@ -39,13 +49,25 @@ scripts\quickstart.bat --scene Sponza      &REM launch with Sponza instead of Bi
 scripts\quickstart.bat --skip-scenes       &REM skip scene download (faster)
 ```
 
+**PowerShell with options:**
+
+```powershell
+irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.ps1 | iex -Scene Sponza
+# Or after first run:
+.\scripts\bootstrap.ps1 -Scene Sponza -SkipScenes
+```
+
 ## Option B: Build from source
 
-### 1. Clone
+### 1. Clone (idempotent)
 
 ```bat
+REM First time:
 git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
 cd VisCacheSketch
+
+REM Subsequent runs — just pull:
+cd VisCacheSketch && git pull
 ```
 
 ### 2. Run setup

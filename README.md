@@ -76,13 +76,15 @@ See [`docs/references/Kugelmann2006_ThesisMK.pdf`](docs/references/Kugelmann2006
 
 ## Quickstart
 
-**One-liner (paste into cmd or PowerShell):**
+> **Requires:** git 2.43+ ([download](https://git-scm.com)), Python 3.8+, Windows 10+ or WSL
+
+**One-liner (idempotent — safe to re-run):**
 
 ```bat
-git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && scripts\quickstart.bat
+curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
 ```
 
-This clones the repo, downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro. See **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)** for full details.
+This clones (or pulls if already cloned), downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro. See **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)** for full details.
 
 **Options:**
 
@@ -97,7 +99,9 @@ scripts\download_scenes.bat --yes              &REM download all scenes non-inte
 **Linux / WSL:**
 
 ```bash
-git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch
+# Idempotent: clone or pull
+[ -d VisCacheSketch ] && git -C VisCacheSketch pull || git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
+cd VisCacheSketch
 bash scripts/download_scenes.sh        # interactive scene download
 bash scripts/run-tests.sh              # 43 CPU algorithm tests
 bash scripts/run-tests.sh quick        # convergence only (14 tests)
