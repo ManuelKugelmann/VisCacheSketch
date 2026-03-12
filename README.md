@@ -45,17 +45,17 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **Good and Fast Hash** - based on PCG3D[Jarzynski & Olano 2020][r-jarzynski]
 - **Hash Collision Handling** - fingerprint like [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
 - **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
-- **Coupled variance adaptation** - variance drives both correction rate and write-depth gating like in [Stotko et al. 2025][r-stotko])
-- **GPU implementation** using Nvidia Falcor
-- **ReSTIR integration** example based on Falcor RTXDI and ReSTIR PT.
+- **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko])
+- **GPU implementation** - using Nvidia Falcor [???] as base
+- **ReSTIR integration** - example based on Falcor RTXDI [Bitterli???] and ReSTIR PT [Lin et al. 2022][r-lin] 
 
 ### ReSTIR integration
 
-| Point | Section | What it replaces | Benefit |
+| Point | What it replaces | Benefit |
 |-------|---------|-----------------|---------|
-| light selection | §9.1 | V=1 assumption in RIS target | µ-weighted selection, better candidates |
-| visibility revalidation  | §9.2 | Unconditional shadow ray | ~88% shadow ray reduction |
-| connection revalidation | §9.3 | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
+| light selection | V=1 assumption in RIS target | µ-weighted selection, better candidates |
+| visibility revalidation  | Unconditional shadow ray | ~88% shadow ray reduction |
+| connection revalidation | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
 
 ---
 
@@ -77,7 +77,7 @@ Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, 
 | [Szécsi et al. 2003][r-szecsi] | Non-zero termination estimate for rendering (CV, fixed RR probability) |
 | [Szirmay-Kalos et al. 2005][r-szirmay] | Variance-driven splitting/RR for path tracing |
 | [Teschner et al. 2003][r-teschner] | Spatial hashing for collision detection — foundational technique |
-| [Smith 2001–2004 (ODE)][r-ode] | `dHashSpace` broad-phase collision via spatial hashing; practical inspiration for 2006 thesis |
+| [Smith 2001–2004 (ODE)][r-ode] | `dHashSpace` broad-phase collision via spatial hashing; inspiration far spatial hashing in 2006 thesis |
 | [Binder et al. 2018][r-binder] | Spatial hashing, jitter-quantize, fingerprint collision detection |
 | [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
