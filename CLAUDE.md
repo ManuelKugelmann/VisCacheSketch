@@ -93,6 +93,11 @@ Add the GitHub MCP server for structured access:
 claude mcp add --transport http github https://api.githubcopilot.com/mcp/
 ```
 
+## Line Endings
+
+- `.gitattributes` normalizes all text to LF in the repo (`* text=auto eol=lf`), except `.bat` files which stay CRLF.
+- The Edit and Write tools silently strip `\r`. This is fine now that the repo is LF-normalized, but be aware if any CRLF files are ever added.
+
 ## Workflow
 
 - Work step by step for large edits — break changes into small, incremental Edit calls rather than attempting a single massive Write
