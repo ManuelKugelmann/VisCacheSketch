@@ -42,7 +42,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 ### Key additions beyond [Kugelmann 2006]
 
 - **Position-seeded jitter** intrinsic box filter across cell boundaries, based on [Binder et al. 2018] [Jarzynski & Olano 2020]
-- **Collision handling** fingerprint detection based on [Binder et al. 2018], double-hash probing, pressure-scaled eviction, WaveMatch coalescing (SM 6.5)
+- **Collision handling** fingerprint detection based on [Binder et al. 2018], double-hash probing, pressure-scaled eviction
 - **LOD in the hash key** multiple resolutions in one flat table [Gautron 2020], [Gautron 2021]
 - **Coupled variance adaptation** — Bernoulli variance drives both correction rate and write-depth gating (independently paralleled by [Stotko et al. 2025])
 - **ReSTIR integration** at three points: DI candidate selection, post-shading correction, revalidation
@@ -58,9 +58,9 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 
 | Point | Section | What it replaces | Benefit |
 |-------|---------|-----------------|---------|
-| DI candidate selection | §9.1 | V=1 assumption in RIS target | µ-weighted selection, better candidates |
-| visibility  | §9.2 | Unconditional shadow ray | ~88% shadow ray reduction |
-| GI revalidation | §9.3 | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
+| light selection | §9.1 | V=1 assumption in RIS target | µ-weighted selection, better candidates |
+| visibility revalidation  | §9.2 | Unconditional shadow ray | ~88% shadow ray reduction |
+| connection revalidation | §9.3 | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
 
 ---
 
