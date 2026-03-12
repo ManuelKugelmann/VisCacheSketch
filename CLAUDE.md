@@ -95,7 +95,8 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/
 
 ## Line Endings
 
-- DQLin's ReSTIR PT files (`Source/RenderPasses/ReSTIRPTPass/`) use CRLF (`\r\n`) line endings. **Do not convert them to LF.** The Edit and Write tools silently strip `\r`, producing a massive git diff that touches every line. When editing CRLF files, use `python3` with binary mode (`'rb'`/`'wb'`) or `sed` to preserve line endings exactly.
+- `.gitattributes` normalizes all text to LF in the repo (`* text=auto eol=lf`), except `.bat` files which stay CRLF.
+- The Edit and Write tools silently strip `\r`. This is fine now that the repo is LF-normalized, but be aware if any CRLF files are ever added.
 
 ## Workflow
 
