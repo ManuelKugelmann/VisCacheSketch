@@ -10,7 +10,6 @@ REM   3. Run smoke test
 REM   4. Launch Mogwai with selected scene
 REM
 REM Requires: curl, tar, python3 (for tests), git 2.43+ (for VeachAjar sparse clone)
-REM Optional: PowerShell 5+ (used for JSON parsing via built-in cmdlets)
 REM
 REM Idempotent: safe to re-run. Skips steps that are already complete.
 REM
@@ -59,44 +58,23 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
 where curl >nul 2>&1 || (echo ERROR: curl not found in PATH & exit /b 1)
 where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
 
-echo [release] Querying latest release from %REPO%...
-
-REM Use curl to fetch release JSON, then PowerShell to parse it.
-REM Two-step approach avoids all cmd/PowerShell pipe escaping issues.
-REM Query /releases (not /releases/latest) so we also find prereleases (dev-latest).
-set "API_JSON=%TEMP%\vc-release-%RANDOM%.json"
-curl -fsSL -o "!API_JSON!" "https://api.github.com/repos/%REPO%/releases?per_page=5"
-if errorlevel 1 (
-    echo [release] No releases found (API error). Skipping download.
-    echo [release] This is normal for first-time setup or pre-release branches.
-    del "!API_JSON!" 2>nul
-    goto :step2
-)
-REM Parse JSON with PowerShell — use -Command with semicolons, no pipes needed.
-REM .Where() method avoids the | pipe character entirely (requires PS 4+).
-REM Searches across all releases (stable first, then prereleases) for a matching asset.
-for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$releases = Get-Content -Raw '!API_JSON!' | ConvertFrom-Json; foreach ($rel in $releases) { $m = $rel.assets.Where({$_.name -match 'viscache-windows.*Release.*\.tar\.gz'}); if ($m.Count) { $m[0].browser_download_url; return } }; 'NONE'"`) do set "DOWNLOAD_URL=%%U"
-del "!API_JSON!" 2>nul
-
-if "%DOWNLOAD_URL%"=="NONE" (
-    echo [release] No Windows Release asset found in latest release. Skipping.
-    goto :step2
-)
-if "%DOWNLOAD_URL%"=="" (
-    echo [release] Could not parse release info. Skipping download.
-    goto :step2
-)
-
+REM Direct download from the dev-latest prerelease (fixed archive name).
+REM No API query or JSON parsing needed — just a single curl redirect.
+set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
 echo [release] Downloading: %DOWNLOAD_URL%
 mkdir "%RELEASE_DIR%" 2>nul
 
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 curl -fSL --progress-bar -o "%ARCHIVE%" "%DOWNLOAD_URL%"
 if errorlevel 1 (
-    echo [release] ERROR: Download failed. Retrying...
-    timeout /t 2 /nobreak >nul
-    curl -fSL --progress-bar -o "%ARCHIVE%" "%DOWNLOAD_URL%"
-    if errorlevel 1 (echo [release] ERROR: Download failed after retry. & exit /b 1)
+    echo [release] Download failed — no dev-latest release yet. Skipping.
+    echo [release] This is normal for first-time setup or pre-release branches.
+    echo [release]
+    echo [release] To get Mogwai manually:
+    echo [release]   Download: https://github.com/%REPO%/releases
+    echo [release]   Build:    run setup.bat, then cmake --preset windows-vs2022-ci
+    del "%ARCHIVE%" 2>nul
+    goto :step2
 )
 
 echo [release] Extracting to %RELEASE_DIR%...

@@ -534,8 +534,7 @@ jobs:
 
       - name: Package release archive
         run: |
-          SHORT_SHA="${GITHUB_SHA::8}"
-          ARCHIVE="viscache-windows-vs2022-Release-${SHORT_SHA}.tar.gz"
+          ARCHIVE="viscache-windows-Release.tar.gz"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
           tar -czf "${ARCHIVE}" -C release-bin .
           ls -lh "${ARCHIVE}"
