@@ -39,13 +39,32 @@ struct VHFResult
 
 // ---------------------------------------------------------------------------
 // Parameters (uploaded as cbuffer each frame)
+//
+// Tuning guide:
+//   gTableCapacity:  Must be power-of-two.  2^22 (~4M entries, 32 MB) is a
+//                    good default for 1080p.  Scale with resolution × bounce count.
+//   gBootThreshold:  Samples needed before trusting an entry.  Lower (16) gives
+//                    faster warmup but noisier early estimates.  Higher (64) is
+//                    more conservative — good when RR decisions are costly.
+//   gVarThreshold:   Variance gate for the cascaded LOD stop.  0.10 = stop
+//                    refining when mu*(1-mu) < 0.10.  Lower (0.01) → more levels
+//                    active, higher quality at shadow penumbrae but more traces.
+//   gPMin:           RR floor.  0.05 = never kill more than 95% of rays.
+//                    Raise to 0.10–0.20 for less noise, at cost of more traces.
+//   gFireflyBudget:  Adaptive pMin scale.  Keeps firefly paths from exploding
+//                    weight.  0.05 is conservative; raise for brighter caustics.
+//   gNumLevels:      LOD count.  3 is typical (coarse/mid/fine).  More levels
+//                    give finer spatial adaptation but use more table capacity.
+//   gCellCoarse/Fine: World-space cell sizes for L0 and L_{N-1}.  Coarse ~10
+//                    covers room-scale; Fine ~0.16 resolves sharp shadow edges.
+//                    Geometric interpolation fills levels in between.
 // ---------------------------------------------------------------------------
 cbuffer VisCacheParams
 {
     uint   gTableCapacity;   ///< Power-of-two entry count
-    uint   gBootThreshold;   ///< Min total_count before entry is trusted (32)
-    float  gVarThreshold;    ///< Variance below which we stop refining (0.1)
-    float  gPMin;            ///< Minimum RR survival probability (0.05)
+    uint   gBootThreshold;   ///< Min total_count before entry is trusted
+    float  gVarThreshold;    ///< Variance below which we stop refining
+    float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
     float  gCellCoarse;      ///< L0 cell size (world units)
@@ -132,12 +151,34 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // Double-hash probe sequence [Binder et al. 2018]
 // h2 is derived from fingerprint (odd, ensures full table coverage).
 // Pressure-scaled eviction: steps 0–2 protected, step ≥3 may evict.
+//
+// Tuning guide for these constants:
+//
+//   kMaxProbe:  Higher → fewer missed inserts at high load, but longer worst-
+//               case probe chains.  8 is good up to ~85% load factor.
+//
+//   kEvictStartStep / kEvictBaseCount:  Together they control eviction
+//               pressure.  Lowering kEvictStartStep (min 1) or kEvictBaseCount
+//               makes eviction more aggressive — useful when table is small or
+//               the scene has many transient surfaces.  Raising them protects
+//               established entries longer (good for static scenes).
+//               Threshold at probe step p = kEvictBaseCount << (p - kEvictStartStep).
+//
+//   kOverflowTrigger:  The 16-bit total counter caps at 65535.  When total
+//               exceeds this threshold, inline decay fires to prevent wrap.
+//               Lower → more frequent decay (smoother but slower convergence).
+//               Must stay well below 0xFFFF to leave headroom for atomic adds.
+//
+//   kDecayShift:  Controls decay strength: value -= value >> kDecayShift.
+//               shift=3 → keep 7/8 per decay step.  Higher values (4,5) give
+//               gentler decay (longer memory).  Lower (2,1) → more aggressive
+//               forgetting, better for fast-changing geometry/lighting.
 // ---------------------------------------------------------------------------
 static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving up
 static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict
 static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive at kEvictStartStep
 static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K)
-static const uint kDecayShift      = 3u;      ///< Decay strength: subtract 1/(1<<shift) = 1/8
+static const uint kDecayShift      = 3u;      ///< Decay strength: value -= value>>shift (keeps 7/8)
 
 int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 {

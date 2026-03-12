@@ -27,21 +27,22 @@ import sys
 # Python mirror of VisCache.slang (integer arithmetic)
 # ---------------------------------------------------------------------------
 # Mirror of VisCache.slang cbuffer params (g prefix → SCREAMING_SNAKE)
-TABLE_CAPACITY   = 1 << 14   # 16K entries for test (full: 4M)
-BOOT_THRESHOLD   = 32
-VAR_THRESHOLD    = 0.10
-P_MIN            = 0.05
-FIREFLY_BUDGET   = 0.05
-NUM_LEVELS       = 3
-CELL_COARSE      = 10.0
-CELL_FINE        = 0.16
+# cbuffer VisCacheParams — see VisCache.slang for tuning guide
+TABLE_CAPACITY   = 1 << 14   # Power-of-two; 16K for test, 2^22 in production
+BOOT_THRESHOLD   = 32        # Samples before entry is trusted
+VAR_THRESHOLD    = 0.10      # Variance gate for cascaded LOD stop
+P_MIN            = 0.05      # RR floor (never kill >95% of rays)
+FIREFLY_BUDGET   = 0.05      # Adaptive pMin contribution scale
+NUM_LEVELS       = 3         # LOD count (coarse/mid/fine)
+CELL_COARSE      = 10.0      # L0 cell size (world units)
+CELL_FINE        = 0.16      # L_{N-1} cell size (world units)
 
-# Mirror of VisCache.slang static constants (k prefix → SCREAMING_SNAKE)
-MAX_PROBE        = 8
-EVICT_START_STEP = 3
-EVICT_BASE_COUNT = 8
-OVERFLOW_TRIGGER = 0xE000
-DECAY_SHIFT      = 3
+# Static constants from VisCache.slang (k prefix → SCREAMING_SNAKE)
+MAX_PROBE        = 8         # Max probe steps before giving up
+EVICT_START_STEP = 3         # First probe step that may evict
+EVICT_BASE_COUNT = 8         # Min total_count to survive at EVICT_START_STEP
+OVERFLOW_TRIGGER = 0xE000    # Inline decay fires when total > this (~57K)
+DECAY_SHIFT      = 3         # value -= value>>shift (keeps 7/8 per step)
 
 # Light selection
 MU_MIN           = 0.05
@@ -172,13 +173,14 @@ def background_decay(table, frame, decay_period):
             continue
         vis   = packed >> 16
         total = packed & 0xFFFF
-        vis   = vis >> DECAY_SHIFT
-        total = total >> DECAY_SHIFT
-        if total == 0:
+        decay_vis   = vis   >> DECAY_SHIFT
+        decay_total = total >> DECAY_SHIFT
+        if decay_total == 0:
             table[idx] = (0, 0)
             cleared += 1
         else:
-            table[idx] = (fp, (vis << 16) | total)
+            sub = (decay_vis << 16) | decay_total
+            table[idx] = (fp, (packed - sub) & 0xFFFFFFFF)
     return cleared
 
 # ===========================================================================

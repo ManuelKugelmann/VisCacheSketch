@@ -2,7 +2,7 @@
 
 Two gates control the coarse-to-fine cascade L0..N-1:
 
-1. **Maturity gate** (before write): skip entries where the standard error is already small enough. Required samples scale with variance: `n_required = μ(1−μ) · boot / τ`. Unanimous cells (μ≈0 or μ≈1) mature in few samples; shadow boundaries (μ≈0.5) need more. Decay periodically halves counts, temporarily un-maturing entries for revalidation — no coin flip needed.
+1. **Maturity gate** (before write): skip entries where the standard error is already small enough. Required samples scale with variance: `n_required = μ(1−μ) · boot / τ`, where boot (= gBootThreshold, default 32) is the minimum sample count for a fully uncertain entry (μ=0.5) and τ (= gVarThreshold) is the variance gate. Unanimous cells (μ≈0 or μ≈1) mature in few samples; shadow boundaries (μ≈0.5) need more. Decay periodically subtracts 1/8 of both counters (factor 0.875 per pass), temporarily un-maturing entries for revalidation — no coin flip needed.
 
 2. **Cascaded variance gate** (after write): if this level's post-increment variance falls below τ, stop — finer levels would agree. During bootstrap (insufficient samples), variance is above τ by construction, so all levels fill unconditionally.
 
@@ -16,7 +16,7 @@ for l <- 0 to N-1 do
   addr <- hash(qa, qb, l); fp <- fingerprint(qa, qb, l)
   if is_mature(addr, fp) then continue   // enough samples at this level
   cur <- try_insert(addr, fp, V)
-  if cur.total >= w_bootstrap and variance(cur) <= tau then
+  if cur.total >= boot and variance(cur) <= tau then
     break                                // this level is smooth — stop
 ```
 
