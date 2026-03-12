@@ -52,10 +52,10 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 ### ReSTIR integration
 
 | Point | What it replaces | Benefit |
-|-------|---------|-----------------|---------|
-| light selection | V=1 assumption in RIS target | µ-weighted selection, better candidates |
-| visibility revalidation  | Unconditional shadow ray | ~88% shadow ray reduction |
-| connection revalidation | k=5 full retrace per pixel | ~0.5–1.0 traces/px vs. 5.0 |
+|-------|------------------|---------|
+| light selection | visibility assumption in RIS target | µ-weighted selection, better candidates |
+| visibility revalidation  | Unconditional occlusion ray | RR ~##% ray reduction at equal quality |
+
 
 ---
 
