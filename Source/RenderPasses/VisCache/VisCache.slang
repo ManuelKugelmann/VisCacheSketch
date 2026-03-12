@@ -379,10 +379,16 @@ float vhfCommitRange(float3 posA, float3 posB, float V,
 // decide L1, write L1, check its variance to decide L2, etc.
 //
 // Dynamic contention avoidance (read-before-write):
-// Before the InterlockedAdd, read the entry. If it's already converged
-// (total >= boot AND var <= threshold), skip the atomic entirely.
-// Coarse levels get many updates → converge fast → further writes are
-// skipped → contention is self-limiting. No static threshold needed.
+// Before the InterlockedAdd, read the entry and decide:
+//   1. Converged (var <= threshold): break — skip this and all finer levels.
+//   2. Mature but high-variance (total >> boot, var still high):
+//      Probabilistic throttle — write with probability boot/total.
+//      Shadow boundary at L0: mu~0.5, var~0.25, never converges, but
+//      the mean is statistically stable after boot samples. Additional
+//      writes have diminishing returns, so we throttle to keep atomic
+//      traffic proportional to 1/total. Uses deterministic coin from
+//      (addr, level, total) to avoid warp divergence.
+//   3. Cold (total < boot): always write — need samples.
 //
 // Single InterlockedAdd keeps vis and total always in sync.
 // Inline overflow decay: subtract 1/8 when total > 0xE000.
@@ -407,22 +413,28 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
         if (gVHFTable[slot].fingerprint == 0u)
             gVHFTable[slot].fingerprint = fp;
 
-        // --- Read-before-write contention skip ---
-        // If this entry is already converged, skip the atomic.
-        // This is the primary dynamic contention avoidance mechanism:
-        // coarse levels converge fast (many threads → many samples),
-        // so they self-limit after convergence — no static threshold needed.
+        // --- Read-before-write contention gate ---
         {
             uint packed = gVHFTable[slot].packed;
             uint total  = packed & 0xFFFFu;
             if (total >= gBootThreshold)
             {
-                uint vis    = packed >> 16u;
-                float mu    = float(vis) / float(total);
-                float var   = mu * (1.0f - mu);
+                uint vis  = packed >> 16u;
+                float mu  = float(vis) / float(total);
+                float var = mu * (1.0f - mu);
+
+                // Case 1: converged — skip this and all finer levels.
                 if (var <= gVarThreshold)
-                    break;  // converged — skip this and all finer levels
+                    break;
+
+                // Case 2: mature but high-variance (shadow boundary).
+                // Mean is stable; throttle writes to ~boot/total rate.
+                float pWrite = float(gBootThreshold) / float(total);
+                uint coin = pcg3d(uint3(addr, uint(lvl), total)).x;
+                if (float(coin) / 4294967295.0f >= pWrite)
+                    continue;  // skip this level, try finer
             }
+            // Case 3: cold — fall through, always write.
         }
 
         // Atomic packed increment: vis in high 16 bits, total in low 16 bits
