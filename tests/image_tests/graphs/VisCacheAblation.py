@@ -8,7 +8,6 @@ from falcor import *
 _VC_DEFAULTS = {
     'enableVisCacheRevalidation':    True,
     'enableVisCacheLightSelection':  True,
-    'enableVisCacheDistanceLOD':     True,
     'enableVisCacheVarianceGate':    True,
     'enableVisCacheWarpReduction':   True,
     'enableVisCacheDecay':           True,
@@ -95,7 +94,7 @@ def _make_pt_graph(name, vc_overrides={}):
 # Ablation A–E: GI (primary ablation pass — tests all toggles)
 # ---------------------------------------------------------------------------
 VisCacheAblation_GI_Full     = _make_gi_graph("VisCacheAblation_GI_Full")
-VisCacheAblation_GI_NoLOD    = _make_gi_graph("VisCacheAblation_GI_NoLOD",    {'enableVisCacheDistanceLOD': False})
+VisCacheAblation_GI_SingleLvl= _make_gi_graph("VisCacheAblation_GI_SingleLvl",{'numLevels': 1})
 VisCacheAblation_GI_NoVarGate= _make_gi_graph("VisCacheAblation_GI_NoVarGate",{'enableVisCacheVarianceGate': False})
 VisCacheAblation_GI_NoWarp   = _make_gi_graph("VisCacheAblation_GI_NoWarp",   {'enableVisCacheWarpReduction': False})
 VisCacheAblation_GI_NoDecay  = _make_gi_graph("VisCacheAblation_GI_NoDecay",  {'enableVisCacheDecay': False})

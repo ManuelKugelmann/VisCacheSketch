@@ -21,7 +21,6 @@ kCaptureDir    = "captures/baselines"
 _VC_DEFAULTS = {
     'enableVisCacheRevalidation':    True,
     'enableVisCacheLightSelection':  True,
-    'enableVisCacheDistanceLOD':     True,
     'enableVisCacheVarianceGate':    True,
     'enableVisCacheWarpReduction':   True,
     'enableVisCacheDecay':           True,

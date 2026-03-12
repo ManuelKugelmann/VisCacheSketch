@@ -7,41 +7,30 @@ _Paper §15 — all configurations and metric targets_
 
 | Toggle | Parameter | Off behaviour | Ablation label |
 |--------|-----------|--------------|---------------|
-| A | `enableVisCacheDistanceLOD` | Write all levels always | −A |
 | B | `enableVisCacheVarianceGate` | Write fine levels in all regions | −B |
 | C | `enableVisCacheWarpReduction` | Per-lane atomics at L0 | −C |
 | D | `enableVisCacheDecay` | No counter decay | −D |
 | E | `enableVisCachePressureEvict` | Evict from step 0 | −E |
-| — | `minLevel=maxLevel=2` | Finest level only | Finest-only |
-| — | `minLevel=maxLevel=0` | Coarsest level only | Coarsest-only |
+| — | `numLevels=1` | Single level only | Single-level |
 | — | VisCache disabled entirely | Full retrace baseline | No-cache |
 
 ---
 
 ## Configuration matrix
 
-| Config | A | B | C | D | E | Primary claim tested |
-|--------|---|---|---|---|---|---------------------|
-| Full | ✅ | ✅ | ✅ | ✅ | ✅ | Baseline |
-| −A | ❌ | ✅ | ✅ | ✅ | ✅ | LOD gate reduces insert cost |
-| −B | ✅ | ❌ | ✅ | ✅ | ✅ | Variance gate prevents wasteful fine writes |
-| −C | ✅ | ✅ | ❌ | ✅ | ✅ | WaveMatch reduces L0 contention ~16× |
-| −D | ✅ | ✅ | ✅ | ❌ | ✅ | Decay prevents mean drift |
-| −E | ✅ | ✅ | ✅ | ✅ | ❌ | Pressure eviction controls probe chains |
-| −AB | ❌ | ❌ | ✅ | ✅ | ✅ | Combined pressure stress |
-| Finest-only | ✅ | ✅ | ✅ | ✅ | ✅ | Multilevel necessary for GI amortization |
-| Coarsest-only | ✅ | ✅ | ✅ | ✅ | ✅ | Coarse level insufficient for shadow boundaries |
-| No-cache | — | — | — | — | — | Full-retrace ground truth |
+| Config | B | C | D | E | Primary claim tested |
+|--------|---|---|---|---|---------------------|
+| Full | ✅ | ✅ | ✅ | ✅ | Baseline |
+| −B | ❌ | ✅ | ✅ | ✅ | Variance gate prevents wasteful fine writes |
+| −C | ✅ | ❌ | ✅ | ✅ | WaveMatch reduces L0 contention ~16× |
+| −D | ✅ | ✅ | ❌ | ✅ | Decay prevents mean drift |
+| −E | ✅ | ✅ | ✅ | ❌ | Pressure eviction controls probe chains |
+| Single-level | ✅ | ✅ | ✅ | ✅ | Multilevel necessary for GI amortization |
+| No-cache | — | — | — | — | Full-retrace ground truth |
 
 ---
 
 ## Per-config expected results
-
-**−A (no distance LOD):**
-- Insert cost increases (all levels written everywhere)
-- Load factor increases, eviction rate rises
-- MSE: negligible change (same mean estimate)
-- Claim: LOD gate earns its keep on performance, not quality
 
 **−B (no variance gate) — most important ablation:**
 - Fine level writes increase in smooth (low-variance) regions
@@ -66,17 +55,31 @@ _Paper §15 — all configurations and metric targets_
 - Miss rate increases in dense scenes
 - Insert cost increases (longer probes)
 
-**Finest-only (minLevel=maxLevel=2):**
-- Cold start brutal: 50–100 shadow rays per L2 cell before VAR_THR reached
-- GI path-sharing amortization breaks: 50–100 pixels → 50–100 distinct L2 cells (not 3–5 L0 cells)
-- Camera motion: L2 goes cold immediately (8cm cells), p=1 for many frames
-- Warm-up curve shape: number of frames to reach 80% hit rate should be dramatically worse
+**Single-level (numLevels=1):**
+- Cold start brutal: many shadow rays per cell before VAR_THR reached
+- GI path-sharing amortization breaks
+- Camera motion: fine cells go cold immediately, p=1 for many frames
+- Warm-up curve shape: frames to 80% hit rate should be dramatically worse
 - This is the key architectural validation test
 
-**Coarsest-only (minLevel=maxLevel=0):**
-- Shadow boundaries cannot be resolved at 10m cells
-- High variance never decreases → p stays near 1 → few savings
-- GI revalidation: coarse V estimate, high residuals in ReSTIR merge
+---
+
+## Contention management
+
+LOD contention is handled dynamically — no static threshold or distance heuristic:
+
+1. **Maturity gate** (before write): if total >= bootThreshold, skip the
+   atomic. The entry has enough samples — whether low-var (smooth) or
+   high-var (shadow boundary), additional writes have diminishing returns.
+   Background decay periodically halves counts, temporarily un-maturing
+   entries for fresh sampling (revalidation). No coin flip needed.
+
+2. **Cascaded variance gate** (after write): if var <= varThreshold, stop
+   descending to finer levels — this region is smooth, finer detail is
+   wasteful. Only applies to cold entries being populated.
+
+3. **WaveMatch coalescing** (SM 6.5): in the batched insert pass,
+   WaveMatch coalesces threads targeting the same cell into a single atomic.
 
 ---
 

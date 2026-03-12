@@ -20,7 +20,7 @@ cbuffer DecayCB
 {
     uint gDecayOffset;   // Which slice of the table to process this frame
     uint gDecayStride;   // = tableCapacity / decayPeriod
-    // Decay strength is hardcoded as >> 3u (= subtract 1/8, factor 0.875).
+    // Decay strength: kDecayShift from VisCache.slang (subtract 1/(1<<shift)).
 }
 
 [numthreads(64, 1, 1)]
@@ -35,9 +35,9 @@ void csDecay(uint3 tid : SV_DispatchThreadID)
     uint total = e.packed & 0xFFFFu;
     uint vis   = e.packed >> 16u;
 
-    // Subtract 1/8 of both counters (integer shift, mean preserved ~0.003%)
-    uint decayVis   = vis   >> 3u;
-    uint decayTotal = total >> 3u;
+    // Subtract 1/(1<<kDecayShift) of both counters (mean preserved ~0.003%)
+    uint decayVis   = vis   >> kDecayShift;
+    uint decayTotal = total >> kDecayShift;
 
     if (decayTotal == 0u)
     {

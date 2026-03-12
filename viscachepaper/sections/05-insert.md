@@ -1,14 +1,21 @@
 # 5. Insert
 
-Each level's variance gates writes to the next finer level. The coarsest level is always written; after each write, the level's post-increment variance is checked — if it falls below τ, propagation stops and no finer levels are written. During bootstrap (insufficient samples), variance is above τ by construction, so all levels fill unconditionally. This is the same variance signal that drives adaptive sampling in Sec. 8 (see coupled variance adaptation). A distance interval gates the LOD range by target square pixel footprint: skip levels where the cell is below 4×4 pixels or above 64×64 pixels. Clipmap-like: L0 far field, L2 near field, L1 bridges. Both-endpoint jitter is in the addressing step (Sec. 4). Single InterlockedAdd on packed uint ensures counters stay in sync; the post-increment value is used directly for the variance check, avoiding a separate lookup.
+Two gates control the coarse-to-fine cascade L0..N-1:
 
-**Algorithm 1: Distance + Variance-Gated Insert**
+1. **Maturity gate** (before write): skip entries where the standard error is already small enough. Required samples scale with variance: `n_required = μ(1−μ) · boot / τ`. Unanimous cells (μ≈0 or μ≈1) mature in few samples; shadow boundaries (μ≈0.5) need more. Decay periodically halves counts, temporarily un-maturing entries for revalidation — no coin flip needed.
+
+2. **Cascaded variance gate** (after write): if this level's post-increment variance falls below τ, stop — finer levels would agree. During bootstrap (insufficient samples), variance is above τ by construction, so all levels fill unconditionally.
+
+Both-endpoint jitter is in the addressing step (Sec. 4). Single InterlockedAdd on packed uint ensures counters stay in sync; the post-increment value is used directly for the variance check, avoiding a separate lookup.
+
+**Algorithm 1: Maturity + Variance-Gated Insert**
 ```
-Input: pos_a, pos_b, visibility V, camera_pos
-di <- distance_lod_interval(pos_a, camera_pos)
-for l <- di.min_level to di.max_level do
-  jitter pos_a by cell_size(l)
-  cur <- try_insert(hash(pos_a,pos_b,l), fp(pos_a,pos_b,l), V)
+Input: pos_a, pos_b, visibility V
+for l <- 0 to N-1 do
+  (qa, qb) <- quantize_pair(pos_a, pos_b, cell_size(l), l)
+  addr <- hash(qa, qb, l); fp <- fingerprint(qa, qb, l)
+  if is_mature(addr, fp) then continue   // enough samples at this level
+  cur <- try_insert(addr, fp, V)
   if cur.total >= w_bootstrap and variance(cur) <= tau then
     break                                // this level is smooth — stop
 ```

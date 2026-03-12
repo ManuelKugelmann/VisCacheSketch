@@ -6,43 +6,16 @@
  *
  * N-level spatial hash table caching pairwise visibility between
  * arbitrary endpoint pairs A and B (canonical symmetric cell sizes).
+ * Scale-agnostic: level count and cell range are runtime parameters.
  *
  * Addressing: jitter-before-quantize [Binder et al. 2018]
  * Hash:       PCG3D [Jarzynski & Olano 2020]
- * LOD:        distance-gated coarse-to-fine [Gautron 2020]
+ * LOD:        full cascade L0..N-1, variance-gated (no distance heuristic)
+ * Contention: maturity gate skips entries with enough samples
  * Estimator:  CV+RRR [Szirmay-Kalos et al. 2005 / Kugelmann 2006]
  ***************************************************************************/
 
 #pragma once
-
-// ---------------------------------------------------------------------------
-// Cell sizes (world units).
-// Canonical: both endpoints A and B use the same cell size per level.
-// Geometric progression from coarse (L0) to fine (L_max), base factor ~8×.
-// Calibrated for viewing distances 2–20 m, mixed scenes (Bistro, Sponza).
-//
-// Symmetric cells enable canonicalization (V(A,B) == V(B,A)).
-// Future: independent per-endpoint LOD — see docs/INDEPENDENT_ENDPOINT_LOD.md.
-// ---------------------------------------------------------------------------
-static const uint  kNumLevels    = 3;
-static const float kCellCoarse   = 10.0f;   ///< L0 cell size (metres)
-static const float kCellFine     = 0.16f;   ///< L_{max} cell size (metres)
-
-/// Cell size for level `lvl` — geometric interpolation, coarse to fine.
-float vhfCellSize(int lvl)
-{
-    float t = (kNumLevels <= 1) ? 0.f : float(lvl) / float(kNumLevels - 1);
-    return kCellCoarse * exp(t * log(kCellFine / kCellCoarse));
-}
-
-// Maximum cell size below which contention is acceptable.
-// Coarser levels cover huge world regions → many threads hit the same cell
-// → atomics contention. Skip levels where cell > this threshold.
-static const float kMaxUsableCellSize = 20.0f;  // metres
-
-// LOD footprint bounds (pixels) for distance-gated selection
-static const float kFootprintMin = 4.0f;
-static const float kFootprintMax = 64.0f;
 
 // ---------------------------------------------------------------------------
 // Entry: 8 bytes — fingerprint + packed (vis:16 | total:16)
@@ -74,8 +47,17 @@ cbuffer VisCacheParams
     float  gVarThreshold;    ///< Variance below which we stop refining (0.1)
     float  gPMin;            ///< Minimum RR survival probability (0.05)
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
-    float3 gCamPos;          ///< Camera position (per-frame, for LOD selection)
+    uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
+    float  gCellCoarse;      ///< L0 cell size (world units)
+    float  gCellFine;        ///< L_{N-1} cell size (world units)
 };
+
+/// Cell size for level `lvl` — geometric interpolation, coarse to fine.
+float vhfCellSize(int lvl)
+{
+    float t = (gNumLevels <= 1u) ? 0.f : float(lvl) / float(gNumLevels - 1u);
+    return gCellCoarse * exp(t * log(gCellFine / gCellCoarse));
+}
 
 RWStructuredBuffer<VHFEntry> gVHFTable;
 
@@ -102,17 +84,29 @@ uint3 pcg3d(uint3 v)
 // ---------------------------------------------------------------------------
 int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 {
-    // Quantize without jitter first to get a stable base index
     int3 baseIdx = int3(floor(pos / cellSize));
-    // Deterministic per-cell jitter in [−0.5, +0.5) cell widths
     uint3 r = pcg3d(uint3(baseIdx) ^ seed);
     float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
     return int3(floor((pos + jitter * cellSize) / cellSize));
 }
 
 // ---------------------------------------------------------------------------
-// Address and fingerprint functions
-// Two different hash chains to keep them independent [Binder et al. 2018].
+// Canonical quantize — quantize both endpoints and lexicographic-swap so
+// that V(A,B) and V(B,A) always map to the same cell pair.
+// ---------------------------------------------------------------------------
+void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
+                     out int3 qa, out int3 qb)
+{
+    qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
+    qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
+    if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
+    {
+        int3 tmp = qa; qa = qb; qb = tmp;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Address and fingerprint — two independent hash chains [Binder et al. 2018].
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
@@ -127,8 +121,8 @@ uint vhfAddr(int3 qa, int3 qb, uint lvl)
 uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 {
     uint3 h = pcg3d(uint3(
-        uint(qa.x) ^ uint(qb.x) + 7u,
-        uint(qa.y) ^ uint(qb.y) + 13u,
+        (uint(qa.x) ^ uint(qb.x)) + 7u,
+        (uint(qa.y) ^ uint(qb.y)) + 13u,
         (uint(qa.z) ^ uint(qb.z)) + lvl * 0xdeadbeefu
     ));
     return h.x ^ h.y ^ h.z;
@@ -137,14 +131,17 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // ---------------------------------------------------------------------------
 // Double-hash probe sequence [Binder et al. 2018]
 // h2 is derived from fingerprint (odd, ensures full table coverage).
-// Pressure-scaled eviction: steps 0–1 protected, step ≥2 may evict.
-// Returns slot index, or -1 if probe exhausted.
+// Pressure-scaled eviction: steps 0–2 protected, step ≥3 may evict.
 // ---------------------------------------------------------------------------
-static const uint kMaxProbe = 8u;
+static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving up
+static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict
+static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive at kEvictStartStep
+static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K)
+static const uint kDecayShift      = 3u;      ///< Decay strength: subtract 1/(1<<shift) = 1/8
 
 int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 {
-    uint h2 = fp | 1u;  // odd step
+    uint h2 = fp | 1u;
     for (uint i = 0u; i < kMaxProbe; i++)
     {
         uint slot = (addr0 + i * h2) & (gTableCapacity - 1u);
@@ -155,16 +152,13 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 
         if (allowInsert)
         {
-            // Empty slot: take it
             if (efp == 0u && gVHFTable[slot].packed == 0u)
                 return int(slot);
 
-            // Pressure-scaled eviction: never evict steps 0–1
-            if (i >= 2u)
+            if (i >= kEvictStartStep)
             {
                 uint total = gVHFTable[slot].packed & 0xFFFFu;
-                // Eviction threshold doubles each step — long chains self-heal
-                uint threshold = 4u << (i - 2u);
+                uint threshold = kEvictBaseCount << (i - kEvictStartStep);
                 if (total < threshold)
                     return int(slot);
             }
@@ -174,61 +168,11 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 }
 
 // ===========================================================================
-// LOD selection — separated from core lookup/insert so callers can override.
+// LOOKUP — coarse-to-fine cascade L0..N-1.
+// Returns the finest mature result. Stops on: no entry, too few samples,
+// or low variance (converged region — finer levels would agree).
 // ===========================================================================
-
-/// Lowest usable level — skip levels where cell > kMaxUsableCellSize
-/// to avoid heavy atomic contention at coarse LODs.
-int vhfMinUsableLevel()
-{
-    for (int lvl = 0; lvl < int(kNumLevels); lvl++)
-        if (vhfCellSize(lvl) <= kMaxUsableCellSize) return lvl;
-    return int(kNumLevels) - 1;
-}
-
-// ---------------------------------------------------------------------------
-// Camera-distance LOD [Gautron, SIGGRAPH Talks 2020]
-// Default strategy: projected cell footprint in pixels.
-// Clamps coarse end to skip contention-prone levels.
-// ---------------------------------------------------------------------------
-void vhfLOD_Camera(float3 posA, float3 camPos, out int loLvl, out int hiLvl)
-{
-    float d = length(posA - camPos);
-    int minLvl = vhfMinUsableLevel();
-    loLvl = clamp(int(log2(d / kFootprintMax)), minLvl, int(kNumLevels) - 1);
-    hiLvl = clamp(int(log2(d / kFootprintMin)), minLvl, int(kNumLevels) - 1);
-}
-
-/// Full cascade — all usable levels (skips contention-prone coarse end).
-void vhfLOD_Full(out int loLvl, out int hiLvl)
-{
-    loLvl = vhfMinUsableLevel();
-    hiLvl = int(kNumLevels) - 1;
-}
-
-/// Fixed single level — caller picks.
-void vhfLOD_Fixed(int level, out int loLvl, out int hiLvl)
-{
-    loLvl = clamp(level, 0, int(kNumLevels) - 1);
-    hiLvl = loLvl;
-}
-
-/// Default LOD using gCamPos from cbuffer.
-void vhfLOD(float3 posA, out int loLvl, out int hiLvl)
-{
-    vhfLOD_Camera(posA, gCamPos, loLvl, hiLvl);
-}
-
-// ===========================================================================
-// Core LOOKUP — explicit LOD range, no LOD policy dependency.
-// ===========================================================================
-
-// ---------------------------------------------------------------------------
-// Coarse-to-fine LOOKUP with explicit LOD range.
-// Returns the finest converged result within [loLvl, hiLvl].
-// Four stopping conditions: level bounds, no entry, too few samples, low var.
-// ---------------------------------------------------------------------------
-VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
+VHFResult vhfLookup(float3 posA, float3 posB)
 {
     VHFResult best;
     best.mu    = 0.5f;
@@ -236,21 +180,21 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
     best.level = -1;
     best.valid = false;
 
-    for (int lvl = loLvl; lvl <= hiLvl; lvl++)
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);
-        int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(lvl));
+        int3 qa, qb;
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
 
-        if (slot < 0) break;  // no entry at this level — stop
+        if (slot < 0) break;
 
         VHFEntry e  = gVHFTable[slot];
         uint total  = e.packed & 0xFFFFu;
-        if (total < gBootThreshold) break;  // too few samples — not trusted
+        if (total < gBootThreshold) break;
 
         uint  vis = e.packed >> 16u;
         float mu  = float(vis) / float(total);
@@ -267,30 +211,18 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
     return best;
 }
 
-/// Convenience: lookup using default LOD (camera-distance via cbuffer).
-VHFResult vhfLookup(float3 posA, float3 posB, float3 camPos)
-{
-    int lo, hi;
-    vhfLOD_Camera(posA, camPos, lo, hi);
-    return vhfLookupRange(posA, posB, lo, hi);
-}
-
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // Two-phase gate/commit API — core CV+RRR estimator.
-// Eliminates inline duplication in consumer passes.
-//
-// Minimal signature: two arbitrary endpoints A, B of a visibility query.
-// camPos comes from VisCacheParams cbuffer (same for all pixels in a frame).
 //
 // Usage (any pass):
-//   VHFGateResult g = vhfGate(posA, posB, rand01);
+//   VHFGateResult g = vhfGateDeterministic(posA, posB);
 //   if (g.shouldTrace) {
-//       float V = <pass-specific trace call>;
+//       float V = <trace>;
 //       visWeight = vhfCommit(posA, posB, V, g);
 //   } else {
 //       visWeight = g.visWeight;
 //   }
-// ---------------------------------------------------------------------------
+// ===========================================================================
 struct VHFGateResult
 {
     bool  shouldTrace;  ///< true = caller must trace and call vhfCommit
@@ -300,29 +232,16 @@ struct VHFGateResult
 };
 
 /// Phase 1: lookup + RR decision.
-/// posA, posB: arbitrary endpoints of the visibility query.
 /// xi: uniform random in [0,1) for RR coin flip.
-/// contribLuminance > 0 enables firefly-aware adaptive pMin (§10.1).
-/// Uses default camera-distance LOD from cbuffer.
+/// contribLuminance > 0 enables firefly-aware adaptive pMin.
 VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f)
 {
-    int lo, hi;
-    vhfLOD(posA, lo, hi);
-    return vhfGateRange(posA, posB, lo, hi, xi, contribLuminance);
-}
-
-/// Phase 1 with explicit LOD range — core, LOD-agnostic.
-VHFGateResult vhfGateRange(float3 posA, float3 posB,
-                            int loLvl, int hiLvl,
-                            float xi, float contribLuminance = 0.f)
-{
     VHFGateResult g;
-    VHFResult r = vhfLookupRange(posA, posB, loLvl, hiLvl);
+    VHFResult r = vhfLookup(posA, posB);
 
     if (!r.valid)
     {
-        // Cold miss — always trace. mu=0, invP=1 → commit returns V directly.
         g.shouldTrace = true;
         g.visWeight   = 0.f;
         g.mu          = 0.f;
@@ -330,7 +249,6 @@ VHFGateResult vhfGateRange(float3 posA, float3 posB,
         return g;
     }
 
-    // Compute RR probability.
     float pFloor = gPMin;
     if (contribLuminance > 0.f)
     {
@@ -341,95 +259,139 @@ VHFGateResult vhfGateRange(float3 posA, float3 posB,
 
     if (xi < p)
     {
-        // Trace correction ray.
         g.shouldTrace = true;
-        g.visWeight   = 0.f;  // placeholder — caller uses vhfCommit
+        g.visWeight   = 0.f;
         g.mu          = r.mu;
         g.invP        = 1.f / p;
     }
     else
     {
-        // No trace — use cached mean.
         g.shouldTrace = false;
         g.visWeight   = r.mu;
         g.mu          = r.mu;
-        g.invP        = 0.f;  // unused
+        g.invP        = 0.f;
     }
     return g;
 }
 
-/// Phase 2: after tracing, compute final CV+RRR weight and insert into cache.
-/// Uses default camera-distance LOD from cbuffer.
-/// Returns fractional visWeight in [0, 1].
-float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
+// ---------------------------------------------------------------------------
+// Deterministic xi — derive RR coin flip from quantized cell coordinates.
+// Same (posA, posB) pair always gets the same xi, eliminating temporal flicker.
+// ---------------------------------------------------------------------------
+float vhfDeterministicXi(float3 posA, float3 posB)
 {
-    int lo, hi;
-    vhfLOD(posA, lo, hi);
-    vhfInsertRange(posA, posB, V, lo, hi);
-    return g.mu + (V - g.mu) * g.invP;
+    int hiLvl = int(gNumLevels) - 1;
+    float cs = vhfCellSize(hiLvl);
+    int3 qa, qb;
+    vhfQuantizePair(posA, posB, cs, uint(hiLvl), qa, qb);
+    uint3 h = pcg3d(uint3(
+        (uint(qa.x) ^ uint(qb.x)) + 0xCCu,
+        (uint(qa.y) ^ uint(qb.y)) + 0xCCu,
+        (uint(qa.z) ^ uint(qb.z)) + uint(hiLvl) * 0x13371337u
+    ));
+    return float(h.x) / 4294967295.0f;
 }
 
-/// Phase 2 with explicit LOD range.
-float vhfCommitRange(float3 posA, float3 posB, float V,
-                      int loLvl, int hiLvl, VHFGateResult g)
+/// Phase 1 with deterministic xi — no external random number needed.
+VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
+                                    float contribLuminance = 0.f)
 {
-    vhfInsertRange(posA, posB, V, loLvl, hiLvl);
-    return g.mu + (V - g.mu) * g.invP;
+    float xi = vhfDeterministicXi(posA, posB);
+    return vhfGate(posA, posB, xi, contribLuminance);
 }
 
 // ===========================================================================
-// Core INSERT — explicit LOD range, no LOD policy dependency.
+// INSERT — coarse-to-fine cascade L0..N-1 with two gates.
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// INSERT with explicit LOD range.
-// Coarse-to-fine cascaded variance gate: write L0, check its variance to
-// decide L1, write L1, check its variance to decide L2, etc.
-// Uses the post-increment packed value directly — no extra parent lookup.
-// Single InterlockedAdd keeps vis and total always in sync.
-// Inline overflow decay: subtract 1/8 when total > 0xE000.
+// Maturity gate: "mature" = standard error of the mean is small enough
+// that additional writes have diminishing returns.
+//
+//   SE = sqrt(mu*(1-mu) / n)  ≤  SE_threshold
+//   ⟹  n ≥ mu*(1-mu) / SE_threshold²
+//
+// We use SE_threshold² = gVarThreshold / gBootThreshold, which gives:
+//   requiredSamples = mu*(1-mu) * gBootThreshold / gVarThreshold
+//
+// Examples (boot=32, varThr=0.1):
+//   mu=1.0  → var=0.00, required=0    → mature immediately (unanimous)
+//   mu=0.95 → var=0.05, required=16   → mature quickly (19:1 split)
+//   mu=0.50 → var=0.25, required=80   → needs more (shadow boundary)
+//   mu=0.70 → var=0.21, required=67   → intermediate
+//
+// Decay periodically halves counts, temporarily un-maturing entries for
+// fresh sampling (revalidation). No coin flip needed.
 // ---------------------------------------------------------------------------
-void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
+bool vhfIsMature(uint addr, uint fp)
+{
+    int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+    if (slot < 0) return false;
+
+    uint packed = gVHFTable[slot].packed;
+    uint total  = packed & 0xFFFFu;
+    if (total < 2u) return false;
+
+    uint  vis = packed >> 16u;
+    float mu  = float(vis) / float(total);
+    float var = mu * (1.0f - mu);
+
+    float required = var * float(gBootThreshold) / gVarThreshold;
+    return float(total) >= required;
+}
+
+/// Inline overflow decay — subtract 1/(1<<kDecayShift) when total > kOverflowTrigger.
+uint vhfOverflowDecay(int slot, uint cur)
+{
+    if ((cur & 0xFFFFu) > kOverflowTrigger)
+    {
+        uint visDecay   = (cur >> 16u) >> kDecayShift;
+        uint totalDecay = (cur & 0xFFFFu) >> kDecayShift;
+        uint sub        = (visDecay << 16u) | totalDecay;
+        InterlockedAdd(gVHFTable[slot].packed, -sub);
+        cur -= sub;
+    }
+    return cur;
+}
+
+// ---------------------------------------------------------------------------
+// INSERT — coarse-to-fine cascade with two gates:
+//
+// 1. Maturity gate (before write): skip entries with enough samples.
+//    Decay periodically halves counts for revalidation.
+//
+// 2. Cascaded variance gate (after write): if this level is smooth,
+//    stop descending — finer levels would agree.
+// ---------------------------------------------------------------------------
+void vhfInsert(float3 posA, float3 posB, float V)
 {
     uint visVal = (V > 0.5f) ? 1u : 0u;
 
-    for (int lvl = loLvl; lvl <= hiLvl; lvl++)
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);
-        int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(lvl));
+        int3 qa, qb;
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
+
+        // Maturity gate: skip mature entries (decay revalidates periodically)
+        if (vhfIsMature(addr, fp)) continue;
+
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
+        if (slot < 0) continue;
 
-        if (slot < 0) continue;  // table full at this cell — skip
-
-        // Set fingerprint if slot was empty
         if (gVHFTable[slot].fingerprint == 0u)
             gVHFTable[slot].fingerprint = fp;
 
-        // Atomic packed increment: vis in high 16 bits, total in low 16 bits
         uint delta = (visVal << 16u) | 1u;
         uint prev;
         InterlockedAdd(gVHFTable[slot].packed, delta, prev);
 
-        // Inline overflow decay: when total approaches uint16 max,
-        // subtract 1/8 of both counters to keep counts near ceiling.
-        // Integer shift-truncation preserves mean ratio within ~0.003%.
-        uint cur = prev + delta;
-        if ((cur & 0xFFFFu) > 0xE000u)
-        {
-            uint visHalf   = (cur >> 16u) >> 3u;
-            uint totalHalf = (cur & 0xFFFFu) >> 3u;
-            uint sub       = (visHalf << 16u) | totalHalf;
-            InterlockedAdd(gVHFTable[slot].packed, -sub);
-            cur = cur - sub;
-        }
+        uint cur = vhfOverflowDecay(slot, prev + delta);
 
-        // Cascaded gate: Bernoulli variance mu*(1-mu) of this level
-        // decides whether to continue to the next finer level.
-        // No extra lookup — uses post-increment packed value directly.
+        // Cascaded gate: if this level is now smooth, stop.
         uint totalCur = cur & 0xFFFFu;
         if (totalCur >= gBootThreshold)
         {
@@ -437,15 +399,14 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
             float muCur  = float(visCur) / float(totalCur);
             float varCur = muCur * (1.0f - muCur);
             if (varCur <= gVarThreshold)
-                break;  // this level is smooth — no need to go finer
+                break;
         }
     }
 }
 
-/// Convenience: insert using camera-distance LOD.
-void vhfInsert(float3 posA, float3 posB, float V, float3 camPos)
+/// Phase 2: after tracing, insert into cache and compute CV+RRR weight.
+float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
 {
-    int lo, hi;
-    vhfLOD_Camera(posA, camPos, lo, hi);
-    vhfInsertRange(posA, posB, V, lo, hi);
+    vhfInsert(posA, posB, V);
+    return g.mu + (V - g.mu) * g.invP;
 }

@@ -20,7 +20,7 @@ The LOD level index is part of the hash input [Gautron 2020, 2021]. This is simp
 - **Hierarchical indirection:** Tree-like structures (octrees, cascaded grids) add pointer-chasing latency and complicate lock-free GPU updates.
 - **Shared table without level in key:** Entries at different resolutions collide, corrupting both.
 
-With level-in-key, a coarse L0 entry and a fine L2 entry for the same spatial region are simply different keys in the same flat table. They are inserted, evicted, and decayed independently. The distance-gated level selection (Sec. 5) acts as a clipmap: L0 for far field, L2 for near field, L1 as bridge. The flat-table design also means LOD level naturally participates in load balancing — underused levels take less table space, freeing capacity for levels under pressure.
+With level-in-key, a coarse L0 entry and a fine L2 entry for the same spatial region are simply different keys in the same flat table. They are inserted, evicted, and decayed independently. The variance-gated cascade (Sec. 5) controls which levels are populated: coarse levels converge first; finer levels fill only where variance remains high. No distance heuristic is needed — the cascade is self-regulating. The flat-table design also means LOD level naturally participates in load balancing — underused levels take less table space, freeing capacity for levels under pressure.
 
 ## 4.4 Collision Detection
 

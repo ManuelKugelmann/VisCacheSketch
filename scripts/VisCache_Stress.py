@@ -86,13 +86,12 @@ for (name, overrides) in CONFIGS:
     # Apply config
     visCache = g.getPass("VisCache")
     # Reset to full
-    for attr in ["enableVisCacheDistanceLOD", "enableVisCacheVarianceGate",
+    for attr in ["enableVisCacheVarianceGate",
                  "enableVisCacheWarpReduction", "enableVisCacheDecay",
                  "enableVisCachePressureEvict", "enableVisCacheRevalidation",
                  "enableVisCacheLightSelection"]:
         setattr(visCache, attr, True)
-    visCache.minLevel = 0
-    visCache.maxLevel = 2
+    visCache.numLevels = 3
     for k, v in overrides.items():
         setattr(visCache, k, v)
 

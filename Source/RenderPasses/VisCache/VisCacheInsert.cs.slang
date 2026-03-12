@@ -23,8 +23,6 @@ struct PendingInsert
 
 StructuredBuffer<PendingInsert>  gPendingInserts;
 RWStructuredBuffer<uint>         gPendingCount;   // [0] = count
-cbuffer InsertCB { float3 gCamPos; uint _p; }
-
 [numthreads(64, 1, 1)]
 void csInsert(uint3 tid : SV_DispatchThreadID)
 {
@@ -33,23 +31,23 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
 
     PendingInsert ins = gPendingInserts[tid.x];
 
-    // Distance-gated LOD range
-    int lo, hi;
-    vhfLOD_Camera(ins.posA, gCamPos, lo, hi);
-
-    for (int lvl = lo; lvl <= hi; lvl++)
+    // Full cascade L0..N-1 with maturity gate + WaveMatch coalescing.
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);
-        int3 qa = jitterQuantize(ins.posA, cs, 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(ins.posB, cs, 0xBBu ^ uint(lvl));
+        int3 qa, qb;
+        vhfQuantizePair(ins.posA, ins.posB, cs, uint(lvl), qa, qb);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
 
+        // Maturity gate before WaveMatch — all lanes need to agree on skip.
+        if (vhfIsMature(addr, fp)) continue;
+
         // SM 6.5 WaveMatch: identify lanes targeting the same cell
         // and let only the first lane in each group perform the atomic.
-        // This reduces atomic contention ~16x at L0 where many pixels
-        // share the same 10m cell.
+        // This reduces atomic contention ~16x at coarse levels where
+        // many pixels share the same cell.
         uint4 match = WaveMatch(addr);
         if (WaveMultiPrefixCountBits(true, match) == 0u)
         {
@@ -59,23 +57,17 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
             uint totalSum = countbits(match.x) + countbits(match.y)
                           + countbits(match.z) + countbits(match.w);
 
-            int slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
-            if (slot >= 0)
+            // Re-find slot with insert allowed (may need to allocate)
+            int wslot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
+            if (wslot >= 0)
             {
-                if (gVHFTable[slot].fingerprint == 0u)
-                    gVHFTable[slot].fingerprint = fp;
+                if (gVHFTable[wslot].fingerprint == 0u)
+                    gVHFTable[wslot].fingerprint = fp;
 
                 uint delta = (visSum << 16u) | totalSum;
                 uint prev;
-                InterlockedAdd(gVHFTable[slot].packed, delta, prev);
-
-                // Inline overflow decay (see VisCache.slang §8)
-                uint cur = prev + delta;
-                if ((cur & 0xFFFFu) > 0xE000u)
-                {
-                    uint sub = ((cur >> 19u) << 16u) | ((cur & 0xFFFFu) >> 3u);
-                    InterlockedAdd(gVHFTable[slot].packed, -sub);
-                }
+                InterlockedAdd(gVHFTable[wslot].packed, delta, prev);
+                vhfOverflowDecay(wslot, prev + delta);
             }
         }
     }

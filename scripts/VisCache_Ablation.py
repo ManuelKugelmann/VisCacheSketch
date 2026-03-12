@@ -17,14 +17,11 @@ kCaptureDir    = "captures/ablation"
 
 ABLATION_CONFIGS = [
     ("full",         {}),
-    ("minus_A",      {"enableVisCacheDistanceLOD":   False}),
     ("minus_B",      {"enableVisCacheVarianceGate":  False}),
     ("minus_C",      {"enableVisCacheWarpReduction": False}),
     ("minus_D",      {"enableVisCacheDecay":         False}),
     ("minus_E",      {"enableVisCachePressureEvict": False}),
-    ("minus_AB",     {"enableVisCacheDistanceLOD":   False, "enableVisCacheVarianceGate": False}),
-    ("finest_only",  {"minLevel": 2, "maxLevel": 2}),
-    ("coarsest_only",{"minLevel": 0, "maxLevel": 0}),
+    ("single_level", {"numLevels": 1}),
     ("no_cache",     {"enableVisCacheRevalidation": False, "enableVisCacheLightSelection": False}),
 ]
 
@@ -45,13 +42,12 @@ def build_base_graph():
 def apply_ablation(graph, config_dict):
     visCache = graph.getPass("VisCache")
     # Reset to full config first
-    for attr in ["enableVisCacheDistanceLOD", "enableVisCacheVarianceGate",
+    for attr in ["enableVisCacheVarianceGate",
                  "enableVisCacheWarpReduction", "enableVisCacheDecay",
                  "enableVisCachePressureEvict", "enableVisCacheRevalidation",
                  "enableVisCacheLightSelection"]:
         setattr(visCache, attr, True)
-    visCache.minLevel = 0
-    visCache.maxLevel = 2
+    visCache.numLevels = 3
     # Apply delta
     for k, v in config_dict.items():
         setattr(visCache, k, v)

@@ -655,17 +655,15 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
     }
 
 #if USE_VISCACHE
-    // Deterministic cache-only early reject: if cache confidently says
-    // occluded (mu < threshold, variance low), skip the trace.
-    // No RR — shift mapping requires deterministic visibility for MIS.
+    // Deterministic RR gate: same cell pair → same coin flip → no flicker.
+    // When cache says "skip", we return the cached mean as a soft visibility;
+    // but reconnection shift needs a hard bool, so we threshold at 0.5.
+    VHFGateResult vcGate;
     if (!isDirection)
     {
-        static const float kRejectThreshold = 0.1f;
-        int lo, hi;
-        vhfLOD(sourceVertex, lo, hi);
-        VHFResult r = vhfLookupRange(sourceVertex, targetVertex, lo, hi);
-        if (r.valid && r.mu < kRejectThreshold && r.var < gVarThreshold)
-            return false;
+        vcGate = vhfGateDeterministic(sourceVertex, targetVertex);
+        if (!vcGate.shouldTrace)
+            return vcGate.visWeight >= 0.5f;
     }
 #endif
 
@@ -675,13 +673,9 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 
 #if USE_VISCACHE
-    // Insert trace result to keep cache warm for this reconnection pair.
+    // Commit trace result into cache — reuse gate result from above.
     if (!isDirection)
-    {
-        int lo, hi;
-        vhfLOD(sourceVertex, lo, hi);
-        vhfInsertRange(sourceVertex, targetVertex, visible ? 1.f : 0.f, lo, hi);
-    }
+        vhfCommit(sourceVertex, targetVertex, visible ? 1.f : 0.f, vcGate);
 #endif
 
     return visible;
