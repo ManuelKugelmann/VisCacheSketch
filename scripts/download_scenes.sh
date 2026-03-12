@@ -155,69 +155,54 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. VeachAjar — Benedikt Bitterli's rendering resources
-#    Used by ReSTIRPTPass demo (DQLin's .pyscene wrappers are in the repo).
-#    Source: https://benedikt-bitterli.me/resources/
+# 5. VeachAjar — Bitterli's rendering resources, converted to OBJ by DQLin
+#    Original scene: https://benedikt-bitterli.me/resources/ (Tungsten/PLY)
+#    DQLin converted to OBJ + added teapot variants and animated door for
+#    the ReSTIR PT demo. We fetch from DQLin's repo (the only OBJ source).
 # ---------------------------------------------------------------------------
-VEACHAJAR_URL="https://benedikt-bitterli.me/resources/veach-ajar.zip"
+VEACHAJAR_REPO="https://github.com/DQLin/ReSTIR_PT"
+VEACHAJAR_SUBPATH="Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar"
 VEACHAJAR_DEST="$ROOT_DIR/Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar"
 
 if [ -d "$VEACHAJAR_DEST/models" ] && [ -d "$VEACHAJAR_DEST/textures" ]; then
     echo "[scenes] VeachAjar already exists, skipping"
 else
     echo ""
-    echo "[scenes] === VeachAjar (Benedikt Bitterli) ==="
-    echo "[scenes] Source: benedikt-bitterli.me/resources"
-    echo "[scenes] Size: ~62 MB (models + textures)"
+    echo "[scenes] === VeachAjar (Bitterli scene, DQLin OBJ conversion) ==="
+    echo "[scenes] Source: github.com/DQLin/ReSTIR_PT"
+    echo "[scenes] Original: benedikt-bitterli.me/resources (veach-ajar)"
+    echo "[scenes] Size: ~62 MB (OBJ models + textures)"
     echo "[scenes] Destination: Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/"
     echo ""
     read -rp "[scenes] Download VeachAjar? [y/N] " yn
     case "$yn" in
         [Yy]*)
-            echo "[scenes] Downloading VeachAjar..."
-            VEACH_TMPZIP="$(mktemp /tmp/veach-ajar.XXXXXX.zip)"
+            echo "[scenes] Cloning DQLin/ReSTIR_PT (sparse, models+textures only)..."
+            VEACH_TMPDIR="$(mktemp -d /tmp/veach-ajar.XXXXXX)"
 
-            if command -v wget >/dev/null 2>&1; then
-                wget -q --show-progress -O "$VEACH_TMPZIP" "$VEACHAJAR_URL"
-            elif command -v curl >/dev/null 2>&1; then
-                curl -fSL --progress-bar -o "$VEACH_TMPZIP" "$VEACHAJAR_URL"
+            git clone --depth 1 --filter=blob:none --sparse \
+                "$VEACHAJAR_REPO" "$VEACH_TMPDIR/repo" 2>&1
+
+            cd "$VEACH_TMPDIR/repo"
+            git sparse-checkout set "$VEACHAJAR_SUBPATH/models" "$VEACHAJAR_SUBPATH/textures" 2>&1
+            cd "$ROOT_DIR"
+
+            # Copy models and textures to destination
+            mkdir -p "$VEACHAJAR_DEST/models" "$VEACHAJAR_DEST/textures"
+
+            if [ -d "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/models" ]; then
+                cp -r "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/models/"* "$VEACHAJAR_DEST/models/"
             else
-                echo "[scenes] ERROR: neither wget nor curl found" >&2
-                rm -f "$VEACH_TMPZIP"
+                echo "[scenes] ERROR: models/ not found in cloned repo" >&2
+                rm -rf "$VEACH_TMPDIR"
                 exit 1
             fi
 
-            echo "[scenes] Extracting VeachAjar..."
-            VEACH_TMPDIR="$(mktemp -d /tmp/veach-ajar.XXXXXX)"
-            unzip -q -o "$VEACH_TMPZIP" -d "$VEACH_TMPDIR"
-
-            # Bitterli's zip contains meshes/ and textures/ under a top-level dir.
-            # Find the extracted root (may be veach-ajar/ or flat).
-            VEACH_SRCDIR="$VEACH_TMPDIR"
-            if [ -d "$VEACH_TMPDIR/veach-ajar" ]; then
-                VEACH_SRCDIR="$VEACH_TMPDIR/veach-ajar"
-            elif [ -d "$VEACH_TMPDIR/VeachAjar" ]; then
-                VEACH_SRCDIR="$VEACH_TMPDIR/VeachAjar"
+            if [ -d "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/textures" ]; then
+                cp -r "$VEACH_TMPDIR/repo/$VEACHAJAR_SUBPATH/textures/"* "$VEACHAJAR_DEST/textures/"
             fi
 
-            # Copy models (meshes)
-            mkdir -p "$VEACHAJAR_DEST/models"
-            if [ -d "$VEACH_SRCDIR/meshes" ]; then
-                cp -r "$VEACH_SRCDIR/meshes/"* "$VEACHAJAR_DEST/models/"
-            elif [ -d "$VEACH_SRCDIR/models" ]; then
-                cp -r "$VEACH_SRCDIR/models/"* "$VEACHAJAR_DEST/models/"
-            else
-                echo "[scenes] WARNING: Could not find meshes dir in zip — check structure"
-                echo "[scenes] Extracted contents:" && ls -R "$VEACH_TMPDIR" | head -40
-            fi
-
-            # Copy textures
-            mkdir -p "$VEACHAJAR_DEST/textures"
-            if [ -d "$VEACH_SRCDIR/textures" ]; then
-                cp -r "$VEACH_SRCDIR/textures/"* "$VEACHAJAR_DEST/textures/"
-            fi
-
-            rm -rf "$VEACH_TMPZIP" "$VEACH_TMPDIR"
+            rm -rf "$VEACH_TMPDIR"
             echo "[scenes] VeachAjar ready at $VEACHAJAR_DEST"
             echo "[scenes] Note: .pyscene wrappers (DQLin/Falcor format) are in the repo."
             ;;
