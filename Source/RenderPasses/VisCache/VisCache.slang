@@ -133,9 +133,11 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // h2 is derived from fingerprint (odd, ensures full table coverage).
 // Pressure-scaled eviction: steps 0–2 protected, step ≥3 may evict.
 // ---------------------------------------------------------------------------
-static const uint kMaxProbe       = 8u;  ///< Max probe steps before giving up
-static const uint kEvictStartStep = 3u;  ///< First probe step that may evict
-static const uint kEvictBaseCount = 8u;  ///< Min total_count to survive at kEvictStartStep
+static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving up
+static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict
+static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive at kEvictStartStep
+static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K)
+static const uint kDecayShift      = 3u;      ///< Decay strength: subtract 1/(1<<shift) = 1/8
 
 int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 {
@@ -338,14 +340,14 @@ bool vhfIsMature(uint addr, uint fp)
     return float(total) >= required;
 }
 
-/// Inline overflow decay — subtract 1/8 when total > 0xE000.
+/// Inline overflow decay — subtract 1/(1<<kDecayShift) when total > kOverflowTrigger.
 uint vhfOverflowDecay(int slot, uint cur)
 {
-    if ((cur & 0xFFFFu) > 0xE000u)
+    if ((cur & 0xFFFFu) > kOverflowTrigger)
     {
-        uint visHalf   = (cur >> 16u) >> 3u;
-        uint totalHalf = (cur & 0xFFFFu) >> 3u;
-        uint sub       = (visHalf << 16u) | totalHalf;
+        uint visDecay   = (cur >> 16u) >> kDecayShift;
+        uint totalDecay = (cur & 0xFFFFu) >> kDecayShift;
+        uint sub        = (visDecay << 16u) | totalDecay;
         InterlockedAdd(gVHFTable[slot].packed, -sub);
         cur -= sub;
     }
