@@ -20,15 +20,21 @@
 
 ## Quickstart (pre-built release)
 
-**One-liner (paste into cmd or PowerShell, idempotent — safe to re-run):**
+**One-liner (idempotent — safe to re-run):**
 
+**cmd:**
 ```bat
 curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
 ```
 
+**PowerShell:**
+```powershell
+curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o "$env:TEMP\vc-bootstrap.bat"; & "$env:TEMP\vc-bootstrap.bat"
+```
+
 This clones (or pulls if already cloned), downloads the latest release, fetches test scenes, runs CPU tests + smoke test, and launches Mogwai with Bistro.
 
-**With options:**
+**With options (cmd):**
 
 ```bat
 curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat --scene Sponza
