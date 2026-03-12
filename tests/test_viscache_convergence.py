@@ -29,8 +29,10 @@ import sys
 TABLE_CAP   = 1 << 14   # 16K entries for test (full: 4M)
 BOOT_THR    = 32
 VAR_THR     = 0.10
-MAX_PROBE   = 8
-OVERFLOW_TH = 0xE000
+MAX_PROBE        = 8
+EVICT_START_STEP = 3
+EVICT_BASE_COUNT = 8
+OVERFLOW_TH      = 0xE000
 P_MIN       = 0.05
 FIREFLY_BDG = 0.05
 K_MU_MIN    = 0.05
@@ -104,9 +106,9 @@ def find_slot(table, addr0, fp, allow_insert):
         if allow_insert:
             if efp == 0 and packed == 0:
                 return slot
-            if i >= 3:
+            if i >= EVICT_START_STEP:
                 total = packed & 0xFFFF
-                threshold = 8 << (i - 3)
+                threshold = EVICT_BASE_COUNT << (i - EVICT_START_STEP)
                 if total < threshold:
                     return slot
     return -1

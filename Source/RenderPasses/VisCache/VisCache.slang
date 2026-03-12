@@ -133,7 +133,9 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // h2 is derived from fingerprint (odd, ensures full table coverage).
 // Pressure-scaled eviction: steps 0–2 protected, step ≥3 may evict.
 // ---------------------------------------------------------------------------
-static const uint kMaxProbe = 8u;
+static const uint kMaxProbe       = 8u;  ///< Max probe steps before giving up
+static const uint kEvictStartStep = 3u;  ///< First probe step that may evict
+static const uint kEvictBaseCount = 8u;  ///< Min total_count to survive at kEvictStartStep
 
 int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 {
@@ -151,10 +153,10 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
             if (efp == 0u && gVHFTable[slot].packed == 0u)
                 return int(slot);
 
-            if (i >= 3u)
+            if (i >= kEvictStartStep)
             {
                 uint total = gVHFTable[slot].packed & 0xFFFFu;
-                uint threshold = 8u << (i - 3u);
+                uint threshold = kEvictBaseCount << (i - kEvictStartStep);
                 if (total < threshold)
                     return int(slot);
             }
