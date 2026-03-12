@@ -358,6 +358,37 @@ VHFGateResult vhfGateRange(float3 posA, float3 posB,
     return g;
 }
 
+// ---------------------------------------------------------------------------
+// Deterministic xi — derive RR coin flip from quantized cell coordinates.
+// Same (posA, posB) pair always gets the same xi within the finest usable
+// level, eliminating temporal flicker from stochastic RR.
+// No frame index: the cache's own convergence drives temporal adaptation.
+// ---------------------------------------------------------------------------
+float vhfDeterministicXi(float3 posA, float3 posB, int hiLvl)
+{
+    float cs = vhfCellSize(hiLvl);
+    int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(hiLvl));
+    int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(hiLvl));
+    // Third hash chain (salt 0xCCu) — independent of addr/fingerprint chains
+    uint3 h = pcg3d(uint3(
+        uint(qa.x) ^ uint(qb.x) + 0xCCu,
+        uint(qa.y) ^ uint(qb.y) + 0xCCu,
+        (uint(qa.z) ^ uint(qb.z)) + uint(hiLvl) * 0x13371337u
+    ));
+    return float(h.x) / 4294967295.0f; // [0, 1]
+}
+
+/// Phase 1 with deterministic xi — no external random number needed.
+/// Same cell pair always gets the same RR decision → no temporal flicker.
+VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
+                                    float contribLuminance = 0.f)
+{
+    int lo, hi;
+    vhfLOD(posA, lo, hi);
+    float xi = vhfDeterministicXi(posA, posB, hi);
+    return vhfGateRange(posA, posB, lo, hi, xi, contribLuminance);
+}
+
 /// Phase 2: after tracing, compute final CV+RRR weight and insert into cache.
 /// Uses default camera-distance LOD from cbuffer.
 /// Returns fractional visWeight in [0, 1].
