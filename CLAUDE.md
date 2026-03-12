@@ -93,6 +93,10 @@ Add the GitHub MCP server for structured access:
 claude mcp add --transport http github https://api.githubcopilot.com/mcp/
 ```
 
+## Line Endings
+
+- DQLin's ReSTIR PT files (`Source/RenderPasses/ReSTIRPTPass/`) use CRLF (`\r\n`) line endings. **Do not convert them to LF.** The Edit and Write tools silently strip `\r`, producing a massive git diff that touches every line. When editing CRLF files, use `python3` with binary mode (`'rb'`/`'wb'`) or `sed` to preserve line endings exactly.
+
 ## Workflow
 
 - Work step by step for large edits — break changes into small, incremental Edit calls rather than attempting a single massive Write
