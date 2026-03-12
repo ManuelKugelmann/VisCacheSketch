@@ -84,7 +84,7 @@ Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, 
 | [Teschner et al. 2003][r-teschner] | Spatial hashing for collision detection — foundational technique |
 | [Smith 2001–2004 (ODE)][r-ode] | `dHashSpace` broad-phase collision via spatial hashing; practical inspiration for 2006 thesis |
 | [Binder et al. 2018][r-binder] | Spatial hashing, jitter-quantize, fingerprint collision detection |
-| [Gautron 2020][r-gautron20], [2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
+| [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
 | [Stotko et al. 2025 (MrHash)][r-stotko] | Independent: variance-driven resolution in flat hash (TSDF domain) |
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
