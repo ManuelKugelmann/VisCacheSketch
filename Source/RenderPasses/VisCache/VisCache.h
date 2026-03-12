@@ -79,7 +79,6 @@ private:
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
 
     ref<ComputePass>    mpDecayPass;
-    ref<ComputePass>    mpStatsPass;
 
     // ------------------------------------------------------------------
     // State
