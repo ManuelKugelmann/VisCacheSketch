@@ -1360,7 +1360,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
 
         if (auto scene = dynamic_ref_cast<Scene>(mpScene))
-            var["gCamPos"] = scene->getCamera()->getPosition();
+            vcVar["gCamPos"] = scene->getCamera()->getPosition();
     }
 
     // Full screen dispatch.

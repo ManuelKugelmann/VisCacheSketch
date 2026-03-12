@@ -209,8 +209,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
         vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
         vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-
-        var["gCamPos"] = mpScene->getCamera()->getPosition();
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
     }
 
     // Get dimensions of ray dispatch.

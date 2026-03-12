@@ -1680,8 +1680,7 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
         vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
         vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-
-        rootVar["gCamPos"] = mpScene->getCamera()->getPosition();
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1765,8 +1764,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
         vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
         vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-
-        rootVar["gCamPos"] = mpScene->getCamera()->getPosition();
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());

@@ -65,8 +65,7 @@ import Utils.Sampling.SampleGenerator;
 import Rendering.Lights.LightHelpers;
 
 #if USE_VISCACHE
-import RenderPasses.VisCache.VisCache;
-float3 gCamPos;
+import RenderPasses.VisCache.VisCacheTracing;
 #endif
 
 cbuffer CB
@@ -283,35 +282,10 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
 
     // Test visibility by tracing a shadow ray.
 #if USE_VISCACHE
-    {
-        float3 lightPos = origin + ls.dir * ls.distance;
-        VHFResult r = vhfLookup(origin, lightPos, gCamPos);
-        float visWeight;
-        if (!r.valid)
-        {
-            // Cold miss — unconditional trace and insert.
-            float V = traceShadowRay(origin, ls.dir, ls.distance) ? 1.f : 0.f;
-            vhfInsert(origin, lightPos, V, gCamPos);
-            visWeight = V;
-        }
-        else
-        {
-            float p = clamp(r.var / gVarThreshold, gPMin, 1.f);
-            if (sampleNext1D(sg) < p)
-            {
-                float V = traceShadowRay(origin, ls.dir, ls.distance) ? 1.f : 0.f;
-                vhfInsert(origin, lightPos, V, gCamPos);
-                visWeight = r.mu + (V - r.mu) / p;
-            }
-            else
-            {
-                visWeight = r.mu;
-            }
-        }
-        if (visWeight <= 0.f)
-            return float3(0.f);
-        return mi.eval(sd, ls.dir, sg) * ls.Li * invPdf * visWeight;
-    }
+    float visWeight = vcVisibility_DirDist(origin, ls.dir, ls.distance, sg);
+    if (visWeight <= 0.f)
+        return float3(0.f);
+    return mi.eval(sd, ls.dir, sg) * ls.Li * invPdf * visWeight;
 #else
     bool V = traceShadowRay(origin, ls.dir, ls.distance);
     if (!V)

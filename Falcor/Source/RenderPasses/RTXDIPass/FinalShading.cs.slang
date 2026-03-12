@@ -33,8 +33,7 @@ import Utils.Sampling.TinyUniformSampleGenerator;
 import Utils.Sampling.SampleGenerator;
 
 #if USE_VISCACHE
-import RenderPasses.VisCache.VisCache;
-float3 gCamPos;
+import RenderPasses.VisCache.VisCacheTracing;
 #endif
 
 RWTexture2D<float4> gColor;
@@ -91,40 +90,10 @@ struct FinalShading
             if (valid)
             {
                 float3 origin = sd.computeRayOrigin();
-                float3 lightPos = origin + dir * distance;
 
 #if USE_VISCACHE
-                // VisCache CV+RRR: probabilistic shadow ray gating.
                 SampleGenerator sg = SampleGenerator(pixel, gRTXDI.frameIndex);
-                VHFResult r = vhfLookup(origin, lightPos, gCamPos);
-                if (!r.valid)
-                {
-                    // Cold miss — unconditional trace, insert.
-                    SceneRayQuery<1> rayQuery;
-                    const Ray ray = Ray(origin, dir, 0.f, distance);
-                    float V = rayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
-                    vhfInsert(origin, lightPos, V, gCamPos);
-                    visWeight = V;
-                }
-                else
-                {
-                    float contrib = luminance(Li) * max(r.mu, 1.f - r.mu);
-                    float pFloor  = clamp(contrib / gFireflyBudget, gPMin, 1.f);
-                    float p       = clamp(r.var / gVarThreshold, pFloor, 1.f);
-
-                    if (sampleNext1D(sg) < p)
-                    {
-                        SceneRayQuery<1> rayQuery;
-                        const Ray ray = Ray(origin, dir, 0.f, distance);
-                        float V = rayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
-                        vhfInsert(origin, lightPos, V, gCamPos);
-                        visWeight = r.mu + (V - r.mu) / p;
-                    }
-                    else
-                    {
-                        visWeight = r.mu;
-                    }
-                }
+                visWeight = vcVisibility_InlineRay(origin, dir, distance, sg, luminance(Li));
                 if (visWeight <= 0.f) valid = false;
 #else
                 SceneRayQuery<1> rayQuery;

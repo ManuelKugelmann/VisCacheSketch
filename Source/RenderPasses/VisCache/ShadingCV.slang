@@ -1,31 +1,21 @@
 /***************************************************************************
  * ShadingCV.slang
  *
- * CV+RRR shadow ray gating for the PathTracer shading pass.
- * Drop-in replacement for unconditional traceShadowRay() calls.
+ * CV+RRR shadow ray gating — high-level shading wrappers.
+ * These build on vhfGate()/vhfCommit() from VisCache.slang.
  *
- * USAGE in PathTracer.slang (or ShadingPass.cs.slang):
+ * Provides:
+ *   evalDirectLightingCV()     — drop-in for unconditional shadow ray
+ *   vhfLightSelectionWeight()  — cached mu for ReSTIR DI target (§11.1)
+ *   evalRevalidationCV()       — GI revalidation for spatial reuse (§12)
  *
- *   #import "VisCache"
- *   #import "ShadingCV"
- *
- *   // Replace:
- *   //   float V = traceShadowRay(sd.posW, lightPos);
- *   //   return C * V;
- *   // With:
- *   //   return evalDirectLightingCV(sd, lightPos, Le, G, sg);
- *
- * Unbiased: E[mu + (V - mu) / p] = E[V] for any cache quality.
- * Self-regulating: low var → low p → few traces → cache updates → var drops.
+ * Assumes caller provides:
+ *   float traceShadowRay(float3 origin, float3 target);
+ *   float3 evalBRDF(ShadingData sd, float3 L);
  ***************************************************************************/
 
 #pragma once
 #import "VisCache"
-
-// Assumed to be provided by the host PathTracer:
-//   float traceShadowRay(float3 origin, float3 target);
-//   float3 evalBRDF(ShadingData sd, float3 L);
-//   cbuffer Camera { float3 gCamPos; }
 
 // ---------------------------------------------------------------------------
 // Main entry point — replaces the unconditional shadow ray in direct lighting.
@@ -40,36 +30,16 @@ float3 evalDirectLightingCV(ShadingData sd,
     // Analytic lighting term — always computed (§4)
     float3 C = evalBRDF(sd, normalize(lightPos - sd.posW)) * Le * G;
 
-    // Cache lookup
-    VHFResult r = vhfLookup(sd.posW, lightPos, gCamPos);
+    // Gate/commit via core API (firefly-aware via contribution luminance).
+    VHFGateResult g = vhfGate(sd.posW, lightPos, sampleNext1D(sg), luminance(C));
 
-    if (!r.valid)
+    if (g.shouldTrace)
     {
-        // Cold MISS — unconditional trace, insert, baseline cost
         float V = traceShadowRay(sd.posW, lightPos);
-        vhfInsert(sd.posW, lightPos, V, gCamPos);
-        return C * V;
+        float w = vhfCommit(sd.posW, lightPos, V, g);
+        return C * w;
     }
-
-    // ---------------------------------------------------------------
-    // Adaptive pMin — scale floor by contribution to suppress fireflies
-    // at penumbra edges where p is forced low (§10.1).
-    // ---------------------------------------------------------------
-    float contrib  = luminance(C) * max(r.mu, 1.0f - r.mu);
-    float pFloor   = clamp(contrib / gFireflyBudget, gPMin, 1.0f);
-    float p        = clamp(r.var / gVarThreshold, pFloor, 1.0f);
-
-    if (sampleNext1D(sg) < p)
-    {
-        // Trace correction ray
-        float V = traceShadowRay(sd.posW, lightPos);
-        vhfInsert(sd.posW, lightPos, V, gCamPos);
-        // Unbiased CV+RRR estimator
-        return C * (r.mu + (V - r.mu) / p);
-    }
-
-    // No trace — use cached mean
-    return C * r.mu;
+    return C * g.visWeight;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,15 +47,14 @@ float3 evalDirectLightingCV(ShadingData sd,
 // the ReSTIR DI target function.
 // Unbiased: mu_min > 0 guarantees every light has nonzero selection weight,
 // preserving support coverage required for unbiased RIS.
-// See: Bokšanský & Meister 2025 for concurrent neural approach.
+// See: Boksansky & Meister 2025 for concurrent neural approach.
 // ---------------------------------------------------------------------------
-float vhfLightSelectionWeight(float3 shadingPos, float3 lightPos,
-                               float3 Le, float G, float3 camPos)
+float vhfLightSelectionWeight(float3 posA, float3 posB)
 {
     static const float kMuMin = 0.05f;  // epsilon-greedy floor, prevents feedback death
 
-    VHFResult r = vhfLookup(shadingPos, lightPos, camPos);
-    float mu    = r.valid ? max(r.mu, kMuMin) : 1.0f;  // MISS → assume visible
+    VHFResult r = vhfLookup(posA, posB, gCamPos);
+    float mu    = r.valid ? max(r.mu, kMuMin) : 1.0f;  // MISS -> assume visible
 
     // L0 visibility estimate suffices for candidate weighting (§11.1)
     return mu;
@@ -95,27 +64,24 @@ float vhfLightSelectionWeight(float3 shadingPos, float3 lightPos,
 // GI revalidation variant (§12): contribution-weighted RR for
 // V(P, Q) where Q is a neighbor's secondary hit.
 // Called inside the spatial reuse loop in ReSTIRPTPass.
-// Expected traces: ~0.5–1.0 per pixel at k=5 neighbors (vs. 5.0 unoptimised).
+// Expected traces: ~0.5-1.0 per pixel at k=5 neighbors (vs. 5.0 unoptimised).
 // ---------------------------------------------------------------------------
 float evalRevalidationCV(float3 P, float3 Q,
                           float3 bsdf, float3 Lo, float G,
-                          float3 camPos,
                           inout SampleGenerator sg)
 {
     float3 C = bsdf * Lo * G;
 
-    VHFResult r = vhfLookup(P, Q, camPos);
-    float mu    = r.valid ? r.mu : 0.5f;  // no cache → assume 50% uncertain
+    // Use gate/commit with contribution-aware firefly budget.
+    VHFGateResult g = vhfGate(P, Q, sampleNext1D(sg), luminance(C));
 
-    // Max possible residual for this neighbor (§12)
-    float res = luminance(C) * max(mu, 1.0f - mu);
-    float p   = clamp(res / gVarThreshold, gPMin, 1.0f);
-
-    if (sampleNext1D(sg) < p)
+    if (g.shouldTrace)
     {
         float V = traceShadowRay(P, Q);
-        vhfInsert(P, Q, V, camPos);
-        return mu + (V - mu) / p;
+        return vhfCommit(P, Q, V, g);
     }
-    return mu;  // no trace
+
+    // No cache + no trace: return 0.5 (uncertain) when gate says no trace.
+    // This happens when the cache has a converged entry.
+    return g.visWeight;
 }
