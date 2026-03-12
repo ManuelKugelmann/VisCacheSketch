@@ -20,7 +20,13 @@ Get VisCacheSketch running on Windows in under 10 minutes.
 
 ## Option A: One-click quickstart (pre-built release)
 
-Paste into cmd or PowerShell:
+**Single-line bootstrap (paste into cmd or PowerShell):**
+
+```powershell
+powershell -NoProfile -c "irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.ps1 | iex"
+```
+
+Or equivalently (if you prefer `git clone`):
 
 ```bat
 git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && scripts\quickstart.bat

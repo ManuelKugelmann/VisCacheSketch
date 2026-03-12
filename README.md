@@ -226,11 +226,17 @@ Requirements: Visual Studio 2022, CUDA 12.x, Windows 10 SDK 10.0.19041+, GPU wit
 
 **One-liner (paste into cmd or PowerShell):**
 
+```powershell
+powershell -NoProfile -c "irm https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.ps1 | iex"
+```
+
+Or without the bootstrap script:
+
 ```bat
 git clone https://github.com/ManuelKugelmann/VisCacheSketch.git && cd VisCacheSketch && scripts\quickstart.bat
 ```
 
-This downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro.
+This clones the repo, downloads the latest release, fetches test scenes (Bistro, Sponza), runs CPU tests + smoke test, and launches Mogwai with Bistro. See **[Windows Quickstart](docs/WINDOWS_QUICKSTART.md)** for full details.
 
 **Options:**
 
