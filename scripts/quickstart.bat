@@ -11,6 +11,10 @@ REM   4. Launch Mogwai with selected scene
 REM
 REM Requires: curl, tar, python3 (for tests), git (for VeachAjar)
 REM Optional: PowerShell 5+ (used for JSON parsing via built-in cmdlets)
+REM
+REM WSL alternative (runs .sh scripts directly):
+REM     wsl bash scripts/download_scenes.sh
+REM     wsl bash scripts/run_paper_experiments.sh
 
 setlocal enabledelayedexpansion
 
@@ -107,69 +111,8 @@ echo ========================================
 echo  Step 2: Download test scenes
 echo ========================================
 
-mkdir "%MEDIA_DIR%" 2>nul
-
-REM --- Arcade (bundled with Falcor) ---
-if exist "%ROOT%\Falcor\media\Arcade" (
-    if not exist "%MEDIA_DIR%\Arcade" (
-        echo [scenes] Copying Arcade from Falcor/media/...
-        xcopy /E /I /Q "%ROOT%\Falcor\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
-    ) else (
-        echo [scenes] Arcade already exists, skipping
-    )
-) else (
-    echo [scenes] Falcor/media/Arcade not found — skipping ^(run setup first for bundled scenes^)
-)
-
-REM --- Bistro ---
-if not exist "%MEDIA_DIR%\Bistro" (
-    echo [scenes] Downloading Bistro ^(~3.2 GB^)...
-    set "BISTRO_URL=https://casual-effects.com/g3d/data10/research/model/Amazon_Lumberyard_Bistro/Bistro_v5_2.zip"
-    set "BISTRO_ZIP=%TEMP%\Bistro.zip"
-    curl -fSL --progress-bar -o "!BISTRO_ZIP!" "!BISTRO_URL!"
-    if errorlevel 1 (
-        echo [scenes] WARNING: Bistro download failed. Continuing without it.
-        goto :sponza
-    )
-    echo [scenes] Extracting Bistro...
-    mkdir "%MEDIA_DIR%\Bistro" 2>nul
-    tar xf "!BISTRO_ZIP!" -C "%MEDIA_DIR%\Bistro"
-    del "!BISTRO_ZIP!" 2>nul
-    REM Create .pyscene wrapper
-    if not exist "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene" (
-        echo import falcor> "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
-        echo sceneBuilder = SceneBuilder^(^)>> "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
-        echo sceneBuilder.importScene^('BistroInterior.fbx'^)>> "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
-    )
-    echo [scenes] Bistro ready
-) else (
-    echo [scenes] Bistro already exists, skipping
-)
-
-REM --- Sponza ---
-:sponza
-if not exist "%MEDIA_DIR%\Sponza" (
-    echo [scenes] Downloading Sponza ^(~70 MB^)...
-    set "SPONZA_URL=https://casual-effects.com/g3d/data10/common/model/CrytekSponza/sponza.zip"
-    set "SPONZA_ZIP=%TEMP%\Sponza.zip"
-    curl -fSL --progress-bar -o "!SPONZA_ZIP!" "!SPONZA_URL!"
-    if errorlevel 1 (
-        echo [scenes] WARNING: Sponza download failed. Continuing without it.
-        goto :step3
-    )
-    echo [scenes] Extracting Sponza...
-    mkdir "%MEDIA_DIR%\Sponza" 2>nul
-    tar xf "!SPONZA_ZIP!" -C "%MEDIA_DIR%\Sponza"
-    del "!SPONZA_ZIP!" 2>nul
-    if not exist "%MEDIA_DIR%\Sponza\Sponza.pyscene" (
-        echo import falcor> "%MEDIA_DIR%\Sponza\Sponza.pyscene"
-        echo sceneBuilder = SceneBuilder^(^)>> "%MEDIA_DIR%\Sponza\Sponza.pyscene"
-        echo sceneBuilder.importScene^('sponza.obj'^)>> "%MEDIA_DIR%\Sponza\Sponza.pyscene"
-    )
-    echo [scenes] Sponza ready
-) else (
-    echo [scenes] Sponza already exists, skipping
-)
+call "%~dp0download_scenes.bat" --dir "%MEDIA_DIR%" --yes
+if errorlevel 1 echo [scenes] WARNING: Some scenes failed to download
 
 REM ---------------------------------------------------------------------------
 REM 3. Run CPU tests + smoke test
