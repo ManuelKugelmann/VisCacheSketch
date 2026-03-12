@@ -68,13 +68,15 @@ _Paper §15 — all configurations and metric targets_
 
 LOD contention is handled dynamically — no static threshold or distance heuristic:
 
-1. **Read-before-write skip**: before the InterlockedAdd, read the entry.
-   If total >= bootThreshold AND var <= varThreshold, skip the atomic.
-   Coarse levels converge fast (many threads → many samples) and then
-   self-limit. No static `kMaxUsableCellSize` needed.
+1. **Maturity gate** (before write): if total >= bootThreshold, skip the
+   atomic. The entry has enough samples — whether low-var (smooth) or
+   high-var (shadow boundary), additional writes have diminishing returns.
+   Background decay periodically halves counts, temporarily un-maturing
+   entries for fresh sampling (revalidation). No coin flip needed.
 
-2. **Cascaded variance gate**: after writing, check if this level is smooth.
-   If so, stop — don't write finer levels. This is the post-increment gate.
+2. **Cascaded variance gate** (after write): if var <= varThreshold, stop
+   descending to finer levels — this region is smooth, finer detail is
+   wasteful. Only applies to cold entries being populated.
 
 3. **WaveMatch coalescing** (SM 6.5): in the batched insert pass,
    WaveMatch coalesces threads targeting the same cell into a single atomic.

@@ -390,41 +390,20 @@ float vhfCommitRange(float3 posA, float3 posB, float V,
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Contention gate result: returned by vhfContentionGate() to tell callers
-// whether to write, skip this level, or stop the cascade entirely.
+// Maturity gate: returned by vhfMaturityGate() to tell callers whether to
+// write (cold) or skip (mature). "Mature" = enough samples that additional
+// writes have diminishing returns. Decay periodically revalidates by halving
+// counts, which temporarily un-matures entries for fresh sampling.
+//
+// No coin flip, no variance check here — variance only matters for the
+// *cascade* gate (whether to descend to finer levels), not for write gating.
 // ---------------------------------------------------------------------------
-static const int VHF_GATE_WRITE      = 0;  ///< Cold or throttle-pass: write this level
-static const int VHF_GATE_SKIP_LEVEL = 1;  ///< Throttled: skip this level, try finer
-static const int VHF_GATE_CONVERGED  = 2;  ///< Converged: stop cascade (break)
-
-/// Read-before-write contention gate.  Reads the slot (without insert) and
-/// returns one of VHF_GATE_{WRITE, SKIP_LEVEL, CONVERGED}.
-/// Shared by vhfInsertRange (inline per-lane) and csInsert (batched WaveMatch).
-int vhfContentionGate(uint addr, uint fp, uint lvl)
+bool vhfIsMature(uint addr, uint fp)
 {
     int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
-    if (slot < 0) return VHF_GATE_WRITE;  // no entry yet → cold
-
-    uint packed = gVHFTable[slot].packed;
-    uint total  = packed & 0xFFFFu;
-    if (total < gBootThreshold) return VHF_GATE_WRITE;  // cold
-
-    uint  vis = packed >> 16u;
-    float mu  = float(vis) / float(total);
-    float var = mu * (1.0f - mu);
-
-    // Case 1: converged — skip this and all finer levels.
-    if (var <= gVarThreshold) return VHF_GATE_CONVERGED;
-
-    // Case 2: mature high-variance (shadow boundary).
-    // Mean is stable; throttle writes to ~boot/total rate.
-    float pWrite = float(gBootThreshold) / float(total);
-    uint coin = pcg3d(uint3(addr, lvl, total)).x;
-    if (float(coin) / 4294967295.0f >= pWrite)
-        return VHF_GATE_SKIP_LEVEL;
-
-    // Case 3: throttle pass — write.
-    return VHF_GATE_WRITE;
+    if (slot < 0) return false;  // no entry → cold
+    uint total = gVHFTable[slot].packed & 0xFFFFu;
+    return total >= gBootThreshold;
 }
 
 /// Inline overflow decay — subtract 1/8 of both counters when total > 0xE000.
@@ -444,20 +423,14 @@ uint vhfOverflowDecay(int slot, uint cur)
 
 // ---------------------------------------------------------------------------
 // INSERT with explicit LOD range.
-// Coarse-to-fine cascaded variance gate: write L0, check its variance to
-// decide L1, write L1, check its variance to decide L2, etc.
+// Coarse-to-fine cascade with two gates:
 //
-// Dynamic contention avoidance (read-before-write):
-// Before the InterlockedAdd, read the entry and decide:
-//   1. Converged (var <= threshold): break — skip this and all finer levels.
-//   2. Mature but high-variance (total >> boot, var still high):
-//      Probabilistic throttle — write with probability boot/total.
-//      Shadow boundary at L0: mu~0.5, var~0.25, never converges, but
-//      the mean is statistically stable after boot samples. Additional
-//      writes have diminishing returns, so we throttle to keep atomic
-//      traffic proportional to 1/total. Uses deterministic coin from
-//      (addr, level, total) to avoid warp divergence.
-//   3. Cold (total < boot): always write — need samples.
+// 1. Maturity gate (before write): if total >= boot, skip — the entry has
+//    enough samples. Decay periodically halves counts, temporarily un-maturing
+//    entries for fresh sampling. No coin flip needed.
+//
+// 2. Cascaded variance gate (after write): if var <= threshold, stop descending
+//    to finer levels — this region is smooth, finer detail is wasteful.
 //
 // Single InterlockedAdd keeps vis and total always in sync.
 // Inline overflow decay: subtract 1/8 when total > 0xE000.
@@ -474,18 +447,16 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
-        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
 
+        // Maturity gate: skip mature entries (decay revalidates periodically)
+        if (vhfIsMature(addr, fp)) continue;
+
+        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
         if (slot < 0) continue;  // table full at this cell — skip
 
         // Set fingerprint if slot was empty
         if (gVHFTable[slot].fingerprint == 0u)
             gVHFTable[slot].fingerprint = fp;
-
-        // Read-before-write contention gate
-        int gate = vhfContentionGate(addr, fp, uint(lvl));
-        if (gate == VHF_GATE_CONVERGED)  break;     // skip this + finer
-        if (gate == VHF_GATE_SKIP_LEVEL) continue;  // throttled, try finer
 
         // Atomic packed increment: vis in high 16 bits, total in low 16 bits
         uint delta = (visVal << 16u) | 1u;

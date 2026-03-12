@@ -44,10 +44,8 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
 
-        // Contention gate before WaveMatch — all lanes need to agree on skip.
-        int gate = vhfContentionGate(addr, fp, uint(lvl));
-        if (gate == VHF_GATE_CONVERGED)  break;
-        if (gate == VHF_GATE_SKIP_LEVEL) continue;
+        // Maturity gate before WaveMatch — all lanes need to agree on skip.
+        if (vhfIsMature(addr, fp)) continue;
 
         // SM 6.5 WaveMatch: identify lanes targeting the same cell
         // and let only the first lane in each group perform the atomic.
