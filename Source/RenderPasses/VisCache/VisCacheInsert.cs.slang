@@ -38,36 +38,16 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
     for (int lvl = lo; lvl <= hi; lvl++)
     {
         float cs = vhfCellSize(lvl);
-        int3 qa = jitterQuantize(ins.posA, cs, 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(ins.posB, cs, 0xBBu ^ uint(lvl));
+        int3 qa, qb;
+        vhfQuantizePair(ins.posA, ins.posB, cs, uint(lvl), qa, qb);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
 
-        // --- Read-before-write contention gate (mirrors vhfInsertRange) ---
-        // Must happen before WaveMatch — all lanes need to agree on skip.
-        int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
-        if (slot >= 0)
-        {
-            uint packed = gVHFTable[slot].packed;
-            uint total  = packed & 0xFFFFu;
-            if (total >= gBootThreshold)
-            {
-                uint vis  = packed >> 16u;
-                float mu  = float(vis) / float(total);
-                float var = mu * (1.0f - mu);
-
-                // Converged: skip this and all finer levels.
-                if (var <= gVarThreshold)
-                    break;
-
-                // Mature high-variance: throttle writes (boot/total).
-                float pWrite = float(gBootThreshold) / float(total);
-                uint coin = pcg3d(uint3(addr, uint(lvl), total)).x;
-                if (float(coin) / 4294967295.0f >= pWrite)
-                    continue;
-            }
-        }
+        // Contention gate before WaveMatch — all lanes need to agree on skip.
+        int gate = vhfContentionGate(addr, fp, uint(lvl));
+        if (gate == VHF_GATE_CONVERGED)  break;
+        if (gate == VHF_GATE_SKIP_LEVEL) continue;
 
         // SM 6.5 WaveMatch: identify lanes targeting the same cell
         // and let only the first lane in each group perform the atomic.
@@ -92,14 +72,7 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
                 uint delta = (visSum << 16u) | totalSum;
                 uint prev;
                 InterlockedAdd(gVHFTable[wslot].packed, delta, prev);
-
-                // Inline overflow decay (see VisCache.slang)
-                uint cur = prev + delta;
-                if ((cur & 0xFFFFu) > 0xE000u)
-                {
-                    uint sub = ((cur >> 19u) << 16u) | ((cur & 0xFFFFu) >> 3u);
-                    InterlockedAdd(gVHFTable[wslot].packed, -sub);
-                }
+                vhfOverflowDecay(wslot, prev + delta);
             }
         }
     }

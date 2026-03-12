@@ -94,6 +94,22 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 }
 
 // ---------------------------------------------------------------------------
+// Canonical quantize — quantize both endpoints and lexicographic-swap so
+// that V(A,B) and V(B,A) always map to the same cell pair.
+// ---------------------------------------------------------------------------
+void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
+                     out int3 qa, out int3 qb)
+{
+    qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
+    qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
+    // Lexicographic swap: ensure qa <= qb so (A,B) and (B,A) are identical.
+    if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
+    {
+        int3 tmp = qa; qa = qb; qb = tmp;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Address and fingerprint functions
 // Two different hash chains to keep them independent [Binder et al. 2018].
 // ---------------------------------------------------------------------------
@@ -200,8 +216,8 @@ VHFResult vhfLookupRange(float3 posA, float3 posB, int loLvl, int hiLvl)
     for (int lvl = loLvl; lvl <= hiLvl; lvl++)
     {
         float cs = vhfCellSize(lvl);
-        int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(lvl));
+        int3 qa, qb;
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
@@ -328,8 +344,8 @@ VHFGateResult vhfGateRange(float3 posA, float3 posB,
 float vhfDeterministicXi(float3 posA, float3 posB, int hiLvl)
 {
     float cs = vhfCellSize(hiLvl);
-    int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(hiLvl));
-    int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(hiLvl));
+    int3 qa, qb;
+    vhfQuantizePair(posA, posB, cs, uint(hiLvl), qa, qb);
     // Third hash chain (salt 0xCCu) — independent of addr/fingerprint chains
     uint3 h = pcg3d(uint3(
         (uint(qa.x) ^ uint(qb.x)) + 0xCCu,
@@ -374,6 +390,59 @@ float vhfCommitRange(float3 posA, float3 posB, float V,
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
+// Contention gate result: returned by vhfContentionGate() to tell callers
+// whether to write, skip this level, or stop the cascade entirely.
+// ---------------------------------------------------------------------------
+static const int VHF_GATE_WRITE      = 0;  ///< Cold or throttle-pass: write this level
+static const int VHF_GATE_SKIP_LEVEL = 1;  ///< Throttled: skip this level, try finer
+static const int VHF_GATE_CONVERGED  = 2;  ///< Converged: stop cascade (break)
+
+/// Read-before-write contention gate.  Reads the slot (without insert) and
+/// returns one of VHF_GATE_{WRITE, SKIP_LEVEL, CONVERGED}.
+/// Shared by vhfInsertRange (inline per-lane) and csInsert (batched WaveMatch).
+int vhfContentionGate(uint addr, uint fp, uint lvl)
+{
+    int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+    if (slot < 0) return VHF_GATE_WRITE;  // no entry yet → cold
+
+    uint packed = gVHFTable[slot].packed;
+    uint total  = packed & 0xFFFFu;
+    if (total < gBootThreshold) return VHF_GATE_WRITE;  // cold
+
+    uint  vis = packed >> 16u;
+    float mu  = float(vis) / float(total);
+    float var = mu * (1.0f - mu);
+
+    // Case 1: converged — skip this and all finer levels.
+    if (var <= gVarThreshold) return VHF_GATE_CONVERGED;
+
+    // Case 2: mature high-variance (shadow boundary).
+    // Mean is stable; throttle writes to ~boot/total rate.
+    float pWrite = float(gBootThreshold) / float(total);
+    uint coin = pcg3d(uint3(addr, lvl, total)).x;
+    if (float(coin) / 4294967295.0f >= pWrite)
+        return VHF_GATE_SKIP_LEVEL;
+
+    // Case 3: throttle pass — write.
+    return VHF_GATE_WRITE;
+}
+
+/// Inline overflow decay — subtract 1/8 of both counters when total > 0xE000.
+/// Returns the post-decay packed value (for cascaded variance gate check).
+uint vhfOverflowDecay(int slot, uint cur)
+{
+    if ((cur & 0xFFFFu) > 0xE000u)
+    {
+        uint visHalf   = (cur >> 16u) >> 3u;
+        uint totalHalf = (cur & 0xFFFFu) >> 3u;
+        uint sub       = (visHalf << 16u) | totalHalf;
+        InterlockedAdd(gVHFTable[slot].packed, -sub);
+        cur -= sub;
+    }
+    return cur;
+}
+
+// ---------------------------------------------------------------------------
 // INSERT with explicit LOD range.
 // Coarse-to-fine cascaded variance gate: write L0, check its variance to
 // decide L1, write L1, check its variance to decide L2, etc.
@@ -400,8 +469,8 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
     for (int lvl = loLvl; lvl <= hiLvl; lvl++)
     {
         float cs = vhfCellSize(lvl);
-        int3 qa = jitterQuantize(posA, cs, 0xAAu ^ uint(lvl));
-        int3 qb = jitterQuantize(posB, cs, 0xBBu ^ uint(lvl));
+        int3 qa, qb;
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
@@ -413,51 +482,19 @@ void vhfInsertRange(float3 posA, float3 posB, float V, int loLvl, int hiLvl)
         if (gVHFTable[slot].fingerprint == 0u)
             gVHFTable[slot].fingerprint = fp;
 
-        // --- Read-before-write contention gate ---
-        {
-            uint packed = gVHFTable[slot].packed;
-            uint total  = packed & 0xFFFFu;
-            if (total >= gBootThreshold)
-            {
-                uint vis  = packed >> 16u;
-                float mu  = float(vis) / float(total);
-                float var = mu * (1.0f - mu);
-
-                // Case 1: converged — skip this and all finer levels.
-                if (var <= gVarThreshold)
-                    break;
-
-                // Case 2: mature but high-variance (shadow boundary).
-                // Mean is stable; throttle writes to ~boot/total rate.
-                float pWrite = float(gBootThreshold) / float(total);
-                uint coin = pcg3d(uint3(addr, uint(lvl), total)).x;
-                if (float(coin) / 4294967295.0f >= pWrite)
-                    continue;  // skip this level, try finer
-            }
-            // Case 3: cold — fall through, always write.
-        }
+        // Read-before-write contention gate
+        int gate = vhfContentionGate(addr, fp, uint(lvl));
+        if (gate == VHF_GATE_CONVERGED)  break;     // skip this + finer
+        if (gate == VHF_GATE_SKIP_LEVEL) continue;  // throttled, try finer
 
         // Atomic packed increment: vis in high 16 bits, total in low 16 bits
         uint delta = (visVal << 16u) | 1u;
         uint prev;
         InterlockedAdd(gVHFTable[slot].packed, delta, prev);
 
-        // Inline overflow decay: when total approaches uint16 max,
-        // subtract 1/8 of both counters to keep counts near ceiling.
-        // Integer shift-truncation preserves mean ratio within ~0.003%.
-        uint cur = prev + delta;
-        if ((cur & 0xFFFFu) > 0xE000u)
-        {
-            uint visHalf   = (cur >> 16u) >> 3u;
-            uint totalHalf = (cur & 0xFFFFu) >> 3u;
-            uint sub       = (visHalf << 16u) | totalHalf;
-            InterlockedAdd(gVHFTable[slot].packed, -sub);
-            cur = cur - sub;
-        }
+        uint cur = vhfOverflowDecay(slot, prev + delta);
 
-        // Cascaded gate: Bernoulli variance mu*(1-mu) of this level
-        // decides whether to continue to the next finer level.
-        // No extra lookup — uses post-increment packed value directly.
+        // Cascaded gate: if this level is now smooth, stop.
         uint totalCur = cur & 0xFFFFu;
         if (totalCur >= gBootThreshold)
         {

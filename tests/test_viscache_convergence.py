@@ -74,6 +74,18 @@ def jitter_quantize(pos, cell, seed):
     jit = [(r & 0xFFFF) / 65535.0 - 0.5 for r in (rx, ry, rz)]
     return tuple(int(math.floor((pos[i] + jit[i] * cell) / cell)) for i in range(3))
 
+def canonical_pair(qa, qb):
+    """Lexicographic swap so (A,B) and (B,A) map to same entry."""
+    if qa > qb:
+        return qb, qa
+    return qa, qb
+
+def quantize_pair(posA, posB, cell, lvl):
+    """Quantize + canonicalize — mirrors vhfQuantizePair in VisCache.slang."""
+    qa = jitter_quantize(posA, cell, 0xAA ^ lvl)
+    qb = jitter_quantize(posB, cell, 0xBB ^ lvl)
+    return canonical_pair(qa, qb)
+
 def vhf_addr(qa, qb, lvl):
     h = pcg3d(qa[0] ^ qb[0], qa[1] ^ qb[1], (qa[2] ^ qb[2]) + lvl * 0x9e3779b9)
     return (h[0] ^ h[1] ^ h[2]) & (TABLE_CAP - 1)
@@ -101,8 +113,7 @@ def find_slot(table, addr0, fp, allow_insert):
 
 def insert(table, posA, posB, V, lvl=0):
     cs = cell_size(lvl)
-    qa = jitter_quantize(posA, cs, 0xAA ^ lvl)
-    qb = jitter_quantize(posB, cs, 0xBB ^ lvl)
+    qa, qb = quantize_pair(posA, posB, cs, lvl)
     fp   = vhf_fp(qa, qb, lvl)
     addr = vhf_addr(qa, qb, lvl)
     slot = find_slot(table, addr, fp, allow_insert=True)
@@ -123,8 +134,7 @@ def insert(table, posA, posB, V, lvl=0):
 
 def lookup(table, posA, posB, lvl=0):
     cs = cell_size(lvl)
-    qa = jitter_quantize(posA, cs, 0xAA ^ lvl)
-    qb = jitter_quantize(posB, cs, 0xBB ^ lvl)
+    qa, qb = quantize_pair(posA, posB, cs, lvl)
     fp   = vhf_fp(qa, qb, lvl)
     addr = vhf_addr(qa, qb, lvl)
     slot = find_slot(table, addr, fp, allow_insert=False)
@@ -582,6 +592,40 @@ def test_cascaded_variance_gate():
     print(f"  PASS: cascaded gate blocks smooth regions, propagates at boundaries")
 
 
+# ---------------------------------------------------------------------------
+# Test 14: Canonical symmetry — V(A,B) and V(B,A) share the same entry
+# ---------------------------------------------------------------------------
+def test_canonical_symmetry():
+    print("Test 14: Canonical symmetry V(A,B) == V(B,A)")
+    table = [(0, 0)] * TABLE_CAP
+    posA = (3.0, 7.0, 1.5)
+    posB = (25.0, 12.0, 8.0)
+
+    # Insert via (A,B)
+    for _ in range(200):
+        V = 1.0 if random.random() < 0.8 else 0.0
+        insert(table, posA, posB, V)
+
+    # Lookup via (B,A) — should find the same entry
+    mu_ab, var_ab = lookup(table, posA, posB)
+    mu_ba, var_ba = lookup(table, posB, posA)
+    assert mu_ab is not None, "FAIL: (A,B) lookup returned None"
+    assert mu_ba is not None, "FAIL: (B,A) lookup returned None"
+    assert mu_ab == mu_ba, f"FAIL: mu(A,B)={mu_ab:.4f} != mu(B,A)={mu_ba:.4f}"
+    assert var_ab == var_ba, f"FAIL: var(A,B)={var_ab:.4f} != var(B,A)={var_ba:.4f}"
+
+    # Insert via (B,A) and verify (A,B) sees the update
+    for _ in range(200):
+        V = 1.0 if random.random() < 0.8 else 0.0
+        insert(table, posB, posA, V)
+    mu_combined, _ = lookup(table, posA, posB)
+    assert mu_combined is not None, "FAIL: combined lookup returned None"
+    # After 400 samples of gt=0.8, should be well converged
+    err = abs(mu_combined - 0.8)
+    assert err < 0.06, f"FAIL: combined mu={mu_combined:.4f} gt=0.8 err={err:.4f}"
+    print(f"  PASS: mu(A,B)==mu(B,A)={mu_ab:.4f}, combined mu={mu_combined:.4f} (err={err:.4f})")
+
+
 # ===========================================================================
 # Run all tests
 # ===========================================================================
@@ -601,6 +645,7 @@ if __name__ == "__main__":
         test_firefly_suppression,
         test_background_decay,
         test_cascaded_variance_gate,
+        test_canonical_symmetry,
     ]
     failed = 0
     for t in tests:
