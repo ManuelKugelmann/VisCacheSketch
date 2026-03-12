@@ -1,0 +1,98 @@
+name: Quickstart Smoke Test
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'scripts/quickstart.bat'
+      - 'scripts/bootstrap.bat'
+      - 'scripts/run-tests.*'
+      - '.github/workflows/quickstart.yml'
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - 'scripts/quickstart.bat'
+      - 'scripts/bootstrap.bat'
+      - 'scripts/run-tests.*'
+      - '.github/workflows/quickstart.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: quickstart-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # bootstrap.bat (Windows) — tests the curl one-liner flow
+  # ---------------------------------------------------------------------------
+  bootstrap-windows:
+    name: Bootstrap (Windows)
+    runs-on: windows-2022
+    steps:
+      - name: Checkout (for local bootstrap script)
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Show git version
+        run: git --version
+
+      # Use the branch name for clone (--branch requires a ref, not a SHA).
+      # For PRs use head_ref (source branch), for pushes use ref_name (e.g. "main").
+      - name: Test bootstrap.bat (first run — clone)
+        shell: cmd
+        working-directory: ${{ runner.temp }}
+        run: |
+          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
+
+      - name: Verify clone succeeded
+        shell: cmd
+        working-directory: ${{ runner.temp }}
+        run: |
+          if not exist "VCS-test\.git" (echo Clone did not create .git & exit /b 1)
+          echo Clone OK
+
+      - name: Test bootstrap.bat (re-run — idempotent pull)
+        shell: cmd
+        working-directory: ${{ runner.temp }}
+        run: |
+          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
+
+      - name: Verify repo still valid after re-run
+        shell: cmd
+        working-directory: ${{ runner.temp }}
+        run: |
+          if not exist "VCS-test\.git" (echo .git missing after re-run & exit /b 1)
+          echo Idempotent re-run OK
+
+  # ---------------------------------------------------------------------------
+  # CPU tests via run-tests scripts (Linux + Windows)
+  # ---------------------------------------------------------------------------
+  cpu-tests-linux:
+    name: CPU Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: run-tests.sh (all)
+        run: bash scripts/run-tests.sh
+      - name: run-tests.sh (quick) — idempotent re-run
+        run: bash scripts/run-tests.sh quick
+
+  cpu-tests-windows:
+    name: CPU Tests (Windows)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: run-tests.bat (all)
+        run: scripts\run-tests.bat
+      - name: run-tests.bat (quick) — idempotent re-run
+        run: scripts\run-tests.bat quick

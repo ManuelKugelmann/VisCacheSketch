@@ -96,7 +96,7 @@ check("Light-sel-only: VisCache active (hash table needed for mu)",
 # Light-sel-only must NOT gate shadow rays (revalidation off)
 check("Light-sel-only: revalidation disabled (vanilla shadow rays)",
       not lightsel_only_flags['enableVisCacheRevalidation'],
-      "enableVisCacheRevalidation=False → unconditional V(P,Q)")
+      "enableVisCacheRevalidation=False -> unconditional V(P,Q)")
 
 # All three passes (DI/GI/PT) support this combination
 for pass_name in ["DI", "GI", "PT"]:

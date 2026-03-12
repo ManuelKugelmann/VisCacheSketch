@@ -9,8 +9,13 @@ REM   2. Download test scenes (Arcade, Bistro, Sponza)
 REM   3. Run smoke test
 REM   4. Launch Mogwai with selected scene
 REM
-REM Requires: curl, tar, python3 (for tests), git (for VeachAjar)
+REM Requires: curl, tar, python3 (for tests), git 2.43+ (for VeachAjar sparse clone)
 REM Optional: PowerShell 5+ (used for JSON parsing via built-in cmdlets)
+REM
+REM Idempotent: safe to re-run. Skips steps that are already complete.
+REM
+REM One-liner (cmd or PowerShell, idempotent):
+REM   curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
 REM
 REM WSL alternative (runs .sh scripts directly):
 REM     wsl bash scripts/download_scenes.sh
@@ -56,20 +61,30 @@ where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
 
 echo [release] Querying latest release from %REPO%...
 
-REM Use PowerShell to parse JSON (available on all modern Windows)
-for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command ^
-    "$r = Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases/latest'; ^
-     $a = $r.assets | Where-Object { $_.name -match 'viscache-windows.*Release.*\.tar\.gz' } | Select-Object -First 1; ^
-     if ($a) { $a.browser_download_url } else { 'NONE' }"`) do set "DOWNLOAD_URL=%%U"
+REM Use curl to fetch release JSON, then PowerShell to parse it.
+REM Two-step approach avoids all cmd/PowerShell pipe escaping issues.
+REM Query /releases (not /releases/latest) so we also find prereleases (dev-latest).
+set "API_JSON=%TEMP%\vc-release-%RANDOM%.json"
+curl -fsSL -o "!API_JSON!" "https://api.github.com/repos/%REPO%/releases?per_page=5"
+if errorlevel 1 (
+    echo [release] No releases found (API error). Skipping download.
+    echo [release] This is normal for first-time setup or pre-release branches.
+    del "!API_JSON!" 2>nul
+    goto :step2
+)
+REM Parse JSON with PowerShell — use -Command with semicolons, no pipes needed.
+REM .Where() method avoids the | pipe character entirely (requires PS 4+).
+REM Searches across all releases (stable first, then prereleases) for a matching asset.
+for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$releases = Get-Content -Raw '!API_JSON!' | ConvertFrom-Json; foreach ($rel in $releases) { $m = $rel.assets.Where({$_.name -match 'viscache-windows.*Release.*\.tar\.gz'}); if ($m.Count) { $m[0].browser_download_url; return } }; 'NONE'"`) do set "DOWNLOAD_URL=%%U"
+del "!API_JSON!" 2>nul
 
 if "%DOWNLOAD_URL%"=="NONE" (
-    echo [release] ERROR: No Windows Release asset found in latest release.
-    echo [release] Check https://github.com/%REPO%/releases
-    exit /b 1
+    echo [release] No Windows Release asset found in latest release. Skipping.
+    goto :step2
 )
 if "%DOWNLOAD_URL%"=="" (
-    echo [release] ERROR: Could not query GitHub API. Check network connection.
-    exit /b 1
+    echo [release] Could not parse release info. Skipping download.
+    goto :step2
 )
 
 echo [release] Downloading: %DOWNLOAD_URL%
@@ -161,9 +176,10 @@ if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
 
 if not exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [launch] Mogwai.exe not found. Download a release first.
-    echo [launch] Manual: https://github.com/%REPO%/releases
-    exit /b 1
+    echo [launch] Mogwai.exe not found — no release downloaded.
+    echo [launch] Build from source or grab a release: https://github.com/%REPO%/releases
+    echo [launch] Tests and setup completed successfully.
+    exit /b 0
 )
 
 if "%SCENE_FILE%"=="" (
