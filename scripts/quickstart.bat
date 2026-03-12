@@ -61,11 +61,19 @@ where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
 
 echo [release] Querying latest release from %REPO%...
 
-REM Use PowerShell to parse JSON (available on all modern Windows).
-REM NOTE: Pipes are written as -Command "..." with no literal | in the for /f
-REM backtick to avoid cmd.exe interpreting | as a shell pipe.
-set "PS_CMD=$r = Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases/latest'; $a = $r.assets ^| Where-Object { $_.name -match 'viscache-windows.*Release.*\\.tar\\.gz' } ^| Select-Object -First 1; if ($a) { $a.browser_download_url } else { 'NONE' }"
-for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "!PS_CMD!"`) do set "DOWNLOAD_URL=%%U"
+REM Use curl to fetch release JSON, then PowerShell to parse it.
+REM Two-step approach avoids all cmd/PowerShell pipe escaping issues.
+set "API_JSON=%TEMP%\vc-release-%RANDOM%.json"
+curl -fsSL -o "!API_JSON!" "https://api.github.com/repos/%REPO%/releases/latest"
+if errorlevel 1 (
+    echo [release] ERROR: Could not query GitHub API. Check network connection.
+    del "!API_JSON!" 2>nul
+    exit /b 1
+)
+REM Parse JSON with PowerShell — use -Command with semicolons, no pipes needed.
+REM .Where() method avoids the | pipe character entirely (requires PS 4+).
+for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$r = Get-Content -Raw '!API_JSON!'; $j = ConvertFrom-Json $r; $m = $j.assets.Where({$_.name -match 'viscache-windows.*Release.*\.tar\.gz'}); if ($m.Count) { $m[0].browser_download_url } else { 'NONE' }"`) do set "DOWNLOAD_URL=%%U"
+del "!API_JSON!" 2>nul
 
 if "%DOWNLOAD_URL%"=="NONE" (
     echo [release] ERROR: No Windows Release asset found in latest release.
