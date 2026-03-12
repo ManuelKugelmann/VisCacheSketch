@@ -1202,6 +1202,14 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         mRecompile = true;
     }
 
+    // Read VisCache hash table from upstream VisCache pass (if connected).
+    {
+        bool wasAvailable = mVisCacheAvailable;
+        mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr);
+        if (mVisCacheAvailable != wasAvailable) mRecompile = true;
+    }
+
     // Check if fixed sample count should be used. When the sample count input is connected we load the count from there instead.
     mFixedSampleCount = renderData[kInputSampleCount] == nullptr;
 
@@ -1338,6 +1346,23 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
 
+    // Bind VisCache resources when available.
+    if (mVisCacheAvailable && mpVHFTable)
+    {
+        auto& dict = renderData.getDictionary();
+        var["gVHFTable"] = mpVHFTable;
+
+        auto vcVar = var["VisCacheParams"];
+        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
+        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
+        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
+        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
+        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+
+        if (auto scene = dynamic_ref_cast<Scene>(mpScene))
+            vcVar["gCamPos"] = scene->getCamera()->getPosition();
+    }
+
     // Full screen dispatch.
     mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));
 }
@@ -1428,6 +1453,9 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("INTERIOR_LIST_SLOT_COUNT", std::to_string(maxNestedMaterials));
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
+
+    // VisCache integration.
+    defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults

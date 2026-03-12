@@ -204,4 +204,8 @@ private:
     ref<Buffer>                     mpSampleNRDPrimaryHitNeeOnDelta;///< Compact per-sample NEE on delta primary vertices data.
     ref<Buffer>                     mpSampleNRDEmission;        ///< Compact per-sample NRD emission data.
     ref<Buffer>                     mpSampleNRDReflectance;     ///< Compact per-sample NRD reflectance data.
+
+    // VisCache integration — hash table + params read from InternalDictionary.
+    ref<Buffer> mpVHFTable;
+    bool mVisCacheAvailable = false;
 };

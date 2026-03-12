@@ -81,8 +81,8 @@ float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
                           float3 camPos, inout SampleGenerator sg)
 {
 #if USE_VISCACHE_REVAL
-    // VisCache hash table CV+RRR (S11.3)
-    return evalRevalidationCV(P, Q, bsdf, Lo, G, camPos, sg);
+    // VisCache hash table CV+RRR (S11.3) — camPos now in VisCacheParams cbuffer.
+    return evalRevalidationCV(P, Q, bsdf, Lo, G, sg);
 #elif USE_LOCAL_REVAL
     // Reservoir-local CV+RRR (no hash table — ablation baseline)
     return evalLocalRevalidation(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis,

@@ -84,4 +84,8 @@ private:
     uint2 mFrameDim = {0, 0};
     bool mOptionsChanged = false;
     bool mGBufferAdjustShadingNormals = false;
+
+    // VisCache integration — hash table + params read from InternalDictionary.
+    ref<Buffer> mpVHFTable;
+    bool mVisCacheAvailable = false;
 };

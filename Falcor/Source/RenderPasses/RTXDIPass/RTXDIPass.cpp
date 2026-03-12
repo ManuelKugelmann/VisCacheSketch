@@ -130,6 +130,12 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
     // Check if GBuffer has adjusted shading normals enabled.
     mGBufferAdjustShadingNormals = dict.getValue(Falcor::kRenderPassGBufferAdjustShadingNormals, false);
 
+    // Read VisCache hash table from upstream VisCache pass (if connected).
+    bool wasAvailable = mVisCacheAvailable;
+    mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
+    mVisCacheAvailable = (mpVHFTable != nullptr);
+    if (mVisCacheAvailable != wasAvailable) recreatePrograms();  // recompile on toggle
+
     mpRTXDI->beginFrame(pRenderContext, mFrameDim);
 
     prepareSurfaceData(pRenderContext, pVBuffer);
@@ -245,6 +251,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         defines.add(mpRTXDI->getDefines());
         defines.add("GBUFFER_ADJUST_SHADING_NORMALS", mGBufferAdjustShadingNormals ? "1" : "0");
         defines.add("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
+        defines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         defines.add(getValidResourceDefines(kOutputChannels, renderData));
 
         mpFinalShadingPass = ComputePass::create(mpDevice, desc, defines, true);
@@ -252,6 +259,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
 
     mpFinalShadingPass->addDefine("GBUFFER_ADJUST_SHADING_NORMALS", mGBufferAdjustShadingNormals ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
+    mpFinalShadingPass->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
@@ -260,6 +268,21 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     auto rootVar = mpFinalShadingPass->getRootVar();
     mpScene->bindShaderData(rootVar["gScene"]);
     mpRTXDI->bindShaderData(rootVar);
+
+    // Bind VisCache resources when available.
+    if (mVisCacheAvailable)
+    {
+        auto& dict = renderData.getDictionary();
+        rootVar["gVHFTable"] = mpVHFTable;
+
+        auto vcVar = rootVar["VisCacheParams"];
+        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
+        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
+        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
+        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
+        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+    }
 
     auto var = rootVar["gFinalShading"];
     var["vbuffer"] = pVBuffer;

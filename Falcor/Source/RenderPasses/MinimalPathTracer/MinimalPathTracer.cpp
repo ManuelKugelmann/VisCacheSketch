@@ -149,6 +149,15 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         logWarning("Depth-of-field requires the '{}' input. Expect incorrect shading.", kInputViewDir);
     }
 
+    // Read VisCache hash table from upstream VisCache pass (if connected).
+    {
+        bool wasAvailable = mVisCacheAvailable;
+        mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr);
+        if (mVisCacheAvailable != wasAvailable)
+            mTracer.pVars = nullptr;  // force recompile on toggle
+    }
+
     // Specialize program.
     // These defines should not modify the program vars. Do not trigger program vars re-creation.
     mTracer.pProgram->addDefine("MAX_BOUNCES", std::to_string(mMaxBounces));
@@ -158,6 +167,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     mTracer.pProgram->addDefine("USE_EMISSIVE_LIGHTS", mpScene->useEmissiveLights() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
+    mTracer.pProgram->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
@@ -187,6 +197,20 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         bind(channel);
     for (auto channel : kOutputChannels)
         bind(channel);
+
+    // Bind VisCache resources when available.
+    if (mVisCacheAvailable && mpVHFTable)
+    {
+        var["gVHFTable"] = mpVHFTable;
+
+        auto vcVar = var["VisCacheParams"];
+        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
+        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
+        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
+        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
+        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+    }
 
     // Get dimensions of ray dispatch.
     const uint2 targetDim = renderData.getDefaultTextureDims();

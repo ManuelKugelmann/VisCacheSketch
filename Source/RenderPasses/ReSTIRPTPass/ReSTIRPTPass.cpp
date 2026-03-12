@@ -1395,6 +1395,7 @@ void ReSTIRPTPass::setShaderData(const ShaderVar& var, const RenderData& renderD
         // TODO: Do we have to bind this every frame?
         mpEmissiveSampler->bindShaderData(var["emissiveSampler"]);
     }
+
 }
 
 bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& renderData)
@@ -1439,6 +1440,14 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
     {
         mGBufferAdjustShadingNormals = gbufferAdjustShadingNormals;
         mRecompile = true;
+    }
+
+    // Read VisCache hash table from upstream VisCache pass (if connected).
+    {
+        bool wasAvailable = mVisCacheAvailable;
+        mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr);
+        if (mVisCacheAvailable != wasAvailable) mRecompile = true;
     }
 
     // Check if NRD data should be generated.
@@ -1658,6 +1667,22 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
+    // Bind VisCache resources at root var level when available.
+    if (mVisCacheAvailable && mpVHFTable)
+    {
+        auto rootVar = pass->getRootVar();
+        auto& dict = renderData.getDictionary();
+        rootVar["gVHFTable"] = mpVHFTable;
+
+        auto vcVar = rootVar["VisCacheParams"];
+        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
+        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
+        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
+        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
+        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+    }
+
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
 
@@ -1726,6 +1751,22 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
+    // Bind VisCache resources at root var level when available.
+    if (mVisCacheAvailable && mpVHFTable)
+    {
+        auto rootVar = pass->getRootVar();
+        auto& dict = renderData.getDictionary();
+        rootVar["gVHFTable"] = mpVHFTable;
+
+        auto vcVar = rootVar["VisCacheParams"];
+        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
+        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
+        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
+        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
+        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+    }
+
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
 
@@ -1780,6 +1821,10 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("INTERIOR_LIST_SLOT_COUNT", std::to_string(maxNestedMaterials));
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
+
+    // VisCache integration.
+    defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
+    defines.add("USE_VISCACHE_REVAL", owner.mVisCacheAvailable ? "1" : "0");
 
     // Scene-specific configuration.
     const auto& scene = owner.mpScene;

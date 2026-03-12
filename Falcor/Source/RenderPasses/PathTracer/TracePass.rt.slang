@@ -38,6 +38,10 @@ import PathTracerNRD;
 
 import Utils.NVAPI; // TODO(@skallweit) this is currently needed to make g_NvidiaExt visible
 
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCacheTracing;
+#endif
+
 ParameterBlock<PathTracer> gPathTracer;
 #if USE_SER
 ReorderingScheduler gScheduler;
@@ -123,6 +127,14 @@ struct VisibilityQuery : IVisibilityQuery
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
         return sceneRayQuery.traceVisibilityRay(ray);
     }
+
+#if USE_VISCACHE
+    /// CV+RRR visibility query via VisCache. Returns fractional visWeight.
+    float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg)
+    {
+        return vcVisibility_Ray<kUseAlphaTest>(ray, sg);
+    }
+#endif
 };
 
 /** Helper function to create a HitInfo from a HitObject.

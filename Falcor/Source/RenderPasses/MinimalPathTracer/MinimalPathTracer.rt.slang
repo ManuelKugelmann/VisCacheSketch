@@ -64,6 +64,10 @@ import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Rendering.Lights.LightHelpers;
 
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCacheTracing;
+#endif
+
 cbuffer CB
 {
     uint gFrameCount;    // Frame count since scene was loaded.
@@ -277,12 +281,19 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
     const float3 origin = computeRayOrigin(sd.posW, dot(sd.faceN, ls.dir) >= 0.f ? sd.faceN : -sd.faceN);
 
     // Test visibility by tracing a shadow ray.
+#if USE_VISCACHE
+    float visWeight = vcVisibility_DirDist(origin, ls.dir, ls.distance, sg);
+    if (visWeight <= 0.f)
+        return float3(0.f);
+    return mi.eval(sd, ls.dir, sg) * ls.Li * invPdf * visWeight;
+#else
     bool V = traceShadowRay(origin, ls.dir, ls.distance);
     if (!V)
         return float3(0.f);
 
     // Evaluate contribution.
     return mi.eval(sd, ls.dir, sg) * ls.Li * invPdf;
+#endif
 }
 
 /**

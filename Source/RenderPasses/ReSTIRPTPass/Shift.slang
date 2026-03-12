@@ -16,6 +16,10 @@ import Scene.Scene;
 import PathTracer;
 import RenderPasses.Shared.Denoising.NRDData;
 
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCache;
+#endif
+
 ParameterBlock<PathTracer> gPathTracer;
 
 float3 computeShiftedIntegrandExtraOutput(
@@ -630,6 +634,9 @@ bool mergeReservoir(const RestirPathTracerParams params, float3 dstIntegrand, fl
 }
 
 /// Evaluates the visibility term to the reconnection vertex from the source vertex.
+/// When USE_VISCACHE is enabled: deterministic cache-only early reject for known-
+/// occluded reconnections (mu < kRejectThreshold). No stochastic RR — shift mapping
+/// requires determinism for MIS weight reproducibility. Cache inserts on trace.
 bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex, bool isDirection = false)
 {
     float3 dir;
@@ -647,10 +654,37 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
         tMax *= 0.999f; // prevent intersection with another surface
     }
 
+#if USE_VISCACHE
+    // Deterministic cache-only early reject: if cache confidently says
+    // occluded (mu < threshold, variance low), skip the trace.
+    // No RR — shift mapping requires deterministic visibility for MIS.
+    if (!isDirection)
+    {
+        static const float kRejectThreshold = 0.1f;
+        int lo, hi;
+        vhfLOD(sourceVertex, lo, hi);
+        VHFResult r = vhfLookupRange(sourceVertex, targetVertex, lo, hi);
+        if (r.valid && r.mu < kRejectThreshold && r.var < gVarThreshold)
+            return false;
+    }
+#endif
+
     RayDesc ray = { sourceVertex, 0.f, dir, tMax }; // TODO: use offset position instead
 
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-    return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+    bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+
+#if USE_VISCACHE
+    // Insert trace result to keep cache warm for this reconnection pair.
+    if (!isDirection)
+    {
+        int lo, hi;
+        vhfLOD(sourceVertex, lo, hi);
+        vhfInsertRange(sourceVertex, targetVertex, visible ? 1.f : 0.f, lo, hi);
+    }
+#endif
+
+    return visible;
 }
 
 bool traceVisibilityRay(const Ray ray)
