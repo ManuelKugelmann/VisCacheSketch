@@ -66,6 +66,17 @@ mkdir -p "${PT_DST}"
 cp -r "${SCRIPT_DIR}/Source/RenderPasses/ReSTIRPTPass/"* "${PT_DST}/"
 log "  Copied: ReSTIRPTPass"
 
+# ReSTIRPTPass data files (16RooksPattern256.txt, VeachAjar pyscenes)
+# Quickfix: also copy into Falcor/data/ so AssetResolver finds them at runtime
+# without waiting for a CMake POST_BUILD step.
+DATA_SRC="${SCRIPT_DIR}/Source/RenderPasses/ReSTIRPTPass/Data"
+DATA_DST="${FALCOR_ROOT}/data/ReSTIRPTPass"
+if [ -d "${DATA_SRC}" ]; then
+    mkdir -p "${DATA_DST}"
+    cp -r "${DATA_SRC}/"* "${DATA_DST}/"
+    log "  Copied: ReSTIRPTPass data files to Falcor/data/"
+fi
+
 # Scripts
 SCRIPT_DST="${FALCOR_ROOT}/scripts/VisCache"
 mkdir -p "${SCRIPT_DST}"
