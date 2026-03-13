@@ -131,7 +131,8 @@ def render_graph_VisCache(use_nrd=USE_NRD):
             g.addPass(nrd, "NRDPass")
             _have_nrd = True
         except Exception:
-            pass
+            print("[VisCache] WARNING: NRDPass plugin not available — outputting raw noisy radiance."
+                  " Build with D3D12 + packman NRD package to enable denoising.")
 
     # Tone mapper
     tone = createPass("ToneMapper", {
