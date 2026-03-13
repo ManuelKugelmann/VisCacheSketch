@@ -102,3 +102,40 @@ jobs:
         run: scripts\run-tests.bat
       - name: run-tests.bat (quick) — idempotent re-run
         run: scripts\run-tests.bat quick
+
+  # ---------------------------------------------------------------------------
+  # Validate scene download URLs are reachable (HEAD request, no full download)
+  # ---------------------------------------------------------------------------
+  check-scene-urls:
+    name: Scene URL Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Extract and validate scene URLs
+        run: |
+          set -euo pipefail
+          FAIL=0
+
+          # URLs from download_scenes.sh (grep the actual variable assignments)
+          BISTRO_URL=$(grep '^BISTRO_URL=' scripts/download_scenes.sh | cut -d'"' -f2)
+          SPONZA_URL=$(grep '^SPONZA_URL=' scripts/download_scenes.sh | cut -d'"' -f2)
+          VEACH_URL=$(grep '^VEACHAJAR_REPO=' scripts/download_scenes.sh | cut -d'"' -f2)
+
+          for NAME_URL in "Bistro|$BISTRO_URL" "Sponza|$SPONZA_URL" "VeachAjar|$VEACH_URL"; do
+            NAME="${NAME_URL%%|*}"
+            URL="${NAME_URL#*|}"
+            echo "--- $NAME: $URL"
+            HTTP_CODE=$(curl -sL -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 30 "$URL")
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "  OK (HTTP $HTTP_CODE)"
+            else
+              echo "  FAIL (HTTP $HTTP_CODE)"
+              FAIL=1
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "::error::One or more scene download URLs are broken. Update scripts/download_scenes.sh"
+            exit 1
+          fi
