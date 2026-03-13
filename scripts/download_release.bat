@@ -4,7 +4,7 @@ REM
 REM Usage:  scripts\download_release.bat
 REM
 REM Downloads the dev-latest prerelease archive and extracts to release\.
-REM Idempotent: skips if Mogwai.exe already exists. Delete release\ to re-download.
+REM Re-downloads if a newer release is available (uses ETag to check).
 REM
 REM Requires: curl, tar (both ship with Windows 10+)
 
@@ -13,24 +13,44 @@ setlocal enabledelayedexpansion
 set "REPO=ManuelKugelmann/VisCacheSketch"
 set "ROOT=%~dp0.."
 set "RELEASE_DIR=%ROOT%\release"
-
-if exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [release] Mogwai.exe already exists in %RELEASE_DIR%
-    echo [release] Delete %RELEASE_DIR% to re-download.
-    exit /b 0
-)
+set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
+set "ETAG_FILE=%RELEASE_DIR%\.release-etag"
+set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 
 where curl >nul 2>&1 || (echo [release] ERROR: curl not found in PATH & exit /b 1)
 where tar >nul 2>&1 || (echo [release] ERROR: tar not found in PATH & exit /b 1)
 
-REM Direct download from the dev-latest prerelease (fixed archive name).
-REM No API query or JSON parsing needed — just a single curl redirect.
-set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
-echo [release] Downloading: %DOWNLOAD_URL%
 mkdir "%RELEASE_DIR%" 2>nul
 
-set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
-curl -fSL --progress-bar -o "%ARCHIVE%" "%DOWNLOAD_URL%"
+REM ---------------------------------------------------------------------------
+REM Check for newer release via ETag
+REM ---------------------------------------------------------------------------
+if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
+    set /p OLD_ETAG=<"%ETAG_FILE%"
+    echo [release] Checking for newer release...
+    for /f "delims=" %%E in ('curl -fsSL -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
+    if defined ETAG_LINE (
+        REM Compare stored ETag with remote
+        echo !ETAG_LINE! | findstr /c:"!OLD_ETAG!" >nul 2>&1
+        if not errorlevel 1 (
+            echo [release] Mogwai.exe is up to date.
+            exit /b 0
+        )
+        echo [release] Newer release available, updating...
+    ) else (
+        echo [release] Could not check remote -- keeping existing release.
+        exit /b 0
+    )
+) else if exist "%RELEASE_DIR%\Mogwai.exe" (
+    REM Mogwai exists but no ETag saved -- re-download to establish baseline
+    echo [release] Mogwai.exe exists but no version info. Re-downloading...
+)
+
+REM ---------------------------------------------------------------------------
+REM Download
+REM ---------------------------------------------------------------------------
+echo [release] Downloading: %DOWNLOAD_URL%
+curl -fSL --progress-bar -D "%TEMP%\vc-release-headers.txt" -o "%ARCHIVE%" "%DOWNLOAD_URL%"
 if errorlevel 1 (
     echo [release] Download failed -- no dev-latest release yet. Skipping.
     echo [release] This is normal for first-time setup or pre-release branches.
@@ -41,6 +61,12 @@ if errorlevel 1 (
     del "%ARCHIVE%" 2>nul
     exit /b 0
 )
+
+REM Save ETag for future update checks
+for /f "tokens=2 delims= " %%E in ('findstr /i "^etag:" "%TEMP%\vc-release-headers.txt" 2^>nul') do (
+    echo %%E> "%ETAG_FILE%"
+)
+del "%TEMP%\vc-release-headers.txt" 2>nul
 
 echo [release] Extracting to %RELEASE_DIR%...
 tar xzf "%ARCHIVE%" -C "%RELEASE_DIR%"
