@@ -10,6 +10,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/version.sh" "launch" 2>/dev/null || true
 RELEASE_DIR="${ROOT_DIR}/release"
 MEDIA_DIR="${ROOT_DIR}/media"
 REPO="ManuelKugelmann/VisCacheSketch"
@@ -46,7 +49,7 @@ fi
 
 # Resolve scene path
 case "$SCENE" in
-    Bistro)  SCENE_FILE="$MEDIA_DIR/Bistro/Bistro_Interior.pyscene" ;;
+    Bistro)  SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
     Sponza)  SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
     Arcade)  SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
     *)

@@ -16,6 +16,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENE="Bistro"
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/version.sh" "quickstart" 2>/dev/null || true
 SKIP_SCENES=0
 
 # Parse arguments

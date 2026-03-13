@@ -3,7 +3,7 @@ VisCache_Ablation.py  —  Automated ablation capture script
 Runs all ablation configurations and captures reference frames.
 
 Usage:
-    Mogwai.exe --script scripts/VisCache_Ablation.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --script scripts/VisCache_Ablation.py --scene BistroInterior.pyscene
 
 Outputs to: captures/ablation/<config_name>/frame_NNNN.exr
 Each config captures kWarmupFrames then kCaptureFrames EXR frames.

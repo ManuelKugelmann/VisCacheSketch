@@ -10,6 +10,8 @@ setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
 set "ROOT=%~dp0.."
+
+call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\media"
 set "SCENE=Bistro"
@@ -59,7 +61,7 @@ REM ---------------------------------------------------------------------------
 REM Resolve scene path and launch
 REM ---------------------------------------------------------------------------
 set "SCENE_FILE="
-if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
+if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
 

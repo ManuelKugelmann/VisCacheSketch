@@ -16,6 +16,8 @@ setlocal enabledelayedexpansion
 
 set "ROOT=%~dp0.."
 set "SCENE=Bistro"
+
+call "%~dp0version.bat" quickstart 2>nul
 set "SKIP_SCENES=0"
 
 REM ---------------------------------------------------------------------------

@@ -19,6 +19,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MEDIA_DIR="${ROOT_DIR}/media"
 
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/version.sh" "scenes" 2>/dev/null || true
+
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in

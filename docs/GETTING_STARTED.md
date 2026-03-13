@@ -101,14 +101,14 @@ cmake --build build --config Release --target Mogwai
 ### Run
 
 ```bat
-Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene media\Bistro\Bistro_Interior.pyscene
+Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene media\Bistro\BistroInterior.pyscene
 ```
 
 Set `FALCOR_MEDIA_FOLDERS` to avoid full paths:
 
 ```bat
 set FALCOR_MEDIA_FOLDERS=media
-Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene Bistro_Interior.pyscene
+Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene BistroInterior.pyscene
 ```
 
 ---
@@ -119,7 +119,7 @@ Download from the [Releases page](https://github.com/ManuelKugelmann/VisCacheSke
 
 ```bash
 tar xzf viscache-windows-Release-*.tar.gz
-Mogwai.exe --script scripts/VisCache/VisCache_Graph.py --scene path/to/Bistro_Interior.pyscene
+Mogwai.exe --script scripts/VisCache/VisCache_Graph.py --scene path/to/BistroInterior.pyscene
 Mogwai.exe --headless --script scripts/VisCache/VisCache_Graph.py --scene path/to/scene.pyscene
 ```
 
@@ -158,13 +158,13 @@ Mogwai.exe --headless --script scripts\VisCache\smoke_test.py   &REM smoke test 
 
 ```bat
 REM Ablation captures (10 configs, 200 warmup + 16 capture frames each)
-Mogwai.exe --headless --script scripts\VisCache\VisCache_Ablation.py --scene Bistro_Interior.pyscene
+Mogwai.exe --headless --script scripts\VisCache\VisCache_Ablation.py --scene BistroInterior.pyscene
 
 REM Baseline captures (14 DI/GI/PT configs)
-Mogwai.exe --headless --script scripts\VisCache\VisCache_Baselines.py --scene Bistro_Interior.pyscene
+Mogwai.exe --headless --script scripts\VisCache\VisCache_Baselines.py --scene BistroInterior.pyscene
 
 REM 1024 spp reference
-Mogwai.exe --headless --script scripts\VisCache\VisCache_Reference.py --scene Bistro_Interior.pyscene
+Mogwai.exe --headless --script scripts\VisCache\VisCache_Reference.py --scene BistroInterior.pyscene
 ```
 
 Output goes to `captures/ablation/` and `captures/baselines/`.

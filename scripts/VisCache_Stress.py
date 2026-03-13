@@ -3,7 +3,7 @@ VisCache_Stress.py  —  Disocclusion stress test.
 Fast camera flythrough to measure cold-start recovery.
 
 Usage:
-    Mogwai.exe --headless --script scripts/VisCache_Stress.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --headless --script scripts/VisCache_Stress.py --scene BistroInterior.pyscene
 
 Outputs to: captures/stress/<config>/frame_NNNN.exr
 Captures every frame (no warmup) to track convergence from cold start.
