@@ -19,6 +19,7 @@
             "description": "Enable additional options used for continous integration.",
             "hidden": true,
             "cacheVariables": {
+                "FALCOR_ENABLE_NRC": "ON",
                 "FALCOR_VALIDATE_HEADERS": "ON",
                 "FALCOR_PRECOMPILED_HEADERS": "OFF",
                 "FALCOR_UNITY_BUILD": "OFF"
