@@ -8,9 +8,6 @@
 **Status:** Implementation in progress. Paper draft in progress.
 
 ---
-
-![Kugelmann 2006 — spatial hash grid visibility cache with shadow ray reduction. Left: rendered image with smooth shadows from a single eye subpath sample per pixel. Right: color-encoded shadow test count revealing the underlying spatial grid cells.](docs/references/MK2006.jpg)
-
 ### History
 
 The 2006 Diplomarbeit by Manuel Kugelmann ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm, supervisor Alexander Keller) suffered multiple problems — overambitious scope, underautomated experiments, too much side work for financial reasons, theft of personal belongings, youthful lack of managment and communication skills — and was never properly finished. It's artifacts (thesis test and code) probably linger somwhere in the University Ulm archives and A. Keller's archives. A definitve hardcopy and compact disk with source code exists in Manuel Kugelmann's storage.
@@ -20,6 +17,8 @@ The thesis developed a general framework called *prediction with correction* (Se
 Using a control variate instead of zero on RR termination is standard Monte Carlo variance reduction — combining two textbook techniques (Knuth 1973; Hammersley and Handscomb 1964). The idea is at least implicit in the "go with the winners" family (Aldous and Vazirani 1994; Grassberger 2002). In the graphics context, [Szécsi, Szirmay-Kalos and Kelemen 2003][r-szecsi] formalized the non-zero termination estimate for rendering (CV, but with fixed RR probability). [Szirmay-Kalos et al. 2005][r-szirmay] added variance-driven RR via a Splitting|Russian Roulette framework using a scene-global average radiance estimate. The Kugelmann thesis arrived at the same CV+VRRR math independently but refined the estimation source (per-point spatial cache rather than a scene-global constant) and the variance signal use (variance measuring the cache-quality → trace-rate loop). The overlap with Szécsi et al. was found late in the writing process and contributed to the overambitious search for other possible new contributions.
 
 The spatial grids of the hash map were visible in the thesis — screenshots show grid cells. What was an unmentioned implementation detail was the use of *spatial hashing* to map grid cells to memory. The practical inspiration came from [ODE][r-ode] (Open Dynamics Engine, Russell Smith, 2001–2004), which uses spatial hashing for broad-phase collision detection. Kugelmann encountered ODE's spatial hashing through deep use of ODE during a Universität Ulm student course project ([Animal Race](http://animalrace.bitcraft.org/)). The 2006 thesis adopted spatial hashing for caching illumination quantities without suffering the "curse of dimensionality" but did not describe or frame it as a contribution.
+
+![Kugelmann 2006 — spatial hash grid visibility cache with shadow ray reduction. Left: rendered image with smooth shadows from a single eye subpath sample per pixel. Right: color-encoded shadow test count revealing the underlying spatial grid cells.](docs/references/MK2006.jpg)
 
 The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized in 2006 — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility allows exploiting the Bernoulli structure.
 
