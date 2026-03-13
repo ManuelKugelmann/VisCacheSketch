@@ -214,6 +214,16 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
+      - name: Check NRD availability
+        shell: cmd
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
+            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
+          ) else (
+            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
+          )
+
       - name: Build
         shell: cmd
         run: |
@@ -438,6 +448,16 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
+      - name: Check NRD availability
+        shell: cmd
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
+            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
+          ) else (
+            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
+          )
+
       - name: Build
         shell: cmd
         run: |
@@ -618,6 +638,14 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="
+
+      - name: Check NRD availability
+        run: |
+          if [ -d "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/Source/RenderPasses/NRDPass" ]; then
+            echo "[build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)"
+          else
+            echo "[build] NRDPass: DISABLED (missing NRD package or D3D12 — expected on Linux)"
+          fi
 
       - name: Build
         run: |
