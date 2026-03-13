@@ -429,7 +429,7 @@ bool traceHeightMapEstimated(const DisplacementData displacementData, float3 sta
 #endif
 
     float3 viewDirection = endPoint - startPoint;
-    int maxCount = ceil(abs(viewDirection.x)) + ceil(abs(viewDirection.y)) + 2;
+    int maxCount = int(ceil(abs(viewDirection.x)) + ceil(abs(viewDirection.y))) + 2;
     maxCount = min(maxCount * kRaymarchingSampleCountFactor, kRaymarchingMaxSampleCount); // Prevent freeze due to corner cases. Todo: Investigate why this happens.
 
     float3 incrementUnit = viewDirection / maxCount;

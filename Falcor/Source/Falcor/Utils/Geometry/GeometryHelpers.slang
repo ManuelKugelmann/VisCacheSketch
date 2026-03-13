@@ -192,7 +192,7 @@ void boundBoxSubtendedConeAngleAverage(
     [unroll]
     for (int i = 0; i < 8; ++i)
     {
-        const float3 corner = float3((i & 1) ? aabbMin.x : aabbMax.x, (i & 2) ? aabbMin.y : aabbMax.y, (i & 4) ? aabbMin.z : aabbMax.z);
+        const float3 corner = float3((i & 1) != 0 ? aabbMin.x : aabbMax.x, (i & 2) != 0 ? aabbMin.y : aabbMax.y, (i & 4) != 0 ? aabbMin.z : aabbMax.z);
         dirSum += normalize(corner - origin);
     }
     coneDir = normalize(dirSum);
@@ -203,7 +203,7 @@ void boundBoxSubtendedConeAngleAverage(
     [unroll]
     for (int i = 0; i < 8; ++i)
     {
-        const float3 corner = float3((i & 1) ? aabbMin.x : aabbMax.x, (i & 2) ? aabbMin.y : aabbMax.y, (i & 4) ? aabbMin.z : aabbMax.z);
+        const float3 corner = float3((i & 1) != 0 ? aabbMin.x : aabbMax.x, (i & 2) != 0 ? aabbMin.y : aabbMax.y, (i & 4) != 0 ? aabbMin.z : aabbMax.z);
         cosTheta = min(cosTheta, dot(normalize(corner - origin), coneDir));
     }
     sinTheta = sqrt(max(0.f, 1.f - cosTheta * cosTheta));
