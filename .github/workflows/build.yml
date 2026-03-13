@@ -35,7 +35,7 @@ jobs:
     outputs:
       source: ${{ steps.filter.outputs.source }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -67,7 +67,7 @@ jobs:
       PM_PACKAGES_ROOT: C:\packman-cache
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -81,7 +81,7 @@ jobs:
 
       # -- Caching: Falcor internal submodules --------------------------------
       - name: Cache Falcor submodules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .git/modules/Falcor
@@ -107,7 +107,7 @@ jobs:
 
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\packman-cache
           key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
@@ -226,10 +226,11 @@ jobs:
           %BINDIR%\Mogwai.exe --headless --script ..\scripts\smoke_test.py 2>&1 || (
             echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
           )
+          exit /b 0
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: falcor-windows-vs2022-${{ matrix.config }}
           path: |
@@ -252,7 +253,7 @@ jobs:
       PM_PACKAGES_ROOT: C:\packman-cache
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -266,7 +267,7 @@ jobs:
 
       # -- Caching: Falcor internal submodules --------------------------------
       - name: Cache Falcor submodules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .git/modules/Falcor
@@ -291,7 +292,7 @@ jobs:
 
       # -- Caching: NVIDIA packman packages -----------------------------------
       - name: Cache packman packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\packman-cache
           key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
@@ -393,7 +394,7 @@ jobs:
         run: sccache --show-stats
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: falcor-windows-ninja-${{ matrix.config }}
           path: |
@@ -416,10 +417,10 @@ jobs:
       CMAKE_BUILD_PRESET: linux-gcc-ci
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Cache Falcor submodules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .git/modules/Falcor
@@ -445,7 +446,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
 
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.ccache
           key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
@@ -460,7 +461,7 @@ jobs:
           ccache -z
 
       - name: Cache packman packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/packman
           key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
@@ -520,14 +521,17 @@ jobs:
   dev-release:
     name: Dev Prerelease
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    if: >-
+      !cancelled()
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && !startsWith(github.ref, 'refs/tags/')
     needs: [windows-vs2022]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download VS2022 Release artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: falcor-windows-vs2022-Release
           path: release-bin/
@@ -568,10 +572,10 @@ jobs:
     needs: [windows-vs2022, windows-ninja]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-artifacts/
 

@@ -34,7 +34,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Combine & wrap
         run: |
@@ -115,7 +115,7 @@ jobs:
     name: Ablation Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: python3 tests/test_paper_ablations.py
 
   # ── PDF generation (disabled — re-enable for TeX publishing) ──────
@@ -123,7 +123,7 @@ jobs:
   #   name: Build Paper PDF
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v6
   #     - uses: actions/setup-python@v5
   #       with: { python-version: "3.11" }
   #     - run: pip install reportlab
