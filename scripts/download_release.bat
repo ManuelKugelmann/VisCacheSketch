@@ -68,9 +68,34 @@ for /f "tokens=2 delims= " %%E in ('findstr /i "^etag:" "%TEMP%\vc-release-heade
 )
 del "%TEMP%\vc-release-headers.txt" 2>nul
 
+REM ---------------------------------------------------------------------------
+REM Clean old release — move aside so tar doesn't hit "Refusing to overwrite"
+REM ---------------------------------------------------------------------------
+set "OLD_RELEASE=%TEMP%\viscache-old-release-%RANDOM%"
+if exist "%RELEASE_DIR%\Mogwai.exe" (
+    echo [release] Moving old release aside...
+    move /y "%RELEASE_DIR%" "%OLD_RELEASE%" >nul 2>&1
+    mkdir "%RELEASE_DIR%" 2>nul
+    REM Preserve ETag file
+    if exist "%OLD_RELEASE%\.release-etag" copy /y "%OLD_RELEASE%\.release-etag" "%ETAG_FILE%" >nul 2>&1
+)
+
 echo [release] Extracting to %RELEASE_DIR%...
 tar xzf "%ARCHIVE%" -C "%RELEASE_DIR%"
+if errorlevel 1 (
+    echo [release] ERROR: Extraction failed.
+    if exist "%OLD_RELEASE%\Mogwai.exe" (
+        echo [release] Restoring previous release...
+        rd /s /q "%RELEASE_DIR%" 2>nul
+        move /y "%OLD_RELEASE%" "%RELEASE_DIR%" >nul 2>&1
+    )
+    del "%ARCHIVE%" 2>nul
+    exit /b 1
+)
 del "%ARCHIVE%" 2>nul
+
+REM Remove old release now that extraction succeeded
+if exist "%OLD_RELEASE%" rd /s /q "%OLD_RELEASE%" 2>nul
 
 if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [release] OK: Mogwai.exe ready

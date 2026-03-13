@@ -72,7 +72,33 @@ if [ -n "$ETAG" ]; then
 fi
 rm -f "$HEADERS"
 
+# ---------------------------------------------------------------------------
+# Clean old release — move aside so tar doesn't hit overwrite errors
+# ---------------------------------------------------------------------------
+OLD_RELEASE="$(mktemp -d /tmp/viscache-old-release.XXXXXX)"
+if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
+    echo "[release] Moving old release aside..."
+    mv "$RELEASE_DIR" "$OLD_RELEASE/release"
+    mkdir -p "$RELEASE_DIR"
+    # Preserve ETag file
+    if [ -f "$OLD_RELEASE/release/.release-etag" ]; then
+        cp "$OLD_RELEASE/release/.release-etag" "$ETAG_FILE"
+    fi
+fi
+
 echo "[release] Extracting to $RELEASE_DIR..."
-tar xzf "$ARCHIVE" -C "$RELEASE_DIR"
+if ! tar xzf "$ARCHIVE" -C "$RELEASE_DIR"; then
+    echo "[release] ERROR: Extraction failed."
+    if [ -d "$OLD_RELEASE/release" ]; then
+        echo "[release] Restoring previous release..."
+        rm -rf "$RELEASE_DIR"
+        mv "$OLD_RELEASE/release" "$RELEASE_DIR"
+    fi
+    rm -f "$ARCHIVE"
+    exit 1
+fi
 rm -f "$ARCHIVE"
+
+# Remove old release now that extraction succeeded
+rm -rf "$OLD_RELEASE"
 echo "[release] Release ready at $RELEASE_DIR"
