@@ -234,7 +234,14 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
     if (fullpath.empty())
         fullpath = AssetResolver::getDefaultResolver().resolvePath("16RooksPattern256.txt");
     if (fullpath.empty())
-        FALCOR_THROW("Could not find 16RooksPattern256.txt data file");
+    {
+        std::string searchPathList;
+        for (const auto& sp : AssetResolver::getDefaultResolver().getSearchPaths())
+            searchPathList += fmt::format("\n  {}", sp.string());
+        if (searchPathList.empty())
+            searchPathList = "\n  (none)";
+        FALCOR_THROW("Could not find 16RooksPattern256.txt data file. Search paths:{}", searchPathList);
+    }
     FILE* f = fopen(fullpath.string().c_str(), "r");
     if (!f)
         FALCOR_THROW("Could not open {}", fullpath.string());

@@ -55,7 +55,20 @@ std::filesystem::path AssetResolver::resolvePath(const std::filesystem::path& pa
         resolved = mSearchContexts[size_t(AssetCategory::Any)].resolvePath(path);
 
     if (resolved.empty())
-        logWarning("Failed to resolve path '{}' for asset type '{}'.", path, category);
+    {
+        std::string searchPathList;
+        auto appendPaths = [&](AssetCategory cat)
+        {
+            for (const auto& sp : mSearchContexts[size_t(cat)].searchPaths)
+                searchPathList += fmt::format("\n  {}", sp.string());
+        };
+        appendPaths(category);
+        if (category != AssetCategory::Any)
+            appendPaths(AssetCategory::Any);
+        if (searchPathList.empty())
+            searchPathList = "\n  (none)";
+        logWarning("Failed to resolve path '{}' for asset type '{}'. Search paths:{}", path, category, searchPathList);
+    }
 
     return resolved;
 }
@@ -96,6 +109,12 @@ void AssetResolver::addSearchPath(const std::filesystem::path& path, SearchPathP
     FALCOR_CHECK(path.is_absolute(), "Search path must be absolute.");
     FALCOR_CHECK(category < AssetCategory::Count, "Invalid asset category.");
     mSearchContexts[size_t(category)].addSearchPath(path, priority);
+}
+
+const std::vector<std::filesystem::path>& AssetResolver::getSearchPaths(AssetCategory category) const
+{
+    FALCOR_CHECK(category < AssetCategory::Count, "Invalid asset category.");
+    return mSearchContexts[size_t(category)].searchPaths;
 }
 
 AssetResolver& AssetResolver::getDefaultResolver()
