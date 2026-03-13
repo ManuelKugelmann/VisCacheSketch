@@ -92,10 +92,9 @@ set "QS_ARGS="
 if defined SCENE set "QS_ARGS=--scene %SCENE%"
 if defined SKIP_SCENES set "QS_ARGS=%QS_ARGS% %SKIP_SCENES%"
 
-echo [install] Running %DIR%\scripts\quickstart.bat %QS_ARGS%
-pushd "%DIR%"
-call scripts\quickstart.bat %QS_ARGS%
-set "QS_EXIT=%ERRORLEVEL%"
-popd
+REM Resolve absolute path so quickstart.bat's %~dp0 points to scripts\
+for %%P in ("%DIR%\scripts\quickstart.bat") do set "QS_SCRIPT=%%~fP"
+echo [install] Running %QS_SCRIPT% %QS_ARGS%
+call "%QS_SCRIPT%" %QS_ARGS%
 
-exit /b %QS_EXIT%
+exit /b %ERRORLEVEL%
