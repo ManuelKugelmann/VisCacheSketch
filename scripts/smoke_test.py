@@ -30,10 +30,20 @@ REQUIRED_PASSES = [
 # directory.  Check for the file before attempting createPass() — the
 # constructor FALCOR_THROWs on missing data, which can crash ungracefully.
 ROOKS_FILE = "16RooksPattern256.txt"
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+# The script runs from two locations:
+#   source tree:  scripts/smoke_test.py           (dirname = scripts/)
+#   release:      release/scripts/VisCache/smoke_test.py  (dirname = release/scripts/VisCache/)
+# Build paths that work from both locations.
 ROOKS_SEARCH_DIRS = [
-    os.path.join(os.path.dirname(__file__), "..", "data", "ReSTIRPTPass"),
-    os.path.join(os.path.dirname(__file__), "..", "..", "release", "data", "ReSTIRPTPass"),
-    os.path.join(os.path.dirname(__file__), "..", "..", "Source", "RenderPasses", "ReSTIRPTPass", "Data"),
+    # Source tree (from scripts/)
+    os.path.join(_script_dir, "..", "Source", "RenderPasses", "ReSTIRPTPass", "Data"),
+    # Source tree (from release/scripts/VisCache/)
+    os.path.join(_script_dir, "..", "..", "..", "Source", "RenderPasses", "ReSTIRPTPass", "Data"),
+    # Deployed release data (from release/scripts/VisCache/)
+    os.path.join(_script_dir, "..", "..", "data", "ReSTIRPTPass"),
+    # Deployed release data (from scripts/)
+    os.path.join(_script_dir, "..", "release", "data", "ReSTIRPTPass"),
 ]
 
 # ---------------------------------------------------------------------------
