@@ -29,7 +29,7 @@ def _make_gi_graph(name, vc_overrides={}):
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 1,
+        'maxSurfaceBounces': 1,
         'enableCVRRRRevalidation': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -74,7 +74,7 @@ def _make_pt_graph(name, vc_overrides={}):
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 4,
+        'maxSurfaceBounces': 4,
         'enableCVRRRRevalidation': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
