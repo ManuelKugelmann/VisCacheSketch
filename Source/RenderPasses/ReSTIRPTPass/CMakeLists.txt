@@ -25,5 +25,16 @@ target_sources(ReSTIRPTPass PRIVATE
 
 target_copy_shaders(ReSTIRPTPass RenderPasses/ReSTIRPTPass)
 
+# Copy data files (16RooksPattern256.txt, pyscenes) to build output.
+# target_copy_shaders only handles .slang/.hlsl — data files need explicit rules.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Data")
+    add_custom_command(TARGET ReSTIRPTPass POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/Data"
+            "${FALCOR_OUTPUT_DIRECTORY}/data/ReSTIRPTPass"
+        COMMENT "Copying ReSTIRPTPass data files"
+    )
+endif()
+
 target_source_group(ReSTIRPTPass "RenderPasses")
 

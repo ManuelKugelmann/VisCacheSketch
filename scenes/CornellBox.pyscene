@@ -1,0 +1,14 @@
+# CornellBox.pyscene — Classic Cornell Box
+# VisCache paper experiments — simple validation / unit-test scene.
+#
+# Expects: CornellBox.obj (or Falcor TestScenes) in FALCOR_MEDIA_FOLDERS.
+# Source:  Falcor test scenes (bundled with Falcor/media/TestScenes)
+
+sceneBuilder.importScene('CornellBox.obj')
+
+camera = Camera('VisCacheDefault')
+camera.position = float3(0.0, 1.0, 3.2)
+camera.target   = float3(0.0, 1.0, 0.0)
+camera.up       = float3(0.0, 1.0, 0.0)
+camera.focalLength = 35.0
+sceneBuilder.addCamera(camera)

@@ -30,6 +30,8 @@ done
 mkdir -p "$MEDIA_DIR"
 echo "[scenes] Download directory: $MEDIA_DIR"
 
+SCENES_DIR="${ROOT_DIR}/scenes"
+
 # ---------------------------------------------------------------------------
 # Helper: download and extract a zip from a URL
 # If the zip contains a single top-level directory, flatten it so the
@@ -100,6 +102,11 @@ if [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
     else
         echo "[scenes] TestScenes already exists, skipping"
     fi
+    # Copy CornellBox pyscene from repo if missing
+    if [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
+        cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
+        echo "[scenes] Copied CornellBox.pyscene from scenes/"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -120,17 +127,13 @@ if [ ! -d "$MEDIA_DIR/Bistro" ]; then
     case "$yn" in
         [Yy]*)
             download_and_extract "Bistro" "$BISTRO_URL"
-            # NVIDIA ORCA ships BistroInterior.pyscene; create wrapper only if missing
-            if [ ! -f "$MEDIA_DIR/Bistro/BistroInterior.pyscene" ] && \
-               [ ! -f "$MEDIA_DIR/Bistro/Bistro_Interior.pyscene" ]; then
-                cat > "$MEDIA_DIR/Bistro/Bistro_Interior.pyscene" << 'PYSCENE'
-# Bistro Interior — convenience wrapper for VisCache experiments
-import falcor
-sceneBuilder = SceneBuilder()
-sceneBuilder.importScene('BistroInterior.fbx')
-PYSCENE
-                echo "[scenes] Created Bistro_Interior.pyscene wrapper"
-            fi
+            # Copy pyscenes from repo if not already present (NVIDIA ORCA ships its own too)
+            for pf in BistroInterior.pyscene BistroExterior.pyscene; do
+                if [ ! -f "$MEDIA_DIR/Bistro/$pf" ] && [ -f "$SCENES_DIR/$pf" ]; then
+                    cp "$SCENES_DIR/$pf" "$MEDIA_DIR/Bistro/$pf"
+                    echo "[scenes] Copied $pf from scenes/"
+                fi
+            done
             ;;
         *) echo "[scenes] Skipping Bistro" ;;
     esac
@@ -155,14 +158,10 @@ if [ ! -d "$MEDIA_DIR/Sponza" ]; then
     case "$yn" in
         [Yy]*)
             download_and_extract "Sponza" "$SPONZA_URL"
-            if [ ! -f "$MEDIA_DIR/Sponza/Sponza.pyscene" ]; then
-                cat > "$MEDIA_DIR/Sponza/Sponza.pyscene" << 'PYSCENE'
-# Crytek Sponza — convenience wrapper for VisCache experiments
-import falcor
-sceneBuilder = SceneBuilder()
-sceneBuilder.importScene('sponza.obj')
-PYSCENE
-                echo "[scenes] Created Sponza.pyscene wrapper"
+            # Copy pyscene from repo if not already present
+            if [ ! -f "$MEDIA_DIR/Sponza/Sponza.pyscene" ] && [ -f "$SCENES_DIR/Sponza.pyscene" ]; then
+                cp "$SCENES_DIR/Sponza.pyscene" "$MEDIA_DIR/Sponza/Sponza.pyscene"
+                echo "[scenes] Copied Sponza.pyscene from scenes/"
             fi
             ;;
         *) echo "[scenes] Skipping Sponza" ;;
@@ -242,4 +241,4 @@ echo "[scenes] Set FALCOR_MEDIA_FOLDERS to use with Mogwai:"
 echo "  export FALCOR_MEDIA_FOLDERS=\"$MEDIA_DIR\""
 echo ""
 echo "[scenes] Or pass --scene with full path:"
-echo "  Mogwai.exe --scene \"$MEDIA_DIR/Bistro/Bistro_Interior.pyscene\""
+echo "  Mogwai.exe --scene \"$MEDIA_DIR/Bistro/BistroInterior.pyscene\""

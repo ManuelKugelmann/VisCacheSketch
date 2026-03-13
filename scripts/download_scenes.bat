@@ -15,6 +15,7 @@ setlocal enabledelayedexpansion
 
 set "ROOT=%~dp0.."
 set "MEDIA_DIR=%ROOT%\media"
+set "SCENES_DIR=%ROOT%\scenes"
 set "AUTO_YES=0"
 
 REM ---------------------------------------------------------------------------
@@ -59,6 +60,13 @@ if exist "%ROOT%\Falcor\media\TestScenes" (
     ) else (
         echo [scenes] TestScenes already exists, skipping
     )
+    REM Copy CornellBox pyscene from repo if missing
+    if not exist "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" (
+        if exist "%SCENES_DIR%\CornellBox.pyscene" (
+            copy /y "%SCENES_DIR%\CornellBox.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" >nul
+            echo [scenes] Copied CornellBox.pyscene from scenes\
+        )
+    )
 )
 
 REM ---------------------------------------------------------------------------
@@ -101,16 +109,13 @@ if not exist "%MEDIA_DIR%\Bistro" (
             rmdir /S /Q "%MEDIA_DIR%\Bistro\%%S" 2>nul
         )
     )
-    REM NVIDIA ORCA ships BistroInterior.pyscene; create wrapper only if missing
-    if not exist "%MEDIA_DIR%\Bistro\BistroInterior.pyscene" (
-        if not exist "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene" (
-            (
-                echo # Bistro Interior -- convenience wrapper for VisCache experiments
-                echo import falcor
-                echo sceneBuilder = SceneBuilder^(^)
-                echo sceneBuilder.importScene^('BistroInterior.fbx'^)
-            ) > "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
-            echo [scenes] Created Bistro_Interior.pyscene wrapper
+    REM Copy pyscenes from repo if not already present (NVIDIA ORCA ships its own too)
+    for %%P in (BistroInterior.pyscene BistroExterior.pyscene) do (
+        if not exist "%MEDIA_DIR%\Bistro\%%P" (
+            if exist "%SCENES_DIR%\%%P" (
+                copy /y "%SCENES_DIR%\%%P" "%MEDIA_DIR%\Bistro\%%P" >nul
+                echo [scenes] Copied %%P from scenes\
+            )
         )
     )
     echo [scenes] Bistro ready
@@ -158,14 +163,12 @@ if not exist "%MEDIA_DIR%\Sponza" (
             rmdir /S /Q "%MEDIA_DIR%\Sponza\%%S" 2>nul
         )
     )
+    REM Copy pyscene from repo if not already present
     if not exist "%MEDIA_DIR%\Sponza\Sponza.pyscene" (
-        (
-            echo # Crytek Sponza -- convenience wrapper for VisCache experiments
-            echo import falcor
-            echo sceneBuilder = SceneBuilder^(^)
-            echo sceneBuilder.importScene^('sponza.obj'^)
-        ) > "%MEDIA_DIR%\Sponza\Sponza.pyscene"
-        echo [scenes] Created Sponza.pyscene wrapper
+        if exist "%SCENES_DIR%\Sponza.pyscene" (
+            copy /y "%SCENES_DIR%\Sponza.pyscene" "%MEDIA_DIR%\Sponza\Sponza.pyscene" >nul
+            echo [scenes] Copied Sponza.pyscene from scenes\
+        )
     )
     echo [scenes] Sponza ready
 ) else (
@@ -245,7 +248,7 @@ echo [scenes] Set FALCOR_MEDIA_FOLDERS to use with Mogwai:
 echo   set FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%
 echo.
 echo [scenes] Or pass --scene with full path:
-echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
+echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 echo.
 echo [scenes] WSL alternative: wsl bash scripts/download_scenes.sh
 
