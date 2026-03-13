@@ -1,17 +1,19 @@
-add_plugin(VisCache)
+add_plugin(VisCachePass)
 
-target_sources(VisCache PRIVATE
+target_sources(VisCachePass PRIVATE
     VisCache.h
     VisCache.cpp
     VisCache.slang
     VisCacheInsert.cs.slang
     VisCacheDecay.cs.slang
+    VisCacheTracing.slang
+    RevalidationCommon.slang
     ShadingCV.slang
 )
 
-target_copy_shaders(VisCache RenderPasses/VisCache)
+target_copy_shaders(VisCachePass RenderPasses/VisCache)
 
-target_source_group(VisCache "RenderPasses")
+target_source_group(VisCachePass "RenderPasses")
 
 # ---------------------------------------------------------------------------
 # Warning policy for VisCache plugins.
@@ -20,7 +22,7 @@ target_source_group(VisCache "RenderPasses")
 # return-value warnings to errors (not covered by Falcor's /we list) and
 # keep the rest of Falcor's noise suppressions.
 # ---------------------------------------------------------------------------
-target_compile_options(VisCache PRIVATE
+target_compile_options(VisCachePass PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:
         /we4456  # local variable hides another local
         /we4457  # local variable hides function parameter
