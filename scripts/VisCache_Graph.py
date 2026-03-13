@@ -42,15 +42,11 @@ ABLATION_SINGLE_LEVEL = {   # Single-level (N=1) vs. multilevel comparison
 
 ACTIVE_ABLATION = ABLATION_FULL   # <-- CHANGE THIS LINE
 
-# Set to False to skip NRD denoising and output raw noisy radiance.
-# Useful for noise-level comparisons, MSE/FLIP against reference, etc.
-USE_NRD = True
-
 
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
-def render_graph_VisCache(use_nrd=USE_NRD):
+def render_graph_VisCache():
     g = RenderGraph("VisCache")
 
     # G-Buffer
@@ -119,20 +115,19 @@ def render_graph_VisCache(use_nrd=USE_NRD):
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
-    # NRD denoiser (optional — disabled via use_nrd=False for raw-noise
-    # captures, or unavailable on Linux / builds without D3D12+NRD).
+    # NRD denoiser (optional — unavailable on Linux / builds without D3D12+NRD).
+    # Raw noisy radiance is always available via ReSTIRPTPass.color output.
     _have_nrd = False
-    if use_nrd:
-        try:
-            nrd = createPass("NRDPass", {
-                "method":          "RelaxDiffuseSpecular",
-                "worldSpaceMotion": True,
-            })
-            g.addPass(nrd, "NRDPass")
-            _have_nrd = True
-        except Exception:
-            print("[VisCache] WARNING: NRDPass plugin not available — outputting raw noisy radiance."
-                  " Build with D3D12 + packman NRD package to enable denoising.")
+    try:
+        nrd = createPass("NRDPass", {
+            "method":          "RelaxDiffuseSpecular",
+            "worldSpaceMotion": True,
+        })
+        g.addPass(nrd, "NRDPass")
+        _have_nrd = True
+    except Exception:
+        print("[VisCache] WARNING: NRDPass plugin not available — outputting raw noisy radiance."
+              " Build with D3D12 + packman NRD package to enable denoising.")
 
     # Tone mapper
     tone = createPass("ToneMapper", {
