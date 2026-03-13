@@ -33,6 +33,8 @@ exit /b 1
 where curl >nul 2>&1 || (echo ERROR: curl not found in PATH & exit /b 1)
 where tar >nul 2>&1 || (echo ERROR: tar not found in PATH. Try: wsl bash scripts/download_scenes.sh & exit /b 1)
 
+call "%~dp0version.bat" scenes 2>nul
+
 mkdir "%MEDIA_DIR%" 2>nul
 echo [scenes] Download directory: %MEDIA_DIR%
 

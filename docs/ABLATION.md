@@ -108,7 +108,7 @@ LOD contention is handled dynamically — no static threshold or distance heuris
 - Capture: 16 frames per config
 - Format: EXR (linear HDR)
 - Reference: 1024 spp path tracer, same scene, same camera
-- Scenes: Bistro_Interior.pyscene, Sponza.pyscene
+- Scenes: BistroInterior.pyscene, Sponza.pyscene
 
 See `scripts/VisCache_Ablation.py` for automated capture.
 

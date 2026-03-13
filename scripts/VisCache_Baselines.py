@@ -3,7 +3,7 @@ VisCache_Baselines.py  —  Automated baseline capture script
 Runs all ReSTIR variant baselines (DI/PT1/PT × Vanilla/LocalCVRRR/VisCache).
 
 Usage:
-    Mogwai.exe --headless --script scripts/VisCache_Baselines.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --headless --script scripts/VisCache_Baselines.py --scene BistroInterior.pyscene
 
 Outputs to: captures/baselines/<pass>_<config>/frame_NNNN.exr
 Each config captures kWarmupFrames then kCaptureFrames EXR frames.

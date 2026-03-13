@@ -10,6 +10,8 @@ setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
 set "ROOT=%~dp0.."
+
+call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\media"
 set "SCENE=Bistro"
@@ -31,10 +33,19 @@ REM so Falcor's AssetResolver can find them at runtime.
 REM ---------------------------------------------------------------------------
 set "DATA_SRC=%ROOT%\Source\RenderPasses\ReSTIRPTPass\Data"
 set "DATA_DST=%RELEASE_DIR%\data\ReSTIRPTPass"
-if exist "%DATA_SRC%" if not exist "%DATA_DST%\16RooksPattern256.txt" (
-    if not exist "%DATA_DST%" mkdir "%DATA_DST%"
-    xcopy "%DATA_SRC%\*" "%DATA_DST%\" /s /y /q >nul
-    echo [launch] Deployed ReSTIRPTPass data files to release\data\
+if not exist "%DATA_DST%\16RooksPattern256.txt" (
+    if exist "%DATA_SRC%\16RooksPattern256.txt" (
+        if not exist "%DATA_DST%" mkdir "%DATA_DST%"
+        xcopy "%DATA_SRC%\*" "%DATA_DST%\" /s /y /q >nul
+        echo [launch] Deployed ReSTIRPTPass data files to release\data\
+    ) else (
+        echo [launch] WARNING: %DATA_SRC%\16RooksPattern256.txt not found in source tree
+    )
+)
+REM Verify data file is present before smoke test
+if not exist "%DATA_DST%\16RooksPattern256.txt" (
+    echo [launch] WARNING: 16RooksPattern256.txt missing — ReSTIRPTPass will fail to load
+    echo [launch] Expected at: %DATA_DST%\16RooksPattern256.txt
 )
 
 REM ---------------------------------------------------------------------------
@@ -59,7 +70,7 @@ REM ---------------------------------------------------------------------------
 REM Resolve scene path and launch
 REM ---------------------------------------------------------------------------
 set "SCENE_FILE="
-if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
+if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
 

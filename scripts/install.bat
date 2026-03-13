@@ -46,6 +46,7 @@ where git >nul 2>&1 || (
 
 for /f "tokens=3 delims= " %%V in ('git --version') do set "GIT_VER=%%V"
 echo [install] git %GIT_VER%
+call "%~dp0version.bat" install 2>nul
 
 REM Parse major.minor for version check
 for /f "tokens=1,2 delims=." %%A in ("%GIT_VER%") do (

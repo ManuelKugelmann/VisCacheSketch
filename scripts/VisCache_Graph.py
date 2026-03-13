@@ -3,7 +3,7 @@ VisCache_Graph.py  —  Mogwai render graph for VisCache (Visibility Cache)
 Run from Mogwai: File > Load Script, or pass as --script argument.
 
 Usage:
-    Mogwai.exe --script scripts/VisCache_Graph.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --script scripts/VisCache_Graph.py --scene BistroInterior.pyscene
 
 Ablation configs are at the bottom — uncomment to switch.
 """
@@ -166,7 +166,7 @@ def render_graph_VisCache():
 m.addGraph(render_graph_VisCache())
 
 # Default scene — override via command line --scene argument
-# m.loadScene("Bistro_Interior.pyscene")
+# m.loadScene("BistroInterior.pyscene")
 # m.loadScene("Arcade.pyscene")
 
 # Capture settings (uncomment for automated batch capture)

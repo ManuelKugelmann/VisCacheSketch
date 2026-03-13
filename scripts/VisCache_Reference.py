@@ -3,7 +3,7 @@ VisCache_Reference.py  —  1024 spp path tracer reference capture.
 Ground truth for MSE/FLIP comparisons against VisCache configurations.
 
 Usage:
-    Mogwai.exe --headless --script scripts/VisCache_Reference.py --scene Bistro_Interior.pyscene
+    Mogwai.exe --headless --script scripts/VisCache_Reference.py --scene BistroInterior.pyscene
 
 Outputs to: captures/reference/<scenename>/frame_NNNN.exr
 """

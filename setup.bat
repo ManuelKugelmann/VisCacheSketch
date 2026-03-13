@@ -135,7 +135,7 @@ echo.
 echo Next steps:
 echo   1. Open %FALCOR_ROOT%\build\windows-vs2022\Falcor.sln in Visual Studio
 echo   2. Build target: Mogwai (Release, x64)
-echo   3. Run: Mogwai.exe --script scripts/VisCache/VisCache_Graph.py --scene Bistro_Interior.pyscene
+echo   3. Run: Mogwai.exe --script scripts/VisCache/VisCache_Graph.py --scene BistroInterior.pyscene
 echo.
 
 exit /b 0
