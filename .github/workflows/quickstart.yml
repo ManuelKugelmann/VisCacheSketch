@@ -5,14 +5,14 @@ on:
     branches: ["main", "master"]
     paths:
       - 'scripts/quickstart.bat'
-      - 'scripts/run-release.bat'
+      - 'scripts/quickstart-run.bat'
       - 'scripts/run-tests.*'
       - '.github/workflows/quickstart.yml'
   pull_request:
     branches: ["main", "master"]
     paths:
       - 'scripts/quickstart.bat'
-      - 'scripts/run-release.bat'
+      - 'scripts/quickstart-run.bat'
       - 'scripts/run-tests.*'
       - '.github/workflows/quickstart.yml'
   workflow_dispatch:

@@ -1,7 +1,7 @@
 @echo off
-REM VisCacheSketch run-release — download latest release, run tests, launch.
+REM VisCacheSketch quickstart-run — download latest release, fetch scenes, run tests, launch.
 REM
-REM Usage:  scripts\run-release.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes]
+REM Usage:  scripts\quickstart-run.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes]
 REM
 REM Steps:
 REM   1. Download latest GitHub release (Mogwai + plugins)

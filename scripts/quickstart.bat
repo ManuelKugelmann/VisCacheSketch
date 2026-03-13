@@ -109,9 +109,9 @@ REM ---------------------------------------------------------------------------
 set "QS_ARGS=--skip-scenes"
 if defined SCENE set "QS_ARGS=%QS_ARGS% --scene %SCENE%"
 
-echo [quickstart] Running %DIR%\scripts\run-release.bat %QS_ARGS%
+echo [quickstart] Running %DIR%\scripts\quickstart-run.bat %QS_ARGS%
 pushd "%DIR%"
-call scripts\run-release.bat %QS_ARGS%
+call scripts\quickstart-run.bat %QS_ARGS%
 set "QS_EXIT=%ERRORLEVEL%"
 popd
 
