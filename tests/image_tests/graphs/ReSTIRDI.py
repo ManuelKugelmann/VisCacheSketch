@@ -5,16 +5,14 @@ def render_graph_ReSTIRDI_Vanilla():
     g = RenderGraph("ReSTIRDI_Vanilla")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
-    ReSTIRDI = createPass("ReSTIRDIPass", {
-        'enableVisCacheRevalidation': False,
-        'enableVisCacheLightSelection': False,
-    })
+    # RTXDIPass only accepts "options"; VisCache integration is via InternalDictionary
+    ReSTIRDI = createPass("RTXDIPass")
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
     g.addEdge("VBuffer.vbuffer", "ReSTIRDI.vbuffer")
-    g.addEdge("VBuffer.mvec", "ReSTIRDI.motionVectors")
+    g.addEdge("VBuffer.mvec", "ReSTIRDI.mvec")
     g.addEdge("ReSTIRDI.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
     g.markOutput("ReSTIRDI.color")
@@ -24,21 +22,20 @@ def render_graph_ReSTIRDI_Vanilla():
 def render_graph_ReSTIRDI_VisCacheRevalidation():
     """ReSTIR DI — VisCache CV+RRR shadow ray gating (S11.3)."""
     g = RenderGraph("ReSTIRDI_VisCacheRevalidation")
-    VisCache = createPass("VisCachePass")
-    g.addPass(VisCache, "VisCache")
-    VBuffer = createPass("VBufferRT")
-    g.addPass(VBuffer, "VBuffer")
-    ReSTIRDI = createPass("ReSTIRDIPass", {
+    VisCache = createPass("VisCachePass", {
         'enableVisCacheRevalidation': True,
         'enableVisCacheLightSelection': False,
     })
+    g.addPass(VisCache, "VisCache")
+    VBuffer = createPass("VBufferRT")
+    g.addPass(VBuffer, "VBuffer")
+    ReSTIRDI = createPass("RTXDIPass")
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
     g.addEdge("VBuffer.vbuffer", "ReSTIRDI.vbuffer")
-    g.addEdge("VBuffer.mvec", "ReSTIRDI.motionVectors")
+    g.addEdge("VBuffer.mvec", "ReSTIRDI.mvec")
     g.addEdge("ReSTIRDI.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
     g.markOutput("ReSTIRDI.color")
@@ -48,21 +45,20 @@ def render_graph_ReSTIRDI_VisCacheRevalidation():
 def render_graph_ReSTIRDI_VisCacheLightSelection():
     """ReSTIR DI — VisCache light pre-selection only (S11.1, no S11.3)."""
     g = RenderGraph("ReSTIRDI_VisCacheLightSelection")
-    VisCache = createPass("VisCachePass")
-    g.addPass(VisCache, "VisCache")
-    VBuffer = createPass("VBufferRT")
-    g.addPass(VBuffer, "VBuffer")
-    ReSTIRDI = createPass("ReSTIRDIPass", {
+    VisCache = createPass("VisCachePass", {
         'enableVisCacheRevalidation': False,
         'enableVisCacheLightSelection': True,
     })
+    g.addPass(VisCache, "VisCache")
+    VBuffer = createPass("VBufferRT")
+    g.addPass(VBuffer, "VBuffer")
+    ReSTIRDI = createPass("RTXDIPass")
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
     g.addEdge("VBuffer.vbuffer", "ReSTIRDI.vbuffer")
-    g.addEdge("VBuffer.mvec", "ReSTIRDI.motionVectors")
+    g.addEdge("VBuffer.mvec", "ReSTIRDI.mvec")
     g.addEdge("ReSTIRDI.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
     g.markOutput("ReSTIRDI.color")
@@ -72,21 +68,20 @@ def render_graph_ReSTIRDI_VisCacheLightSelection():
 def render_graph_ReSTIRDI_VisCacheFull():
     """ReSTIR DI — VisCache revalidation + light selection (S11.1 + S11.3)."""
     g = RenderGraph("ReSTIRDI_VisCacheFull")
-    VisCache = createPass("VisCachePass")
-    g.addPass(VisCache, "VisCache")
-    VBuffer = createPass("VBufferRT")
-    g.addPass(VBuffer, "VBuffer")
-    ReSTIRDI = createPass("ReSTIRDIPass", {
+    VisCache = createPass("VisCachePass", {
         'enableVisCacheRevalidation': True,
         'enableVisCacheLightSelection': True,
     })
+    g.addPass(VisCache, "VisCache")
+    VBuffer = createPass("VBufferRT")
+    g.addPass(VBuffer, "VBuffer")
+    ReSTIRDI = createPass("RTXDIPass")
     g.addPass(ReSTIRDI, "ReSTIRDI")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
     g.addEdge("VBuffer.vbuffer", "ReSTIRDI.vbuffer")
-    g.addEdge("VBuffer.mvec", "ReSTIRDI.motionVectors")
+    g.addEdge("VBuffer.mvec", "ReSTIRDI.mvec")
     g.addEdge("ReSTIRDI.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
     g.markOutput("ReSTIRDI.color")
