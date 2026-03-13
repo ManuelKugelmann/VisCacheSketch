@@ -249,6 +249,15 @@ jobs:
             exit /b 1
           )
 
+      - name: Deploy scripts to build output
+        if: matrix.config == 'Release'
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
+          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
+          echo [CI] Deployed scripts to build output
+
       - name: Headless smoke test
         if: matrix.config == 'Release'
         shell: cmd
@@ -257,7 +266,7 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
           echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script ..\scripts\smoke_test.py 2>&1 || (
+          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
             echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
           )
           exit /b 0
@@ -464,6 +473,15 @@ jobs:
             exit /b 1
           )
 
+      - name: Deploy scripts to build output
+        if: matrix.config == 'Release'
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
+          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
+          echo [CI] Deployed scripts to build output
+
       - name: Headless smoke test
         if: matrix.config == 'Release'
         shell: cmd
@@ -472,7 +490,7 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
           echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script ..\scripts\smoke_test.py 2>&1 || (
+          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
             echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
           )
           exit /b 0
