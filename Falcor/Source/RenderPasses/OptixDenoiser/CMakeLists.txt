@@ -1,7 +1,9 @@
 if(NOT (FALCOR_HAS_CUDA AND FALCOR_HAS_OPTIX))
+    message(STATUS "Skipping OptixDenoiser (FALCOR_HAS_CUDA=${FALCOR_HAS_CUDA}, FALCOR_HAS_OPTIX=${FALCOR_HAS_OPTIX})")
     return()
 endif()
 
+message(STATUS "Building OptixDenoiser")
 add_plugin(OptixDenoiser)
 
 target_sources(OptixDenoiser PRIVATE
