@@ -44,10 +44,8 @@ if not exist "%DATA_DST%\16RooksPattern256.txt" (
 )
 REM Verify data file is present before smoke test
 if not exist "%DATA_DST%\16RooksPattern256.txt" (
-    if not exist "%RELEASE_DIR%\data\ReSTIRPTPass\16RooksPattern256.txt" (
-        echo [launch] WARNING: 16RooksPattern256.txt missing — ReSTIRPTPass will fail to load
-        echo [launch] Expected at: %DATA_DST%\16RooksPattern256.txt
-    )
+    echo [launch] WARNING: 16RooksPattern256.txt missing — ReSTIRPTPass will fail to load
+    echo [launch] Expected at: %DATA_DST%\16RooksPattern256.txt
 )
 
 REM ---------------------------------------------------------------------------
