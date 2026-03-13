@@ -21,7 +21,17 @@
             "cacheVariables": {
                 "FALCOR_ENABLE_NRC": "ON",
                 "FALCOR_VALIDATE_HEADERS": "ON",
-                "FALCOR_PRECOMPILED_HEADERS": "OFF"
+                "FALCOR_PRECOMPILED_HEADERS": "OFF",
+                "FALCOR_UNITY_BUILD": "ON"
+            }
+        },
+        {
+            "name": "ci-linux",
+            "description": "Linux CI overrides: re-enable PCH (ccache supports it).",
+            "hidden": true,
+            "inherits": "ci",
+            "cacheVariables": {
+                "FALCOR_PRECOMPILED_HEADERS": "ON"
             }
         },
         {
@@ -136,7 +146,7 @@
             "displayName": "Linux/Clang (CI)",
             "inherits": [
                 "linux-clang-base",
-                "ci"
+                "ci-linux"
             ]
         },
         {
@@ -161,7 +171,7 @@
             "displayName": "Linux/GCC (CI)",
             "inherits": [
                 "linux-gcc-base",
-                "ci"
+                "ci-linux"
             ]
         }
     ],

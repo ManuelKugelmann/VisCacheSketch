@@ -41,6 +41,16 @@ set(FALCOR_VALIDATE_HEADERS OFF CACHE BOOL "Enable header validation")
 # If enabled, precompiled headers are used to speed up compilation.
 set(FALCOR_PRECOMPILED_HEADERS ON CACHE BOOL "Enable precompiled headers")
 
+# Unity build (aka jumbo/amalgamated build).
+# Combines multiple .cpp files into single translation units to reduce
+# redundant header parsing and link overhead. Major speedup for 30+ plugins.
+set(FALCOR_UNITY_BUILD OFF CACHE BOOL "Enable CMake unity build for faster compilation")
+
+if(FALCOR_UNITY_BUILD)
+    set(CMAKE_UNITY_BUILD ON)
+    set(CMAKE_UNITY_BUILD_BATCH_SIZE 16)
+endif()
+
 # -----------------------------------------------------------------------------
 # Check platform
 # -----------------------------------------------------------------------------
