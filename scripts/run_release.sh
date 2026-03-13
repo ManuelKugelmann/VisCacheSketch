@@ -26,6 +26,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Deploy fresh scripts from source tree into release/scripts/VisCache/
+# so the release always uses up-to-date graph configs and smoke tests.
+SCRIPTS_SRC="${ROOT_DIR}/scripts"
+SCRIPTS_DST="${RELEASE_DIR}/scripts/VisCache"
+if [ -f "$SCRIPTS_SRC/smoke_test.py" ]; then
+    mkdir -p "$SCRIPTS_DST"
+    cp -r "$SCRIPTS_SRC/"* "$SCRIPTS_DST/"
+    echo "[launch] Deployed fresh scripts from source tree to release/scripts/VisCache/"
+fi
+
 # Deploy data files (e.g. 16RooksPattern256.txt) into release/data/
 # so Falcor's AssetResolver can find them at runtime.
 DATA_SRC="${ROOT_DIR}/Source/RenderPasses/ReSTIRPTPass/Data"
