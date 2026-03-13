@@ -150,4 +150,6 @@ except Exception as e:
 # ---------------------------------------------------------------------------
 print("[smoke] All checks passed.")
 # Note: do NOT call sys.exit() — Mogwai's embedded Python treats SystemExit
-# as an exception, which causes a crash.  Just let the script end naturally.
+# as an exception, which causes a crash.  Use Falcor's own exit() binding
+# (registered by SampleApp) which cleanly shuts down the application.
+exit()
