@@ -42,11 +42,15 @@ ABLATION_SINGLE_LEVEL = {   # Single-level (N=1) vs. multilevel comparison
 
 ACTIVE_ABLATION = ABLATION_FULL   # <-- CHANGE THIS LINE
 
+# Set to False to skip NRD denoising and output raw noisy radiance.
+# Useful for noise-level comparisons, MSE/FLIP against reference, etc.
+USE_NRD = True
+
 
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
-def render_graph_VisCache():
+def render_graph_VisCache(use_nrd=USE_NRD):
     g = RenderGraph("VisCache")
 
     # G-Buffer
@@ -115,17 +119,19 @@ def render_graph_VisCache():
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
-    # NRD denoiser (optional — plugin may not be available in all builds)
+    # NRD denoiser (optional — disabled via use_nrd=False for raw-noise
+    # captures, or unavailable on Linux / builds without D3D12+NRD).
     _have_nrd = False
-    try:
-        nrd = createPass("NRDPass", {
-            "method":          "RelaxDiffuseSpecular",
-            "worldSpaceMotion": True,
-        })
-        g.addPass(nrd, "NRDPass")
-        _have_nrd = True
-    except Exception:
-        pass
+    if use_nrd:
+        try:
+            nrd = createPass("NRDPass", {
+                "method":          "RelaxDiffuseSpecular",
+                "worldSpaceMotion": True,
+            })
+            g.addPass(nrd, "NRDPass")
+            _have_nrd = True
+        except Exception:
+            pass
 
     # Tone mapper
     tone = createPass("ToneMapper", {
@@ -170,6 +176,7 @@ def render_graph_VisCache():
     g.markOutput("ToneMapper.dst")
 
     # Secondary outputs for analysis
+    g.markOutput("ReSTIRPTPass.color")   # raw noisy radiance (linear HDR) for MSE/FLIP
     g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
 
     return g
