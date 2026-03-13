@@ -118,7 +118,7 @@ def render_graph_VisCache():
 
     # NRD denoiser
     nrd = createPass("NRDPass", {
-        "method":          "RELAX_DIFFUSE_SPECULAR",
+        "method":          "RelaxDiffuseSpecular",
         "worldSpaceMotion": True,
     })
     g.addPass(nrd, "NRDPass")
