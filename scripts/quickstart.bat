@@ -67,7 +67,7 @@ mkdir "%RELEASE_DIR%" 2>nul
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 curl -fSL --progress-bar -o "%ARCHIVE%" "%DOWNLOAD_URL%"
 if errorlevel 1 (
-    echo [release] Download failed — no dev-latest release yet. Skipping.
+    echo [release] Download failed -- no dev-latest release yet. Skipping.
     echo [release] This is normal for first-time setup or pre-release branches.
     echo [release]
     echo [release] To get Mogwai manually:
@@ -125,7 +125,7 @@ where python >nul 2>&1 && (
     python "%ROOT%\tests\test_paper_ablations.py"
     if errorlevel 1 echo [test] WARNING: ablation config tests failed
 ) || (
-    echo [test] python not found — skipping algorithm tests
+    echo [test] python not found -- skipping algorithm tests
 )
 
 if exist "%RELEASE_DIR%\Mogwai.exe" (
@@ -137,7 +137,7 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
         echo [smoke] OK
     )
 ) else (
-    echo [smoke] Mogwai.exe not found — skipping smoke test
+    echo [smoke] Mogwai.exe not found -- skipping smoke test
 )
 
 REM ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
 
 if not exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [launch] Mogwai.exe not found — no release downloaded.
+    echo [launch] Mogwai.exe not found -- no release downloaded.
     echo [launch] Build from source or grab a release: https://github.com/%REPO%/releases
     echo [launch] Tests and setup completed successfully.
     exit /b 0

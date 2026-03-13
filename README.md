@@ -42,19 +42,16 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 ### Key additions beyond [Kugelmann 2006][r-kugelmann]
 
 - **Position Jitter as Filtering** intrinsic box filter across cell boundaries, based on [Binder et al. 2018][r-binder] 
-- **Good and Fast Hash** - based on PCG3D[Jarzynski & Olano 2020][r-jarzynski]
+- **Good and Fast Hash** - based on PCG3D [Jarzynski & Olano 2020][r-jarzynski]
 - **Hash Collision Handling** - fingerprint like [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
 - **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
-- **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko])
-- **GPU implementation** - using Nvidia Falcor [???] as base
-- **ReSTIR integration** - example based on Falcor RTXDI [Bitterli???] and ReSTIR PT [Lin et al. 2022][r-lin] 
+- **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko]
+- **GPU implementation** — built on NVIDIA Falcor 8.0 [Kallweit et al. 2022][r-falcor]
+- **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
 
 ### ReSTIR integration
 
-| Point | What it replaces | Benefit |
-|-------|------------------|---------|
-| light selection | visibility assumption in RIS target | µ-weighted selection, better candidates |
-| visibility revalidation  | Unconditional occlusion ray | RR ~##% ray reduction at equal quality |
+The visibility cache plugs into two points of the ReSTIR pipeline. During **light selection**, the cached mean µ replaces the usual visibility assumption in the RIS target function, yielding µ-weighted candidate selection that steers samples toward actually visible lights. During **visibility revalidation**, the correction estimator replaces unconditional occlusion rays with variance-driven Russian Roulette, reducing shadow rays while maintaining equal quality.
 
 
 ---
@@ -83,7 +80,9 @@ Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, 
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
 | [Stotko et al. 2025 (MrHash)][r-stotko] | Parallels - variance-driven resolution in flat hash (TSDF domain) |
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
+| [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
 | [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
+| [Kallweit et al. 2022 (Falcor)][r-falcor] | GPU rendering framework used as implementation base |
 
 [r-kugelmann]: docs/references/Kugelmann2006_ThesisMK.pdf
 [r-szecsi]: https://www.researchgate.net/publication/221546555_Variance_Reduction_for_Russian-roulette
@@ -96,4 +95,6 @@ Idempotent — safe to re-run. Clones (or pulls), downloads the latest release, 
 [r-jarzynski]: https://jcgt.org/published/0009/03/02/
 [r-stotko]: https://arxiv.org/abs/2511.21459
 [r-lin]: https://doi.org/10.1145/3528223.3530158
+[r-bitterli]: https://doi.org/10.1145/3386569.3392382
+[r-falcor]: https://github.com/NVIDIAGameWorks/Falcor
 [r-boksansky]: https://jcgt.org/published/0014/02/01/
