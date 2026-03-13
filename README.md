@@ -1,6 +1,6 @@
-# Visibility Prediction-with-Correction for Real-Time Path Tracing
+# Unbiased Visibility Prediction-with-Correction for Real-Time Path Tracing
 
-**Unbiased Visibility Prediction with a Filtered Adaptive Multi-Level Hash Cache**
+**Shadow Ray Reduction using a Filtered Adaptive Multi-Level Hash Cache**
 
 **[Paper draft](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
 
@@ -49,20 +49,9 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **GPU implementation** — built on NVIDIA Falcor 8.0 [Kallweit et al. 2022][r-falcor]
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
 
-### ReSTIR integration
+#### ReSTIR integration
 
-The visibility cache plugs into two points of the ReSTIR pipeline. During **light selection**, the cached mean µ replaces the usual visibility assumption in the RIS target function, yielding µ-weighted candidate selection that steers samples toward actually visible lights. During **visibility revalidation**, the correction estimator replaces unconditional occlusion rays with variance-driven Russian Roulette, reducing shadow rays while maintaining equal quality.
-
-
----
-
-## Quickstart
-
-```bat
-cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
-```
-
-Idempotent — safe to re-run. Clones (or pulls), downloads test scenes, downloads the latest release, runs CPU tests, and launches Mogwai with Bistro. See **[Getting Started](docs/GETTING_STARTED.md)** for build-from-source, Linux/WSL, and release usage.
+The visibility cache plugs into two points of the ReSTIR pipeline. During **light selection**, the cached mean µ replaces the usual visibility assumption in the RIS target function, yielding µ-weighted candidate selection that steers samples toward actually visible lights. During **visibility revalidation**, the correction estimator replaces unconditional occlusion rays with variance-driven Russian Roulette, reducing shadow rays while maintaining equal quality. This offers a middle way between skipping revalidation completely (biased) and full revalidation (expensive). Instead of our visibility cache any other prediction of visibility, e.g. from ReSTIR reservoir data, can be used.
 
 ---
 
@@ -98,3 +87,16 @@ Idempotent — safe to re-run. Clones (or pulls), downloads test scenes, downloa
 [r-bitterli]: https://doi.org/10.1145/3386569.3392382
 [r-falcor]: https://github.com/NVIDIAGameWorks/Falcor
 [r-boksansky]: https://jcgt.org/published/0014/02/01/
+
+---
+
+## Quickstart
+
+```bat
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
+```
+
+Idempotent — safe to re-run. Clones (or pulls), downloads test scenes, downloads the latest release, runs CPU tests, and launches Mogwai with Bistro.
+
+See **[Getting Started](docs/GETTING_STARTED.md)** for build-from-source, Linux/WSL, and release usage.
+
