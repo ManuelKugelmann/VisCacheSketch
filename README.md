@@ -9,6 +9,8 @@
 
 ---
 
+![Kugelmann 2006 — spatial hash grid visibility cache with shadow ray reduction. Left: rendered image with smooth shadows from a single eye subpath sample per pixel. Right: color-encoded shadow test count revealing the underlying spatial grid cells.](docs/references/MK2006.jpg)
+
 ### History
 
 The 2006 Diplomarbeit by Manuel Kugelmann ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm, supervisor Alexander Keller) suffered multiple problems — overambitious scope, underautomated experiments, too much side work for financial reasons, theft of personal belongings, youthful lack of managment and communication skills — and was never properly finished. It's artifacts (thesis test and code) probably linger somwhere in the University Ulm archives and A. Keller's archives. A definitve hardcopy and compact disk with source code exists in Manuel Kugelmann's storage.
