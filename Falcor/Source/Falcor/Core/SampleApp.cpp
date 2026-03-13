@@ -100,6 +100,9 @@ SampleApp::SampleApp(const SampleAppConfig& config)
     // Setup asset search paths.
     AssetResolver& resolver = AssetResolver::getDefaultResolver();
     resolver.addSearchPath(getProjectDirectory() / "media");
+    // Data files (e.g. 16RooksPattern256.txt) are deployed by CMake POST_BUILD
+    // into getRuntimeDirectory()/data/.  Register so AssetResolver finds them.
+    resolver.addSearchPath(getRuntimeDirectory() / "data");
     for (auto& path : Settings::getGlobalSettings().getSearchDirectories("media"))
         resolver.addSearchPath(path);
 
