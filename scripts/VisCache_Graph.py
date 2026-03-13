@@ -89,17 +89,16 @@ def render_graph_VisCache():
             "localLightCandidateCount":    8,
             "infiniteLightCandidateCount": 1,
         },
-        "useVisCacheForSelection": True,   # §11.1 — replace V=1 with cached mu
-        "explorationFraction":    0.10,   # epsilon-greedy; §11.1 "1/M budget"
+        # VisCache integration is automatic via InternalDictionary (§11.1)
     })
     g.addPass(rtxdi, "RTXDIPass")
 
     # Path tracer with CV+RRR shadow gating on direct hits (§11.2)
     pt = createPass("PathTracer", {
         "samplesPerPixel":    1,
-        "maxBounces":         3,
-        "useVisCache":   True,
+        "maxSurfaceBounces":  3,
         "colorFormat":        "LogLuvHDR",
+        # VisCache integration is automatic via InternalDictionary (§11.2)
     })
     g.addPass(pt, "PathTracer")
 
@@ -135,28 +134,36 @@ def render_graph_VisCache():
     # -----------------------------------------------------------------------
     # Edges
     # -----------------------------------------------------------------------
+    # GBuffer → PathTracer (shadow gating via VisCache dictionary, §11.2)
     g.addEdge("GBufferRT.vbuffer",                   "PathTracer.vbuffer")
     g.addEdge("GBufferRT.viewW",                     "PathTracer.viewW")
+
+    # GBuffer → RTXDIPass (direct illumination, §11.1)
     g.addEdge("GBufferRT.vbuffer",                   "RTXDIPass.vbuffer")
-    g.addEdge("GBufferRT.linearZ",                   "RTXDIPass.linearZ")
     g.addEdge("GBufferRT.mvec",                      "RTXDIPass.mvec")
-    g.addEdge("RTXDIPass.color",                     "PathTracer.directLighting")
-    g.addEdge("PathTracer.color",                    "ReSTIRPTPass.color")
+
+    # RTXDIPass direct lighting → ReSTIR PT as input; PathTracer color as fallback
+    g.addEdge("RTXDIPass.color",                     "ReSTIRPTPass.directLighting")
     g.addEdge("GBufferRT.vbuffer",                   "ReSTIRPTPass.vbuffer")
-    g.addEdge("GBufferRT.mvec",                      "ReSTIRPTPass.mvec")
-    g.addEdge("ReSTIRPTPass.color",                  "NRDPass.diffuseRadianceHitDist")
-    g.addEdge("ReSTIRPTPass.specularColor",          "NRDPass.specularRadianceHitDist")
+    g.addEdge("GBufferRT.mvec",                      "ReSTIRPTPass.motionVectors")
+
+    # ReSTIR PT NRD outputs → NRD denoiser
+    g.addEdge("ReSTIRPTPass.nrdDiffuseRadianceHitDist",
+              "NRDPass.diffuseRadianceHitDist")
+    g.addEdge("ReSTIRPTPass.nrdSpecularRadianceHitDist",
+              "NRDPass.specularRadianceHitDist")
     g.addEdge("GBufferRT.linearZ",                   "NRDPass.viewZ")
-    g.addEdge("GBufferRT.normW",                     "NRDPass.normalRoughness")
+    g.addEdge("GBufferRT.normWRoughnessMaterialID",  "NRDPass.normWRoughnessMaterialID")
     g.addEdge("GBufferRT.mvec",                      "NRDPass.mvec")
+
+    # NRD → ToneMapper
     g.addEdge("NRDPass.filteredDiffuseRadianceHitDist",
               "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
 
     # Secondary outputs for analysis
-    g.markOutput("VisCache.hitRate")    # scalar stats texture (if implemented)
-    g.markOutput("ReSTIRPTPass.debugVis")   # optional per-pixel V visualisation
+    g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
 
     return g
 
