@@ -235,12 +235,16 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
         fullpath = AssetResolver::getDefaultResolver().resolvePath("16RooksPattern256.txt");
     if (fullpath.empty())
     {
-        std::string searchPathList;
+        std::string paths;
         for (const auto& sp : AssetResolver::getDefaultResolver().getSearchPaths())
-            searchPathList += fmt::format("\n  {}", sp.string());
-        if (searchPathList.empty())
-            searchPathList = "\n  (none)";
-        FALCOR_THROW("Could not find 16RooksPattern256.txt data file. Search paths:{}", searchPathList);
+        {
+            if (!paths.empty())
+                paths += ", ";
+            paths += sp.string();
+        }
+        if (paths.empty())
+            paths = "(no search paths registered)";
+        FALCOR_THROW("Could not find 16RooksPattern256.txt at {}", paths);
     }
     FILE* f = fopen(fullpath.string().c_str(), "r");
     if (!f)

@@ -56,18 +56,22 @@ std::filesystem::path AssetResolver::resolvePath(const std::filesystem::path& pa
 
     if (resolved.empty())
     {
-        std::string searchPathList;
+        std::string paths;
         auto appendPaths = [&](AssetCategory cat)
         {
             for (const auto& sp : mSearchContexts[size_t(cat)].searchPaths)
-                searchPathList += fmt::format("\n  {}", sp.string());
+            {
+                if (!paths.empty())
+                    paths += ", ";
+                paths += sp.string();
+            }
         };
         appendPaths(category);
         if (category != AssetCategory::Any)
             appendPaths(AssetCategory::Any);
-        if (searchPathList.empty())
-            searchPathList = "\n  (none)";
-        logWarning("Failed to resolve path '{}' for asset type '{}'. Search paths:{}", path, category, searchPathList);
+        if (paths.empty())
+            paths = "(no search paths registered)";
+        logWarning("Failed to resolve path '{}' for asset type '{}' at {}", path, category, paths);
     }
 
     return resolved;
