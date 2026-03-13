@@ -62,7 +62,7 @@ REM ---------------------------------------------------------------------------
 REM Clone or pull
 REM ---------------------------------------------------------------------------
 if exist "%DIR%\.git" (
-    echo [bootstrap] %DIR% already exists — pulling latest...
+    echo [bootstrap] %DIR% already exists -- pulling latest...
     pushd "%DIR%"
     git fetch origin %BRANCH%
     git checkout %BRANCH% 2>nul

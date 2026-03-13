@@ -46,7 +46,7 @@ if exist "%ROOT%\Falcor\media\Arcade" (
         echo [scenes] Arcade already exists, skipping
     )
 ) else (
-    echo [scenes] WARNING: Falcor\media\Arcade not found — run setup first
+    echo [scenes] WARNING: Falcor\media\Arcade not found -- run setup first
 )
 
 REM ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ if not exist "%MEDIA_DIR%\Bistro" (
     REM Create .pyscene wrapper
     if not exist "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene" (
         (
-            echo # Bistro Interior — convenience wrapper for VisCache experiments
+            echo # Bistro Interior -- convenience wrapper for VisCache experiments
             echo import falcor
             echo sceneBuilder = SceneBuilder^(^)
             echo sceneBuilder.importScene^('BistroInterior.fbx'^)
@@ -137,7 +137,7 @@ if not exist "%MEDIA_DIR%\Sponza" (
     del "!TMPZIP!" 2>nul
     if not exist "%MEDIA_DIR%\Sponza\Sponza.pyscene" (
         (
-            echo # Crytek Sponza — convenience wrapper for VisCache experiments
+            echo # Crytek Sponza -- convenience wrapper for VisCache experiments
             echo import falcor
             echo sceneBuilder = SceneBuilder^(^)
             echo sceneBuilder.importScene^('sponza.obj'^)
@@ -162,7 +162,7 @@ if exist "%VEACHAJAR_DEST%\models" if exist "%VEACHAJAR_DEST%\textures" (
 )
 
 where git >nul 2>&1 || (
-    echo [scenes] git not found — skipping VeachAjar ^(requires git for sparse clone^)
+    echo [scenes] git not found -- skipping VeachAjar ^(requires git for sparse clone^)
     goto :summary
 )
 
