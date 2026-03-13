@@ -20,7 +20,7 @@ using namespace Falcor;
 class VisCache : public RenderPass
 {
 public:
-    FALCOR_PLUGIN_CLASS(VisCache, "VisCache",
+    FALCOR_PLUGIN_CLASS(VisCache, "VisCachePass",
                         "Visibility Cache (Kugelmann 2026)");
 
     static ref<VisCache> create(ref<Device> pDevice,

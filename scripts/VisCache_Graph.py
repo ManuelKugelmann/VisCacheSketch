@@ -60,7 +60,7 @@ def render_graph_VisCache():
 
     # Visibility Cache
     # Owns the hash table; exposes it via InternalDictionary.
-    visCache = createPass("VisCache", {
+    visCache = createPass("VisCachePass", {
         "tableCapacity":   1 << 22,   # 4M entries = 32 MB
         "bootThreshold":   32,
         "varThreshold":    0.10,
