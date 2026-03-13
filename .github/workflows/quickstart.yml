@@ -4,15 +4,21 @@ on:
   push:
     branches: ["main", "master"]
     paths:
-      - 'scripts/quickstart.bat'
-      - 'scripts/bootstrap.bat'
+      - 'scripts/install.*'
+      - 'scripts/quickstart.*'
+      - 'scripts/download_release.*'
+      - 'scripts/download_scenes.*'
+      - 'scripts/run_release.*'
       - 'scripts/run-tests.*'
       - '.github/workflows/quickstart.yml'
   pull_request:
     branches: ["main", "master"]
     paths:
-      - 'scripts/quickstart.bat'
-      - 'scripts/bootstrap.bat'
+      - 'scripts/install.*'
+      - 'scripts/quickstart.*'
+      - 'scripts/download_release.*'
+      - 'scripts/download_scenes.*'
+      - 'scripts/run_release.*'
       - 'scripts/run-tests.*'
       - '.github/workflows/quickstart.yml'
   workflow_dispatch:
@@ -23,13 +29,13 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # bootstrap.bat (Windows) — tests the curl one-liner flow
+  # install.bat (Windows) — tests the curl one-liner flow
   # ---------------------------------------------------------------------------
-  bootstrap-windows:
-    name: Bootstrap (Windows)
+  install-windows:
+    name: Install (Windows)
     runs-on: windows-2022
     steps:
-      - name: Checkout (for local bootstrap script)
+      - name: Checkout (for local install script)
         uses: actions/checkout@v6
 
       - name: Setup Python
@@ -42,11 +48,11 @@ jobs:
 
       # Use the branch name for clone (--branch requires a ref, not a SHA).
       # For PRs use head_ref (source branch), for pushes use ref_name (e.g. "main").
-      - name: Test bootstrap.bat (first run — clone)
+      - name: Test install.bat (first run — clone)
         shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
+          call "${{ github.workspace }}\scripts\install.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
 
       - name: Verify clone succeeded
         shell: cmd
@@ -55,11 +61,11 @@ jobs:
           if not exist "VCS-test\.git" (echo Clone did not create .git & exit /b 1)
           echo Clone OK
 
-      - name: Test bootstrap.bat (re-run — idempotent pull)
+      - name: Test install.bat (re-run — idempotent pull)
         shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          call "${{ github.workspace }}\scripts\bootstrap.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
+          call "${{ github.workspace }}\scripts\install.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
 
       - name: Verify repo still valid after re-run
         shell: cmd
