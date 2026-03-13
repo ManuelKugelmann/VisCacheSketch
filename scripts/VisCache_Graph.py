@@ -5,48 +5,52 @@ Run from Mogwai: File > Load Script, or pass as --script argument.
 Usage:
     Mogwai.exe --script scripts/VisCache_Graph.py --scene BistroInterior.pyscene
 
-Ablation configs are at the bottom — uncomment to switch.
+Ablation presets can be selected here (ACTIVE_ABLATION) or steered from
+test scripts by importing and passing a config dict to render_graph_VisCache():
+
+    from VisCache_Graph import ABLATIONS, render_graph_VisCache
+    g = render_graph_VisCache(ablation=ABLATIONS["minus_decay"])
 """
 
 # ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-def set_ablation(visCache, cfg):
-    """Apply an ablation configuration dict to the VisCache pass."""
-    for k, v in cfg.items():
-        setattr(visCache, k, v)
-
-
-# ---------------------------------------------------------------------------
 # Ablation config presets (paper §15)
-# Uncomment exactly one before loading.
 # ---------------------------------------------------------------------------
 
-ABLATION_FULL = {}  # All features on — paper result
-
-ABLATION_MINUS_B = {   # Disable variance-gated write depth
-    "enableVisCacheVarianceGate": False,
-}
-ABLATION_MINUS_C = {   # Disable warp reduction (per-lane atomics)
-    "enableVisCacheWarpReduction": False,
-}
-ABLATION_MINUS_D = {   # Disable inline CAS decay
-    "enableVisCacheDecay": False,
-}
-ABLATION_MINUS_E = {   # Disable pressure-scaled eviction
-    "enableVisCachePressureEvict": False,
-}
-ABLATION_SINGLE_LEVEL = {   # Single-level (N=1) vs. multilevel comparison
-    "numLevels": 1,
+ABLATIONS = {
+    "full":         {},                                          # All features on — paper result
+    "minus_var":    {"enableVisCacheVarianceGate": False},       # -B: no variance-gated write depth
+    "minus_warp":   {"enableVisCacheWarpReduction": False},      # -C: no warp reduction (per-lane atomics)
+    "minus_decay":  {"enableVisCacheDecay": False},              # -D: no inline CAS decay
+    "minus_evict":  {"enableVisCachePressureEvict": False},      # -E: no pressure-scaled eviction
+    "single_level": {"numLevels": 1},                            # Single-level (N=1) vs. multilevel
 }
 
-ACTIVE_ABLATION = ABLATION_FULL   # <-- CHANGE THIS LINE
+# Back-compat aliases
+ABLATION_FULL         = ABLATIONS["full"]
+ABLATION_MINUS_B      = ABLATIONS["minus_var"]
+ABLATION_MINUS_C      = ABLATIONS["minus_warp"]
+ABLATION_MINUS_D      = ABLATIONS["minus_decay"]
+ABLATION_MINUS_E      = ABLATIONS["minus_evict"]
+ABLATION_SINGLE_LEVEL = ABLATIONS["single_level"]
+
+ACTIVE_ABLATION = ABLATION_FULL   # <-- default when run directly
 
 
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
-def render_graph_VisCache():
+def render_graph_VisCache(ablation=None):
+    """Build the VisCache render graph.
+
+    Args:
+        ablation: Dict of VisCachePass overrides, or a key into ABLATIONS.
+                  Defaults to ACTIVE_ABLATION when run directly.
+    """
+    if ablation is None:
+        ablation = ACTIVE_ABLATION
+    elif isinstance(ablation, str):
+        ablation = ABLATIONS[ablation]
+
     g = RenderGraph("VisCache")
 
     # G-Buffer
@@ -60,7 +64,7 @@ def render_graph_VisCache():
 
     # Visibility Cache
     # Owns the hash table; exposes it via InternalDictionary.
-    visCache = createPass("VisCachePass", {
+    vc_params = {
         "tableCapacity":   1 << 22,   # 4M entries = 32 MB
         "bootThreshold":   32,
         "varThreshold":    0.10,
@@ -77,8 +81,9 @@ def render_graph_VisCache():
         "enableVisCacheVarianceGate":   True,
         "enableVisCacheDecay":          True,
         "enableVisCachePressureEvict":  True,
-    })
-    set_ablation(visCache, ACTIVE_ABLATION)
+    }
+    vc_params.update(ablation)
+    visCache = createPass("VisCachePass", vc_params)
     g.addPass(visCache, "VisCache")
 
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
