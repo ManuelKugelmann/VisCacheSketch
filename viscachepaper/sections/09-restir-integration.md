@@ -22,7 +22,7 @@ The cache's strongest integration case. Spatial reuse (ReSTIR GI [Ouyang et al. 
 
 Prediction-with-correction makes unbiased revalidation near-free: look up cached V(P, Q), apply contribution-weighted RR (Sec. 10). Expected traces drop from 5 to ~0.7 per pixel. This is where the cache's value is highest, because no screen-space alternative exists for arbitrary reconnection vertices — temporal reprojection and neighbor polling cannot help when Q is a world-space point unrelated to the current pixel's view.
 
-ReSTIR PT generalizes ReSTIR GI [Lin et al. 2022, GRIS]: at maxBounces=1 they produce the same estimator, but PT's hybrid shift (reconnection + random replay) handles specular first bounces where GI's reconnection-only shift degenerates to plain path tracing. We use ReSTIR PT for all GI integration tests.
+ReSTIR PT generalizes ReSTIR GI [Lin et al. 2022, GRIS]: at maxSurfaceBounces=1 they produce the same estimator, but PT's hybrid shift (reconnection + random replay) handles specular first bounces where GI's reconnection-only shift degenerates to plain path tracing. We use ReSTIR PT for all GI integration tests.
 
 | Insertion point | Rays saved | Unbiased? | Risk |
 |---|---|---|---|

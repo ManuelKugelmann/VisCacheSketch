@@ -6,7 +6,7 @@ def render_graph_ReSTIRPT_Vanilla():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 4,
+        'maxSurfaceBounces': 4,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': False,
@@ -29,7 +29,7 @@ def render_graph_ReSTIRPT_CVRRRRevalidation():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 4,
+        'maxSurfaceBounces': 4,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation': True,
         'enableVisCacheLightSelection': False,
@@ -56,7 +56,7 @@ def render_graph_ReSTIRPT_VisCacheRevalidation():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 4,
+        'maxSurfaceBounces': 4,
         'enableVisCacheRevalidation': True,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': False,
@@ -82,7 +82,7 @@ def render_graph_ReSTIRPT_VisCacheLightSelection():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 4,
+        'maxSurfaceBounces': 4,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': True,
@@ -108,7 +108,7 @@ def render_graph_ReSTIRPT_VisCacheFull():
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 4,
+        'maxSurfaceBounces': 4,
         'enableVisCacheRevalidation': True,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': True,
@@ -127,19 +127,19 @@ def render_graph_ReSTIRPT_VisCacheFull():
 
 
 # ---------------------------------------------------------------------------
-# Single-bounce (maxBounces=1) — subsumes ReSTIR GI tests.
-# ReSTIR PT at maxBounces=1 produces the same estimator as ReSTIR GI but
+# Single-bounce (maxSurfaceBounces=1) — subsumes ReSTIR GI tests.
+# ReSTIR PT at maxSurfaceBounces=1 produces the same estimator as ReSTIR GI but
 # with the hybrid shift (reconnection + random replay) that also handles
 # specular first bounces.
 # ---------------------------------------------------------------------------
 
 def render_graph_ReSTIRPT1_Vanilla():
-    """ReSTIR PT maxBounces=1 — vanilla (no VisCache)."""
+    """ReSTIR PT maxSurfaceBounces=1 — vanilla (no VisCache)."""
     g = RenderGraph("ReSTIRPT1_Vanilla")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 1,
+        'maxSurfaceBounces': 1,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': False,
@@ -157,12 +157,12 @@ def render_graph_ReSTIRPT1_Vanilla():
 
 
 def render_graph_ReSTIRPT1_CVRRRRevalidation():
-    """ReSTIR PT maxBounces=1 — local CV+RRR (reservoir-local mu, no hash table)."""
+    """ReSTIR PT maxSurfaceBounces=1 — local CV+RRR (reservoir-local mu, no hash table)."""
     g = RenderGraph("ReSTIRPT1_CVRRRRevalidation")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 1,
+        'maxSurfaceBounces': 1,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation': True,
         'enableVisCacheLightSelection': False,
@@ -182,14 +182,14 @@ def render_graph_ReSTIRPT1_CVRRRRevalidation():
 
 
 def render_graph_ReSTIRPT1_VisCacheRevalidation():
-    """ReSTIR PT maxBounces=1 — VisCache CV+RRR revalidation."""
+    """ReSTIR PT maxSurfaceBounces=1 — VisCache CV+RRR revalidation."""
     g = RenderGraph("ReSTIRPT1_VisCacheRevalidation")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 1,
+        'maxSurfaceBounces': 1,
         'enableVisCacheRevalidation': True,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': False,
@@ -208,14 +208,14 @@ def render_graph_ReSTIRPT1_VisCacheRevalidation():
 
 
 def render_graph_ReSTIRPT1_VisCacheLightSelection():
-    """ReSTIR PT maxBounces=1 — VisCache light pre-selection only."""
+    """ReSTIR PT maxSurfaceBounces=1 — VisCache light pre-selection only."""
     g = RenderGraph("ReSTIRPT1_VisCacheLightSelection")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 1,
+        'maxSurfaceBounces': 1,
         'enableVisCacheRevalidation': False,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': True,
@@ -234,14 +234,14 @@ def render_graph_ReSTIRPT1_VisCacheLightSelection():
 
 
 def render_graph_ReSTIRPT1_VisCacheFull():
-    """ReSTIR PT maxBounces=1 — VisCache revalidation + light selection."""
+    """ReSTIR PT maxSurfaceBounces=1 — VisCache revalidation + light selection."""
     g = RenderGraph("ReSTIRPT1_VisCacheFull")
     VisCache = createPass("VisCachePass")
     g.addPass(VisCache, "VisCache")
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
-        'maxBounces': 1,
+        'maxSurfaceBounces': 1,
         'enableVisCacheRevalidation': True,
         'enableCVRRRRevalidation': False,
         'enableVisCacheLightSelection': True,
@@ -259,14 +259,14 @@ def render_graph_ReSTIRPT1_VisCacheFull():
     return g
 
 
-# Multi-bounce (maxBounces=4)
+# Multi-bounce (maxSurfaceBounces=4)
 ReSTIRPT_Vanilla = render_graph_ReSTIRPT_Vanilla()
 ReSTIRPT_CVRRRRevalidation = render_graph_ReSTIRPT_CVRRRRevalidation()
 ReSTIRPT_VisCacheRevalidation = render_graph_ReSTIRPT_VisCacheRevalidation()
 ReSTIRPT_VisCacheLightSelection = render_graph_ReSTIRPT_VisCacheLightSelection()
 ReSTIRPT_VisCacheFull = render_graph_ReSTIRPT_VisCacheFull()
 
-# Single-bounce (maxBounces=1) — replaces former ReSTIR GI tests
+# Single-bounce (maxSurfaceBounces=1) — replaces former ReSTIR GI tests
 ReSTIRPT1_Vanilla = render_graph_ReSTIRPT1_Vanilla()
 ReSTIRPT1_CVRRRRevalidation = render_graph_ReSTIRPT1_CVRRRRevalidation()
 ReSTIRPT1_VisCacheRevalidation = render_graph_ReSTIRPT1_VisCacheRevalidation()

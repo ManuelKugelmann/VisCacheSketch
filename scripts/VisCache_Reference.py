@@ -24,7 +24,7 @@ g.addPass(VBuffer, "VBuffer")
 
 PathTracer = createPass("PathTracer", {
     'samplesPerPixel': kSamplesPerPixel,
-    'maxBounces':      6,
+    'maxSurfaceBounces':      6,
 })
 g.addPass(PathTracer, "PathTracer")
 

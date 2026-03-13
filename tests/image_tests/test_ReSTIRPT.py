@@ -49,7 +49,7 @@ m.addGraph(ReSTIRPT_VisCacheFull)
 render_frames(m, 'viscache_full', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT maxBounces=1 — subsumes ReSTIR GI tests.
+# ReSTIR PT maxSurfaceBounces=1 — subsumes ReSTIR GI tests.
 # Single-bounce vanilla + full VisCache to verify GI-equivalent path.
 # ---------------------------------------------------------------------------
 m.removeGraph(ReSTIRPT_VisCacheFull)
