@@ -26,7 +26,7 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
     if [ -f "$ETAG_FILE" ]; then
         OLD_ETAG="$(cat "$ETAG_FILE")"
         echo "[release] Checking for newer release..."
-        REMOTE_ETAG="$(curl -fsSL -I "$DOWNLOAD_URL" 2>/dev/null | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')" || true
+        REMOTE_ETAG="$(curl -fsSL -H 'Cache-Control: no-cache' -I "$DOWNLOAD_URL" 2>/dev/null | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')" || true
         if [ -n "$REMOTE_ETAG" ] && [ "$REMOTE_ETAG" = "$OLD_ETAG" ]; then
             echo "[release] Release is up to date."
             exit 0
@@ -48,7 +48,7 @@ ARCHIVE="$(mktemp /tmp/viscache-release.XXXXXX.tar.gz)"
 HEADERS="$(mktemp /tmp/viscache-headers.XXXXXX.txt)"
 
 if command -v curl >/dev/null 2>&1; then
-    curl -fSL --progress-bar -D "$HEADERS" -o "$ARCHIVE" "$DOWNLOAD_URL" || {
+    curl -fSL --progress-bar -H 'Cache-Control: no-cache' -D "$HEADERS" -o "$ARCHIVE" "$DOWNLOAD_URL" || {
         echo "[release] Download failed -- no dev-latest release yet. Skipping."
         echo "[release] This is normal for first-time setup or pre-release branches."
         rm -f "$ARCHIVE" "$HEADERS"
