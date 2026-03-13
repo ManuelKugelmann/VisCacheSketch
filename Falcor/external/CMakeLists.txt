@@ -526,6 +526,32 @@ else()
     set(FALCOR_HAS_D3D12_AGILITY_SDK OFF PARENT_SCOPE)
 endif()
 
+# nrc (Neural Radiance Cache)
+set(NRC_DIR ${PACKMAN_DIR}/nrc)
+if(FALCOR_ENABLE_NRC AND EXISTS ${NRC_DIR}/Include/NrcStructures.h)
+    if(FALCOR_HAS_D3D12)
+        add_library(nrc SHARED IMPORTED GLOBAL)
+        set_target_properties(nrc PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES ${NRC_DIR}/Include
+            IMPORTED_IMPLIB ${NRC_DIR}/Lib/NRC_D3D12.lib
+            IMPORTED_LOCATION ${NRC_DIR}/Bin/NRC_D3D12.dll
+        )
+    elseif(FALCOR_HAS_VULKAN)
+        add_library(nrc SHARED IMPORTED GLOBAL)
+        set_target_properties(nrc PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES ${NRC_DIR}/Include
+            IMPORTED_IMPLIB ${NRC_DIR}/Lib/NRC_Vulkan.lib
+            IMPORTED_LOCATION ${NRC_DIR}/Bin/NRC_Vulkan.dll
+        )
+    endif()
+    set(FALCOR_HAS_NRC ON PARENT_SCOPE)
+elseif(FALCOR_ENABLE_NRC)
+    message(WARNING "FALCOR_ENABLE_NRC is ON but NRC SDK not found at ${NRC_DIR}")
+    set(FALCOR_HAS_NRC OFF PARENT_SCOPE)
+else()
+    set(FALCOR_HAS_NRC OFF PARENT_SCOPE)
+endif()
+
 # rtxdi
 set(RTXDI_DIR ${PACKMAN_DIR}/rtxdi)
 add_library(rtxdi INTERFACE)
