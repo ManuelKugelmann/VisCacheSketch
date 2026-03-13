@@ -23,18 +23,18 @@
 **One-liner (idempotent — safe to re-run):**
 
 ```bat
-cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat"
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat"
 ```
 
-This clones (or pulls if already cloned), downloads the latest release, fetches test scenes, runs CPU tests + smoke test, and launches Mogwai with Bistro.
+This clones (or pulls if already cloned), downloads test scenes, downloads the latest release, runs CPU tests + smoke test, and launches Mogwai with Bistro.
 
 **With options:**
 
 ```bat
-cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat --scene Sponza"
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat --scene Sponza"
 REM Or after first run:
-scripts\bootstrap.bat --scene Sponza --skip-scenes
-scripts\quickstart.bat --skip-scenes           &REM skip scene download
+scripts\quickstart.bat --scene Sponza --skip-scenes
+scripts\run-release.bat --skip-scenes          &REM skip scene download
 scripts\run-tests.bat                          &REM run 43 CPU tests only
 scripts\run-tests.bat quick                    &REM convergence tests only (14)
 scripts\download_scenes.bat --yes              &REM download all scenes non-interactively

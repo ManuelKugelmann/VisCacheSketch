@@ -1,181 +1,118 @@
 @echo off
-REM VisCacheSketch quickstart — download latest release, fetch scenes, run.
+REM quickstart.bat — Idempotent VisCacheSketch quickstart.
 REM
-REM Usage:  scripts\quickstart.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes]
+REM One-liner (paste into cmd or PowerShell):
+REM   curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat
 REM
-REM Steps:
-REM   1. Download latest GitHub release (Mogwai + plugins)
-REM   2. Download test scenes (Arcade, Bistro, Sponza)
-REM   3. Run smoke test
-REM   4. Launch Mogwai with selected scene
+REM What it does:
+REM   1. Checks git version (2.43+ recommended)
+REM   2. Clones the repo (or pulls if it already exists)
+REM   3. Downloads test scenes (Arcade, Bistro, Sponza, VeachAjar)
+REM   4. Downloads latest release, runs tests, launches Mogwai
 REM
-REM Requires: curl, tar, python3 (for tests), git 2.43+ (for VeachAjar sparse clone)
+REM Safe to re-run: skips clone if the directory exists, pulls latest instead.
 REM
-REM Idempotent: safe to re-run. Skips steps that are already complete.
-REM
-REM One-liner (cmd or PowerShell, idempotent):
-REM   curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat
-REM
-REM WSL alternative (runs .sh scripts directly):
-REM     wsl bash scripts/download_scenes.sh
-REM     wsl bash scripts/run_paper_experiments.sh
+REM Options:
+REM   quickstart.bat [--dir <name>] [--branch <branch>] [--scene <scene>] [--skip-scenes]
 
 setlocal enabledelayedexpansion
 
-set "REPO=ManuelKugelmann/VisCacheSketch"
-set "ROOT=%~dp0.."
-set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\media"
-set "SCENE=Bistro"
-set "SKIP_SCENES=0"
+set "DIR=VisCacheSketch"
+set "BRANCH=main"
+set "SCENE="
+set "SKIP_SCENES="
+set "REPO_URL=https://github.com/ManuelKugelmann/VisCacheSketch.git"
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
 REM ---------------------------------------------------------------------------
 :parse_args
 if "%~1"=="" goto :args_done
+if /i "%~1"=="--dir" (set "DIR=%~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--branch" (set "BRANCH=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
-if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=1" & shift & goto :parse_args)
+if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=--skip-scenes" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene Bistro^|Sponza^|Arcade] [--skip-scenes]
+echo Usage: %~nx0 [--dir ^<name^>] [--branch ^<branch^>] [--scene ^<scene^>] [--skip-scenes]
 exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
-REM 1. Download latest release
+REM Check git
 REM ---------------------------------------------------------------------------
-echo.
-echo ========================================
-echo  Step 1: Download latest release
-echo ========================================
-
-if exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [release] Mogwai.exe already exists in %RELEASE_DIR%
-    echo [release] Delete %RELEASE_DIR% to re-download.
-    goto :step2
+where git >nul 2>&1 || (
+    echo [quickstart] ERROR: git not found. Install git 2.43+ from https://git-scm.com
+    exit /b 1
 )
 
-where curl >nul 2>&1 || (echo ERROR: curl not found in PATH & exit /b 1)
-where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
+for /f "tokens=3 delims= " %%V in ('git --version') do set "GIT_VER=%%V"
+echo [quickstart] git %GIT_VER%
 
-REM Direct download from the dev-latest prerelease (fixed archive name).
-REM No API query or JSON parsing needed — just a single curl redirect.
-set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
-echo [release] Downloading: %DOWNLOAD_URL%
-mkdir "%RELEASE_DIR%" 2>nul
-
-set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
-curl -fSL --progress-bar -o "%ARCHIVE%" "%DOWNLOAD_URL%"
-if errorlevel 1 (
-    echo [release] Download failed -- no dev-latest release yet. Skipping.
-    echo [release] This is normal for first-time setup or pre-release branches.
-    echo [release]
-    echo [release] To get Mogwai manually:
-    echo [release]   Download: https://github.com/%REPO%/releases
-    echo [release]   Build:    run setup.bat, then cmake --preset windows-vs2022-ci
-    del "%ARCHIVE%" 2>nul
-    goto :step2
+REM Parse major.minor for version check
+for /f "tokens=1,2 delims=." %%A in ("%GIT_VER%") do (
+    set "GIT_MAJOR=%%A"
+    set "GIT_MINOR=%%B"
 )
-
-echo [release] Extracting to %RELEASE_DIR%...
-tar xzf "%ARCHIVE%" -C "%RELEASE_DIR%"
-del "%ARCHIVE%" 2>nul
-
-if exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [release] OK: Mogwai.exe ready
-) else (
-    echo [release] WARNING: Mogwai.exe not found after extraction.
-    echo [release] Archive contents:
-    dir /b "%RELEASE_DIR%"
+if !GIT_MAJOR! LSS 2 (
+    echo [quickstart] WARNING: git !GIT_VER! is old. git 2.43+ recommended.
+) else if !GIT_MAJOR! EQU 2 if !GIT_MINOR! LSS 43 (
+    echo [quickstart] WARNING: git !GIT_VER! detected. git 2.43+ recommended ^(sparse-checkout, filter^).
 )
 
 REM ---------------------------------------------------------------------------
-REM 2. Download scenes
+REM Clone or pull
 REM ---------------------------------------------------------------------------
-:step2
-if %SKIP_SCENES%==1 (
-    echo.
-    echo [scenes] Skipping scene download (--skip-scenes)
-    goto :step3
-)
-
-echo.
-echo ========================================
-echo  Step 2: Download test scenes
-echo ========================================
-
-call "%~dp0download_scenes.bat" --dir "%MEDIA_DIR%" --yes
-if errorlevel 1 echo [scenes] WARNING: Some scenes failed to download
-
-REM ---------------------------------------------------------------------------
-REM 3. Run CPU tests + smoke test
-REM ---------------------------------------------------------------------------
-:step3
-echo.
-echo ========================================
-echo  Step 3: Validate
-echo ========================================
-
-where python >nul 2>&1 && (
-    echo [test] Running algorithm tests...
-    python "%ROOT%\tests\test_viscache_convergence.py"
-    if errorlevel 1 echo [test] WARNING: convergence tests failed
-    python "%ROOT%\tests\test_restir_variants.py"
-    if errorlevel 1 echo [test] WARNING: ReSTIR variant tests failed
-    python "%ROOT%\tests\test_paper_ablations.py"
-    if errorlevel 1 echo [test] WARNING: ablation config tests failed
-) || (
-    echo [test] python not found -- skipping algorithm tests
-)
-
-if exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [smoke] Running smoke test...
-    "%RELEASE_DIR%\Mogwai.exe" --headless --script "%RELEASE_DIR%\scripts\VisCache\smoke_test.py"
+if exist "%DIR%\.git" (
+    echo [quickstart] %DIR% already exists -- pulling latest...
+    pushd "%DIR%"
+    git fetch origin %BRANCH%
+    git checkout %BRANCH% 2>nul
+    git pull origin %BRANCH%
     if errorlevel 1 (
-        echo [smoke] WARNING: Smoke test failed
-    ) else (
-        echo [smoke] OK
+        echo [quickstart] WARNING: pull failed, continuing with existing checkout
     )
+    popd
+) else if exist "%DIR%" (
+    echo [quickstart] ERROR: %DIR% exists but is not a git repo.
+    echo [quickstart] Remove it or use --dir ^<other-name^>.
+    exit /b 1
 ) else (
-    echo [smoke] Mogwai.exe not found -- skipping smoke test
+    echo [quickstart] Cloning %REPO_URL%...
+    git clone --branch %BRANCH% %REPO_URL% "%DIR%"
+    if errorlevel 1 (
+        echo [quickstart] ERROR: git clone failed.
+        exit /b 1
+    )
 )
 
 REM ---------------------------------------------------------------------------
-REM 4. Resolve scene path and launch
+REM Download scenes
 REM ---------------------------------------------------------------------------
+if defined SKIP_SCENES (
+    echo [quickstart] Skipping scene download (--skip-scenes)
+    goto :run_release
+)
+
 echo.
 echo ========================================
-echo  Step 4: Launch
+echo  Downloading test scenes
 echo ========================================
+pushd "%DIR%"
+call scripts\download_scenes.bat --dir "media" --yes
+if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
+popd
 
-set "SCENE_FILE="
-if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
-if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
-if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
+REM ---------------------------------------------------------------------------
+REM Run release setup (download release, tests, launch)
+REM ---------------------------------------------------------------------------
+:run_release
+set "QS_ARGS=--skip-scenes"
+if defined SCENE set "QS_ARGS=%QS_ARGS% --scene %SCENE%"
 
-if not exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [launch] Mogwai.exe not found -- no release downloaded.
-    echo [launch] Build from source or grab a release: https://github.com/%REPO%/releases
-    echo [launch] Tests and setup completed successfully.
-    exit /b 0
-)
+echo [quickstart] Running %DIR%\scripts\run-release.bat %QS_ARGS%
+pushd "%DIR%"
+call scripts\run-release.bat %QS_ARGS%
+set "QS_EXIT=%ERRORLEVEL%"
+popd
 
-if "%SCENE_FILE%"=="" (
-    echo [launch] Unknown scene: %SCENE%
-    echo [launch] Available: Bistro, Sponza, Arcade
-    exit /b 1
-)
-
-if not exist "%SCENE_FILE%" (
-    echo [launch] Scene file not found: %SCENE_FILE%
-    echo [launch] Re-run without --skip-scenes to download.
-    exit /b 1
-)
-
-echo [launch] Starting Mogwai with %SCENE%...
-echo [launch] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene %SCENE_FILE%
-echo.
-set "FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%"
-"%RELEASE_DIR%\Mogwai.exe" --script "%RELEASE_DIR%\scripts\VisCache\VisCache_Graph.py" --scene "%SCENE_FILE%"
-
-endlocal
+exit /b %QS_EXIT%

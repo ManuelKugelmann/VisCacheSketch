@@ -10,7 +10,7 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 ## Scripting
 
 - **Prefer `.bat` over `.ps1`** for Windows scripts. PowerShell execution policies block `.ps1` by default. `.bat` works everywhere (cmd, PowerShell, CI).
-- Bootstrap one-liner: `cmd /c "curl -sL <url>/scripts/bootstrap.bat -o %TEMP%\vc-bootstrap.bat && %TEMP%\vc-bootstrap.bat"`
+- Quickstart one-liner: `cmd /c "curl -sL <url>/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat"`
 
 ## Falcor Subtree Policy
 
@@ -39,7 +39,7 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 - `.github/workflows/paper.yml` — Paper combine + GitHub Pages deploy
 - `.github/workflows/validate.yml` — Algorithm validation tests
 - `.github/workflows/build.yml` — Binary builds + release
-- `.github/workflows/quickstart.yml` — Bootstrap idempotency + CPU tests
+- `.github/workflows/quickstart.yml` — Quickstart idempotency + CPU tests
 - Runs on: `ubuntu-22.04` (Linux/GCC), `windows-2022` (VS2022 + Ninja/MSVC)
 
 ## Render Passes
