@@ -313,7 +313,7 @@ struct Scene
     uint3 getIndices(const uint meshID, const uint triangleIndex)
     {
         const MeshDesc mesh = meshes[meshID];
-        uint3 vtxIndices = getLocalIndices(mesh.ibOffset, triangleIndex, mesh.flags & uint(MeshFlags::Use16BitIndices));
+        uint3 vtxIndices = getLocalIndices(mesh.ibOffset, triangleIndex, (mesh.flags & uint(MeshFlags::Use16BitIndices)) != 0);
         vtxIndices += mesh.vbOffset;
         return vtxIndices;
     }
@@ -326,7 +326,7 @@ struct Scene
     uint3 getIndices(const GeometryInstanceID instanceID, const uint triangleIndex)
     {
         const GeometryInstanceData instance = getGeometryInstance(instanceID);
-        uint3 vtxIndices = getLocalIndices(instance.ibOffset, triangleIndex, instance.flags & uint(GeometryInstanceFlags::Use16BitIndices));
+        uint3 vtxIndices = getLocalIndices(instance.ibOffset, triangleIndex, (instance.flags & uint(GeometryInstanceFlags::Use16BitIndices)) != 0);
         vtxIndices += instance.vbOffset;
         return vtxIndices;
     }
@@ -610,7 +610,7 @@ struct Scene
         float3 prevPos = {};
 
         const GeometryInstanceData instance = getGeometryInstance(instanceID);
-        uint3 vtxIndices = getLocalIndices(instance.ibOffset, triangleIndex, instance.flags & uint(GeometryInstanceFlags::Use16BitIndices));
+        uint3 vtxIndices = getLocalIndices(instance.ibOffset, triangleIndex, (instance.flags & uint(GeometryInstanceFlags::Use16BitIndices)) != 0);
 
         if (instance.isDynamic())
         {
@@ -655,7 +655,7 @@ struct Scene
 
         const float3 barycentrics = hit.getBarycentricWeights();
         const GeometryInstanceData instance = getGeometryInstance(hit.instanceID);
-        uint3 vtxIndices = getLocalIndices(instance.ibOffset, hit.primitiveIndex, instance.flags & uint(GeometryInstanceFlags::Use16BitIndices));
+        uint3 vtxIndices = getLocalIndices(instance.ibOffset, hit.primitiveIndex, (instance.flags & uint(GeometryInstanceFlags::Use16BitIndices)) != 0);
 
         // For non-dynamic meshes, the previous position/normal is the same as the current.
         vtxIndices += instance.vbOffset;
