@@ -63,6 +63,11 @@ it would provide an alternative unbiased path for their neural cache.
 Teschner et al. [2003] established spatial hashing:
 an infinite regular grid compressed to a finite table via hash function,
 requiring no scene bounds.
+The practical inspiration for using spatial hashing in [Kugelmann 2006]
+came from ODE (Open Dynamics Engine) [Smith 2001],
+whose `dHashSpace` broad-phase collision detection
+demonstrated spatial hashing as a lightweight, bounds-free spatial index —
+encountered through a student project at Universität Ulm.
 
 Binder et al. [2018] applied spatial hashing to path-space filtering
 with jitter before quantization,
@@ -164,6 +169,11 @@ maps onto our coupling of one signal to two decisions —
 correction rate and write depth — as detailed in Sec. 8.
 
 ## 2.5 Integration Targets (Orthogonal)
+
+Our implementation is built on Falcor [Kallweit et al. 2022],
+NVIDIA's open-source real-time rendering research framework,
+which provides the GPU infrastructure, scene management,
+and render-graph architecture used by our render passes.
 
 The visibility cache is agnostic to the algorithm
 that generates visibility queries.

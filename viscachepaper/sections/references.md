@@ -22,6 +22,8 @@
 
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
 
+- [Kallweit et al. 2022] S. Kallweit, P. Clarberg, C. Kolb, T. Davidovič, K.-H. Yao, T. Foley, Y. He, L. Wu, L. Chen, T. Akenine-Möller, C. Wyman, C. Crassin, and N. Benty. "The Falcor Rendering Framework." 2022. [https://github.com/NVIDIAGameWorks/Falcor](https://github.com/NVIDIAGameWorks/Falcor)
+
 - [Keller 1997] A. Keller. "Instant Radiosity." *SIGGRAPH '97*, pp. 49–56, 1997.
 
 - [Knuth 1973] D. E. Knuth. *The Art of Computer Programming, Vol. 3: Sorting and Searching*. Addison-Wesley, 1973. Section 6.4 (double hashing).
