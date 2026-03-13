@@ -19,18 +19,38 @@ script. That's expected — the build job validates compilation, and this script
 validates runtime integration when a GPU is available.
 """
 
+import os
 import sys
 
 REQUIRED_PASSES = [
     "VisCachePass",
 ]
-# ReSTIRPTPass depends on data files (16RooksPattern256.txt) that must be
-# deployed to the Falcor data directory.  If the data file is missing the
-# constructor throws — treat that as a warning, not a hard failure, because
-# the smoke test's purpose is verifying plugin registration, not data layout.
-OPTIONAL_PASSES = [
-    "ReSTIRPTPass",
+
+# ReSTIRPTPass needs 16RooksPattern256.txt deployed to a Falcor data
+# directory.  Check for the file before attempting createPass() — the
+# constructor FALCOR_THROWs on missing data, which can crash ungracefully.
+ROOKS_FILE = "16RooksPattern256.txt"
+ROOKS_SEARCH_DIRS = [
+    os.path.join(os.path.dirname(__file__), "..", "data", "ReSTIRPTPass"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "release", "data", "ReSTIRPTPass"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "Source", "RenderPasses", "ReSTIRPTPass", "Data"),
 ]
+
+# ---------------------------------------------------------------------------
+# 0. Pre-flight: check ReSTIRPTPass data file
+# ---------------------------------------------------------------------------
+rooks_found = False
+for d in ROOKS_SEARCH_DIRS:
+    candidate = os.path.join(d, ROOKS_FILE)
+    if os.path.isfile(candidate):
+        rooks_found = True
+        print(f"[smoke] Found {ROOKS_FILE} at {os.path.normpath(candidate)}")
+        break
+
+if not rooks_found:
+    print(f"[smoke] WARNING: {ROOKS_FILE} not found in any search path — skipping ReSTIRPTPass")
+    for d in ROOKS_SEARCH_DIRS:
+        print(f"  checked: {os.path.normpath(d)}")
 
 # ---------------------------------------------------------------------------
 # 1. Check that our render passes are registered
@@ -47,20 +67,23 @@ for name in REQUIRED_PASSES:
         print(f"  MISSING: {name} — {e}")
         missing.append(name)
 
-for name in OPTIONAL_PASSES:
+# Only attempt ReSTIRPTPass if data file is present
+if rooks_found:
     try:
-        p = createPass(name)
-        print(f"  OK: {name}")
+        p = createPass("ReSTIRPTPass")
+        print(f"  OK: ReSTIRPTPass")
         del p
     except Exception as e:
-        print(f"  WARN: {name} — {e}")
-        warned.append(name)
+        print(f"  WARN: ReSTIRPTPass — {e}")
+        warned.append("ReSTIRPTPass")
+else:
+    warned.append("ReSTIRPTPass")
 
 if missing:
     print(f"[smoke] FAIL: {len(missing)} required passes not found: {missing}")
     sys.exit(1)
 if warned:
-    print(f"[smoke] NOTE: {len(warned)} optional passes unavailable (data files missing?): {warned}")
+    print(f"[smoke] NOTE: {len(warned)} optional passes unavailable: {warned}")
 
 # ---------------------------------------------------------------------------
 # 2. Build a minimal render graph to test wiring
