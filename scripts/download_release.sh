@@ -26,7 +26,7 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
     if [ -f "$ETAG_FILE" ]; then
         OLD_ETAG="$(cat "$ETAG_FILE")"
         echo "[release] Checking for newer release..."
-        REMOTE_ETAG="$(curl -fsSL -I "$DOWNLOAD_URL" 2>/dev/null | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')" || true
+        REMOTE_ETAG="$(curl -fsSL -H 'Cache-Control: no-cache' -I "$DOWNLOAD_URL" 2>/dev/null | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')" || true
         if [ -n "$REMOTE_ETAG" ] && [ "$REMOTE_ETAG" = "$OLD_ETAG" ]; then
             echo "[release] Release is up to date."
             exit 0
@@ -48,7 +48,7 @@ ARCHIVE="$(mktemp /tmp/viscache-release.XXXXXX.tar.gz)"
 HEADERS="$(mktemp /tmp/viscache-headers.XXXXXX.txt)"
 
 if command -v curl >/dev/null 2>&1; then
-    curl -fSL --progress-bar -D "$HEADERS" -o "$ARCHIVE" "$DOWNLOAD_URL" || {
+    curl -fSL --progress-bar -H 'Cache-Control: no-cache' -D "$HEADERS" -o "$ARCHIVE" "$DOWNLOAD_URL" || {
         echo "[release] Download failed -- no dev-latest release yet. Skipping."
         echo "[release] This is normal for first-time setup or pre-release branches."
         rm -f "$ARCHIVE" "$HEADERS"
@@ -72,7 +72,33 @@ if [ -n "$ETAG" ]; then
 fi
 rm -f "$HEADERS"
 
+# ---------------------------------------------------------------------------
+# Clean old release — move aside so tar doesn't hit overwrite errors
+# ---------------------------------------------------------------------------
+OLD_RELEASE="$(mktemp -d /tmp/viscache-old-release.XXXXXX)"
+if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
+    echo "[release] Moving old release aside..."
+    mv "$RELEASE_DIR" "$OLD_RELEASE/release"
+    mkdir -p "$RELEASE_DIR"
+    # Preserve ETag file
+    if [ -f "$OLD_RELEASE/release/.release-etag" ]; then
+        cp "$OLD_RELEASE/release/.release-etag" "$ETAG_FILE"
+    fi
+fi
+
 echo "[release] Extracting to $RELEASE_DIR..."
-tar xzf "$ARCHIVE" -C "$RELEASE_DIR"
+if ! tar xzf "$ARCHIVE" -C "$RELEASE_DIR"; then
+    echo "[release] ERROR: Extraction failed."
+    if [ -d "$OLD_RELEASE/release" ]; then
+        echo "[release] Restoring previous release..."
+        rm -rf "$RELEASE_DIR"
+        mv "$OLD_RELEASE/release" "$RELEASE_DIR"
+    fi
+    rm -f "$ARCHIVE"
+    exit 1
+fi
 rm -f "$ARCHIVE"
+
+# Remove old release now that extraction succeeded
+rm -rf "$OLD_RELEASE"
 echo "[release] Release ready at $RELEASE_DIR"

@@ -13,7 +13,7 @@ setlocal enabledelayedexpansion
 set "REPO=ManuelKugelmann/VisCacheSketch"
 set "ROOT=%~dp0.."
 set "RELEASE_DIR=%ROOT%\release"
-set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz?%RANDOM%"
+set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
 set "ETAG_FILE=%RELEASE_DIR%\.release-etag"
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 
@@ -28,7 +28,7 @@ REM ---------------------------------------------------------------------------
 if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
     set /p OLD_ETAG=<"%ETAG_FILE%"
     echo [release] Checking for newer release...
-    for /f "delims=" %%E in ('curl -fsSL -I "%DOWNLOAD_URL%&!RANDOM!" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
+    for /f "delims=" %%E in ('curl -fsSL -H "Cache-Control: no-cache" -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
     if defined ETAG_LINE (
         REM Compare stored ETag with remote
         echo !ETAG_LINE! | findstr /c:"!OLD_ETAG!" >nul 2>&1
@@ -50,7 +50,7 @@ REM ---------------------------------------------------------------------------
 REM Download
 REM ---------------------------------------------------------------------------
 echo [release] Downloading: %DOWNLOAD_URL%
-curl -fSL --progress-bar -D "%TEMP%\vc-release-headers.txt" -o "%ARCHIVE%" "%DOWNLOAD_URL%"
+curl -fSL --progress-bar -H "Cache-Control: no-cache" -D "%TEMP%\vc-release-headers.txt" -o "%ARCHIVE%" "%DOWNLOAD_URL%"
 if errorlevel 1 (
     echo [release] Download failed -- no dev-latest release yet. Skipping.
     echo [release] This is normal for first-time setup or pre-release branches.
@@ -68,9 +68,34 @@ for /f "tokens=2 delims= " %%E in ('findstr /i "^etag:" "%TEMP%\vc-release-heade
 )
 del "%TEMP%\vc-release-headers.txt" 2>nul
 
+REM ---------------------------------------------------------------------------
+REM Clean old release — move aside so tar doesn't hit "Refusing to overwrite"
+REM ---------------------------------------------------------------------------
+set "OLD_RELEASE=%TEMP%\viscache-old-release-%RANDOM%"
+if exist "%RELEASE_DIR%\Mogwai.exe" (
+    echo [release] Moving old release aside...
+    move /y "%RELEASE_DIR%" "%OLD_RELEASE%" >nul 2>&1
+    mkdir "%RELEASE_DIR%" 2>nul
+    REM Preserve ETag file
+    if exist "%OLD_RELEASE%\.release-etag" copy /y "%OLD_RELEASE%\.release-etag" "%ETAG_FILE%" >nul 2>&1
+)
+
 echo [release] Extracting to %RELEASE_DIR%...
 tar xzf "%ARCHIVE%" -C "%RELEASE_DIR%"
+if errorlevel 1 (
+    echo [release] ERROR: Extraction failed.
+    if exist "%OLD_RELEASE%\Mogwai.exe" (
+        echo [release] Restoring previous release...
+        rd /s /q "%RELEASE_DIR%" 2>nul
+        move /y "%OLD_RELEASE%" "%RELEASE_DIR%" >nul 2>&1
+    )
+    del "%ARCHIVE%" 2>nul
+    exit /b 1
+)
 del "%ARCHIVE%" 2>nul
+
+REM Remove old release now that extraction succeeded
+if exist "%OLD_RELEASE%" rd /s /q "%OLD_RELEASE%" 2>nul
 
 if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [release] OK: Mogwai.exe ready

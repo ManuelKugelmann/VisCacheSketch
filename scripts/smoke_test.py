@@ -10,9 +10,10 @@ Validates:
 Usage:
     Mogwai --headless --script scripts/smoke_test.py
 
-Exit codes:
-    0 — all checks passed
-    1 — a check failed (pass not found, graph error, etc.)
+Errors:
+    Raises RuntimeError if a required pass is missing or graph construction fails.
+    Does NOT call sys.exit() — Mogwai's embedded Python treats SystemExit as
+    an unhandled exception.
 
 On CI without GPU: Mogwai may fail at device creation before reaching this
 script. That's expected — the build job validates compilation, and this script
@@ -20,7 +21,6 @@ validates runtime integration when a GPU is available.
 """
 
 import os
-import sys
 
 REQUIRED_PASSES = [
     "VisCachePass",
@@ -101,7 +101,7 @@ else:
 
 if missing:
     print(f"[smoke] FAIL: {len(missing)} required passes not found: {missing}")
-    sys.exit(1)
+    raise RuntimeError(f"Required passes not found: {missing}")
 if warned:
     print(f"[smoke] NOTE: {len(warned)} optional passes unavailable: {warned}")
 
@@ -126,7 +126,7 @@ try:
 
     # Wire ReSTIRPT only if it was loaded successfully
     if "ReSTIRPTPass" not in warned:
-        ReSTIRPT = createPass("ReSTIRPTPass", {'maxBounces': 1})
+        ReSTIRPT = createPass("ReSTIRPTPass", {'maxSurfaceBounces': 1})
         g.addPass(ReSTIRPT, "ReSTIRPT")
         g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
         g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
@@ -143,10 +143,11 @@ try:
     print("  OK: graph built and wired")
 except Exception as e:
     print(f"  FAIL: graph construction error — {e}")
-    sys.exit(1)
+    raise
 
 # ---------------------------------------------------------------------------
 # 3. Done — exit cleanly (no renderFrame, no scene needed)
 # ---------------------------------------------------------------------------
 print("[smoke] All checks passed.")
-sys.exit(0)
+# Note: do NOT call sys.exit() — Mogwai's embedded Python treats SystemExit
+# as an exception, which causes a crash.  Just let the script end naturally.

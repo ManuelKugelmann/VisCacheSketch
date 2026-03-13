@@ -13,35 +13,35 @@ from graphs.ReSTIRPT import (ReSTIRPT1_Vanilla, ReSTIRPT1_CVRRRRevalidation,
 from falcor import *
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT maxBounces=1 — vanilla baseline
+# ReSTIR PT maxSurfaceBounces=1 — vanilla baseline
 # ---------------------------------------------------------------------------
 m.addGraph(ReSTIRPT1_Vanilla)
 m.loadScene('Arcade/Arcade.pyscene')
 render_frames(m, 'vanilla', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT maxBounces=1 — local CV+RRR (reservoir-local mu, no hash table)
+# ReSTIR PT maxSurfaceBounces=1 — local CV+RRR (reservoir-local mu, no hash table)
 # ---------------------------------------------------------------------------
 m.removeGraph(ReSTIRPT1_Vanilla)
 m.addGraph(ReSTIRPT1_CVRRRRevalidation)
 render_frames(m, 'cvrrr_revalidation', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT maxBounces=1 — VisCache CV+RRR revalidation
+# ReSTIR PT maxSurfaceBounces=1 — VisCache CV+RRR revalidation
 # ---------------------------------------------------------------------------
 m.removeGraph(ReSTIRPT1_CVRRRRevalidation)
 m.addGraph(ReSTIRPT1_VisCacheRevalidation)
 render_frames(m, 'viscache_revalidation', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT maxBounces=1 — VisCache light pre-selection only
+# ReSTIR PT maxSurfaceBounces=1 — VisCache light pre-selection only
 # ---------------------------------------------------------------------------
 m.removeGraph(ReSTIRPT1_VisCacheRevalidation)
 m.addGraph(ReSTIRPT1_VisCacheLightSelection)
 render_frames(m, 'viscache_light_selection', frames=[1, 16, 64])
 
 # ---------------------------------------------------------------------------
-# ReSTIR PT maxBounces=1 — VisCache full (revalidation + light selection)
+# ReSTIR PT maxSurfaceBounces=1 — VisCache full (revalidation + light selection)
 # ---------------------------------------------------------------------------
 m.removeGraph(ReSTIRPT1_VisCacheLightSelection)
 m.addGraph(ReSTIRPT1_VisCacheFull)

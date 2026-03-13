@@ -5,48 +5,52 @@ Run from Mogwai: File > Load Script, or pass as --script argument.
 Usage:
     Mogwai.exe --script scripts/VisCache_Graph.py --scene BistroInterior.pyscene
 
-Ablation configs are at the bottom — uncomment to switch.
+Ablation presets can be selected here (ACTIVE_ABLATION) or steered from
+test scripts by importing and passing a config dict to render_graph_VisCache():
+
+    from VisCache_Graph import ABLATIONS, render_graph_VisCache
+    g = render_graph_VisCache(ablation=ABLATIONS["minus_decay"])
 """
 
 # ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-def set_ablation(visCache, cfg):
-    """Apply an ablation configuration dict to the VisCache pass."""
-    for k, v in cfg.items():
-        setattr(visCache, k, v)
-
-
-# ---------------------------------------------------------------------------
 # Ablation config presets (paper §15)
-# Uncomment exactly one before loading.
 # ---------------------------------------------------------------------------
 
-ABLATION_FULL = {}  # All features on — paper result
-
-ABLATION_MINUS_B = {   # Disable variance-gated write depth
-    "enableVisCacheVarianceGate": False,
-}
-ABLATION_MINUS_C = {   # Disable warp reduction (per-lane atomics)
-    "enableVisCacheWarpReduction": False,
-}
-ABLATION_MINUS_D = {   # Disable inline CAS decay
-    "enableVisCacheDecay": False,
-}
-ABLATION_MINUS_E = {   # Disable pressure-scaled eviction
-    "enableVisCachePressureEvict": False,
-}
-ABLATION_SINGLE_LEVEL = {   # Single-level (N=1) vs. multilevel comparison
-    "numLevels": 1,
+ABLATIONS = {
+    "full":         {},                                          # All features on — paper result
+    "minus_var":    {"enableVisCacheVarianceGate": False},       # -B: no variance-gated write depth
+    "minus_warp":   {"enableVisCacheWarpReduction": False},      # -C: no warp reduction (per-lane atomics)
+    "minus_decay":  {"enableVisCacheDecay": False},              # -D: no inline CAS decay
+    "minus_evict":  {"enableVisCachePressureEvict": False},      # -E: no pressure-scaled eviction
+    "single_level": {"numLevels": 1},                            # Single-level (N=1) vs. multilevel
 }
 
-ACTIVE_ABLATION = ABLATION_FULL   # <-- CHANGE THIS LINE
+# Back-compat aliases
+ABLATION_FULL         = ABLATIONS["full"]
+ABLATION_MINUS_B      = ABLATIONS["minus_var"]
+ABLATION_MINUS_C      = ABLATIONS["minus_warp"]
+ABLATION_MINUS_D      = ABLATIONS["minus_decay"]
+ABLATION_MINUS_E      = ABLATIONS["minus_evict"]
+ABLATION_SINGLE_LEVEL = ABLATIONS["single_level"]
+
+ACTIVE_ABLATION = ABLATION_FULL   # <-- default when run directly
 
 
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
-def render_graph_VisCache():
+def render_graph_VisCache(ablation=None):
+    """Build the VisCache render graph.
+
+    Args:
+        ablation: Dict of VisCachePass overrides, or a key into ABLATIONS.
+                  Defaults to ACTIVE_ABLATION when run directly.
+    """
+    if ablation is None:
+        ablation = ACTIVE_ABLATION
+    elif isinstance(ablation, str):
+        ablation = ABLATIONS[ablation]
+
     g = RenderGraph("VisCache")
 
     # G-Buffer
@@ -60,7 +64,7 @@ def render_graph_VisCache():
 
     # Visibility Cache
     # Owns the hash table; exposes it via InternalDictionary.
-    visCache = createPass("VisCachePass", {
+    vc_params = {
         "tableCapacity":   1 << 22,   # 4M entries = 32 MB
         "bootThreshold":   32,
         "varThreshold":    0.10,
@@ -78,8 +82,9 @@ def render_graph_VisCache():
         "enableVisCacheDecay":          True,
         "enableVisCachePressureEvict":  True,
         "enableDiagnostics":            True,
-    })
-    set_ablation(visCache, ACTIVE_ABLATION)
+    }
+    vc_params.update(ablation)
+    visCache = createPass("VisCachePass", vc_params)
     g.addPass(visCache, "VisCache")
 
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
@@ -103,26 +108,32 @@ def render_graph_VisCache():
     })
     g.addPass(pt, "PathTracer")
 
-    # ReSTIR PT maxBounces=1 with CV+RRR revalidation (§9.3 / §10)
+    # ReSTIR PT maxSurfaceBounces=1 with CV+RRR revalidation (§9.3 / §10)
     # Single-bounce: equivalent to ReSTIR GI but with hybrid shift for specular.
     # Source: DQLin/ReSTIR_PT ported to Falcor 8.0
+    # VisCache integration (contribThreshold, pMin) is automatic via
+    # InternalDictionary — those params live on VisCachePass, not here.
     restirpt = createPass("ReSTIRPTPass", {
-        "maxBounces":              1,
-        "numSpatialNeighbors":     5,
-        "spatialRadius":           30,
-        "numInitialSamples":       1,
-        "useVisCacheRevalidation":    True,
-        "contribThreshold":        0.01,
-        "revalidationPMin":        0.05,
+        "maxSurfaceBounces":       1,
+        "spatialNeighborCount":    5,
+        "spatialReuseRadius":      30,
+        "candidateSamples":        1,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
-    # NRD denoiser
-    nrd = createPass("NRDPass", {
-        "method":          "RelaxDiffuseSpecular",
-        "worldSpaceMotion": True,
-    })
-    g.addPass(nrd, "NRDPass")
+    # NRD denoiser (optional — unavailable on Linux / builds without D3D12+NRD).
+    # Raw noisy radiance is always available via ReSTIRPTPass.color output.
+    _have_nrd = False
+    try:
+        nrd = createPass("NRDPass", {
+            "method":          "RelaxDiffuseSpecular",
+            "worldSpaceMotion": True,
+        })
+        g.addPass(nrd, "NRDPass")
+        _have_nrd = True
+    except Exception:
+        print("[VisCache] WARNING: NRDPass plugin not available — outputting raw noisy radiance."
+              " Build with D3D12 + packman NRD package to enable denoising.")
 
     # Tone mapper
     tone = createPass("ToneMapper", {
@@ -148,22 +159,26 @@ def render_graph_VisCache():
     g.addEdge("GBufferRT.vbuffer",                   "ReSTIRPTPass.vbuffer")
     g.addEdge("GBufferRT.mvec",                      "ReSTIRPTPass.motionVectors")
 
-    # ReSTIR PT NRD outputs → NRD denoiser
-    g.addEdge("ReSTIRPTPass.nrdDiffuseRadianceHitDist",
-              "NRDPass.diffuseRadianceHitDist")
-    g.addEdge("ReSTIRPTPass.nrdSpecularRadianceHitDist",
-              "NRDPass.specularRadianceHitDist")
-    g.addEdge("GBufferRT.linearZ",                   "NRDPass.viewZ")
-    g.addEdge("GBufferRT.normWRoughnessMaterialID",  "NRDPass.normWRoughnessMaterialID")
-    g.addEdge("GBufferRT.mvec",                      "NRDPass.mvec")
-
-    # NRD → ToneMapper
-    g.addEdge("NRDPass.filteredDiffuseRadianceHitDist",
-              "ToneMapper.src")
+    if _have_nrd:
+        # ReSTIR PT NRD outputs → NRD denoiser
+        g.addEdge("ReSTIRPTPass.nrdDiffuseRadianceHitDist",
+                  "NRDPass.diffuseRadianceHitDist")
+        g.addEdge("ReSTIRPTPass.nrdSpecularRadianceHitDist",
+                  "NRDPass.specularRadianceHitDist")
+        g.addEdge("GBufferRT.linearZ",                   "NRDPass.viewZ")
+        g.addEdge("GBufferRT.normWRoughnessMaterialID",  "NRDPass.normWRoughnessMaterialID")
+        g.addEdge("GBufferRT.mvec",                      "NRDPass.mvec")
+        # NRD → ToneMapper
+        g.addEdge("NRDPass.filteredDiffuseRadianceHitDist",
+                  "ToneMapper.src")
+    else:
+        # Fallback: wire ReSTIR PT color directly to ToneMapper
+        g.addEdge("ReSTIRPTPass.color",              "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
 
     # Secondary outputs for analysis
+    g.markOutput("ReSTIRPTPass.color")   # raw noisy radiance (linear HDR) for MSE/FLIP
     g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
 
     # -----------------------------------------------------------------------

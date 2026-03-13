@@ -28,6 +28,18 @@ exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
+REM Deploy fresh scripts from source tree into release/scripts/VisCache/
+REM so the release always uses up-to-date graph configs and smoke tests.
+REM ---------------------------------------------------------------------------
+set "SCRIPTS_SRC=%ROOT%\scripts"
+set "SCRIPTS_DST=%RELEASE_DIR%\scripts\VisCache"
+if exist "%SCRIPTS_SRC%\smoke_test.py" (
+    if not exist "%SCRIPTS_DST%" mkdir "%SCRIPTS_DST%"
+    xcopy "%SCRIPTS_SRC%\*" "%SCRIPTS_DST%\" /s /y /q >nul
+    echo [launch] Deployed fresh scripts from source tree to release\scripts\VisCache\
+)
+
+REM ---------------------------------------------------------------------------
 REM Deploy data files (e.g. 16RooksPattern256.txt) into release/data/
 REM so Falcor's AssetResolver can find them at runtime.
 REM ---------------------------------------------------------------------------

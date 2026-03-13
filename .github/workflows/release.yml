@@ -209,13 +209,20 @@ jobs:
         shell: cmd
         run: sccache --show-stats
 
+      - name: Deploy scripts to build output
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ inputs.config }}
+          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
+          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
+          echo [CI] Deployed scripts to build output
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: viscache-windows-${{ inputs.config }}-${{ needs.prepare.outputs.sha_short }}
           path: |
             ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ inputs.config }}/
-            scripts/
           retention-days: 90
 
   # ---------------------------------------------------------------------------

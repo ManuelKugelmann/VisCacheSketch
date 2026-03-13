@@ -214,6 +214,16 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
+      - name: Check NRD availability
+        shell: cmd
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
+            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
+          ) else (
+            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
+          )
+
       - name: Build
         shell: cmd
         run: |
@@ -249,6 +259,15 @@ jobs:
             exit /b 1
           )
 
+      - name: Deploy scripts to build output
+        if: matrix.config == 'Release'
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
+          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
+          echo [CI] Deployed scripts to build output
+
       - name: Headless smoke test
         if: matrix.config == 'Release'
         shell: cmd
@@ -257,7 +276,7 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
           echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script ..\scripts\smoke_test.py 2>&1 || (
+          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
             echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
           )
           exit /b 0
@@ -429,6 +448,16 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
+      - name: Check NRD availability
+        shell: cmd
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
+            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
+          ) else (
+            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
+          )
+
       - name: Build
         shell: cmd
         run: |
@@ -464,6 +493,15 @@ jobs:
             exit /b 1
           )
 
+      - name: Deploy scripts to build output
+        if: matrix.config == 'Release'
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
+          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
+          echo [CI] Deployed scripts to build output
+
       - name: Headless smoke test
         if: matrix.config == 'Release'
         shell: cmd
@@ -472,7 +510,7 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
           echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script ..\scripts\smoke_test.py 2>&1 || (
+          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
             echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
           )
           exit /b 0
@@ -600,6 +638,14 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="
+
+      - name: Check NRD availability
+        run: |
+          if [ -d "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/Source/RenderPasses/NRDPass" ]; then
+            echo "[build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)"
+          else
+            echo "[build] NRDPass: DISABLED (missing NRD package or D3D12 — expected on Linux)"
+          fi
 
       - name: Build
         run: |

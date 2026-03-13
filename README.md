@@ -19,12 +19,15 @@ Using a control variate instead of zero on RR termination is standard Monte Carl
 
 The spatial grids of the hash map were visible in the thesis — screenshots show grid cells. What was an unmentioned implementation detail was the use of *spatial hashing* to map grid cells to memory. The practical inspiration came from [ODE][r-ode] (Open Dynamics Engine, Russell Smith, 2001–2004), which uses spatial hashing for broad-phase collision detection. Kugelmann encountered ODE's spatial hashing through deep use of ODE during a Universität Ulm student course project ([Animal Race](http://animalrace.bitcraft.org/)). The 2006 thesis adopted spatial hashing for caching illumination quantities without suffering the "curse of dimensionality" but did not describe or frame it as a contribution.
 
+![Kugelmann 2006 — spatial hash grid visibility cache with shadow ray reduction. Left: rendered image with smooth shadows from a single eye subpath sample per pixel. Right: color-encoded shadow test count revealing the underlying spatial grid cells.](docs/references/MK2006.jpg)
+
 The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized in 2006 — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility allows exploiting the Bernoulli structure.
 
 The test case in 2006 was Instant Radiosity [Keller 1997], but the caching for CV+VRRR is algorithm-agnostic: it operates on pairwise queries regardless of the rendering algorithm generating them.
 
 Research progress in the meantime arrived at many similar insights and solutions independently - the 2006 work is practically undiscoverable by the public.
-Let's try an LLM assisted speed run of getting the old 2006 work up to date ... 
+
+**Let's try an LLM assisted speed run of getting the old 2006 work up to date ... **
 
 ## Overview
 

@@ -14,10 +14,12 @@ REM Idempotent: safe to re-run. Each step skips work already done.
 
 setlocal enabledelayedexpansion
 
-set "ROOT=%~dp0.."
+REM Resolve script directory to absolute path (robust in nested call chains)
+for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
+set "ROOT=%SCRIPT_DIR%.."
 set "SCENE=Bistro"
 
-call "%~dp0version.bat" quickstart 2>nul
+call "%SCRIPT_DIR%version.bat" quickstart 2>nul
 set "SKIP_SCENES=0"
 
 REM ---------------------------------------------------------------------------
@@ -36,13 +38,13 @@ REM ---------------------------------------------------------------------------
 REM 1. Download scenes
 REM ---------------------------------------------------------------------------
 if %SKIP_SCENES%==1 (
-    echo [quickstart] Skipping scene download (--skip-scenes)
+    echo [quickstart] Skipping scene download ^(--skip-scenes^)
 ) else (
     echo.
     echo ========================================
     echo  Step 1: Download test scenes
     echo ========================================
-    call "%~dp0download_scenes.bat" --dir "%ROOT%\media" --yes
+    call "%SCRIPT_DIR%download_scenes.bat" --dir "%ROOT%\media" --yes
     if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
 )
 
@@ -53,7 +55,7 @@ echo.
 echo ========================================
 echo  Step 2: Download latest release
 echo ========================================
-call "%~dp0download_release.bat"
+call "%SCRIPT_DIR%download_release.bat"
 
 REM ---------------------------------------------------------------------------
 REM 3. Run tests
@@ -62,7 +64,7 @@ echo.
 echo ========================================
 echo  Step 3: Run tests
 echo ========================================
-call "%~dp0run-tests.bat"
+call "%SCRIPT_DIR%run-tests.bat"
 if errorlevel 1 echo [quickstart] WARNING: Some tests failed
 
 REM ---------------------------------------------------------------------------
@@ -72,6 +74,6 @@ echo.
 echo ========================================
 echo  Step 4: Launch
 echo ========================================
-call "%~dp0run_release.bat" --scene %SCENE%
+call "%SCRIPT_DIR%run_release.bat" --scene %SCENE%
 
 endlocal
