@@ -82,11 +82,12 @@ def render_graph_VisCache():
     g.addPass(visCache, "VisCache")
 
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
+    # Mode enum: NoResampling | SpatialResampling | TemporalResampling | SpatiotemporalResampling
     rtxdi = createPass("RTXDIPass", {
         "options": {
-            "mode":                              "LocalLightRIS",
-            "numPrimaryLocalLightCandidates":     8,
-            "numPrimaryInfiniteLightCandidates":  1,
+            "mode":                       "NoResampling",
+            "localLightCandidateCount":    8,
+            "infiniteLightCandidateCount": 1,
         },
         "useVisCacheForSelection": True,   # §11.1 — replace V=1 with cached mu
         "explorationFraction":    0.10,   # epsilon-greedy; §11.1 "1/M budget"
