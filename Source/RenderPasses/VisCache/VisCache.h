@@ -110,7 +110,18 @@ private:
     // ------------------------------------------------------------------
     // Diagnostic heatmap textures (written by downstream passes)
     // ------------------------------------------------------------------
-    bool            mEnableDiagnostics = false; ///< UI toggle for heatmap output
+    enum class DiagMode : uint32_t
+    {
+        Off             = 0,
+        CachedMu        = 1,  ///< R channel — visibility prediction [0,1]
+        Variance        = 2,  ///< G channel — cache uncertainty [0,0.25]
+        LODLevel        = 3,  ///< B channel — LOD level+1 (0=miss)
+        RaySaved        = 4,  ///< A channel — 1=skipped, 0=traced
+        PredictionError = 5,  ///< |mu - V| from vcDiagError
+    };
+
+    bool            mEnableDiagnostics = false; ///< Master enable (auto-set by dropdown)
+    DiagMode        mDiagMode = DiagMode::Off;  ///< Selected heatmap mode
     ref<Texture>    mpDiagTex;          ///< RGBA32F: mu, var, level, raySaved
     ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
     uint2           mFrameDims = {0, 0};

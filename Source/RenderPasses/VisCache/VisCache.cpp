@@ -48,6 +48,8 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
+    if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
+    if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
 }
 
 ref<VisCache> VisCache::create(ref<Device> pDevice,
@@ -77,6 +79,8 @@ Properties VisCache::getProperties() const
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
+    p["enableDiagnostics"]             = mEnableDiagnostics;
+    p["diagMode"]                      = uint32_t(mDiagMode);
     return p;
 }
 
@@ -226,6 +230,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfDiagError"] = diagErrorTex;
         }
         dict["vhfDiagEnabled"] = (diagTex != nullptr);
+        dict["vhfDiagMode"]    = uint32_t(mDiagMode);
     }
 
     // ----------------------------------------------------------------
@@ -339,15 +344,15 @@ void VisCache::renderUI(Gui::Widgets& widget)
     }
 
     widget.separator();
-    widget.checkbox("Enable heatmap diagnostics", mEnableDiagnostics);
-    if (mEnableDiagnostics)
-    {
-        widget.text("Connect vcDiag output to ColorMapPass.");
-        widget.text("  R = cached mu      (visibility prediction)");
-        widget.text("  G = variance        (cache uncertainty)");
-        widget.text("  B = LOD level+1   (0=miss, 1=L0, ...)");
-        widget.text("  A = ray saved       (1=skipped, 0=traced)");
-        widget.text("Connect vcDiagError to ColorMapPass.");
-        widget.text("  R = |mu - V|         (prediction error)");
-    }
+
+    static const Gui::DropdownList kHeatmapModes = {
+        {uint32_t(DiagMode::Off),             "Off"},
+        {uint32_t(DiagMode::CachedMu),        "Cached Mu (visibility)"},
+        {uint32_t(DiagMode::Variance),        "Variance (uncertainty)"},
+        {uint32_t(DiagMode::LODLevel),        "LOD Level"},
+        {uint32_t(DiagMode::RaySaved),        "Ray Saved"},
+        {uint32_t(DiagMode::PredictionError), "Prediction Error |mu-V|"},
+    };
+    widget.dropdown("Heatmap", kHeatmapModes, reinterpret_cast<uint32_t&>(mDiagMode));
+    mEnableDiagnostics = (mDiagMode != DiagMode::Off);
 }

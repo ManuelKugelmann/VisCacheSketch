@@ -77,6 +77,7 @@ def render_graph_VisCache():
         "enableVisCacheVarianceGate":   True,
         "enableVisCacheDecay":          True,
         "enableVisCachePressureEvict":  True,
+        "enableDiagnostics":            True,
     })
     set_ablation(visCache, ACTIVE_ABLATION)
     g.addPass(visCache, "VisCache")
