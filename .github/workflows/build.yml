@@ -215,6 +215,30 @@ jobs:
         shell: cmd
         run: sccache --show-stats
 
+      - name: Verify data file deployment
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          echo [CI] Checking data files in %OUTDIR%...
+          set FAIL=0
+          if not exist "%OUTDIR%\data\ReSTIRPTPass\16RooksPattern256.txt" (
+            echo [CI] FAIL: data\ReSTIRPTPass\16RooksPattern256.txt missing from build output
+            set FAIL=1
+          ) else (
+            echo [CI] OK: 16RooksPattern256.txt deployed
+          )
+          if not exist "%OUTDIR%\Mogwai.exe" (
+            echo [CI] FAIL: Mogwai.exe missing from build output
+            set FAIL=1
+          ) else (
+            echo [CI] OK: Mogwai.exe present
+          )
+          if %FAIL%==1 (
+            echo [CI] Data file deployment check failed!
+            dir /s /b "%OUTDIR%\data" 2>nul || echo [CI] No data directory found
+            exit /b 1
+          )
+
       - name: Headless smoke test
         if: matrix.config == 'Release'
         shell: cmd
@@ -393,6 +417,16 @@ jobs:
         shell: cmd
         run: sccache --show-stats
 
+      - name: Verify data file deployment
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if not exist "%OUTDIR%\data\ReSTIRPTPass\16RooksPattern256.txt" (
+            echo [CI] FAIL: 16RooksPattern256.txt missing from build output
+            exit /b 1
+          )
+          echo [CI] OK: data files deployed
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -514,6 +548,16 @@ jobs:
       - name: Print ccache stats
         if: always()
         run: ccache -s
+
+      - name: Verify data file deployment
+        run: |
+          OUTDIR="${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin"
+          if [ ! -f "$OUTDIR/data/ReSTIRPTPass/16RooksPattern256.txt" ]; then
+            echo "[CI] FAIL: 16RooksPattern256.txt missing from build output"
+            ls -R "$OUTDIR/data" 2>/dev/null || echo "[CI] No data directory found"
+            exit 1
+          fi
+          echo "[CI] OK: data files deployed"
 
   # ---------------------------------------------------------------------------
   # Dev prerelease — rolling "latest build" on every push to main/master
