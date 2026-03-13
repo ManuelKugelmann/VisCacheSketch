@@ -54,7 +54,7 @@ def render_graph_VisCache():
         "samplePattern": "Stratified",
         "sampleCount":   1,
         "forceCullMode": False,
-        "cull":          "CullBack",
+        "cull":          "Back",
     })
     g.addPass(gbuf, "GBufferRT")
 
@@ -83,6 +83,11 @@ def render_graph_VisCache():
 
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
     rtxdi = createPass("RTXDIPass", {
+        "options": {
+            "mode":                              "LocalLightRIS",
+            "numPrimaryLocalLightCandidates":     8,
+            "numPrimaryInfiniteLightCandidates":  1,
+        },
         "useVisCacheForSelection": True,   # §11.1 — replace V=1 with cached mu
         "explorationFraction":    0.10,   # epsilon-greedy; §11.1 "1/M budget"
     })

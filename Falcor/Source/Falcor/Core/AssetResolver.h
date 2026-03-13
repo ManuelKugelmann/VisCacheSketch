@@ -137,6 +137,9 @@ public:
         AssetCategory category = AssetCategory::Any
     );
 
+    /// Return the search paths for the given asset category.
+    const std::vector<std::filesystem::path>& getSearchPaths(AssetCategory category = AssetCategory::Any) const;
+
     /// Return the global default asset resolver.
     static AssetResolver& getDefaultResolver();
 
