@@ -51,10 +51,10 @@ def render_graph_VisCache():
 
     # G-Buffer
     gbuf = createPass("GBufferRT", {
-        "samplePattern": 'Stratified',
+        "samplePattern": "Stratified",
         "sampleCount":   1,
         "forceCullMode": False,
-        "cull":          'Back',
+        "cull":          "Back",
     })
     g.addPass(gbuf, "GBufferRT")
 
@@ -84,9 +84,9 @@ def render_graph_VisCache():
     # RTXDI — direct lighting with optional visibility-weighted selection (§11.1)
     rtxdi = createPass("RTXDIPass", {
         "options": {
-            'mode':                              'LocalLightRIS',
-            'numPrimaryLocalLightCandidates':     8,
-            'numPrimaryInfiniteLightCandidates':  1,
+            "mode":                              "LocalLightRIS",
+            "numPrimaryLocalLightCandidates":     8,
+            "numPrimaryInfiniteLightCandidates":  1,
         },
         "useVisCacheForSelection": True,   # §11.1 — replace V=1 with cached mu
         "explorationFraction":    0.10,   # epsilon-greedy; §11.1 "1/M budget"
@@ -98,7 +98,7 @@ def render_graph_VisCache():
         "samplesPerPixel":    1,
         "maxBounces":         3,
         "useVisCache":   True,
-        "colorFormat":        'LogLuvHDR',
+        "colorFormat":        "LogLuvHDR",
     })
     g.addPass(pt, "PathTracer")
 
@@ -118,7 +118,7 @@ def render_graph_VisCache():
 
     # NRD denoiser
     nrd = createPass("NRDPass", {
-        "method":          'RelaxDiffuseSpecular',
+        "method":          "RelaxDiffuseSpecular",
         "worldSpaceMotion": True,
     })
     g.addPass(nrd, "NRDPass")
@@ -127,7 +127,7 @@ def render_graph_VisCache():
     tone = createPass("ToneMapper", {
         "autoExposure":  False,
         "exposureValue": 0.0,
-        "operator":      'Aces',
+        "operator":      "Aces",
     })
     g.addPass(tone, "ToneMapper")
 
