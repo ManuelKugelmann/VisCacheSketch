@@ -1,14 +1,14 @@
 @echo off
-REM pull-and-build.bat — Pull latest changes, run setup, and build Falcor + VisCache.
+REM build.bat — Update repo then build Falcor + VisCache from source.
 REM
-REM Usage:  pull-and-build.bat [--config Release|Debug] [--preset windows-vs2022-ci|windows-ninja-msvc-ci]
+REM Usage:  build.bat [--config Release|Debug] [--preset windows-vs2022-ci|windows-ninja-msvc-ci] [--skip-scenes] [--scene <name>]
 REM
 REM Steps:
-REM   1. git pull origin <current branch>
-REM   2. setup.bat  (submodules, packman deps, copy sources, patch CMake)
+REM   1. update.bat  (git pull + quickstart: scenes, release, tests)
+REM   2. setup.bat   (submodules, packman deps, copy sources, patch CMake)
 REM   3. cmake --preset ... && cmake --build ...
 REM
-REM Safe to re-run: setup.bat is idempotent, cmake reconfigures incrementally.
+REM Safe to re-run: all steps are idempotent.
 
 setlocal enabledelayedexpansion
 
@@ -16,6 +16,7 @@ set "ROOT=%~dp0"
 set "FALCOR_ROOT=%ROOT%Falcor"
 set "CONFIG=Release"
 set "PRESET=windows-vs2022-ci"
+set "UPDATE_ARGS="
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -24,25 +25,21 @@ REM ---------------------------------------------------------------------------
 if "%~1"=="" goto :args_done
 if /i "%~1"=="--config" (set "CONFIG=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--preset" (set "PRESET=%~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--skip-scenes" (set "UPDATE_ARGS=!UPDATE_ARGS! --skip-scenes" & shift & goto :parse_args)
+if /i "%~1"=="--scene" (set "UPDATE_ARGS=!UPDATE_ARGS! --scene %~2" & shift & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--config Release^|Debug] [--preset windows-vs2022-ci^|windows-ninja-msvc-ci]
+echo Usage: %~nx0 [--config Release^|Debug] [--preset windows-vs2022-ci^|windows-ninja-msvc-ci] [--skip-scenes] [--scene ^<name^>]
 exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
-REM Step 1: Pull latest
+REM Step 1: Update (pull + quickstart)
 REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
-echo  Step 1: Pull latest changes
+echo  Step 1: Update (pull + quickstart)
 echo ========================================
-
-for /f "delims=" %%B in ('git -C "%ROOT%." rev-parse --abbrev-ref HEAD') do set "BRANCH=%%B"
-echo [build] Branch: %BRANCH%
-git -C "%ROOT%." pull origin %BRANCH%
-if errorlevel 1 (
-    echo [build] WARNING: pull failed, continuing with current checkout
-)
+call "%ROOT%update.bat" %UPDATE_ARGS%
 
 REM ---------------------------------------------------------------------------
 REM Step 2: Setup (copies sources, patches CMake, etc.)

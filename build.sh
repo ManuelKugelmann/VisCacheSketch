@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# pull-and-build.sh — Pull latest changes, run setup, and build Falcor + VisCache.
+# build.sh — Update repo then build Falcor + VisCache from source.
 #
-# Usage:  ./pull-and-build.sh [--config Release|Debug] [--preset linux-gcc-ci]
+# Usage:  ./build.sh [--config Release|Debug] [--preset linux-gcc-ci] [--skip-scenes] [--scene <name>]
 #
 # Steps:
-#   1. git pull origin <current branch>
-#   2. setup.sh  (submodules, packman deps, copy sources, patch CMake)
+#   1. update.sh  (git pull + quickstart: scenes, release, tests)
+#   2. setup.sh   (submodules, packman deps, copy sources, patch CMake)
 #   3. cmake --preset ... && cmake --build ...
 #
-# Safe to re-run: setup.sh is idempotent, cmake reconfigures incrementally.
+# Safe to re-run: all steps are idempotent.
 
 set -euo pipefail
 
@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FALCOR_ROOT="${SCRIPT_DIR}/Falcor"
 CONFIG="Release"
 PRESET="linux-gcc-ci"
+UPDATE_ARGS=()
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -24,21 +25,20 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --config) CONFIG="$2"; shift 2 ;;
         --preset) PRESET="$2"; shift 2 ;;
-        *) echo "Usage: $0 [--config Release|Debug] [--preset linux-gcc-ci]"; exit 1 ;;
+        --skip-scenes) UPDATE_ARGS+=("--skip-scenes"); shift ;;
+        --scene) UPDATE_ARGS+=("--scene" "$2"); shift 2 ;;
+        *) echo "Usage: $0 [--config Release|Debug] [--preset linux-gcc-ci] [--skip-scenes] [--scene <name>]"; exit 1 ;;
     esac
 done
 
 # ---------------------------------------------------------------------------
-# Step 1: Pull latest
+# Step 1: Update (pull + quickstart)
 # ---------------------------------------------------------------------------
 echo ""
 echo "========================================"
-echo " Step 1: Pull latest changes"
+echo " Step 1: Update (pull + quickstart)"
 echo "========================================"
-
-BRANCH="$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD)"
-echo "[build] Branch: $BRANCH"
-git -C "$SCRIPT_DIR" pull origin "$BRANCH" || echo "[build] WARNING: pull failed, continuing with current checkout"
+bash "$SCRIPT_DIR/update.sh" "${UPDATE_ARGS[@]+"${UPDATE_ARGS[@]}"}"
 
 # ---------------------------------------------------------------------------
 # Step 2: Setup (copies sources, patches CMake, etc.)
