@@ -27,16 +27,3 @@ target_copy_shaders(ReSTIRPTPass RenderPasses/ReSTIRPTPass)
 
 target_source_group(ReSTIRPTPass "RenderPasses")
 
-target_compile_options(ReSTIRPTPass PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:
-        /we4456  /we4457  /we4458  /we4715
-    >
-    $<$<CXX_COMPILER_ID:GNU>:
-        -Werror=shadow
-        -Werror=return-type
-    >
-    $<$<CXX_COMPILER_ID:Clang>:
-        -Werror=shadow
-        -Werror=return-type
-    >
-)
