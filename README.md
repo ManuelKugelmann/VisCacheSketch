@@ -8,6 +8,7 @@
 **Status:** Implementation in progress. Paper draft in progress.
 
 ---
+
 ### History
 
 The 2006 Diplomarbeit by Manuel Kugelmann ("Efficient Adaptive Global Illumination Algorithms", Universität Ulm, supervisor Alexander Keller) suffered multiple problems — overambitious scope, underautomated experiments, too much side work for financial reasons, theft of personal belongings, youthful lack of managment and communication skills — and was never properly finished. It's artifacts (thesis test and code) probably linger somwhere in the University Ulm archives and A. Keller's archives. A definitve hardcopy and compact disk with source code exists in Manuel Kugelmann's storage.
@@ -25,7 +26,8 @@ The Bernoulli optimization (var = μ(1−μ), requiring no separate variance acc
 The test case in 2006 was Instant Radiosity [Keller 1997], but the caching for CV+VRRR is algorithm-agnostic: it operates on pairwise queries regardless of the rendering algorithm generating them.
 
 Research progress in the meantime arrived at many similar insights and solutions independently - the 2006 work is practically undiscoverable by the public.
-Let's try an LLM assisted speed run of getting the old 2006 work up to date ... 
+
+**Let's try an LLM assisted speed run of getting the old 2006 work up to date ... **
 
 ## Overview
 
