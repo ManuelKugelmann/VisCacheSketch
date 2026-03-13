@@ -105,23 +105,27 @@ def render_graph_VisCache():
     # ReSTIR PT maxSurfaceBounces=1 with CV+RRR revalidation (§9.3 / §10)
     # Single-bounce: equivalent to ReSTIR GI but with hybrid shift for specular.
     # Source: DQLin/ReSTIR_PT ported to Falcor 8.0
+    # VisCache integration (contribThreshold, pMin) is automatic via
+    # InternalDictionary — those params live on VisCachePass, not here.
     restirpt = createPass("ReSTIRPTPass", {
-        "maxSurfaceBounces":              1,
-        "numSpatialNeighbors":     5,
-        "spatialRadius":           30,
-        "numInitialSamples":       1,
-        "useVisCacheRevalidation":    True,
-        "contribThreshold":        0.01,
-        "revalidationPMin":        0.05,
+        "maxSurfaceBounces":       1,
+        "spatialNeighborCount":    5,
+        "spatialReuseRadius":      30,
+        "candidateSamples":        1,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
-    # NRD denoiser
-    nrd = createPass("NRDPass", {
-        "method":          "RelaxDiffuseSpecular",
-        "worldSpaceMotion": True,
-    })
-    g.addPass(nrd, "NRDPass")
+    # NRD denoiser (optional — plugin may not be available in all builds)
+    _have_nrd = False
+    try:
+        nrd = createPass("NRDPass", {
+            "method":          "RelaxDiffuseSpecular",
+            "worldSpaceMotion": True,
+        })
+        g.addPass(nrd, "NRDPass")
+        _have_nrd = True
+    except Exception:
+        pass
 
     # Tone mapper
     tone = createPass("ToneMapper", {
@@ -147,18 +151,21 @@ def render_graph_VisCache():
     g.addEdge("GBufferRT.vbuffer",                   "ReSTIRPTPass.vbuffer")
     g.addEdge("GBufferRT.mvec",                      "ReSTIRPTPass.motionVectors")
 
-    # ReSTIR PT NRD outputs → NRD denoiser
-    g.addEdge("ReSTIRPTPass.nrdDiffuseRadianceHitDist",
-              "NRDPass.diffuseRadianceHitDist")
-    g.addEdge("ReSTIRPTPass.nrdSpecularRadianceHitDist",
-              "NRDPass.specularRadianceHitDist")
-    g.addEdge("GBufferRT.linearZ",                   "NRDPass.viewZ")
-    g.addEdge("GBufferRT.normWRoughnessMaterialID",  "NRDPass.normWRoughnessMaterialID")
-    g.addEdge("GBufferRT.mvec",                      "NRDPass.mvec")
-
-    # NRD → ToneMapper
-    g.addEdge("NRDPass.filteredDiffuseRadianceHitDist",
-              "ToneMapper.src")
+    if _have_nrd:
+        # ReSTIR PT NRD outputs → NRD denoiser
+        g.addEdge("ReSTIRPTPass.nrdDiffuseRadianceHitDist",
+                  "NRDPass.diffuseRadianceHitDist")
+        g.addEdge("ReSTIRPTPass.nrdSpecularRadianceHitDist",
+                  "NRDPass.specularRadianceHitDist")
+        g.addEdge("GBufferRT.linearZ",                   "NRDPass.viewZ")
+        g.addEdge("GBufferRT.normWRoughnessMaterialID",  "NRDPass.normWRoughnessMaterialID")
+        g.addEdge("GBufferRT.mvec",                      "NRDPass.mvec")
+        # NRD → ToneMapper
+        g.addEdge("NRDPass.filteredDiffuseRadianceHitDist",
+                  "ToneMapper.src")
+    else:
+        # Fallback: wire ReSTIR PT color directly to ToneMapper
+        g.addEdge("ReSTIRPTPass.color",              "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
 
