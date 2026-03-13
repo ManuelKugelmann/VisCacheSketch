@@ -10,7 +10,7 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 ## Scripting
 
 - **Prefer `.bat` over `.ps1`** for Windows scripts. PowerShell execution policies block `.ps1` by default. `.bat` works everywhere (cmd, PowerShell, CI).
-- Quickstart one-liner: `cmd /c "curl -sL <url>/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat"`
+- Install one-liner: `cmd /c "curl -sL "<url>/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"`
 
 ## Falcor Subtree Policy
 

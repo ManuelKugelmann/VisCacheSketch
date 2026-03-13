@@ -23,7 +23,7 @@
 **One-liner (idempotent — safe to re-run):**
 
 ```bat
-cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat"
+cmd /c "curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
 ```
 
 This clones (or pulls if already cloned), downloads test scenes, downloads the latest release, runs CPU tests + smoke test, and launches Mogwai with Bistro.
@@ -31,24 +31,31 @@ This clones (or pulls if already cloned), downloads test scenes, downloads the l
 **With options:**
 
 ```bat
-cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat --scene Sponza"
-REM Or after first run:
+REM One-liner with options:
+cmd /c "curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat --scene Sponza"
+
+REM Or run individual scripts from inside the repo:
 scripts\quickstart.bat --scene Sponza --skip-scenes
-scripts\quickstart-run.bat --skip-scenes        &REM skip scene download
+scripts\download_scenes.bat --yes              &REM download all scenes non-interactively
+scripts\download_release.bat                   &REM download latest release
 scripts\run-tests.bat                          &REM run 43 CPU tests only
 scripts\run-tests.bat quick                    &REM convergence tests only (14)
-scripts\download_scenes.bat --yes              &REM download all scenes non-interactively
+scripts\run_release.bat --scene Bistro         &REM launch Mogwai
 ```
 
 **Linux / WSL:**
 
 ```bash
-# Idempotent: clone or pull
-[ -d VisCacheSketch ] && git -C VisCacheSketch pull || git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
-cd VisCacheSketch
-bash scripts/download_scenes.sh        # interactive scene download
-bash scripts/run-tests.sh              # 43 CPU algorithm tests
-bash scripts/run-tests.sh quick        # convergence only (14 tests)
+# One-liner:
+curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.sh?$(date +%s)" | bash
+
+# Or run individual scripts from inside the repo:
+bash scripts/quickstart.sh                # full sequence (scenes + release + tests + launch)
+bash scripts/download_scenes.sh           # interactive scene download
+bash scripts/download_release.sh          # download latest release
+bash scripts/run-tests.sh                 # 43 CPU algorithm tests
+bash scripts/run-tests.sh quick           # convergence only (14 tests)
+bash scripts/run_release.sh --scene Bistro  # launch Mogwai
 ```
 
 ---

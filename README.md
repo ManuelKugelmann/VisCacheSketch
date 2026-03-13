@@ -59,7 +59,7 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 ## Quickstart
 
 ```bat
-cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat"
+cmd /c "curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
 ```
 
 Idempotent — safe to re-run. Clones (or pulls), downloads test scenes, downloads the latest release, runs CPU tests, and launches Mogwai with Bistro. See **[Getting Started](docs/GETTING_STARTED.md)** for build-from-source, Linux/WSL, and release usage.

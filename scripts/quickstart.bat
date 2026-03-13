@@ -1,118 +1,75 @@
 @echo off
-REM quickstart.bat — Idempotent VisCacheSketch quickstart.
+REM quickstart.bat — Run the full VisCacheSketch quickstart sequence.
 REM
-REM One-liner (paste into cmd or PowerShell):
-REM   curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/quickstart.bat -o %TEMP%\vc-quickstart.bat && %TEMP%\vc-quickstart.bat
+REM Usage:  scripts\quickstart.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes]
 REM
-REM What it does:
-REM   1. Checks git version (2.43+ recommended)
-REM   2. Clones the repo (or pulls if it already exists)
-REM   3. Downloads test scenes (Arcade, Bistro, Sponza, VeachAjar)
-REM   4. Downloads latest release, runs tests, launches Mogwai
+REM Calls each step in order:
+REM   1. download_scenes.bat   — fetch test scenes (unless --skip-scenes)
+REM   2. download_release.bat  — download latest GitHub release (Mogwai)
+REM   3. run-tests.bat         — CPU algorithm tests
+REM   4. run_release.bat       — smoke test + launch Mogwai
 REM
-REM Safe to re-run: skips clone if the directory exists, pulls latest instead.
-REM
-REM Options:
-REM   quickstart.bat [--dir <name>] [--branch <branch>] [--scene <scene>] [--skip-scenes]
+REM Each script is independently callable. This script just strings them together.
+REM Idempotent: safe to re-run. Each step skips work already done.
 
 setlocal enabledelayedexpansion
 
-set "DIR=VisCacheSketch"
-set "BRANCH=main"
-set "SCENE="
-set "SKIP_SCENES="
-set "REPO_URL=https://github.com/ManuelKugelmann/VisCacheSketch.git"
+set "ROOT=%~dp0.."
+set "SCENE=Bistro"
+set "SKIP_SCENES=0"
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
 REM ---------------------------------------------------------------------------
 :parse_args
 if "%~1"=="" goto :args_done
-if /i "%~1"=="--dir" (set "DIR=%~2" & shift & shift & goto :parse_args)
-if /i "%~1"=="--branch" (set "BRANCH=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
-if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=--skip-scenes" & shift & goto :parse_args)
+if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--dir ^<name^>] [--branch ^<branch^>] [--scene ^<scene^>] [--skip-scenes]
+echo Usage: %~nx0 [--scene Bistro^|Sponza^|Arcade] [--skip-scenes]
 exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
-REM Check git
+REM 1. Download scenes
 REM ---------------------------------------------------------------------------
-where git >nul 2>&1 || (
-    echo [quickstart] ERROR: git not found. Install git 2.43+ from https://git-scm.com
-    exit /b 1
-)
-
-for /f "tokens=3 delims= " %%V in ('git --version') do set "GIT_VER=%%V"
-echo [quickstart] git %GIT_VER%
-
-REM Parse major.minor for version check
-for /f "tokens=1,2 delims=." %%A in ("%GIT_VER%") do (
-    set "GIT_MAJOR=%%A"
-    set "GIT_MINOR=%%B"
-)
-if !GIT_MAJOR! LSS 2 (
-    echo [quickstart] WARNING: git !GIT_VER! is old. git 2.43+ recommended.
-) else if !GIT_MAJOR! EQU 2 if !GIT_MINOR! LSS 43 (
-    echo [quickstart] WARNING: git !GIT_VER! detected. git 2.43+ recommended ^(sparse-checkout, filter^).
-)
-
-REM ---------------------------------------------------------------------------
-REM Clone or pull
-REM ---------------------------------------------------------------------------
-if exist "%DIR%\.git" (
-    echo [quickstart] %DIR% already exists -- pulling latest...
-    pushd "%DIR%"
-    git fetch origin %BRANCH%
-    git checkout %BRANCH% 2>nul
-    git pull origin %BRANCH%
-    if errorlevel 1 (
-        echo [quickstart] WARNING: pull failed, continuing with existing checkout
-    )
-    popd
-) else if exist "%DIR%" (
-    echo [quickstart] ERROR: %DIR% exists but is not a git repo.
-    echo [quickstart] Remove it or use --dir ^<other-name^>.
-    exit /b 1
-) else (
-    echo [quickstart] Cloning %REPO_URL%...
-    git clone --branch %BRANCH% %REPO_URL% "%DIR%"
-    if errorlevel 1 (
-        echo [quickstart] ERROR: git clone failed.
-        exit /b 1
-    )
-)
-
-REM ---------------------------------------------------------------------------
-REM Download scenes
-REM ---------------------------------------------------------------------------
-if defined SKIP_SCENES (
+if %SKIP_SCENES%==1 (
     echo [quickstart] Skipping scene download (--skip-scenes)
-    goto :run_release
+) else (
+    echo.
+    echo ========================================
+    echo  Step 1: Download test scenes
+    echo ========================================
+    call "%~dp0download_scenes.bat" --dir "%ROOT%\media" --yes
+    if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
 )
 
+REM ---------------------------------------------------------------------------
+REM 2. Download release
+REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
-echo  Downloading test scenes
+echo  Step 2: Download latest release
 echo ========================================
-pushd "%DIR%"
-call scripts\download_scenes.bat --dir "media" --yes
-if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
-popd
+call "%~dp0download_release.bat"
 
 REM ---------------------------------------------------------------------------
-REM Run release setup (download release, tests, launch)
+REM 3. Run tests
 REM ---------------------------------------------------------------------------
-:run_release
-set "QS_ARGS=--skip-scenes"
-if defined SCENE set "QS_ARGS=%QS_ARGS% --scene %SCENE%"
+echo.
+echo ========================================
+echo  Step 3: Run tests
+echo ========================================
+call "%~dp0run-tests.bat"
+if errorlevel 1 echo [quickstart] WARNING: Some tests failed
 
-echo [quickstart] Running %DIR%\scripts\quickstart-run.bat %QS_ARGS%
-pushd "%DIR%"
-call scripts\quickstart-run.bat %QS_ARGS%
-set "QS_EXIT=%ERRORLEVEL%"
-popd
+REM ---------------------------------------------------------------------------
+REM 4. Launch
+REM ---------------------------------------------------------------------------
+echo.
+echo ========================================
+echo  Step 4: Launch
+echo ========================================
+call "%~dp0run_release.bat" --scene %SCENE%
 
-exit /b %QS_EXIT%
+endlocal
