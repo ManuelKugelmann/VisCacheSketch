@@ -2,7 +2,7 @@
 REM install.bat — Idempotent VisCacheSketch installer (clone + quickstart).
 REM
 REM One-liner (paste into cmd or PowerShell):
-REM   cmd /c "curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
+REM   cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
 REM
 REM What it does:
 REM   1. Checks git version (2.43+ recommended)

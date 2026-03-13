@@ -23,7 +23,7 @@
 **One-liner (idempotent — safe to re-run):**
 
 ```bat
-cmd /c "curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
 ```
 
 This clones (or pulls if already cloned), downloads test scenes, downloads the latest release, runs CPU tests + smoke test, and launches Mogwai with Bistro.
@@ -32,7 +32,7 @@ This clones (or pulls if already cloned), downloads test scenes, downloads the l
 
 ```bat
 REM One-liner with options:
-cmd /c "curl -sL "https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM%" -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat --scene Sponza"
+cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat --scene Sponza"
 
 REM Or run individual scripts from inside the repo:
 scripts\quickstart.bat --scene Sponza --skip-scenes
