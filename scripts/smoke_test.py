@@ -47,13 +47,23 @@ ROOKS_SEARCH_DIRS = [
 ]
 
 # ---------------------------------------------------------------------------
-# 0. Pre-flight: check ReSTIRPTPass data file
+# 0. Pre-flight: check ReSTIRPTPass data file & register search paths
 # ---------------------------------------------------------------------------
 rooks_found = False
 for d in ROOKS_SEARCH_DIRS:
     candidate = os.path.join(d, ROOKS_FILE)
     if os.path.isfile(candidate):
         rooks_found = True
+        # Register the *parent* of the data dir so AssetResolver finds
+        # "ReSTIRPTPass/16RooksPattern256.txt" via its sub-path lookup.
+        data_parent = os.path.normpath(os.path.join(d, ".."))
+        abs_data_parent = os.path.abspath(data_parent)
+        try:
+            from pathlib import Path
+            AssetResolver.default_resolver.add_search_path(Path(abs_data_parent))
+            print(f"[smoke] Added AssetResolver search path: {abs_data_parent}")
+        except Exception:
+            pass  # Binding may not be available in all builds
         print(f"[smoke] Found {ROOKS_FILE} at {os.path.normpath(candidate)}")
         break
 
