@@ -22,7 +22,7 @@
                 "FALCOR_ENABLE_NRC": "ON",
                 "FALCOR_VALIDATE_HEADERS": "ON",
                 "FALCOR_PRECOMPILED_HEADERS": "OFF",
-                "FALCOR_UNITY_BUILD": "ON"
+                "FALCOR_UNITY_BUILD": "OFF"
             }
         },
         {
