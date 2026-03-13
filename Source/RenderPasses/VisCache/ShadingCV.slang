@@ -16,6 +16,9 @@
 
 #pragma once
 #import "VisCache"
+#ifdef VISCACHE_DIAGNOSTICS
+import RenderPasses.VisCache.VisCacheDiagnostics;
+#endif
 
 // ---------------------------------------------------------------------------
 // Main entry point — replaces the unconditional shadow ray in direct lighting.
@@ -85,3 +88,51 @@ float evalRevalidationCV(float3 P, float3 Q,
     // This happens when the cache has a converged entry.
     return g.visWeight;
 }
+
+// ===========================================================================
+// Diagnostic overloads — write per-pixel heatmap data.
+// Enable by adding VISCACHE_DIAGNOSTICS=1 to shader DefineList.
+// ===========================================================================
+#ifdef VISCACHE_DIAGNOSTICS
+
+float3 evalDirectLightingCV(ShadingData sd,
+                             float3      lightPos,
+                             float3      Le,
+                             float       G,
+                             inout SampleGenerator sg,
+                             uint2 pixel)
+{
+    float3 C = evalBRDF(sd, normalize(lightPos - sd.posW)) * Le * G;
+    VHFGateResult g = vhfGate(sd.posW, lightPos, sampleNext1D(sg), luminance(C));
+
+    if (g.shouldTrace)
+    {
+        float V = traceShadowRay(sd.posW, lightPos);
+        float w = vhfCommit(sd.posW, lightPos, V, g);
+        vcWriteDiag(pixel, g, true, V);
+        return C * w;
+    }
+    vcWriteDiag(pixel, g, false, 0.f);
+    return C * g.visWeight;
+}
+
+float evalRevalidationCV(float3 P, float3 Q,
+                          float3 bsdf, float3 Lo, float G,
+                          inout SampleGenerator sg,
+                          uint2 pixel)
+{
+    float3 C = bsdf * Lo * G;
+    VHFGateResult g = vhfGate(P, Q, sampleNext1D(sg), luminance(C));
+
+    if (g.shouldTrace)
+    {
+        float V = traceShadowRay(P, Q);
+        float w = vhfCommit(P, Q, V, g);
+        vcWriteDiag(pixel, g, true, V);
+        return w;
+    }
+    vcWriteDiag(pixel, g, false, 0.f);
+    return g.visWeight;
+}
+
+#endif // VISCACHE_DIAGNOSTICS

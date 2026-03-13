@@ -165,6 +165,39 @@ def render_graph_VisCache():
     # Secondary outputs for analysis
     g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
 
+    # -----------------------------------------------------------------------
+    # VisCache diagnostic heatmaps
+    # Connect vcDiag and vcDiagError to ColorMapPass for false-color output.
+    #
+    # vcDiag channels (select in ColorMapPass UI):
+    #   R = cached mu       (visibility prediction [0,1])
+    #   G = variance         (cache uncertainty [0,0.25])
+    #   B = LOD level+1    (0=miss, 1=L0, 2=L1, ...)
+    #   A = ray saved        (1=skipped, 0=traced)
+    #
+    # vcDiagError channel R = |mu - V| (prediction accuracy)
+    # -----------------------------------------------------------------------
+
+    # Heatmap: cached mu / variance / level / raySaved (pick channel in UI)
+    heatDiag = createPass("ColorMapPass", {
+        "colorMap": "Viridis",
+        "channel":  0,           # R = cached mu (change to 1/2/3 for var/level/saved)
+        "autoRange": True,
+    })
+    g.addPass(heatDiag, "HeatmapDiag")
+    g.addEdge("VisCache.vcDiag", "HeatmapDiag.input")
+    g.markOutput("HeatmapDiag.output")
+
+    # Heatmap: prediction error |mu - V|
+    heatErr = createPass("ColorMapPass", {
+        "colorMap": "Inferno",
+        "channel":  0,
+        "autoRange": True,
+    })
+    g.addPass(heatErr, "HeatmapError")
+    g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
+    g.markOutput("HeatmapError.output")
+
     return g
 
 

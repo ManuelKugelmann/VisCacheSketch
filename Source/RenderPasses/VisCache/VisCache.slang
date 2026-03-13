@@ -270,6 +270,8 @@ struct VHFGateResult
     float visWeight;    ///< final answer when !shouldTrace (= cached mu)
     float mu;           ///< cached mean (needed by vhfCommit)
     float invP;         ///< 1/p (needed by vhfCommit)
+    float var;          ///< cached variance mu*(1-mu) (diagnostics)
+    int   level;        ///< LOD level used, -1 = miss (diagnostics)
 };
 
 /// Phase 1: lookup + RR decision.
@@ -287,6 +289,8 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.visWeight   = 0.f;
         g.mu          = 0.f;
         g.invP        = 1.f;
+        g.var         = 1.f;
+        g.level       = -1;
         return g;
     }
 
@@ -297,6 +301,9 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         pFloor = clamp(contrib / gFireflyBudget, gPMin, 1.f);
     }
     float p = clamp(r.var / gVarThreshold, pFloor, 1.f);
+
+    g.var   = r.var;
+    g.level = r.level;
 
     if (xi < p)
     {

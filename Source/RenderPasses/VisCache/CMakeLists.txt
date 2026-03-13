@@ -4,6 +4,7 @@ target_sources(VisCachePass PRIVATE
     VisCache.h
     VisCache.cpp
     VisCache.slang
+    VisCacheDiagnostics.slang
     VisCacheInsert.cs.slang
     VisCacheDecay.cs.slang
     VisCacheTracing.slang

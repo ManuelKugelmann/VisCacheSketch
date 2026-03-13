@@ -17,6 +17,15 @@
 
 using namespace Falcor;
 
+// ---------------------------------------------------------------------------
+// Diagnostic heatmap output channels.
+// Downstream passes write to these via dictionary-exposed textures.
+// Connect to ColorMapPass for visualization (channel R/G/B/A selects metric).
+// ---------------------------------------------------------------------------
+// vcDiag (RGBA32Float): R=cachedMu, G=variance, B=level+1(0=miss), A=raySaved
+// vcDiagError (R32Float): |mu - V| prediction error
+// ---------------------------------------------------------------------------
+
 class VisCache : public RenderPass
 {
 public:
@@ -97,4 +106,12 @@ private:
     // PI controller state for decayPeriod auto-tuning
     float mPIIntegral      = 0.f;
     float mTargetLoadPressure = 0.1f;  ///< Target eviction/insert ratio
+
+    // ------------------------------------------------------------------
+    // Diagnostic heatmap textures (written by downstream passes)
+    // ------------------------------------------------------------------
+    bool            mEnableDiagnostics = false; ///< UI toggle for heatmap output
+    ref<Texture>    mpDiagTex;          ///< RGBA32F: mu, var, level, raySaved
+    ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
+    uint2           mFrameDims = {0, 0};
 };

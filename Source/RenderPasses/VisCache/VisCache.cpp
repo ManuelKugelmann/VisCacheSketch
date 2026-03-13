@@ -12,6 +12,15 @@
 static constexpr size_t kEntrySize = 8u;
 static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum (last two accumulated but not read back yet)
 
+// Diagnostic heatmap output channel names
+static const std::string kOutputDiag      = "vcDiag";
+static const std::string kOutputDiagError = "vcDiagError";
+
+static const ChannelList kDiagOutputChannels = {
+    { kOutputDiag,      "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)", true, ResourceFormat::RGBA32Float },
+    { kOutputDiagError, "", "VisCache prediction error |mu - V|",                      true, ResourceFormat::R32Float },
+};
+
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, VisCache>();
@@ -74,15 +83,16 @@ Properties VisCache::getProperties() const
 // ---------------------------------------------------------------------------
 RenderPassReflection VisCache::reflect(const CompileData&)
 {
-    // No texture inputs or outputs — the hash table is passed via
-    // InternalDictionary, not through the render graph edge system.
     RenderPassReflection r;
+    // Diagnostic heatmap outputs (optional — connect to ColorMapPass).
+    addRenderPassOutputs(r, kDiagOutputChannels);
     return r;
 }
 
 // ---------------------------------------------------------------------------
-void VisCache::compile(RenderContext*, const CompileData&)
+void VisCache::compile(RenderContext*, const CompileData& compileData)
 {
+    mFrameDims = compileData.defaultTexDims;
     allocateBuffers();
 
     // Decay pass
@@ -160,6 +170,63 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
+
+    // ----------------------------------------------------------------
+    // Diagnostic heatmap textures — allocate/expose, then clear.
+    // VisCache runs BEFORE downstream passes, so we expose textures
+    // via dictionary and downstream passes write directly to them.
+    //
+    // Strategy:
+    //   - If render graph outputs are connected, expose those directly.
+    //   - Otherwise if diagnostics enabled, use internal textures.
+    //   - Downstream passes retrieve from dict keys "vhfDiag"/"vhfDiagError".
+    // ----------------------------------------------------------------
+    {
+        ref<Texture> diagTex;
+        ref<Texture> diagErrorTex;
+
+        // Prefer graph-allocated output textures (avoids extra copy)
+        if (auto pOut = renderData[kOutputDiag])
+            diagTex = pOut->asTexture();
+        if (auto pOut = renderData[kOutputDiagError])
+            diagErrorTex = pOut->asTexture();
+
+        // Fall back to internal textures when outputs not connected
+        bool needInternal = mEnableDiagnostics && (!diagTex || !diagErrorTex);
+        if (needInternal && mFrameDims.x > 0 && mFrameDims.y > 0)
+        {
+            if (!mpDiagTex || mpDiagTex->getWidth() != mFrameDims.x
+                           || mpDiagTex->getHeight() != mFrameDims.y)
+            {
+                mpDiagTex = mpDevice->createTexture2D(
+                    mFrameDims.x, mFrameDims.y, ResourceFormat::RGBA32Float, 1, 1,
+                    nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess
+                );
+                mpDiagTex->setName("VHF_Diag");
+
+                mpDiagErrorTex = mpDevice->createTexture2D(
+                    mFrameDims.x, mFrameDims.y, ResourceFormat::R32Float, 1, 1,
+                    nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess
+                );
+                mpDiagErrorTex->setName("VHF_DiagError");
+            }
+            if (!diagTex)      diagTex      = mpDiagTex;
+            if (!diagErrorTex) diagErrorTex = mpDiagErrorTex;
+        }
+
+        // Clear and expose via dictionary for downstream passes
+        if (diagTex)
+        {
+            pCtx->clearUAV(diagTex->getUAV().get(), float4(0.f));
+            dict["vhfDiag"] = diagTex;
+        }
+        if (diagErrorTex)
+        {
+            pCtx->clearUAV(diagErrorTex->getUAV().get(), float4(0.f));
+            dict["vhfDiagError"] = diagErrorTex;
+        }
+        dict["vhfDiagEnabled"] = (diagTex != nullptr);
+    }
 
     // ----------------------------------------------------------------
     // Background decay sweep (1/decayPeriod of table per frame)
@@ -269,5 +336,18 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("C: Warp reduction",       mParams.enableVisCacheWarpReduction);
         g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
+    }
+
+    widget.separator();
+    widget.checkbox("Enable heatmap diagnostics", mEnableDiagnostics);
+    if (mEnableDiagnostics)
+    {
+        widget.text("Connect vcDiag output to ColorMapPass.");
+        widget.text("  R = cached mu      (visibility prediction)");
+        widget.text("  G = variance        (cache uncertainty)");
+        widget.text("  B = LOD level+1   (0=miss, 1=L0, ...)");
+        widget.text("  A = ray saved       (1=skipped, 0=traced)");
+        widget.text("Connect vcDiagError to ColorMapPass.");
+        widget.text("  R = |mu - V|         (prediction error)");
     }
 }
