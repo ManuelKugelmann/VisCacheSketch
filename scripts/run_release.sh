@@ -23,6 +23,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Deploy data files (e.g. 16RooksPattern256.txt) into release/data/
+# so Falcor's AssetResolver can find them at runtime.
+DATA_SRC="${ROOT_DIR}/Source/RenderPasses/ReSTIRPTPass/Data"
+DATA_DST="${RELEASE_DIR}/data/ReSTIRPTPass"
+if [ -d "$DATA_SRC" ] && [ ! -f "$DATA_DST/16RooksPattern256.txt" ]; then
+    mkdir -p "$DATA_DST"
+    cp -r "$DATA_SRC/"* "$DATA_DST/"
+    echo "[launch] Deployed ReSTIRPTPass data files to release/data/"
+fi
+
 # Smoke test
 if [ -f "$RELEASE_DIR/Mogwai.exe" ]; then
     echo "[smoke] Running smoke test..."

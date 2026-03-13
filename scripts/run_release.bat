@@ -26,6 +26,18 @@ exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
+REM Deploy data files (e.g. 16RooksPattern256.txt) into release/data/
+REM so Falcor's AssetResolver can find them at runtime.
+REM ---------------------------------------------------------------------------
+set "DATA_SRC=%ROOT%\Source\RenderPasses\ReSTIRPTPass\Data"
+set "DATA_DST=%RELEASE_DIR%\data\ReSTIRPTPass"
+if exist "%DATA_SRC%" if not exist "%DATA_DST%\16RooksPattern256.txt" (
+    if not exist "%DATA_DST%" mkdir "%DATA_DST%"
+    xcopy "%DATA_SRC%\*" "%DATA_DST%\" /s /y /q >nul
+    echo [launch] Deployed ReSTIRPTPass data files to release\data\
+)
+
+REM ---------------------------------------------------------------------------
 REM Smoke test
 REM ---------------------------------------------------------------------------
 if exist "%RELEASE_DIR%\Mogwai.exe" (

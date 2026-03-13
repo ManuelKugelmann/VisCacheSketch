@@ -13,7 +13,7 @@ setlocal enabledelayedexpansion
 set "REPO=ManuelKugelmann/VisCacheSketch"
 set "ROOT=%~dp0.."
 set "RELEASE_DIR=%ROOT%\release"
-set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
+set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz?%RANDOM%"
 set "ETAG_FILE=%RELEASE_DIR%\.release-etag"
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 
@@ -28,7 +28,7 @@ REM ---------------------------------------------------------------------------
 if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
     set /p OLD_ETAG=<"%ETAG_FILE%"
     echo [release] Checking for newer release...
-    for /f "delims=" %%E in ('curl -fsSL -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
+    for /f "delims=" %%E in ('curl -fsSL -I "%DOWNLOAD_URL%&!RANDOM!" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
     if defined ETAG_LINE (
         REM Compare stored ETag with remote
         echo !ETAG_LINE! | findstr /c:"!OLD_ETAG!" >nul 2>&1
