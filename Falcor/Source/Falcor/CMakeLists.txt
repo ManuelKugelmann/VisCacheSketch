@@ -794,6 +794,11 @@ endif()
 
 target_source_group(Falcor "/")
 
+# Disable unity build for Falcor library -- its .cpp files have symbol collisions
+# (duplicate anonymous-namespace constants, .slang struct redefinitions, #pragma pack
+# mismatches) that break MSVC unity builds. Plugins still benefit from unity build.
+set_target_properties(Falcor PROPERTIES UNITY_BUILD OFF)
+
 # ImGui source files
 # Note: These added after calling target_source_group macro as they are outside the current folder.
 target_sources(Falcor PRIVATE
