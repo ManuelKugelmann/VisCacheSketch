@@ -30,8 +30,12 @@ done
 mkdir -p "$MEDIA_DIR"
 echo "[scenes] Download directory: $MEDIA_DIR"
 
+SCENES_DIR="${ROOT_DIR}/scenes"
+
 # ---------------------------------------------------------------------------
 # Helper: download and extract a zip from a URL
+# If the zip contains a single top-level directory, flatten it so the
+# contents end up directly under $MEDIA_DIR/$name.
 # ---------------------------------------------------------------------------
 download_and_extract() {
     local name="$1"
@@ -47,10 +51,10 @@ download_and_extract() {
     local tmpzip
     tmpzip="$(mktemp /tmp/${name}.XXXXXX.zip)"
 
-    if command -v wget >/dev/null 2>&1; then
-        wget -q --show-progress -O "$tmpzip" "$url"
-    elif command -v curl >/dev/null 2>&1; then
+    if command -v curl >/dev/null 2>&1; then
         curl -fSL --progress-bar -o "$tmpzip" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --show-progress -O "$tmpzip" "$url"
     else
         echo "[scenes] ERROR: neither wget nor curl found" >&2
         return 1
@@ -60,6 +64,17 @@ download_and_extract() {
     mkdir -p "$dest"
     unzip -q -o "$tmpzip" -d "$dest"
     rm -f "$tmpzip"
+
+    # Flatten: if zip produced a single subdirectory, move contents up
+    local entries=("$dest"/*)
+    if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then
+        local subdir="${entries[0]}"
+        echo "[scenes] Flattening ${subdir##*/}/ into $name/"
+        mv "$subdir"/* "$dest/" 2>/dev/null || true
+        mv "$subdir"/.* "$dest/" 2>/dev/null || true
+        rmdir "$subdir" 2>/dev/null || true
+    fi
+
     echo "[scenes] $name ready at $dest"
 }
 
@@ -87,35 +102,38 @@ if [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
     else
         echo "[scenes] TestScenes already exists, skipping"
     fi
+    # Copy CornellBox pyscene from repo if missing
+    if [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
+        cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
+        echo "[scenes] Copied CornellBox.pyscene from scenes/"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
 # 3. Bistro (Amazon Lumberyard / NVIDIA ORCA)
-#    NOTE: NVIDIA ORCA scenes require manual download due to EULA.
-#    This downloads from the publicly mirrored Morgan McGuire archive.
+#    Official NVIDIA ORCA download — CC-BY 4.0 license.
+#    The URL redirects (302) to a tokenized download; curl -L handles it.
+#    Previously: casual-effects.com/g3d/.../Bistro_v5_2.zip (dead as of 2025)
 # ---------------------------------------------------------------------------
-BISTRO_URL="https://casual-effects.com/g3d/data10/research/model/Amazon_Lumberyard_Bistro/Bistro_v5_2.zip"
+BISTRO_URL="https://developer.nvidia.com/downloads/bistro"
 
 if [ ! -d "$MEDIA_DIR/Bistro" ]; then
     echo ""
     echo "[scenes] === Bistro (Amazon Lumberyard) ==="
-    echo "[scenes] Source: casual-effects.com (Morgan McGuire mirror)"
+    echo "[scenes] Source: developer.nvidia.com/orca (NVIDIA ORCA)"
     echo "[scenes] Size: ~3.2 GB compressed"
     echo ""
     read -rp "[scenes] Download Bistro? [y/N] " yn
     case "$yn" in
         [Yy]*)
             download_and_extract "Bistro" "$BISTRO_URL"
-            # Create a convenience .pyscene wrapper if one doesn't exist
-            if [ ! -f "$MEDIA_DIR/Bistro/Bistro_Interior.pyscene" ]; then
-                cat > "$MEDIA_DIR/Bistro/Bistro_Interior.pyscene" << 'PYSCENE'
-# Bistro Interior — convenience wrapper for VisCache experiments
-import falcor
-sceneBuilder = SceneBuilder()
-sceneBuilder.importScene('BistroInterior.fbx')
-PYSCENE
-                echo "[scenes] Created Bistro_Interior.pyscene wrapper"
-            fi
+            # Copy pyscenes from repo if not already present (NVIDIA ORCA ships its own too)
+            for pf in BistroInterior.pyscene BistroExterior.pyscene; do
+                if [ ! -f "$MEDIA_DIR/Bistro/$pf" ] && [ -f "$SCENES_DIR/$pf" ]; then
+                    cp "$SCENES_DIR/$pf" "$MEDIA_DIR/Bistro/$pf"
+                    echo "[scenes] Copied $pf from scenes/"
+                fi
+            done
             ;;
         *) echo "[scenes] Skipping Bistro" ;;
     esac
@@ -124,28 +142,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Sponza (Crytek / NVIDIA ORCA)
+# 4. Sponza (Crytek)
+#    GitHub mirror of the Crytek Sponza OBJ model (Frank Meinl).
+#    Previously: casual-effects.com/g3d/.../CrytekSponza/sponza.zip (dead as of 2025)
 # ---------------------------------------------------------------------------
-SPONZA_URL="https://casual-effects.com/g3d/data10/common/model/CrytekSponza/sponza.zip"
+SPONZA_URL="https://github.com/jimmiebergmann/Sponza/archive/refs/heads/master.zip"
 
 if [ ! -d "$MEDIA_DIR/Sponza" ]; then
     echo ""
     echo "[scenes] === Sponza (Crytek) ==="
-    echo "[scenes] Source: casual-effects.com (Morgan McGuire mirror)"
+    echo "[scenes] Source: github.com/jimmiebergmann/Sponza (OBJ mirror)"
     echo "[scenes] Size: ~70 MB compressed"
     echo ""
     read -rp "[scenes] Download Sponza? [y/N] " yn
     case "$yn" in
         [Yy]*)
             download_and_extract "Sponza" "$SPONZA_URL"
-            if [ ! -f "$MEDIA_DIR/Sponza/Sponza.pyscene" ]; then
-                cat > "$MEDIA_DIR/Sponza/Sponza.pyscene" << 'PYSCENE'
-# Crytek Sponza — convenience wrapper for VisCache experiments
-import falcor
-sceneBuilder = SceneBuilder()
-sceneBuilder.importScene('sponza.obj')
-PYSCENE
-                echo "[scenes] Created Sponza.pyscene wrapper"
+            # Copy pyscene from repo if not already present
+            if [ ! -f "$MEDIA_DIR/Sponza/Sponza.pyscene" ] && [ -f "$SCENES_DIR/Sponza.pyscene" ]; then
+                cp "$SCENES_DIR/Sponza.pyscene" "$MEDIA_DIR/Sponza/Sponza.pyscene"
+                echo "[scenes] Copied Sponza.pyscene from scenes/"
             fi
             ;;
         *) echo "[scenes] Skipping Sponza" ;;
@@ -178,6 +194,7 @@ else
     case "$yn" in
         [Yy]*)
             echo "[scenes] Cloning DQLin/ReSTIR_PT (sparse, models+textures only)..."
+            echo ""
             VEACH_TMPDIR="$(mktemp -d /tmp/veach-ajar.XXXXXX)"
 
             git clone --depth 1 --filter=blob:none --sparse \
@@ -224,4 +241,4 @@ echo "[scenes] Set FALCOR_MEDIA_FOLDERS to use with Mogwai:"
 echo "  export FALCOR_MEDIA_FOLDERS=\"$MEDIA_DIR\""
 echo ""
 echo "[scenes] Or pass --scene with full path:"
-echo "  Mogwai.exe --scene \"$MEDIA_DIR/Bistro/Bistro_Interior.pyscene\""
+echo "  Mogwai.exe --scene \"$MEDIA_DIR/Bistro/BistroInterior.pyscene\""

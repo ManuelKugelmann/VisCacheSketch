@@ -65,6 +65,17 @@ if not exist "%GI_DST%" mkdir "%GI_DST%"
 xcopy "%SCRIPT_DIR%Source\RenderPasses\ReSTIRPTPass\*" "%GI_DST%\" /s /y /q
 echo [VisCache]   Copied: ReSTIRPTPass
 
+: ReSTIRPTPass data files (16RooksPattern256.txt, VeachAjar pyscenes)
+: Quickfix: also copy into Falcor/data/ so AssetResolver finds them at runtime
+: without waiting for a CMake POST_BUILD step.
+set DATA_SRC=%SCRIPT_DIR%Source\RenderPasses\ReSTIRPTPass\Data
+set DATA_DST=%FALCOR_ROOT%\data\ReSTIRPTPass
+if exist "%DATA_SRC%" (
+    if not exist "%DATA_DST%" mkdir "%DATA_DST%"
+    xcopy "%DATA_SRC%\*" "%DATA_DST%\" /s /y /q >nul
+    echo [VisCache]   Copied: ReSTIRPTPass data files to Falcor\data\
+)
+
 : Scripts
 set SCRIPT_DST=%FALCOR_ROOT%\scripts\VisCache
 if not exist "%SCRIPT_DST%" mkdir "%SCRIPT_DST%"

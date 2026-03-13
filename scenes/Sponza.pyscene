@@ -1,0 +1,15 @@
+# Sponza.pyscene — Crytek Sponza Atrium
+# VisCache paper experiments — classic GI benchmark scene.
+#
+# Expects: sponza.obj + sponza.mtl + textures/ in same directory
+#          or reachable via FALCOR_MEDIA_FOLDERS.
+# Source:  Frank Meinl / Crytek (CC-BY 3.0)
+
+sceneBuilder.importScene('sponza.obj')
+
+camera = Camera('VisCacheDefault')
+camera.position = float3(-11.0, 4.0,  0.0)
+camera.target   = float3(  0.0, 2.0,  0.0)
+camera.up       = float3(  0.0, 1.0,  0.0)
+camera.focalLength = 24.0
+sceneBuilder.addCamera(camera)

@@ -15,6 +15,7 @@ setlocal enabledelayedexpansion
 
 set "ROOT=%~dp0.."
 set "MEDIA_DIR=%ROOT%\media"
+set "SCENES_DIR=%ROOT%\scenes"
 set "AUTO_YES=0"
 
 REM ---------------------------------------------------------------------------
@@ -59,17 +60,27 @@ if exist "%ROOT%\Falcor\media\TestScenes" (
     ) else (
         echo [scenes] TestScenes already exists, skipping
     )
+    REM Copy CornellBox pyscene from repo if missing
+    if not exist "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" (
+        if exist "%SCENES_DIR%\CornellBox.pyscene" (
+            copy /y "%SCENES_DIR%\CornellBox.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" >nul
+            echo [scenes] Copied CornellBox.pyscene from scenes\
+        )
+    )
 )
 
 REM ---------------------------------------------------------------------------
 REM 3. Bistro (Amazon Lumberyard / NVIDIA ORCA)
+REM    Official NVIDIA ORCA download -- CC-BY 4.0 license.
+REM    The URL redirects (302) to a tokenized download; curl -L handles it.
+REM    Previously: casual-effects.com/g3d/.../Bistro_v5_2.zip (dead as of 2025)
 REM ---------------------------------------------------------------------------
-set "BISTRO_URL=https://casual-effects.com/g3d/data10/research/model/Amazon_Lumberyard_Bistro/Bistro_v5_2.zip"
+set "BISTRO_URL=https://developer.nvidia.com/downloads/bistro"
 
 if not exist "%MEDIA_DIR%\Bistro" (
     echo.
     echo [scenes] === Bistro ^(Amazon Lumberyard^) ===
-    echo [scenes] Source: casual-effects.com ^(Morgan McGuire mirror^)
+    echo [scenes] Source: developer.nvidia.com/orca ^(NVIDIA ORCA^)
     echo [scenes] Size: ~3.2 GB compressed
     echo.
     if %AUTO_YES%==0 (
@@ -90,15 +101,22 @@ if not exist "%MEDIA_DIR%\Bistro" (
     mkdir "%MEDIA_DIR%\Bistro" 2>nul
     tar xf "!TMPZIP!" -C "%MEDIA_DIR%\Bistro"
     del "!TMPZIP!" 2>nul
-    REM Create .pyscene wrapper
-    if not exist "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene" (
-        (
-            echo # Bistro Interior -- convenience wrapper for VisCache experiments
-            echo import falcor
-            echo sceneBuilder = SceneBuilder^(^)
-            echo sceneBuilder.importScene^('BistroInterior.fbx'^)
-        ) > "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
-        echo [scenes] Created Bistro_Interior.pyscene wrapper
+    REM Flatten: if zip produced a single subdirectory (e.g. Bistro_v5_2\), move contents up
+    for /f "delims=" %%S in ('dir /b /ad "%MEDIA_DIR%\Bistro" 2^>nul') do (
+        if exist "%MEDIA_DIR%\Bistro\%%S\*" (
+            echo [scenes] Flattening %%S\ into Bistro\
+            xcopy /E /I /Q /Y "%MEDIA_DIR%\Bistro\%%S\*" "%MEDIA_DIR%\Bistro\" >nul 2>nul
+            rmdir /S /Q "%MEDIA_DIR%\Bistro\%%S" 2>nul
+        )
+    )
+    REM Copy pyscenes from repo if not already present (NVIDIA ORCA ships its own too)
+    for %%P in (BistroInterior.pyscene BistroExterior.pyscene) do (
+        if not exist "%MEDIA_DIR%\Bistro\%%P" (
+            if exist "%SCENES_DIR%\%%P" (
+                copy /y "%SCENES_DIR%\%%P" "%MEDIA_DIR%\Bistro\%%P" >nul
+                echo [scenes] Copied %%P from scenes\
+            )
+        )
     )
     echo [scenes] Bistro ready
 ) else (
@@ -106,15 +124,17 @@ if not exist "%MEDIA_DIR%\Bistro" (
 )
 
 REM ---------------------------------------------------------------------------
-REM 4. Sponza (Crytek / NVIDIA ORCA)
+REM 4. Sponza (Crytek)
+REM    GitHub mirror of the Crytek Sponza OBJ model (Frank Meinl).
+REM    Previously: casual-effects.com/g3d/.../CrytekSponza/sponza.zip (dead as of 2025)
 REM ---------------------------------------------------------------------------
 :sponza
-set "SPONZA_URL=https://casual-effects.com/g3d/data10/common/model/CrytekSponza/sponza.zip"
+set "SPONZA_URL=https://github.com/jimmiebergmann/Sponza/archive/refs/heads/master.zip"
 
 if not exist "%MEDIA_DIR%\Sponza" (
     echo.
     echo [scenes] === Sponza ^(Crytek^) ===
-    echo [scenes] Source: casual-effects.com ^(Morgan McGuire mirror^)
+    echo [scenes] Source: github.com/jimmiebergmann/Sponza ^(OBJ mirror^)
     echo [scenes] Size: ~70 MB compressed
     echo.
     if %AUTO_YES%==0 (
@@ -135,14 +155,20 @@ if not exist "%MEDIA_DIR%\Sponza" (
     mkdir "%MEDIA_DIR%\Sponza" 2>nul
     tar xf "!TMPZIP!" -C "%MEDIA_DIR%\Sponza"
     del "!TMPZIP!" 2>nul
+    REM Flatten: if zip produced a single subdirectory (e.g. Sponza-master\), move contents up
+    for /f "delims=" %%S in ('dir /b /ad "%MEDIA_DIR%\Sponza" 2^>nul') do (
+        if exist "%MEDIA_DIR%\Sponza\%%S\*" (
+            echo [scenes] Flattening %%S\ into Sponza\
+            xcopy /E /I /Q /Y "%MEDIA_DIR%\Sponza\%%S\*" "%MEDIA_DIR%\Sponza\" >nul 2>nul
+            rmdir /S /Q "%MEDIA_DIR%\Sponza\%%S" 2>nul
+        )
+    )
+    REM Copy pyscene from repo if not already present
     if not exist "%MEDIA_DIR%\Sponza\Sponza.pyscene" (
-        (
-            echo # Crytek Sponza -- convenience wrapper for VisCache experiments
-            echo import falcor
-            echo sceneBuilder = SceneBuilder^(^)
-            echo sceneBuilder.importScene^('sponza.obj'^)
-        ) > "%MEDIA_DIR%\Sponza\Sponza.pyscene"
-        echo [scenes] Created Sponza.pyscene wrapper
+        if exist "%SCENES_DIR%\Sponza.pyscene" (
+            copy /y "%SCENES_DIR%\Sponza.pyscene" "%MEDIA_DIR%\Sponza\Sponza.pyscene" >nul
+            echo [scenes] Copied Sponza.pyscene from scenes\
+        )
     )
     echo [scenes] Sponza ready
 ) else (
@@ -181,6 +207,7 @@ if %AUTO_YES%==0 (
 
 set "VEACH_TMP=%TEMP%\veach-ajar-%RANDOM%"
 echo [scenes] Cloning DQLin/ReSTIR_PT ^(sparse, models+textures only^)...
+echo.
 git clone --depth 1 --filter=blob:none --sparse "https://github.com/DQLin/ReSTIR_PT" "%VEACH_TMP%\repo"
 if errorlevel 1 (
     echo [scenes] ERROR: git clone failed.
@@ -221,7 +248,7 @@ echo [scenes] Set FALCOR_MEDIA_FOLDERS to use with Mogwai:
 echo   set FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%
 echo.
 echo [scenes] Or pass --scene with full path:
-echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\Bistro_Interior.pyscene"
+echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 echo.
 echo [scenes] WSL alternative: wsl bash scripts/download_scenes.sh
 

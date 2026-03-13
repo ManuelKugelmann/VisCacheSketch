@@ -229,7 +229,10 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
 
     // Load N-rook patterns (for Bekaert-style path reuse).
     // [Falcor 8] Use AssetResolver instead of findFileInDataDirectories.
-    auto fullpath = AssetResolver::getDefaultResolver().resolvePath("16RooksPattern256.txt");
+    // Try sub-path first (CMake deploys to data/ReSTIRPTPass/), then bare name.
+    auto fullpath = AssetResolver::getDefaultResolver().resolvePath("ReSTIRPTPass/16RooksPattern256.txt");
+    if (fullpath.empty())
+        fullpath = AssetResolver::getDefaultResolver().resolvePath("16RooksPattern256.txt");
     if (fullpath.empty())
         FALCOR_THROW("Could not find 16RooksPattern256.txt data file");
     FILE* f = fopen(fullpath.string().c_str(), "r");
