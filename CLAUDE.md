@@ -56,3 +56,4 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 ## Workflow
 
 - Work step by step for large edits — small incremental Edit calls, not massive Write
+- **Fix all errors encountered**, even pre-existing ones — do not discard or skip them because they were not introduced by the current task

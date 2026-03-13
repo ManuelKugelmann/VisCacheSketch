@@ -69,20 +69,19 @@ BASELINE_CONFIGS = [
         'enableVisCacheLightSelection': True,
     }),
 
-    # --- ReSTIR DI ---
-    ("DI_Vanilla", "ReSTIRDIPass", False, {
-        'enableVisCacheRevalidation':   False,
-        'enableVisCacheLightSelection': False,
-    }, {}),
-    ("DI_VisCacheRevalidation", "ReSTIRDIPass", True, {}, {
+    # --- ReSTIR DI (RTXDIPass) ---
+    # RTXDIPass only accepts "options" as property; VisCache integration
+    # is automatic via InternalDictionary when VisCachePass is in the graph.
+    ("DI_Vanilla", "RTXDIPass", False, {}, {}),
+    ("DI_VisCacheRevalidation", "RTXDIPass", True, {}, {
         'enableVisCacheRevalidation':   True,
         'enableVisCacheLightSelection': False,
     }),
-    ("DI_VisCacheLightSelection", "ReSTIRDIPass", True, {}, {
+    ("DI_VisCacheLightSelection", "RTXDIPass", True, {}, {
         'enableVisCacheRevalidation':   False,
         'enableVisCacheLightSelection': True,
     }),
-    ("DI_VisCacheFull", "ReSTIRDIPass", True, {}, {
+    ("DI_VisCacheFull", "RTXDIPass", True, {}, {
         'enableVisCacheRevalidation':   True,
         'enableVisCacheLightSelection': True,
     }),
@@ -137,7 +136,8 @@ def build_graph(name, pass_type, needs_viscache, pass_overrides, vc_overrides):
         vc_params = dict(_VC_DEFAULTS, **vc_overrides)
         VisCache = createPass("VisCachePass", vc_params)
         g.addPass(VisCache, "VisCache")
-        g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+        # VisCache is a dictionary-only pass (no graph inputs/outputs).
+        # It exposes the hash table via InternalDictionary for downstream passes.
 
     Pass = createPass(pass_type, pass_overrides)
     g.addPass(Pass, "MainPass")
@@ -146,7 +146,9 @@ def build_graph(name, pass_type, needs_viscache, pass_overrides, vc_overrides):
     g.addPass(ToneMapper, "ToneMapper")
 
     g.addEdge("VBuffer.vbuffer", "MainPass.vbuffer")
-    g.addEdge("VBuffer.mvec", "MainPass.motionVectors")
+    # RTXDIPass uses "mvec"; ReSTIRPTPass uses "motionVectors"
+    mvec_input = "mvec" if pass_type == "RTXDIPass" else "motionVectors"
+    g.addEdge("VBuffer.mvec", "MainPass." + mvec_input)
     g.addEdge("MainPass.color", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
     g.markOutput("MainPass.color")

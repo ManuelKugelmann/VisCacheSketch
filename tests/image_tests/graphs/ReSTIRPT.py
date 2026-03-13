@@ -65,7 +65,7 @@ def render_graph_ReSTIRPT_VisCacheRevalidation():
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is dictionary-only (no graph inputs/outputs)
     g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
     g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
     g.addEdge("ReSTIRPT.color", "ToneMapper.src")
@@ -91,7 +91,7 @@ def render_graph_ReSTIRPT_VisCacheLightSelection():
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is dictionary-only (no graph inputs/outputs)
     g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
     g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
     g.addEdge("ReSTIRPT.color", "ToneMapper.src")
@@ -117,7 +117,7 @@ def render_graph_ReSTIRPT_VisCacheFull():
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is dictionary-only (no graph inputs/outputs)
     g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
     g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
     g.addEdge("ReSTIRPT.color", "ToneMapper.src")
@@ -198,7 +198,7 @@ def render_graph_ReSTIRPT1_VisCacheRevalidation():
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is dictionary-only (no graph inputs/outputs)
     g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
     g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
     g.addEdge("ReSTIRPT.color", "ToneMapper.src")
@@ -224,7 +224,7 @@ def render_graph_ReSTIRPT1_VisCacheLightSelection():
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is dictionary-only (no graph inputs/outputs)
     g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
     g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
     g.addEdge("ReSTIRPT.color", "ToneMapper.src")
@@ -250,7 +250,7 @@ def render_graph_ReSTIRPT1_VisCacheFull():
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is dictionary-only (no graph inputs/outputs)
     g.addEdge("VBuffer.vbuffer", "ReSTIRPT.vbuffer")
     g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
     g.addEdge("ReSTIRPT.color", "ToneMapper.src")

@@ -121,7 +121,8 @@ try:
     ToneMapper = createPass("ToneMapper", {'autoExposure': False})
     g.addPass(ToneMapper, "ToneMapper")
 
-    g.addEdge("VBuffer.vbuffer", "VisCache.vbuffer")
+    # VisCache is a dictionary-only pass (no graph inputs/outputs).
+    # It exposes the hash table via InternalDictionary for downstream passes.
 
     # Wire ReSTIRPT only if it was loaded successfully
     if "ReSTIRPTPass" not in warned:
@@ -131,7 +132,11 @@ try:
         g.addEdge("VBuffer.mvec", "ReSTIRPT.motionVectors")
         g.addEdge("ReSTIRPT.color", "ToneMapper.src")
     else:
-        g.addEdge("VisCache.debugVis", "ToneMapper.src")
+        # Fallback: wire PathTracer directly to ToneMapper
+        PT = createPass("PathTracer", {'samplesPerPixel': 1})
+        g.addPass(PT, "PT")
+        g.addEdge("VBuffer.vbuffer", "PT.vbuffer")
+        g.addEdge("PT.color", "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
 
