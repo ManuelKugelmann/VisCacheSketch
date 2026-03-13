@@ -49,18 +49,17 @@ jobs:
               - '.github/workflows/build.yml'
 
   # ---------------------------------------------------------------------------
-  # Windows/VS2022 — vanilla Falcor + VisCache plugins
+  # Windows/VS2022 — secondary build, validates VS solution generation
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
-    needs: [changes]
-    if: always() && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
+    if: github.event_name != 'pull_request'
     runs-on: windows-2022
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        # PRs: Debug only; pushes to main/tags: Debug + Release
-        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+        config: ${{ fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-vs2022-ci
       # Pin packman cache location for reproducible caching on Windows
@@ -273,16 +272,18 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Windows Ninja/MSVC — alternative build path (non-PR only)
+  # Windows Ninja/MSVC — primary build (fastest), gates PRs + feeds releases
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    if: github.event_name != 'pull_request'
+    needs: [changes]
+    if: always() && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
     runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
-        config: [Release]
+        # PRs: Debug only; pushes to main/tags: Debug + Release
+        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
       PM_PACKAGES_ROOT: C:\packman-cache
@@ -443,13 +444,41 @@ jobs:
         shell: cmd
         run: |
           set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          echo [CI] Checking data files in %OUTDIR%...
+          set FAIL=0
           if not exist "%OUTDIR%\data\ReSTIRPTPass\16RooksPattern256.txt" (
-            echo [CI] FAIL: 16RooksPattern256.txt missing from build output
+            echo [CI] FAIL: data\ReSTIRPTPass\16RooksPattern256.txt missing from build output
+            set FAIL=1
+          ) else (
+            echo [CI] OK: 16RooksPattern256.txt deployed
+          )
+          if not exist "%OUTDIR%\Mogwai.exe" (
+            echo [CI] FAIL: Mogwai.exe missing from build output
+            set FAIL=1
+          ) else (
+            echo [CI] OK: Mogwai.exe present
+          )
+          if %FAIL%==1 (
+            echo [CI] Data file deployment check failed!
+            dir /s /b "%OUTDIR%\data" 2>nul || echo [CI] No data directory found
             exit /b 1
           )
-          echo [CI] OK: data files deployed
+
+      - name: Headless smoke test
+        if: matrix.config == 'Release'
+        shell: cmd
+        continue-on-error: true   # no GPU on CI — device creation will fail
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          echo [CI] Attempting headless smoke test (no GPU expected)...
+          %BINDIR%\Mogwai.exe --headless --script ..\scripts\smoke_test.py 2>&1 || (
+            echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
+          )
+          exit /b 0
 
       - name: Upload build artifacts
+        if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6
         with:
           name: falcor-windows-ninja-${{ matrix.config }}
@@ -601,15 +630,15 @@ jobs:
       !cancelled()
       && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && !startsWith(github.ref, 'refs/tags/')
-    needs: [windows-vs2022]
+    needs: [windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Download VS2022 Release artifact
+      - name: Download Ninja Release artifact
         uses: actions/download-artifact@v7
         with:
-          name: falcor-windows-vs2022-Release
+          name: falcor-windows-ninja-Release
           path: release-bin/
 
       - name: Package release archive
@@ -645,7 +674,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows-vs2022, windows-ninja]
+    needs: [windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
