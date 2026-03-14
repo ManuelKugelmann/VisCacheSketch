@@ -179,6 +179,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
 
+    // Stats (readback with ~4-frame delay, updated every 16 frames)
+    dict["vhfHitRate"]      = mStats.hitRate;
+    dict["vhfRaySavings"]   = mStats.raySavings;
+    dict["vhfEvictRate"]    = mStats.evictRate;
+
     // ----------------------------------------------------------------
     // Diagnostic heatmap textures — allocate/expose, then clear.
     // VisCache runs BEFORE downstream passes, so we expose textures
