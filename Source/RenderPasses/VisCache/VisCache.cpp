@@ -13,12 +13,14 @@ static constexpr size_t kEntrySize = 8u;
 static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum (last two accumulated but not read back yet)
 
 // Diagnostic heatmap output channel names
-static const std::string kOutputDiag      = "vcDiag";
-static const std::string kOutputDiagError = "vcDiagError";
+static const std::string kOutputDiag          = "vcDiag";
+static const std::string kOutputDiagError     = "vcDiagError";
+static const std::string kOutputDiagComposite = "vcDiagComposite";
 
 static const ChannelList kDiagOutputChannels = {
-    { kOutputDiag,      "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)", true, ResourceFormat::RGBA32Float },
-    { kOutputDiagError, "", "VisCache prediction error |mu - V|",                      true, ResourceFormat::R32Float },
+    { kOutputDiag,          "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)", true, ResourceFormat::RGBA32Float },
+    { kOutputDiagError,     "", "VisCache prediction error |mu - V|",                      true, ResourceFormat::R32Float },
+    { kOutputDiagComposite, "", "VisCache composite heatmap (R=mu, G=level, B=N)",         true, ResourceFormat::RGBA32Float },
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -183,20 +185,23 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // Strategy:
     //   - If render graph outputs are connected, expose those directly.
     //   - Otherwise if diagnostics enabled, use internal textures.
-    //   - Downstream passes retrieve from dict keys "vhfDiag"/"vhfDiagError".
+    //   - Downstream passes retrieve from dict keys "vhfDiag"/"vhfDiagError"/"vhfDiagComposite".
     // ----------------------------------------------------------------
     {
         ref<Texture> diagTex;
         ref<Texture> diagErrorTex;
+        ref<Texture> diagCompositeTex;
 
         // Prefer graph-allocated output textures (avoids extra copy)
         if (auto pOut = renderData[kOutputDiag])
             diagTex = pOut->asTexture();
         if (auto pOut = renderData[kOutputDiagError])
             diagErrorTex = pOut->asTexture();
+        if (auto pOut = renderData[kOutputDiagComposite])
+            diagCompositeTex = pOut->asTexture();
 
         // Fall back to internal textures when outputs not connected
-        bool needInternal = mEnableDiagnostics && (!diagTex || !diagErrorTex);
+        bool needInternal = mEnableDiagnostics && (!diagTex || !diagErrorTex || !diagCompositeTex);
         if (needInternal && mFrameDims.x > 0 && mFrameDims.y > 0)
         {
             if (!mpDiagTex || mpDiagTex->getWidth() != mFrameDims.x
@@ -213,9 +218,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                     nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess
                 );
                 mpDiagErrorTex->setName("VHF_DiagError");
+
+                mpDiagCompositeTex = mpDevice->createTexture2D(
+                    mFrameDims.x, mFrameDims.y, ResourceFormat::RGBA32Float, 1, 1,
+                    nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess
+                );
+                mpDiagCompositeTex->setName("VHF_DiagComposite");
             }
-            if (!diagTex)      diagTex      = mpDiagTex;
-            if (!diagErrorTex) diagErrorTex = mpDiagErrorTex;
+            if (!diagTex)          diagTex          = mpDiagTex;
+            if (!diagErrorTex)     diagErrorTex     = mpDiagErrorTex;
+            if (!diagCompositeTex) diagCompositeTex = mpDiagCompositeTex;
         }
 
         // Clear and expose via dictionary for downstream passes
@@ -228,6 +240,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         {
             pCtx->clearUAV(diagErrorTex->getUAV().get(), float4(0.f));
             dict["vhfDiagError"] = diagErrorTex;
+        }
+        if (diagCompositeTex)
+        {
+            pCtx->clearUAV(diagCompositeTex->getUAV().get(), float4(0.f));
+            dict["vhfDiagComposite"] = diagCompositeTex;
         }
         dict["vhfDiagEnabled"] = (diagTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);

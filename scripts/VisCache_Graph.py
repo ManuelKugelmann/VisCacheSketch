@@ -192,6 +192,9 @@ def render_graph_VisCache(ablation=None):
     #   A = ray saved        (1=skipped, 0=traced)
     #
     # vcDiagError channel R = |mu - V| (prediction accuracy)
+    #
+    # vcDiagComposite = pre-normalized RGB composite (no ColorMapPass needed):
+    #   R = cached mu [0,1], G = level/numLevels, B = N/bootThreshold
     # -----------------------------------------------------------------------
 
     # Heatmap: cached mu / variance / level / raySaved (pick channel in UI)
@@ -213,6 +216,9 @@ def render_graph_VisCache(ablation=None):
     g.addPass(heatErr, "HeatmapError")
     g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
     g.markOutput("HeatmapError.output")
+
+    # Composite heatmap: R=mu, G=level, B=N — pre-normalized, no ColorMapPass needed
+    g.markOutput("VisCache.vcDiagComposite")
 
     return g
 

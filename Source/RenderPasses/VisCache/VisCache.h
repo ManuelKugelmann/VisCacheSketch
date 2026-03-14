@@ -124,5 +124,6 @@ private:
     DiagMode        mDiagMode = DiagMode::Off;  ///< Selected heatmap mode
     ref<Texture>    mpDiagTex;          ///< RGBA32F: mu, var, level, raySaved
     ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
+    ref<Texture>    mpDiagCompositeTex; ///< RGBA32F: composite (R=mu, G=level, B=N)
     uint2           mFrameDims = {0, 0};
 };

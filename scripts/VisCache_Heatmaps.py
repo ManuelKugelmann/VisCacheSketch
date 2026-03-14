@@ -22,13 +22,15 @@ kCaptureDir    = "captures/heatmaps"
 
 # Heatmap modes: (name, diagMode uint, colormap source, channel)
 #   diagMode matches VisCache::DiagMode enum
-#   source: "diag" = vcDiag (RGBA), "error" = vcDiagError (R)
+#   source: "diag" = vcDiag (RGBA), "error" = vcDiagError (R),
+#           "composite" = vcDiagComposite (pre-normalized RGB, no ColorMapPass)
 HEATMAP_MODES = [
-    ("cached_mu",        1, "diag",  0),   # R = visibility prediction [0,1]
-    ("variance",         2, "diag",  1),   # G = cache uncertainty [0,0.25]
-    ("lod_level",        3, "diag",  2),   # B = LOD level+1 (0=miss)
-    ("ray_saved",        4, "diag",  3),   # A = 1=skipped, 0=traced
-    ("prediction_error", 5, "error", 0),   # R = |mu - V|
+    ("cached_mu",        1, "diag",      0),   # R = visibility prediction [0,1]
+    ("variance",         2, "diag",      1),   # G = cache uncertainty [0,0.25]
+    ("lod_level",        3, "diag",      2),   # B = LOD level+1 (0=miss)
+    ("ray_saved",        4, "diag",      3),   # A = 1=skipped, 0=traced
+    ("prediction_error", 5, "error",     0),   # R = |mu - V|
+    ("composite",        1, "composite", -1),  # RGB = mu/level/N (pre-normalized)
 ]
 
 # Ablation configs to cross with heatmap modes.
@@ -75,13 +77,14 @@ def set_heatmap_mode(graph, diag_mode, source, channel):
     vc.diagMode = diag_mode
     vc.enableDiagnostics = (diag_mode != 0)
 
-    # Set the appropriate ColorMapPass channel
+    # Set the appropriate ColorMapPass channel (composite is direct RGB, no ColorMapPass)
     if source == "diag":
         hm = graph.getPass("HeatmapDiag")
         hm.channel = channel
     elif source == "error":
         hm = graph.getPass("HeatmapError")
         hm.channel = channel
+    # "composite" needs no ColorMapPass — vcDiagComposite is already pre-normalized RGB
 
 
 # ---------------------------------------------------------------------------
