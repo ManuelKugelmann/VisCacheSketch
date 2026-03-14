@@ -127,7 +127,7 @@ struct StandardMaterial : MaterialBase, IMaterial
         d.volumeAnsiotropy = data.volumeAnisotropy;
         d.volumeScattering = data.volumeScattering;
         d.hasEntryPointVolumeProperties = data.getHasEntryPointVolumeProperties();
-        d.hasSigmaSGreaterZero = (any(data.volumeScattering) > 0.f);
+        d.hasSigmaSGreaterZero = any(data.volumeScattering > 0.f);
 
         return StandardMaterialInstance(sf, d, emission);
     }

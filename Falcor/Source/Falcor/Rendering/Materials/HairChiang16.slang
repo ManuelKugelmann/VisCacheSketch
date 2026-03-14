@@ -109,6 +109,13 @@ struct HairChiang16 : IBSDF
         IoR = data.IoR;
         eta = data.eta;
 
+        // Initialize fields that will be set by precompute().
+        gammaI = 0.f;
+        v = {};
+        s = 0.f;
+        sin2kAlpha = {};
+        cos2kAlpha = {};
+
         // Compute offset h azimuthally with the unit circle cross section.
         float3 wiProj = normalize(sd.V - dot(sd.V, sd.frame.T) * sd.frame.T);   // Project wi to the (B, N) plane.
         float3 wiProjPerp = cross(wiProj, sd.frame.T);

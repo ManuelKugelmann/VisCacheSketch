@@ -51,7 +51,7 @@ RWTexture2D<float4> gSpecularReflectance;
 struct FinalShading
 {
     // Static configuration.
-    static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
+    static const bool kUseEnvBackground = USE_ENV_BACKGROUND != 0;
 
     Texture2D<PackedHitInfo> vbuffer;
 

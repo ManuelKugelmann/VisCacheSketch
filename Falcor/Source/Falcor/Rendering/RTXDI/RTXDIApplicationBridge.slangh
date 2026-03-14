@@ -452,7 +452,7 @@ bool RAB_TraceRayForLocalLight(float3 origin, float3 direction, float tMin, floa
 
     Ray ray = Ray(origin, direction, tMin, tMax);
     HitInfo hit = rayQuery.traceRay(ray, hitT, RAY_FLAG_CULL_NON_OPAQUE);
-    if (gRTXDI.params.numLocalLights && hit.isValid())
+    if (gRTXDI.params.numLocalLights != 0 && hit.isValid())
     {
         const bool isTriangleHit = hit.getType() == HitType::Triangle;
 
