@@ -15,7 +15,7 @@
  ***************************************************************************/
 
 #pragma once
-#import "VisCache"
+import VisCache;
 
 // ---------------------------------------------------------------------------
 // Main entry point — replaces the unconditional shadow ray in direct lighting.
