@@ -55,10 +55,10 @@ import Rendering.Lights.EmissiveLightSamplerInterface;
 struct LightBVHSampler : IEmissiveLightSampler
 {
     // Compile-time constants
-    static const bool kUseBoundingCone = _USE_BOUNDING_CONE;
-    static const bool kUseLightingCone = _USE_LIGHTING_CONE;
-    static const bool kDisableNodeFlux = _DISABLE_NODE_FLUX;
-    static const bool kUseUniformTriangleSampling = _USE_UNIFORM_TRIANGLE_SAMPLING;
+    static const bool kUseBoundingCone = _USE_BOUNDING_CONE != 0;
+    static const bool kUseLightingCone = _USE_LIGHTING_CONE != 0;
+    static const bool kDisableNodeFlux = _DISABLE_NODE_FLUX != 0;
+    static const bool kUseUniformTriangleSampling = _USE_UNIFORM_TRIANGLE_SAMPLING != 0;
     static const uint kActualMaxTrianglesPerNode = _ACTUAL_MAX_TRIANGLES_PER_NODE;
     static const SolidAngleBoundMethod kSolidAngleBoundMethod = (SolidAngleBoundMethod)(_SOLID_ANGLE_BOUND_METHOD);
 

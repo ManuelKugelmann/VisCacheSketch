@@ -91,14 +91,14 @@ struct PathTracer
 
     // Render settings that depend on the scene.
     // TODO: Move into scene defines.
-    static const bool kUseEnvLight = USE_ENV_LIGHT;
-    static const bool kUseEmissiveLights = USE_EMISSIVE_LIGHTS;
-    static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS;
-    static const bool kUseCurves = USE_CURVES;
-    static const bool kUseHairMaterial = USE_HAIR_MATERIAL;
+    static const bool kUseEnvLight = USE_ENV_LIGHT != 0;
+    static const bool kUseEmissiveLights = USE_EMISSIVE_LIGHTS != 0;
+    static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS != 0;
+    static const bool kUseCurves = USE_CURVES != 0;
+    static const bool kUseHairMaterial = USE_HAIR_MATERIAL != 0;
 
     // Additional specialization.
-    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA;
+    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
     /** Types of samplable lights.
     */

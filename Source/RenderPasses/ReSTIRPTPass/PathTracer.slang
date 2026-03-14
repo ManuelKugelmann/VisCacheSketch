@@ -87,7 +87,7 @@ struct PathTracer
     bool kUseAnalyticLights;
 
     // Additional specialization.
-    static const bool kOutputTime = OUTPUT_TIME;
+    static const bool kOutputTime = OUTPUT_TIME != 0;
 
     /** Types of samplable lights.
     */

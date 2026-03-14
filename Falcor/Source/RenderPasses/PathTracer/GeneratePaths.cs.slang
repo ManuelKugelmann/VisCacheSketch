@@ -80,11 +80,11 @@ struct PathGenerator
 
     // Render settings that depend on the scene.
     // TODO: Move into scene defines.
-    static const bool kUseEnvLight = USE_ENV_LIGHT;
-    static const bool kUseCurves = USE_CURVES;
+    static const bool kUseEnvLight = USE_ENV_LIGHT != 0;
+    static const bool kUseCurves = USE_CURVES != 0;
 
     // Additional specialization.
-    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA;
+    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
     /** Entry point for path generator.
         \param[in] tileID Tile ID in x and y on screen.

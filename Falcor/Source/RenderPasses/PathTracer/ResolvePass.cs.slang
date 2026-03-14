@@ -68,8 +68,8 @@ struct ResolvePass
     RWTexture2D<float4> outputNRDDeltaTransmissionRadianceHitDist;  ///< Output resolved delta transmission radiance in .rgb and hit distance in .a for NRD. Only valid if kOutputNRDData == true.
     RWTexture2D<float4> outputNRDResidualRadianceHitDist;           ///< Output resolved residual radiance in .rgb and hit distance in .a for NRD. Only valid if kOutputNRDData == true.
 
-    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA;
-    static const bool kOutputNRDData = OUTPUT_NRD_DATA;
+    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
+    static const bool kOutputNRDData = OUTPUT_NRD_DATA != 0;
 
     /** Entry point for resolve pass.
         \param[in] pixel Pixel coordinates.
