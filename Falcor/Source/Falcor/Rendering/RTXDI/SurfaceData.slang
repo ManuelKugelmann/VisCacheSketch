@@ -92,8 +92,11 @@ struct SurfaceData
     */
     __init()
     {
-        this = {};
+        position = float3(0.f);
         viewDepth = -1.f;
+        packedNormal = 0;
+        packedWeights = 0;
+        viewDir = float3(0.f);
     }
 
     /** Initialize a surface.
