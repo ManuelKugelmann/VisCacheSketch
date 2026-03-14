@@ -194,7 +194,7 @@ def render_graph_VisCache(ablation=None):
     # vcDiagError channel R = |mu - V| (prediction accuracy)
     #
     # vcDiagComposite = pre-normalized RGB composite (no ColorMapPass needed):
-    #   R = cached mu [0,1], G = level/numLevels, B = N/bootThreshold
+    #   R = variance*4 [0,1], G = maturity (N/bootThreshold), B = level/numLevels
     # -----------------------------------------------------------------------
 
     # Heatmap: cached mu / variance / level / raySaved (pick channel in UI)

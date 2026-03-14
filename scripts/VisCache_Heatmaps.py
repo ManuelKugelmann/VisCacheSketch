@@ -30,7 +30,7 @@ HEATMAP_MODES = [
     ("lod_level",        3, "diag",      2),   # B = LOD level+1 (0=miss)
     ("ray_saved",        4, "diag",      3),   # A = 1=skipped, 0=traced
     ("prediction_error", 5, "error",     0),   # R = |mu - V|
-    ("composite",        1, "composite", -1),  # RGB = mu/level/N (pre-normalized)
+    ("composite",        1, "composite", -1),  # RGB = var/maturity/level (pre-normalized)
 ]
 
 # Ablation configs to cross with heatmap modes.

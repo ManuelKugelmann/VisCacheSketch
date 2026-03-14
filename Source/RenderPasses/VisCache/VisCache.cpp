@@ -20,7 +20,7 @@ static const std::string kOutputDiagComposite = "vcDiagComposite";
 static const ChannelList kDiagOutputChannels = {
     { kOutputDiag,          "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)", true, ResourceFormat::RGBA32Float },
     { kOutputDiagError,     "", "VisCache prediction error |mu - V|",                      true, ResourceFormat::R32Float },
-    { kOutputDiagComposite, "", "VisCache composite heatmap (R=mu, G=level, B=N)",         true, ResourceFormat::RGBA32Float },
+    { kOutputDiagComposite, "", "VisCache composite heatmap (R=var, G=maturity, B=level)", true, ResourceFormat::RGBA32Float },
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
