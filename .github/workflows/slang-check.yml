@@ -1,0 +1,72 @@
+name: Slang Shader Check
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'Source/**/*.slang'
+      - 'Source/**/*.slangh'
+      - '.github/workflows/slang-check.yml'
+      - 'scripts/slang-ci-check.sh'
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - 'Source/**/*.slang'
+      - 'Source/**/*.slangh'
+      - '.github/workflows/slang-check.yml'
+      - 'scripts/slang-ci-check.sh'
+  workflow_dispatch:
+
+concurrency:
+  group: slang-check-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match Falcor/dependencies.xml slang version
+  SLANG_VERSION: "2024.1.34"
+
+jobs:
+  slang-check:
+    name: Compile Slang Shaders
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Cache slangc
+        uses: actions/cache@v5
+        with:
+          path: slang-dist
+          key: slangc-linux-${{ env.SLANG_VERSION }}
+
+      - name: Download slangc
+        run: |
+          if [ -x slang-dist/bin/slangc ]; then
+            echo "slangc cached"
+          else
+            URL="https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.zip"
+            echo "Downloading slangc ${SLANG_VERSION} ..."
+            curl -fsSL "$URL" -o slang.zip
+            mkdir -p slang-dist
+            unzip -qo slang.zip -d slang-dist
+            chmod +x slang-dist/bin/slangc
+          fi
+          slang-dist/bin/slangc -v
+
+      - name: Compile VisCache shaders
+        run: |
+          chmod +x scripts/slang-ci-check.sh
+          scripts/slang-ci-check.sh slang-dist/bin/slangc
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f slang-check-results.log ]; then
+            echo "### Slang Shader Check Results" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat slang-check-results.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
