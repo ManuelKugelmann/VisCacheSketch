@@ -7,14 +7,14 @@ on:
       - 'Source/**/*.slang'
       - 'Source/**/*.slangh'
       - '.github/workflows/slang-check.yml'
-      - 'scripts/slang-ci-check.sh'
+      - 'scripts/slang-ci-*'
   pull_request:
     branches: ["main", "master"]
     paths:
       - 'Source/**/*.slang'
       - 'Source/**/*.slangh'
       - '.github/workflows/slang-check.yml'
-      - 'scripts/slang-ci-check.sh'
+      - 'scripts/slang-ci-*'
   workflow_dispatch:
 
 concurrency:
@@ -36,11 +36,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Cache slangc
+      - name: Cache slangc + PNanoVDB
         uses: actions/cache@v5
         with:
-          path: slang-dist
-          key: slangc-linux-${{ env.SLANG_VERSION }}
+          path: |
+            slang-dist
+            Falcor/external/packman/nanovdb
+          key: slang-deps-linux-${{ env.SLANG_VERSION }}-v1
 
       - name: Download slangc
         run: |
@@ -53,10 +55,11 @@ jobs:
             mkdir -p slang-dist
             unzip -qo slang.zip -d slang-dist
             chmod +x slang-dist/bin/slangc
+            rm -f slang.zip
           fi
           slang-dist/bin/slangc -v
 
-      - name: Compile VisCache shaders
+      - name: Compile shaders
         run: |
           chmod +x scripts/slang-ci-check.sh
           scripts/slang-ci-check.sh slang-dist/bin/slangc

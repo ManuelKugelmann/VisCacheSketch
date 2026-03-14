@@ -8,16 +8,18 @@
 #
 # We copy our render passes into the Falcor tree (same as build.yml) so that
 # import paths like `RenderPasses.VisCache.VisCache` resolve correctly.
+# Falcor defines from slang-ci-defines.slangh are injected via -D flags.
 #
 # Usage: scripts/slang-ci-check.sh <path-to-slangc>
 #
-# Two tiers:
+# Three tiers:
 #   Tier 1 — Self-contained VisCache core (no Falcor deps).
-#            These always compile; failures block the PR.
-#   Tier 2 — Files importing Falcor modules (Scene.*, Utils.*, etc.).
-#            Best-effort: reported but do not block, since Falcor normally
-#            injects host-side defines (SCENE_GEOMETRY_TYPES etc.) that
-#            are unavailable without a full CMake configure + build.
+#            Failures block the PR.
+#   Tier 2 — VisCache shaders with Falcor imports (Scene.*, Utils.*).
+#            Compiled with default Falcor defines + CI stubs.
+#            Failures block the PR.
+#   Tier 3 — ReSTIRPTPass shaders (deep Falcor scene system deps).
+#            Best-effort: reported but do not block.
 
 set -euo pipefail
 
@@ -49,16 +51,16 @@ check() {
     echo "OK   $file" >> "$RESULTS"
     PASS=$((PASS + 1))
   else
-    if [ "$tier" = "1" ]; then
-      printf "${RED}FAIL${NC}\n"
+    if [ "$tier" = "3" ]; then
+      printf "${YELLOW}SKIP${NC} (${label})\n"
+      echo "SKIP $file ($label)" >> "$RESULTS"
+      SKIP=$((SKIP + 1))
+    else
+      printf "${RED}FAIL${NC} (tier ${tier})\n"
       echo "FAIL $file" >> "$RESULTS"
       echo "$output" >> "$RESULTS"
       echo "$output" >&2
       FAIL=$((FAIL + 1))
-    else
-      printf "${YELLOW}SKIP${NC} (${label})\n"
-      echo "SKIP $file ($label)" >> "$RESULTS"
-      SKIP=$((SKIP + 1))
     fi
   fi
 }
@@ -79,16 +81,38 @@ cp -r Source/RenderPasses/ReSTIRPTPass/* "${FALCOR}/Source/RenderPasses/ReSTIRPT
 echo ""
 
 # ---------------------------------------------------------------------------
+# Download PNanoVDB.h if not present (needed by Falcor's Grid.slang)
+# ---------------------------------------------------------------------------
+NANOVDB_DIR="${FALCOR}/external/packman/nanovdb/include/nanovdb"
+if [ ! -f "${NANOVDB_DIR}/PNanoVDB.h" ]; then
+  echo "Downloading PNanoVDB.h ..."
+  mkdir -p "${NANOVDB_DIR}"
+  curl -fsSL "https://raw.githubusercontent.com/AcademySoftwareFoundation/openvdb/v11.0.0/nanovdb/nanovdb/PNanoVDB.h" \
+    -o "${NANOVDB_DIR}/PNanoVDB.h"
+fi
+
+# ---------------------------------------------------------------------------
+# Generate -D flags from slang-ci-defines.slangh
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DFLAGS=$(grep '^#define ' "${SCRIPT_DIR}/slang-ci-defines.slangh" \
+  | sed 's|//.*||; s/[[:space:]]*$//' \
+  | sed 's/^#define \([A-Za-z_][A-Za-z_0-9]*\) \(.*\)/-D\1=\2/' \
+  | sed 's/^#define \([A-Za-z_][A-Za-z_0-9]*\)$/-D\1/' \
+  | tr '\n' ' ')
+
+# ---------------------------------------------------------------------------
 # Include paths — mirrors Falcor ProgramManager's getInitialShaderDirectories
 # ---------------------------------------------------------------------------
-SEARCH_PATHS="-I ${FALCOR}/Source/Falcor -I ${FALCOR}/Source"
+SEARCH_PATHS="-I ${FALCOR}/Source/Falcor -I ${FALCOR}/Source -I ${FALCOR}/external/packman/nanovdb/include"
 
-# Common flags for all compilations
-COMMON="-target spirv ${SEARCH_PATHS}"
-
-# Tier 1 VisCache directory (for relative `import VisCache`)
+# Tier 1: self-contained, no defines needed
 VISCACHE_DIR="${FALCOR}/Source/RenderPasses/VisCache"
-T1_FLAGS="${COMMON} -I ${VISCACHE_DIR}"
+T1_FLAGS="-target spirv -I ${VISCACHE_DIR}"
+
+# Tier 2: Falcor imports + defines + stubs
+T2_FLAGS="-target spirv ${SEARCH_PATHS} ${DFLAGS}"
+STUBS="${SCRIPT_DIR}/slang-ci-stubs.slang"
 
 # ---------------------------------------------------------------------------
 # Tier 1: Self-contained VisCache core
@@ -109,20 +133,26 @@ check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" 1 "" \
 echo ""
 
 # ---------------------------------------------------------------------------
-# Tier 2: Files with Falcor dependencies (best-effort)
+# Tier 2: VisCache shaders with Falcor dependencies
 # ---------------------------------------------------------------------------
-echo "--- Tier 2: Falcor-dependent shaders (best-effort) ---"
+echo "--- Tier 2: VisCache Falcor-dependent shaders ---"
 
-check "${VISCACHE_DIR}/ShadingCV.slang" 2 "needs Falcor ShadingData" \
-  ${COMMON} -o /dev/null
+check "${VISCACHE_DIR}/VisCacheTracing.slang" 2 "" \
+  ${T2_FLAGS} -o /dev/null "${STUBS}"
 
-check "${VISCACHE_DIR}/VisCacheTracing.slang" 2 "needs Scene.RaytracingInline" \
-  ${COMMON} -o /dev/null
+check "${VISCACHE_DIR}/ShadingCV.slang" 2 "" \
+  ${T2_FLAGS} -o /dev/null "${STUBS}"
 
-check "${VISCACHE_DIR}/RevalidationCommon.slang" 2 "needs Utils.Math" \
-  ${COMMON} -o /dev/null
+check "${VISCACHE_DIR}/RevalidationCommon.slang" 2 "" \
+  ${T2_FLAGS} -o /dev/null "${STUBS}"
 
-# ReSTIRPTPass entry-point shaders
+echo ""
+
+# ---------------------------------------------------------------------------
+# Tier 3: ReSTIRPTPass shaders (best-effort)
+# ---------------------------------------------------------------------------
+echo "--- Tier 3: ReSTIRPTPass shaders (best-effort) ---"
+
 RESTIR_DIR="${FALCOR}/Source/RenderPasses/ReSTIRPTPass"
 if [ -d "$RESTIR_DIR" ]; then
   for f in "$RESTIR_DIR"/*.cs.slang; do
@@ -130,8 +160,8 @@ if [ -d "$RESTIR_DIR" ]; then
     # Extract entry point name (first function after [numthreads])
     entry=$(grep -oP '(?<=void )\w+(?=\()' "$f" | head -1 || true)
     if [ -n "$entry" ]; then
-      check "$f" 2 "needs Falcor scene system" \
-        ${COMMON} -I "${RESTIR_DIR}" -entry "$entry" -stage compute -o /dev/null
+      check "$f" 3 "ReSTIRPTPass deep deps" \
+        ${T2_FLAGS} -I "${RESTIR_DIR}" -entry "$entry" -stage compute -o /dev/null "${STUBS}"
     fi
   done
 fi
@@ -148,9 +178,9 @@ echo "Total: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped" >> "$RESULTS"
 
 if [ "$FAIL" -gt 0 ]; then
   echo ""
-  printf "${RED}Tier 1 shader compilation failed — see errors above.${NC}\n"
+  printf "${RED}Shader compilation failed — see errors above.${NC}\n"
   exit 1
 fi
 
 echo ""
-echo "All Tier 1 (self-contained) shaders compiled successfully."
+echo "All blocking shaders (Tier 1 + Tier 2) compiled successfully."

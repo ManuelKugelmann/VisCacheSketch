@@ -1,0 +1,119 @@
+// slang-ci-defines.slangh — Default Falcor defines for offline CI compilation.
+//
+// These mirror the values that Falcor's Scene::updateSceneDefines(),
+// MaterialSystem::getDefines(), and ReSTIRPTPass::StaticParams::getDefines()
+// inject at runtime.  We use sensible defaults (triangle-mesh-only scene,
+// standard material, no volumes/SDF/NRD).
+//
+// NOT shipped in the build — CI only.
+//
+// Sources:
+//   Falcor/Source/Falcor/Scene/Scene.cpp          updateSceneDefines()
+//   Falcor/Source/Falcor/Scene/HitInfo.cpp         HitInfo::getDefines()
+//   Falcor/Source/Falcor/Scene/Material/MaterialSystem.cpp  getDefines()
+//   Source/RenderPasses/ReSTIRPTPass/ReSTIRPTPass.cpp       StaticParams::getDefines()
+
+#pragma once
+
+// ---- Scene geometry --------------------------------------------------------
+#ifndef SCENE_GEOMETRY_TYPES
+#define SCENE_GEOMETRY_TYPES 2          // triangle mesh only (1 << GEOMETRY_TYPE_TRIANGLE_MESH)
+#endif
+#define SCENE_GRID_COUNT 0
+#define SCENE_HAS_INDEXED_VERTICES 1
+#define SCENE_HAS_16BIT_INDICES 0
+#define SCENE_HAS_32BIT_INDICES 1
+
+// ---- Scene rendering -------------------------------------------------------
+#define SCENE_DIFFUSE_ALBEDO_MULTIPLIER 1.0
+
+// ---- HitInfo ---------------------------------------------------------------
+#define HIT_INFO_DEFINES 1
+#define HIT_INFO_USE_COMPRESSION 0
+#define HIT_INFO_TYPE_BITS 1
+#define HIT_INFO_INSTANCE_ID_BITS 16
+#define HIT_INFO_PRIMITIVE_INDEX_BITS 32
+
+// ---- SDF grids (none) ------------------------------------------------------
+#define SCENE_SDF_GRID_COUNT 0
+#define SCENE_SDF_GRID_MAX_LOD_COUNT 0
+#define SCENE_SDF_GRID_IMPLEMENTATION_NDSDF 0
+#define SCENE_SDF_GRID_IMPLEMENTATION_SVS 1
+#define SCENE_SDF_GRID_IMPLEMENTATION_SBS 2
+#define SCENE_SDF_GRID_IMPLEMENTATION_SVO 3
+#define SCENE_SDF_NO_INTERSECTION_METHOD 0
+#define SCENE_SDF_NO_VOXEL_SOLVER 1
+#define SCENE_SDF_VOXEL_SPHERE_TRACING 2
+#define SCENE_SDF_NO_GRADIENT_EVALUATION_METHOD 0
+#define SCENE_SDF_GRADIENT_NUMERIC_DISCONTINUOUS 1
+#define SCENE_SDF_GRADIENT_NUMERIC_CONTINUOUS 2
+#define SCENE_SDF_GRID_IMPLEMENTATION 0
+#define SCENE_SDF_VOXEL_INTERSECTION_METHOD 0
+#define SCENE_SDF_GRADIENT_EVALUATION_METHOD 0
+#define SCENE_SDF_SOLVER_MAX_ITERATION_COUNT 0
+#define SCENE_SDF_OPTIMIZE_VISIBILITY_RAYS 0
+
+// ---- Sample generator ------------------------------------------------------
+#define SAMPLE_GENERATOR_TYPE 1         // SAMPLE_GENERATOR_UNIFORM
+
+// ---- Material system -------------------------------------------------------
+#define MATERIAL_SYSTEM_SAMPLER_DESC_COUNT 16
+#define MATERIAL_SYSTEM_TEXTURE_DESC_COUNT 1
+#define MATERIAL_SYSTEM_BUFFER_DESC_COUNT 1
+#define MATERIAL_SYSTEM_TEXTURE_3D_DESC_COUNT 1
+#define MATERIAL_SYSTEM_UDIM_INDIRECTION_ENABLED 0
+#define MATERIAL_SYSTEM_HAS_SPEC_GLOSS_MATERIALS 0
+#define MATERIAL_SYSTEM_USE_LIGHT_PROFILE 0
+#define FALCOR_MATERIAL_INSTANCE_SIZE 128
+
+// ---- Mesh split-buffer defines (SplitBuffer::getShaderDefines) -------------
+#define VERTEX_POSITION_BUFFER_COUNT 1
+#define VERTEX_POSITION_BUFFER_INDEX_BITS 0
+#define VERTEX_STATIC_DATA_BUFFER_COUNT 1
+#define VERTEX_STATIC_DATA_BUFFER_INDEX_BITS 0
+
+// ---- ReSTIRPTPass static params (StaticParams::getDefines) -----------------
+#define SAMPLES_PER_PIXEL 1
+#define CANDIDATE_SAMPLES 1
+#define MAX_SURFACE_BOUNCES 10
+#define MAX_DIFFUSE_BOUNCES 3
+#define MAX_SPECULAR_BOUNCES 10
+#define MAX_TRANSMISSON_BOUNCES 10
+#define ADJUST_SHADING_NORMALS 1
+#define USE_BSDF_SAMPLING 1
+#define USE_NEE 1
+#define USE_MIS 1
+#define USE_RUSSIAN_ROULETTE 1
+#define USE_ALPHA_TEST 1
+#define USE_LIGHTS_IN_DIELECTRIC_VOLUMES 0
+#define LIMIT_TRANSMISSION 0
+#define MAX_TRANSMISSION_REFLECTION_DEPTH 0
+#define MAX_TRANSMISSION_REFRACTION_DEPTH 0
+#define DISABLE_CAUSTICS 0
+#define DISABLE_DIRECT_ILLUMINATION 0
+#define PRIMARY_LOD_MODE 0              // TexLODMode::Mip0
+#define USE_NRD_DEMODULATION 0
+#define COLOR_FORMAT 0
+#define MIS_HEURISTIC 1                 // BalanceHeuristic
+#define MIS_POWER_EXPONENT 2.0
+#define _USE_DETERMINISTIC_BSDF 0
+#define NEIGHBOR_OFFSET_COUNT 8192
+#define SHIFT_STRATEGY 1                // Reconnection
+#define PATH_SAMPLING_MODE 0
+#define _USE_LEGACY_SHADING_CODE 0
+#define INTERIOR_LIST_SLOT_COUNT 2
+#define GBUFFER_ADJUST_SHADING_NORMALS 1
+#define USE_VISCACHE 0
+#define USE_VISCACHE_REVAL 0
+#define USE_LOCAL_REVAL 0
+#define OUTPUT_GUIDE_DATA 0
+#define OUTPUT_TIME 0
+#define OUTPUT_NRD_DATA 0
+#define OUTPUT_NRD_ADDITIONAL_DATA 0
+#define SPATIAL_RESTIR_MIS_KIND 0
+#define TEMPORAL_RESTIR_MIS_KIND 0
+#define TEMPORAL_UPDATE_FOR_DYNAMIC_SCENE 0
+#define BPR 0
+#define SEPARATE_PATH_BSDF 0
+#define RCDATA_PATH_NUM 6
+#define RCDATA_PAD_SIZE 1
