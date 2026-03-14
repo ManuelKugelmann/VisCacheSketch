@@ -195,6 +195,9 @@ def render_graph_VisCache(ablation=None):
     #
     # vcDiagComposite = pre-normalized RGB composite (no ColorMapPass needed):
     #   R = variance*4 [0,1], G = maturity (N/bootThreshold), B = level/numLevels
+    #
+    # vcDiagComposite2 = same but B = mu instead of level:
+    #   R = variance*4 [0,1], G = maturity (N/bootThreshold), B = mu [0,1]
     # -----------------------------------------------------------------------
 
     # Heatmap: cached mu / variance / level / raySaved (pick channel in UI)
@@ -217,8 +220,21 @@ def render_graph_VisCache(ablation=None):
     g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
     g.markOutput("HeatmapError.output")
 
-    # Composite heatmap: R=mu, G=level, B=N — pre-normalized, no ColorMapPass needed
-    g.markOutput("VisCache.vcDiagComposite")
+    # Heatmap: rays saved (binary 0/1 → false-color)
+    heatSaved = createPass("ColorMapPass", {
+        "colorMap": "Viridis",
+        "channel":  3,           # A = raySaved (1=skipped, 0=traced)
+        "autoRange": False,
+        "minValue":  0.0,
+        "maxValue":  1.0,
+    })
+    g.addPass(heatSaved, "HeatmapRaysSaved")
+    g.addEdge("VisCache.vcDiag", "HeatmapRaysSaved.input")
+    g.markOutput("HeatmapRaysSaved.output")
+
+    # Composite heatmaps — pre-normalized RGB, no ColorMapPass needed
+    g.markOutput("VisCache.vcDiagComposite")   # R=var, G=maturity, B=level
+    g.markOutput("VisCache.vcDiagComposite2")  # R=var, G=maturity, B=mu
 
     return g
 

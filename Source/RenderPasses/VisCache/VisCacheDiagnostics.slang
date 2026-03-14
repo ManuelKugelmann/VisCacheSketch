@@ -3,14 +3,16 @@
  *
  * Per-pixel diagnostic output for VisCache heatmap visualization.
  *
- * Provides three RWTexture2D outputs:
- *   gVCDiag          (RGBA32Float) — R=cachedMu, G=variance, B=level, A=raySaved
- *   gVCDiagError     (R32Float)    — |mu - V| prediction error (only when traced)
- *   gVCDiagComposite (RGBA32Float) — pre-normalized RGB: R=var, G=N, B=level
+ * Provides four RWTexture2D outputs:
+ *   gVCDiag           (RGBA32Float) — R=cachedMu, G=variance, B=level, A=raySaved
+ *   gVCDiagError      (R32Float)    — |mu - V| prediction error (only when traced)
+ *   gVCDiagComposite  (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=level
+ *   gVCDiagComposite2 (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=mu
  *
  * Usage:
  *   Import this file in any pass that calls vhfGate/vhfCommit and bind
- *   the textures from dictionary keys "vhfDiag", "vhfDiagError", "vhfDiagComposite".
+ *   the textures from dictionary keys "vhfDiag", "vhfDiagError",
+ *   "vhfDiagComposite", "vhfDiagComposite2".
  *   Call vcWriteDiag() after the gate/commit sequence.
  *
  *   Downstream visualization: connect VisCache outputs to ColorMapPass.
@@ -23,7 +25,8 @@ import RenderPasses.VisCache.VisCache;
 
 RWTexture2D<float4> gVCDiag;          ///< R=mu, G=var, B=level+1 (0=miss), A=raySaved
 RWTexture2D<float>  gVCDiagError;    ///< |mu - V| prediction error
-RWTexture2D<float4> gVCDiagComposite; ///< Pre-normalized RGB composite (R=var, G=N, B=level)
+RWTexture2D<float4> gVCDiagComposite;  ///< Pre-normalized RGB composite (R=var, G=maturity, B=level)
+RWTexture2D<float4> gVCDiagComposite2; ///< Pre-normalized RGB composite (R=var, G=maturity, B=mu)
 
 /// Write per-pixel diagnostics after a vhfGate/vhfCommit sequence.
 /// @param pixel       Screen-space pixel coordinate.
@@ -49,6 +52,17 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V)
         saturate(g.var * 4.f),
         saturate(float(g.N) / float(gBootThreshold)),
         float(g.level + 1) / float(gNumLevels),
+        1.f
+    );
+
+    // Composite 2: same R,G but B = mu instead of level.
+    //   R = variance            (var / 0.25)
+    //   G = maturity            (N / bootThreshold)
+    //   B = cached mu           (already [0,1])
+    gVCDiagComposite2[pixel] = float4(
+        saturate(g.var * 4.f),
+        saturate(float(g.N) / float(gBootThreshold)),
+        g.mu,
         1.f
     );
 }

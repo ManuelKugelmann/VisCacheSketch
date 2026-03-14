@@ -25,12 +25,13 @@ kCaptureDir    = "captures/heatmaps"
 #   source: "diag" = vcDiag (RGBA), "error" = vcDiagError (R),
 #           "composite" = vcDiagComposite (pre-normalized RGB, no ColorMapPass)
 HEATMAP_MODES = [
-    ("cached_mu",        1, "diag",      0),   # R = visibility prediction [0,1]
-    ("variance",         2, "diag",      1),   # G = cache uncertainty [0,0.25]
-    ("lod_level",        3, "diag",      2),   # B = LOD level+1 (0=miss)
-    ("ray_saved",        4, "diag",      3),   # A = 1=skipped, 0=traced
-    ("prediction_error", 5, "error",     0),   # R = |mu - V|
-    ("composite",        1, "composite", -1),  # RGB = var/maturity/level (pre-normalized)
+    ("cached_mu",        1, "diag",       0),   # R = visibility prediction [0,1]
+    ("variance",         2, "diag",       1),   # G = cache uncertainty [0,0.25]
+    ("lod_level",        3, "diag",       2),   # B = LOD level+1 (0=miss)
+    ("rays_saved",       4, "diag",       3),   # A = 1=skipped, 0=traced
+    ("prediction_error", 5, "error",      0),   # R = |mu - V|
+    ("composite_level",  1, "composite",  -1),  # RGB = var/maturity/level
+    ("composite_mu",     1, "composite2", -1),  # RGB = var/maturity/mu
 ]
 
 # Ablation configs to cross with heatmap modes.

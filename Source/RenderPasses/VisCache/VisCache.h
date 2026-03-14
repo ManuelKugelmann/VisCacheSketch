@@ -122,8 +122,9 @@ private:
 
     bool            mEnableDiagnostics = false; ///< Master enable (auto-set by dropdown)
     DiagMode        mDiagMode = DiagMode::Off;  ///< Selected heatmap mode
-    ref<Texture>    mpDiagTex;          ///< RGBA32F: mu, var, level, raySaved
+    ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
     ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
-    ref<Texture>    mpDiagCompositeTex; ///< RGBA32F: composite (R=mu, G=level, B=N)
+    ref<Texture>    mpDiagCompositeTex; ///< RGBA32F: composite (R=var, G=maturity, B=level)
+    ref<Texture>    mpDiagComposite2Tex;///< RGBA32F: composite (R=var, G=maturity, B=mu)
     uint2           mFrameDims = {0, 0};
 };
