@@ -58,7 +58,7 @@ namespace
 
     const Falcor::ChannelList kOutputChannels =
     {
-        { kOutputColor,                 "gOutputColor",                 "Output color (linear)", true /* optional */ },
+        { kOutputColor,                 "gOutputColor",                 "Output color (linear)", true /* optional */, ResourceFormat::RGBA32Float },
         { kOutputAlbedo,                "gOutputAlbedo",                "Output albedo (linear)", true /* optional */, ResourceFormat::RGBA8Unorm },
         { kOutputNormal,                "gOutputNormal",                "Output normal (linear)", true /* optional */, ResourceFormat::RGBA16Float },
         { kOutputRayCount,              "",                             "Per-pixel ray count", true /* optional */, ResourceFormat::R32Uint },
