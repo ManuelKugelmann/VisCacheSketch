@@ -122,9 +122,19 @@ private:
 
     bool            mEnableDiagnostics = false; ///< Master enable (auto-set by dropdown)
     DiagMode        mDiagMode = DiagMode::Off;  ///< Selected heatmap mode
+
+    // Per-frame diag textures (cleared each frame)
     ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
     ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
     ref<Texture>    mpDiagCompositeTex; ///< RGBA32F: composite (R=var, G=maturity, B=level)
     ref<Texture>    mpDiagComposite2Tex;///< RGBA32F: composite (R=var, G=maturity, B=mu)
+
+    // Accumulated textures (persistent across frames, cleared on reset)
+    ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count
+    ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count
+    ref<Texture>    mpRaySavedRatioTex; ///< R32Float: saved/total ratio
+    ref<Texture>    mpNoiseTex;         ///< R32Float: noise estimate (variance EMA)
+    bool            mResetAccum = true; ///< Clear accum textures next frame
+
     uint2           mFrameDims = {0, 0};
 };

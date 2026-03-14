@@ -49,6 +49,7 @@ def apply_ablation(graph, config_dict):
                  "enableVisCacheLightSelection"]:
         setattr(visCache, attr, True)
     visCache.numLevels = 3
+    visCache.resetAccum = True  # clear per-pixel accumulators for new config
     # Apply delta
     for k, v in config_dict.items():
         setattr(visCache, k, v)

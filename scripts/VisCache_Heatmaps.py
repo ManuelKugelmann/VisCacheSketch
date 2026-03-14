@@ -26,11 +26,9 @@ kCaptureDir    = "captures/heatmaps"
 #   source: "diag" = vcDiag (RGBA), "error" = vcDiagError (R),
 #           "composite" = vcDiagComposite (pre-normalized RGB, no ColorMapPass)
 HEATMAP_MODES = [
-    ("cached_mu",        1, "diag",       0),   # R = visibility prediction [0,1]
-    ("variance",         2, "diag",       1),   # G = cache uncertainty [0,0.25]
-    ("lod_level",        3, "diag",       2),   # B = LOD level+1 (0=miss)
-    ("rays_saved",       4, "diag",       3),   # A = 1=skipped, 0=traced
-    ("prediction_error", 5, "error",      0),   # R = |mu - V|
+    ("ray_saved_pct",    1, "ray_pct",    -1),  # per-pixel accumulated ray savings %
+    ("noise",            1, "noise",      -1),  # per-pixel noise estimate (variance EMA)
+    ("prediction_error", 5, "error",       0),  # |mu - V|
     ("composite_level",  1, "composite",  -1),  # RGB = var/maturity/level
     ("composite_mu",     1, "composite2", -1),  # RGB = var/maturity/mu
 ]
@@ -69,6 +67,7 @@ def apply_ablation(graph, config_dict):
     """Apply ablation delta on top of full defaults."""
     reset_viscache(graph)
     vc = graph.getPass("VisCache")
+    vc.resetAccum = True  # clear per-pixel accumulators for new config
     for k, v in config_dict.items():
         setattr(vc, k, v)
 
@@ -79,14 +78,10 @@ def set_heatmap_mode(graph, diag_mode, source, channel):
     vc.diagMode = diag_mode
     vc.enableDiagnostics = (diag_mode != 0)
 
-    # Set the appropriate ColorMapPass channel (composite is direct RGB, no ColorMapPass)
-    if source == "diag":
-        hm = graph.getPass("HeatmapDiag")
-        hm.channel = channel
-    elif source == "error":
+    if source == "error":
         hm = graph.getPass("HeatmapError")
         hm.channel = channel
-    # "composite" needs no ColorMapPass — vcDiagComposite is already pre-normalized RGB
+    # ray_pct, noise, composite sources are direct outputs — no ColorMapPass config needed
 
 
 # ---------------------------------------------------------------------------

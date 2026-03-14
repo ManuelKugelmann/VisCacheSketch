@@ -183,32 +183,16 @@ def render_graph_VisCache(ablation=None):
 
     # -----------------------------------------------------------------------
     # VisCache diagnostic heatmaps
-    # Connect vcDiag and vcDiagError to ColorMapPass for false-color output.
     #
-    # vcDiag channels (select in ColorMapPass UI):
-    #   R = cached mu       (visibility prediction [0,1])
-    #   G = variance         (cache uncertainty [0,0.25])
-    #   B = LOD level+1    (0=miss, 1=L0, 2=L1, ...)
-    #   A = ray saved        (1=skipped, 0=traced)
+    # vcRaySavedRatio (R32F): per-pixel accumulated ray savings ratio [0,1]
+    # vcNoise (R32F): per-pixel noise estimate (cache variance EMA)
+    # vcDiagError (R32F): |mu - V| prediction error
     #
-    # vcDiagError channel R = |mu - V| (prediction accuracy)
+    # vcDiagComposite  (RGBA32F): pre-normalized RGB (R=var, G=maturity, B=level)
+    # vcDiagComposite2 (RGBA32F): pre-normalized RGB (R=var, G=maturity, B=mu)
     #
-    # vcDiagComposite = pre-normalized RGB composite (no ColorMapPass needed):
-    #   R = variance*4 [0,1], G = maturity (N/bootThreshold), B = level/numLevels
-    #
-    # vcDiagComposite2 = same but B = mu instead of level:
-    #   R = variance*4 [0,1], G = maturity (N/bootThreshold), B = mu [0,1]
+    # vcDiag (RGBA32F): raw per-frame diagnostics (used by composites internally)
     # -----------------------------------------------------------------------
-
-    # Heatmap: cached mu / variance / level / raySaved (pick channel in UI)
-    heatDiag = createPass("ColorMapPass", {
-        "colorMap": "Viridis",
-        "channel":  0,           # R = cached mu (change to 1/2/3 for var/level/saved)
-        "autoRange": True,
-    })
-    g.addPass(heatDiag, "HeatmapDiag")
-    g.addEdge("VisCache.vcDiag", "HeatmapDiag.input")
-    g.markOutput("HeatmapDiag.output")
 
     # Heatmap: prediction error |mu - V|
     heatErr = createPass("ColorMapPass", {
@@ -220,17 +204,27 @@ def render_graph_VisCache(ablation=None):
     g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
     g.markOutput("HeatmapError.output")
 
-    # Heatmap: rays saved (binary 0/1 → false-color)
-    heatSaved = createPass("ColorMapPass", {
+    # Per-pixel ray savings ratio (accumulated across frames) → false-color
+    heatRayPct = createPass("ColorMapPass", {
         "colorMap": "Viridis",
-        "channel":  3,           # A = raySaved (1=skipped, 0=traced)
+        "channel":  0,
         "autoRange": False,
         "minValue":  0.0,
         "maxValue":  1.0,
     })
-    g.addPass(heatSaved, "HeatmapRaysSaved")
-    g.addEdge("VisCache.vcDiag", "HeatmapRaysSaved.input")
-    g.markOutput("HeatmapRaysSaved.output")
+    g.addPass(heatRayPct, "HeatmapRaySavedPct")
+    g.addEdge("VisCache.vcRaySavedRatio", "HeatmapRaySavedPct.input")
+    g.markOutput("HeatmapRaySavedPct.output")
+
+    # Per-pixel noise estimate (cache variance = mu*(1-mu)) → false-color
+    heatNoise = createPass("ColorMapPass", {
+        "colorMap": "Inferno",
+        "channel":  0,
+        "autoRange": True,
+    })
+    g.addPass(heatNoise, "HeatmapNoise")
+    g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
+    g.markOutput("HeatmapNoise.output")
 
     # Composite heatmaps — pre-normalized RGB, no ColorMapPass needed
     g.markOutput("VisCache.vcDiagComposite")   # R=var, G=maturity, B=level

@@ -17,12 +17,16 @@ static const std::string kOutputDiag           = "vcDiag";
 static const std::string kOutputDiagError      = "vcDiagError";
 static const std::string kOutputDiagComposite  = "vcDiagComposite";
 static const std::string kOutputDiagComposite2 = "vcDiagComposite2";
+static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
+static const std::string kOutputNoise          = "vcNoise";
 
 static const ChannelList kDiagOutputChannels = {
     { kOutputDiag,           "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)",  true, ResourceFormat::RGBA32Float },
     { kOutputDiagError,      "", "VisCache prediction error |mu - V|",                       true, ResourceFormat::R32Float },
     { kOutputDiagComposite,  "", "VisCache composite heatmap (R=var, G=maturity, B=level)",  true, ResourceFormat::RGBA32Float },
     { kOutputDiagComposite2, "", "VisCache composite heatmap (R=var, G=maturity, B=mu)",     true, ResourceFormat::RGBA32Float },
+    { kOutputRaySavedRatio,  "", "Per-pixel ray savings ratio [0,1] (accumulated)",          true, ResourceFormat::R32Float },
+    { kOutputNoise,          "", "Per-pixel noise estimate (variance EMA)",                   true, ResourceFormat::R32Float },
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -54,6 +58,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
+    if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
 }
 
 ref<VisCache> VisCache::create(ref<Device> pDevice,
@@ -85,6 +90,7 @@ Properties VisCache::getProperties() const
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
+    p["resetAccum"]                    = mResetAccum;
     return p;
 }
 
@@ -188,73 +194,102 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // Diagnostic heatmap textures — allocate/expose, then clear.
     // VisCache runs BEFORE downstream passes, so we expose textures
     // via dictionary and downstream passes write directly to them.
-    //
-    // Strategy:
-    //   - If render graph outputs are connected, expose those directly.
-    //   - Otherwise if diagnostics enabled, use internal textures.
-    //   - Downstream passes retrieve from dict keys "vhfDiag"/"vhfDiagError"/
-    //     "vhfDiagComposite"/"vhfDiagComposite2".
     // ----------------------------------------------------------------
     {
-        ref<Texture> diagTex;
-        ref<Texture> diagErrorTex;
-        ref<Texture> diagCompositeTex;
-        ref<Texture> diagComposite2Tex;
+        // Helper to create textures
+        auto makeRGBA = [&](const char* name) {
+            auto t = mpDevice->createTexture2D(
+                mFrameDims.x, mFrameDims.y, ResourceFormat::RGBA32Float, 1, 1,
+                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            t->setName(name);
+            return t;
+        };
+        auto makeR32F = [&](const char* name) {
+            auto t = mpDevice->createTexture2D(
+                mFrameDims.x, mFrameDims.y, ResourceFormat::R32Float, 1, 1,
+                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            t->setName(name);
+            return t;
+        };
+        auto makeR32U = [&](const char* name) {
+            auto t = mpDevice->createTexture2D(
+                mFrameDims.x, mFrameDims.y, ResourceFormat::R32Uint, 1, 1,
+                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            t->setName(name);
+            return t;
+        };
 
-        // Prefer graph-allocated output textures (avoids extra copy)
-        if (auto pOut = renderData[kOutputDiag])
-            diagTex = pOut->asTexture();
-        if (auto pOut = renderData[kOutputDiagError])
-            diagErrorTex = pOut->asTexture();
-        if (auto pOut = renderData[kOutputDiagComposite])
-            diagCompositeTex = pOut->asTexture();
-        if (auto pOut = renderData[kOutputDiagComposite2])
-            diagComposite2Tex = pOut->asTexture();
+        // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
+        ref<Texture> diagTex, diagErrorTex, diagCompositeTex, diagComposite2Tex;
+        ref<Texture> raySavedRatioTex, noiseTex;
 
-        // Fall back to internal textures when outputs not connected
-        bool needInternal = mEnableDiagnostics &&
-            (!diagTex || !diagErrorTex || !diagCompositeTex || !diagComposite2Tex);
-        if (needInternal && mFrameDims.x > 0 && mFrameDims.y > 0)
+        if (auto p = renderData[kOutputDiag])           diagTex           = p->asTexture();
+        if (auto p = renderData[kOutputDiagError])      diagErrorTex      = p->asTexture();
+        if (auto p = renderData[kOutputDiagComposite])  diagCompositeTex  = p->asTexture();
+        if (auto p = renderData[kOutputDiagComposite2]) diagComposite2Tex = p->asTexture();
+        if (auto p = renderData[kOutputRaySavedRatio])  raySavedRatioTex  = p->asTexture();
+        if (auto p = renderData[kOutputNoise])          noiseTex          = p->asTexture();
+
+        bool needInternal = mEnableDiagnostics && mFrameDims.x > 0 && mFrameDims.y > 0;
+        if (needInternal)
         {
-            if (!mpDiagTex || mpDiagTex->getWidth() != mFrameDims.x
-                           || mpDiagTex->getHeight() != mFrameDims.y)
+            bool needRealloc = !mpDiagTex || mpDiagTex->getWidth() != mFrameDims.x
+                                          || mpDiagTex->getHeight() != mFrameDims.y;
+            if (needRealloc)
             {
-                auto makeRGBA = [&](const char* name) {
-                    auto t = mpDevice->createTexture2D(
-                        mFrameDims.x, mFrameDims.y, ResourceFormat::RGBA32Float, 1, 1,
-                        nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess
-                    );
-                    t->setName(name);
-                    return t;
-                };
                 mpDiagTex           = makeRGBA("VHF_Diag");
                 mpDiagCompositeTex  = makeRGBA("VHF_DiagComposite");
                 mpDiagComposite2Tex = makeRGBA("VHF_DiagComposite2");
-
-                mpDiagErrorTex = mpDevice->createTexture2D(
-                    mFrameDims.x, mFrameDims.y, ResourceFormat::R32Float, 1, 1,
-                    nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess
-                );
-                mpDiagErrorTex->setName("VHF_DiagError");
+                mpDiagErrorTex      = makeR32F("VHF_DiagError");
+                mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
+                mpNoiseTex          = makeR32F("VHF_Noise");
+                mResetAccum = true;  // accum textures need realloc too
             }
             if (!diagTex)           diagTex           = mpDiagTex;
             if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
             if (!diagCompositeTex)  diagCompositeTex  = mpDiagCompositeTex;
             if (!diagComposite2Tex) diagComposite2Tex = mpDiagComposite2Tex;
+            if (!raySavedRatioTex)  raySavedRatioTex  = mpRaySavedRatioTex;
+            if (!noiseTex)          noiseTex          = mpNoiseTex;
         }
 
-        // Clear and expose via dictionary for downstream passes
-        auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
-            if (tex)
+        // --- Accumulated textures (persistent, only cleared on reset) ---
+        if (mFrameDims.x > 0 && mFrameDims.y > 0)
+        {
+            bool needAccumRealloc = !mpAccumSaved
+                || mpAccumSaved->getWidth() != mFrameDims.x
+                || mpAccumSaved->getHeight() != mFrameDims.y;
+            if (needAccumRealloc)
             {
-                pCtx->clearUAV(tex->getUAV().get(), float4(0.f));
-                dict[key] = tex;
+                mpAccumSaved = makeR32U("VHF_AccumSaved");
+                mpAccumTotal = makeR32U("VHF_AccumTotal");
+                mResetAccum = true;
             }
+            if (mResetAccum)
+            {
+                pCtx->clearUAV(mpAccumSaved->getUAV().get(), uint4(0u));
+                pCtx->clearUAV(mpAccumTotal->getUAV().get(), uint4(0u));
+                if (noiseTex)
+                    pCtx->clearUAV(noiseTex->getUAV().get(), float4(0.f));
+                mResetAccum = false;
+            }
+            dict["vhfAccumSaved"] = mpAccumSaved;
+            dict["vhfAccumTotal"] = mpAccumTotal;
+        }
+
+        // Clear per-frame textures and expose via dictionary
+        auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
+            if (tex) { pCtx->clearUAV(tex->getUAV().get(), float4(0.f)); dict[key] = tex; }
         };
         clearAndExpose(diagTex,           "vhfDiag");
         clearAndExpose(diagErrorTex,      "vhfDiagError");
         clearAndExpose(diagCompositeTex,  "vhfDiagComposite");
         clearAndExpose(diagComposite2Tex, "vhfDiagComposite2");
+
+        // Ratio + noise: cleared per frame (downstream passes write updated values)
+        clearAndExpose(raySavedRatioTex,  "vhfRaySavedRatio");
+        clearAndExpose(noiseTex,          "vhfNoise");
+
         dict["vhfDiagEnabled"] = (diagTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);
     }

@@ -90,7 +90,7 @@ float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
 // ===========================================================================
 // Diagnostic overloads — same as above but write per-pixel heatmap data.
 // Pass `pixel` = DispatchRaysIndex().xy (or equivalent).
-// Bind gVCDiag, gVCDiagError, gVCDiagComposite from dictionary.
+// Bind all diagnostic textures from dictionary (see VisCacheDiagnostics.slang).
 //
 // To enable: add VISCACHE_DIAGNOSTICS=1 to the shader DefineList and bind
 // the diagnostic textures from the InternalDictionary.
