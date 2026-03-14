@@ -115,9 +115,9 @@ void adjustShadingData(inout ShadingData sd, const HitInfo hit, const float curv
 #endif
 
 #if GBUFFER_ADJUST_SHADING_NORMALS
-    if (kAdjustShadingNormals || isPrimary) adjustShadingNormal(sd, v);
+    if (kAdjustShadingNormals || isPrimary) adjustShadingNormal(sd, sd.frame);
 #else
-    if (kAdjustShadingNormals && !isPrimary) adjustShadingNormal(sd, v);
+    if (kAdjustShadingNormals && !isPrimary) adjustShadingNormal(sd, sd.frame);
 #endif
 }
 
