@@ -288,7 +288,7 @@ struct PathReservoir
     }
 
     [mutating]
-    bool add(float3 in_F, float p, inout SampleGenerator sg)
+    bool add<S : ISampleGenerator>(float3 in_F, float p, inout S sg)
     {
         M += 1.f;
 
