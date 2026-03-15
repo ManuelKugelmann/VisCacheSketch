@@ -41,5 +41,9 @@ Source/RenderPasses/*/Data/VeachAjar/textures/
 # Downloaded reference papers — tracked in git (LFS recommended for large PDFs)
 # docs/references/
 
+# Slang CI check artifacts (downloaded binary + test log)
+slang-dist/
+slang-check-results.log
+
 # Generated paper (built by CI, deployed to Pages)
 viscachepaper/paper-combined.md

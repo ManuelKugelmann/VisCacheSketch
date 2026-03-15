@@ -27,6 +27,10 @@ SLANGC="${1:?Usage: $0 <path-to-slangc>}"
 RESULTS="slang-check-results.log"
 : > "$RESULTS"
 
+# slangc SPIR-V backend cannot write to /dev/null — use a real temp file.
+TMPOUT="$(mktemp /tmp/slang-ci-XXXXXX.spv)"
+trap 'rm -f "$TMPOUT"' EXIT
+
 PASS=0
 FAIL=0
 SKIP=0
@@ -121,14 +125,14 @@ echo "--- Tier 1: VisCache core (self-contained) ---"
 
 # Library module (no entry point)
 check "${VISCACHE_DIR}/VisCache.slang" 1 "" \
-  -target spirv -o /dev/null
+  -target spirv -o "$TMPOUT"
 
 # Compute shaders with entry points
 check "${VISCACHE_DIR}/VisCacheInsert.cs.slang" 1 "" \
-  ${T1_FLAGS} -entry csInsert -stage compute -o /dev/null
+  ${T1_FLAGS} -entry csInsert -stage compute -o "$TMPOUT"
 
 check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" 1 "" \
-  ${T1_FLAGS} -entry csDecay -stage compute -o /dev/null
+  ${T1_FLAGS} -entry csDecay -stage compute -o "$TMPOUT"
 
 echo ""
 
@@ -138,13 +142,13 @@ echo ""
 echo "--- Tier 2: VisCache Falcor-dependent shaders ---"
 
 check "${VISCACHE_DIR}/VisCacheTracing.slang" 2 "" \
-  ${T2_FLAGS} -o /dev/null "${STUBS}"
+  ${T2_FLAGS} -o "$TMPOUT" "${STUBS}"
 
 check "${VISCACHE_DIR}/ShadingCV.slang" 2 "" \
-  ${T2_FLAGS} -o /dev/null "${STUBS}"
+  ${T2_FLAGS} -o "$TMPOUT" "${STUBS}"
 
 check "${VISCACHE_DIR}/RevalidationCommon.slang" 2 "" \
-  ${T2_FLAGS} -o /dev/null "${STUBS}"
+  ${T2_FLAGS} -o "$TMPOUT" "${STUBS}"
 
 echo ""
 
@@ -161,7 +165,7 @@ if [ -d "$RESTIR_DIR" ]; then
     entry=$(grep -oP '(?<=void )\w+(?=\()' "$f" | head -1 || true)
     if [ -n "$entry" ]; then
       check "$f" 3 "ReSTIRPTPass deep deps" \
-        ${T2_FLAGS} -I "${RESTIR_DIR}" -entry "$entry" -stage compute -o /dev/null "${STUBS}"
+        ${T2_FLAGS} -I "${RESTIR_DIR}" -entry "$entry" -stage compute -o "$TMPOUT" "${STUBS}"
     fi
   done
 fi

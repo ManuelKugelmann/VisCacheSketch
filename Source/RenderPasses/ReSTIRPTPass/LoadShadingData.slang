@@ -69,6 +69,7 @@ void computeDerivativesAtPrimaryTriangleHit(const TriangleHit hit, uint2 pixel, 
 */
 VertexData loadVertexData(const HitInfo hit, const float3 viewDir, out uint materialID, out float curveSphereRadius)
 {
+    curveSphereRadius = 0.f;
     VertexData v = {};
 #if SCENE_HAS_GEOMETRY_TYPE(GEOMETRY_TYPE_TRIANGLE_MESH)
 #if SCENE_HAS_PROCEDURAL_GEOMETRY()

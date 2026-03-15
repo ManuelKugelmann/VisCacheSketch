@@ -71,20 +71,20 @@ struct ReSTIRPathFlags
 
     bool decodeIsDeltaEvent(bool beforeRcVertex)
     {
-        if (beforeRcVertex) return (flags >> 8) & 1;
-        else return (flags >> 9) & 1;
+        if (beforeRcVertex) return ((flags >> 8) & 1) != 0;
+        else return ((flags >> 9) & 1) != 0;
     }
 
     bool decodeIsTransmissionEvent(bool beforeRcVertex)
     {
-        if (beforeRcVertex) return (flags >> 10) & 1;
-        else return (flags >> 11) & 1;
+        if (beforeRcVertex) return ((flags >> 10) & 1) != 0;
+        else return ((flags >> 11) & 1) != 0;
     }
 
     bool decodeIsSpecularBounce(bool beforeRcVertex)
     {
-        if (beforeRcVertex) return (flags >> 26) & 1;
-        else return (flags >> 27) & 1;
+        if (beforeRcVertex) return ((flags >> 26) & 1) != 0;
+        else return ((flags >> 27) & 1) != 0;
     }
 
     // maximum length: 15
@@ -122,7 +122,7 @@ struct ReSTIRPathFlags
 
     bool lastVertexNEE()
     {
-        return (flags >> 16) & 1;
+        return ((flags >> 16) & 1) != 0;
     }
 
     [mutating]
@@ -288,7 +288,7 @@ struct PathReservoir
     }
 
     [mutating]
-    bool add(float3 in_F, float p, inout SampleGenerator sg)
+    bool add<S : ISampleGenerator>(float3 in_F, float p, inout S sg)
     {
         M += 1.f;
 
