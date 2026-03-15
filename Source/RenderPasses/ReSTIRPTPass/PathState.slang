@@ -123,7 +123,7 @@ struct PathState
     bool isSpecularBounce() { return hasFlag(PathFlags::specularBounce); }
     bool isVolume() { return hasFlag(PathFlags::volume); }
     bool isInsideDielectricVolume() { return hasFlag(PathFlags::insideDielectricVolume); }
-    bool isLightSampled() { return flags & (uint(PathFlags::lightSampledUpper) | uint(PathFlags::lightSampledLower)); }
+    bool isLightSampled() { return (flags & (uint(PathFlags::lightSampledUpper) | uint(PathFlags::lightSampledLower))) != 0; }
     bool isLightSampledUpper() { return hasFlag(PathFlags::lightSampledUpper); }
     bool isLightSampledLower() { return hasFlag(PathFlags::lightSampledLower); }
     bool isDiffusePrimaryHit() { return hasFlag(PathFlags::diffusePrimaryHit); }

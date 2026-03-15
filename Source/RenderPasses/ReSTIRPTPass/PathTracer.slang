@@ -1449,16 +1449,20 @@ struct PathTracer
         if (kOutputNRDData && !path.enableRandomReplay)
         {
             const uint2 pixel = path.getPixel();
+            // [Falcor 8] Obtain BSDFProperties for NRD demodulation.
+            let lod = ExplicitLodTextureSampler(0.f);
+            let mi = gScene.materials.getMaterialInstance(sd, lod);
+            let bsdfProperties = mi.getProperties(sd);
 
             if (gSppId == 0)
             {
                 setNRDPrimaryHitEmission(outputNRD, kUseNRDDemodulation, path, pixel, isPrimaryHit, attenuatedEmission);
-                setNRDPrimaryHitReflectance(outputNRD, kUseNRDDemodulation, path, pixel, isPrimaryHit, sd);
+                setNRDPrimaryHitReflectance(outputNRD, kUseNRDDemodulation, path, pixel, isPrimaryHit, sd, bsdfProperties);
             }
 
             setNRDSampleHitDist(path); // this will be overriden if ReSTIR is done
             setNRDSampleEmission(kUseNRDDemodulation, path, isPrimaryHit, attenuatedEmission); // this should be the same for every sample (unless in volume rendering)
-            setNRDSampleReflectance(kUseNRDDemodulation, path, isPrimaryHit, sd); // this will be overriden in ReSTIR mode
+            setNRDSampleReflectance(kUseNRDDemodulation, path, isPrimaryHit, sd, bsdfProperties); // this will be overriden in ReSTIR mode
         }
 
         if (!path.isActive()) return;
@@ -1729,7 +1733,13 @@ struct PathTracer
             else if (path.isSpecularPrimaryHit()) pathType = NRDPathType::Specular;
             else pathType = NRDPathType::Residual;
 
-            sampleReflectance = computeSampleReflectance(kUseNRDDemodulation, path.isDiffusePrimaryHit(), path.isSpecularPrimaryHit(), sd);
+            // [Falcor 8] Obtain BSDFProperties for NRD reflectance computation.
+            {
+                let lod = ExplicitLodTextureSampler(0.f);
+                let mi = gScene.materials.getMaterialInstance(sd, lod);
+                let bsdfProperties = mi.getProperties(sd);
+                sampleReflectance = computeSampleReflectance(kUseNRDDemodulation, path.isDiffusePrimaryHit(), path.isSpecularPrimaryHit(), sd, bsdfProperties);
+            }
 
             return;
         }
