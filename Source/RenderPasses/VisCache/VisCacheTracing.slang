@@ -78,7 +78,7 @@ float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
 
     if (g.shouldTrace)
     {
-        float V = traceShadowRay(posA, dir, distance) ? 1.f : 0.f;
+        float V = traceShadowRay(posA, dir, distance);
         return vhfCommit(posA, posB, V, g);
     }
     return g.visWeight;
