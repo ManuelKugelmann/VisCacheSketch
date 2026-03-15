@@ -15,7 +15,7 @@
  ***************************************************************************/
 
 #pragma once
-#import "VisCache"
+import VisCache;
 #ifdef VISCACHE_DIAGNOSTICS
 import RenderPasses.VisCache.VisCacheDiagnostics;
 #endif

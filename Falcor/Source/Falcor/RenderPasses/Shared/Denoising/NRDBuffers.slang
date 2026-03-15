@@ -31,8 +31,8 @@ import NRDData;
 #error NRDBuffers.slang is missing defines
 #endif
 
-static const bool kOutputNRDData = OUTPUT_NRD_DATA;
-static const bool kOutputNRDAdditionalData = OUTPUT_NRD_ADDITIONAL_DATA;
+static const bool kOutputNRDData = OUTPUT_NRD_DATA != 0;
+static const bool kOutputNRDAdditionalData = OUTPUT_NRD_ADDITIONAL_DATA != 0;
 
 struct NRDBuffers
 {

@@ -84,12 +84,12 @@ RWTexture2D<float4> gOutputColor;
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
 static const uint kMaxBounces = MAX_BOUNCES;
-static const bool kComputeDirect = COMPUTE_DIRECT;
-static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
-static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS;
-static const bool kUseEmissiveLights = USE_EMISSIVE_LIGHTS;
-static const bool kUseEnvLight = USE_ENV_LIGHT;
-static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
+static const bool kComputeDirect = COMPUTE_DIRECT != 0;
+static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING != 0;
+static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS != 0;
+static const bool kUseEmissiveLights = USE_EMISSIVE_LIGHTS != 0;
+static const bool kUseEnvLight = USE_ENV_LIGHT != 0;
+static const bool kUseEnvBackground = USE_ENV_BACKGROUND != 0;
 static const float3 kDefaultBackgroundColor = float3(0, 0, 0);
 static const float kRayTMax = FLT_MAX;
 

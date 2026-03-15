@@ -25,8 +25,16 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-import Rendering.Materials.Microfacet;
+
+// [Falcor 8] Ported from Falcor 4.x ShadingData fields to BSDFProperties.
+// Old fields (diffuseTransmission, specularTransmission, diffuse, N,
+// linearRoughness, specular) no longer exist on ShadingData.
+// Material properties are now queried via IMaterialInstance::getProperties().
+
+import Rendering.Materials.IMaterialInstance;
+import Rendering.Materials.IsotropicGGX;
 import RenderPasses.Shared.Denoising.NRDBuffers;
+import RenderPasses.Shared.Denoising.NRDConstants;
 import Scene.ShadingData;
 import PathState;
 
@@ -46,19 +54,20 @@ void setNRDPrimaryHitEmission(NRDBuffers outputNRD, const bool useNRDDemodulatio
     }
 }
 
-void setNRDPrimaryHitReflectance(NRDBuffers outputNRD, const bool useNRDDemodulation, const PathState path, const uint2 pixel, const bool isPrimaryHit, const ShadingData sd)
+void setNRDPrimaryHitReflectance(NRDBuffers outputNRD, const bool useNRDDemodulation, const PathState path, const uint2 pixel, const bool isPrimaryHit, const ShadingData sd, const BSDFProperties bsdfProperties)
 {
     if (isPrimaryHit && path.getSampleIdx() == 0)
     {
         if (useNRDDemodulation)
         {
-            float3 diffuseReflectionAlbedo = (1.f - sd.diffuseTransmission) * (1.f - sd.specularTransmission) * sd.diffuse;
-            outputNRD.primaryHitDiffuseReflectance[pixel] = float4(diffuseReflectionAlbedo, 1.f);
+            // [Falcor 8] Use sum of reflection/transmission albedo (matches Falcor PathTracer).
+            const float3 diffuseReflectance = max(kNRDMinReflectance, bsdfProperties.diffuseReflectionAlbedo + bsdfProperties.diffuseTransmissionAlbedo);
+            outputNRD.primaryHitDiffuseReflectance[pixel] = float4(diffuseReflectance, 1.f);
 
-            const float NdotV = saturate(dot(sd.N, sd.V));
-            const float ggxAlpha = sd.linearRoughness * sd.linearRoughness;
-            float3 specularReflectionAlbedo = (1.f - sd.specularTransmission) * sd.specular;
-            const float3 specularReflectance = approxSpecularIntegralGGX(specularReflectionAlbedo, ggxAlpha, NdotV);
+            const float NdotV = saturate(dot(bsdfProperties.guideNormal, sd.V));
+            const float ggxAlpha = bsdfProperties.roughness * bsdfProperties.roughness;
+            float3 specularReflectance = approxSpecularIntegralGGX(bsdfProperties.specularReflectionAlbedo, ggxAlpha, NdotV);
+            specularReflectance = max(kNRDMinReflectance, specularReflectance);
             outputNRD.primaryHitSpecularReflectance[pixel] = float4(specularReflectance, 1.f);
         }
         else
@@ -94,7 +103,7 @@ void setNRDSampleEmission(const bool useNRDDemodulation, inout PathState path, c
     }
 }
 
-void setNRDSampleReflectance(const bool useNRDDemodulation, inout PathState path, const bool isPrimaryHit, const ShadingData sd)
+void setNRDSampleReflectance(const bool useNRDDemodulation, inout PathState path, const bool isPrimaryHit, const ShadingData sd, const BSDFProperties bsdfProperties)
 {
     if (useNRDDemodulation)
     {
@@ -103,15 +112,15 @@ void setNRDSampleReflectance(const bool useNRDDemodulation, inout PathState path
         {
             if (path.isDiffusePrimaryHit())
             {
-                float3 diffuseReflectionAlbedo = (1.f - sd.diffuseTransmission) * (1.f - sd.specularTransmission) * sd.diffuse;
-                path.sharedScatterDir = diffuseReflectionAlbedo;
+                const float3 diffuseReflectance = max(kNRDMinReflectance, bsdfProperties.diffuseReflectionAlbedo + bsdfProperties.diffuseTransmissionAlbedo);
+                path.sharedScatterDir = diffuseReflectance;
             }
             else if (path.isSpecularPrimaryHit())
             {
-                const float NdotV = saturate(dot(sd.N, sd.V));
-                const float ggxAlpha = sd.linearRoughness * sd.linearRoughness;
-                float3 specularReflectionAlbedo = (1.f - sd.specularTransmission) * sd.specular;
-                const float3 specularReflectance = approxSpecularIntegralGGX(specularReflectionAlbedo, ggxAlpha, NdotV);
+                const float NdotV = saturate(dot(bsdfProperties.guideNormal, sd.V));
+                const float ggxAlpha = bsdfProperties.roughness * bsdfProperties.roughness;
+                float3 specularReflectance = approxSpecularIntegralGGX(bsdfProperties.specularReflectionAlbedo, ggxAlpha, NdotV);
+                specularReflectance = max(kNRDMinReflectance, specularReflectance);
                 path.sharedScatterDir = specularReflectance;
             }
             else
@@ -126,23 +135,21 @@ void setNRDSampleReflectance(const bool useNRDDemodulation, inout PathState path
     }
 }
 
-float3 computeSampleReflectance(const bool useNRDDemodulation, bool isDiffusePrimaryHit, bool isSpecularPrimaryHit, const ShadingData sd)
+float3 computeSampleReflectance(const bool useNRDDemodulation, bool isDiffusePrimaryHit, bool isSpecularPrimaryHit, const ShadingData sd, const BSDFProperties bsdfProperties)
 {
     if (useNRDDemodulation)
     {
         float3 sampleReflectance;
         if (isDiffusePrimaryHit)
         {
-            float3 diffuseReflectionAlbedo = (1.f - sd.diffuseTransmission) * (1.f - sd.specularTransmission) * sd.diffuse;
-            sampleReflectance = diffuseReflectionAlbedo;
+            sampleReflectance = max(kNRDMinReflectance, bsdfProperties.diffuseReflectionAlbedo + bsdfProperties.diffuseTransmissionAlbedo);
         }
         else if (isSpecularPrimaryHit)
         {
-            const float NdotV = saturate(dot(sd.N, sd.V));
-            const float ggxAlpha = sd.linearRoughness * sd.linearRoughness;
-            float3 specularReflectionAlbedo = (1.f - sd.specularTransmission) * sd.specular;
-            const float3 specularReflectance = approxSpecularIntegralGGX(specularReflectionAlbedo, ggxAlpha, NdotV);
-            sampleReflectance = specularReflectance;
+            const float NdotV = saturate(dot(bsdfProperties.guideNormal, sd.V));
+            const float ggxAlpha = bsdfProperties.roughness * bsdfProperties.roughness;
+            float3 specularReflectance = approxSpecularIntegralGGX(bsdfProperties.specularReflectionAlbedo, ggxAlpha, NdotV);
+            sampleReflectance = max(kNRDMinReflectance, specularReflectance);
         }
         else
         {

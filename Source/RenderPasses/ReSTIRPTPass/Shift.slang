@@ -147,7 +147,7 @@ float3 computeShiftedIntegrandHybrid(const RestirPathTracerParams params, bool u
             bool isSpecularBounce = srcReservoir.pathFlags.decodeIsSpecularBounce(true);
 
             bool isLastVertexClassifiedAsRough = kSeparatePathBSDF ?
-                (isSpecularBounce ? dstPrimarySd.linearRoughness > params.specularRoughnessThreshold : hasRoughComponent(dstPrimarySd, 1.f)) :
+                (isSpecularBounce ? getRoughness(dstPrimarySd) > params.specularRoughnessThreshold : hasRoughComponent(dstPrimarySd, 1.f)) :
                 classifyAsRough(dstPrimarySd, params.specularRoughnessThreshold);
             if (!isLastVertexClassifiedAsRough)
             {
@@ -250,8 +250,8 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
     }
     bool isTransmission = srcReservoir.pathFlags.decodeIsTransmissionEvent(true, false);
 
-    srcPrimarySd.posW = srcPrimarySd.computeNewRayOrigin(!isTransmission);
-    dstPrimarySd.posW = dstPrimarySd.computeNewRayOrigin(!isTransmission);
+    srcPrimarySd.posW = srcPrimarySd.computeRayOrigin(!isTransmission);
+    dstPrimarySd.posW = dstPrimarySd.computeRayOrigin(!isTransmission);
 
     bool isDelta1 = srcReservoir.pathFlags.decodeIsDeltaEvent(true);
     bool isDelta2 = srcReservoir.pathFlags.decodeIsDeltaEvent(false);
@@ -401,8 +401,8 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
     bool isTransmission = srcReservoir.pathFlags.decodeIsTransmissionEvent(true);
     uint allowedSampledTypes1 = getAllowedBSDFFlags(srcReservoir.pathFlags.decodeIsSpecularBounce(true));
 
-    srcPrimarySd.posW = srcPrimarySd.computeNewRayOrigin(!isTransmission);
-    dstPrimarySd.posW = dstPrimarySd.computeNewRayOrigin(!isTransmission);
+    srcPrimarySd.posW = srcPrimarySd.computeRayOrigin(!isTransmission);
+    dstPrimarySd.posW = dstPrimarySd.computeRayOrigin(!isTransmission);
 
     if (!rcVertexHitExists) 
     {

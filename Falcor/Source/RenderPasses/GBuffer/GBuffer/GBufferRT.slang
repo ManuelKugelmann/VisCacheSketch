@@ -68,10 +68,10 @@ RWTexture2D<float> gMask;
 
 struct GBufferRT
 {
-    static const bool kComputeDepthOfField = COMPUTE_DEPTH_OF_FIELD;
-    static const bool kUseAlphaTest = USE_ALPHA_TEST;
+    static const bool kComputeDepthOfField = COMPUTE_DEPTH_OF_FIELD != 0;
+    static const bool kUseAlphaTest = USE_ALPHA_TEST != 0;
     static const TexLODMode kLODMode = TexLODMode(LOD_MODE);
-    static const bool kAdjustShadingNormals = ADJUST_SHADING_NORMALS;
+    static const bool kAdjustShadingNormals = ADJUST_SHADING_NORMALS != 0;
     static const uint kRayFlags = RAY_FLAGS;
     static const float kEnvMapDepth = 100000000.0f; // Arbitrary big number
 

@@ -229,7 +229,7 @@ HitInfo traceSceneRay<let UseAlphaTest : int>(const Ray ray, out float hitT, uin
 {
     // TODO: Use a constant expression to derive static ray flags.
 
-    if (UseAlphaTest)
+    if (UseAlphaTest != 0)
     {
 #if SCENE_HAS_PROCEDURAL_GEOMETRY()
         RayQuery<RAY_FLAG_NONE> rayQuery;
@@ -326,7 +326,7 @@ bool traceSceneVisibilityRay<let UseAlphaTest : int>(const Ray ray, uint rayFlag
 {
     // TODO: Use a constant expression to derive static ray flags.
 
-    if (UseAlphaTest)
+    if (UseAlphaTest != 0)
     {
 #if SCENE_HAS_PROCEDURAL_GEOMETRY()
         RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> rayQuery;

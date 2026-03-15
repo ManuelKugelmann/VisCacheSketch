@@ -84,7 +84,7 @@ void jump(inout Xoshiro128StarStar rng)
     {
         for (int b = 0; b < 32; b++)
         {
-            if (JUMP[i] & (1u << b))
+            if ((JUMP[i] & (1u << b)) != 0)
             {
                 s0 ^= rng.state[0];
                 s1 ^= rng.state[1];

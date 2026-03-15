@@ -46,8 +46,8 @@ RWTexture2D<float> gMask;
 
 struct VBufferRT
 {
-    static const bool kComputeDepthOfField = COMPUTE_DEPTH_OF_FIELD;
-    static const bool kUseAlphaTest = USE_ALPHA_TEST;
+    static const bool kComputeDepthOfField = COMPUTE_DEPTH_OF_FIELD != 0;
+    static const bool kUseAlphaTest = USE_ALPHA_TEST != 0;
     static const uint kRayFlags = RAY_FLAGS;
 
     uint2 frameDim;
