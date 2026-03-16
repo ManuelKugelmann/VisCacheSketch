@@ -19,6 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENE="VeachAjar"
 RENDERER="viscache"
+VARIANT=""
 INTERACTIVE=0
 
 # shellcheck disable=SC1091
@@ -30,9 +31,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --scene) SCENE="$2"; shift 2 ;;
         --renderer) RENDERER="$2"; shift 2 ;;
+        --variant) VARIANT="$2"; shift 2 ;;
         --skip-scenes) SKIP_SCENES=1; shift ;;
         --interactive|-i) INTERACTIVE=1; shift ;;
-        *) echo "Usage: $0 [--scene ...] [--renderer viscache|restirpt|rtxdi|pathtracer|minimal] [--skip-scenes] [--interactive]"; exit 1 ;;
+        *) echo "Usage: $0 [--scene ...] [--renderer ...] [--variant vanilla|viscache] [--skip-scenes] [--interactive]"; exit 1 ;;
     esac
 done
 
@@ -60,6 +62,21 @@ if [ "$INTERACTIVE" -eq 1 ]; then
         5) RENDERER="viscache" ;;
     esac
 
+    # Ask variant for renderers that support VisCache (all except minimal/viscache)
+    if [[ "$RENDERER" != "minimal" && "$RENDERER" != "viscache" ]]; then
+        echo ""
+        echo "  Select variant:"
+        echo "    1. Vanilla   — no visibility cache"
+        echo "    2. VisCache  — with visibility cache"
+        echo ""
+        read -rp "  Choice [1-2, default=1]: " VCHOICE
+        VCHOICE="${VCHOICE:-1}"
+        case "$VCHOICE" in
+            1) VARIANT="vanilla" ;;
+            2) RENDERER="viscache"; VARIANT="" ;;
+        esac
+    fi
+
     echo ""
     echo "  Select scene:"
     echo "    1. VeachAjar   — small test scene (no download needed)"
@@ -80,7 +97,13 @@ if [ "$INTERACTIVE" -eq 1 ]; then
 
     echo ""
     echo "  Selected: renderer=$RENDERER, scene=$SCENE"
+    [ -n "$VARIANT" ] && echo "  Variant: $VARIANT"
     echo ""
+fi
+
+# Apply --variant: viscache overrides to full VisCache pipeline
+if [[ "$VARIANT" == "viscache" && "$RENDERER" != "minimal" ]]; then
+    RENDERER="viscache"
 fi
 
 # 1. Download release

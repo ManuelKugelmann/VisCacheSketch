@@ -78,10 +78,9 @@ if "%RCHOICE%"=="3" set "RENDERER=rtxdi"
 if "%RCHOICE%"=="4" set "RENDERER=restirpt"
 if "%RCHOICE%"=="5" set "RENDERER=viscache"
 
-REM Only ask variant for renderers that support VisCache
-if /i "%RENDERER%"=="restirpt" goto :ask_variant
-if /i "%RENDERER%"=="rtxdi" goto :ask_variant
-goto :ask_scene
+REM Ask variant for renderers that support VisCache (all except minimal)
+if /i "%RENDERER%"=="minimal" goto :ask_scene
+goto :ask_variant
 
 :ask_variant
 echo.
@@ -122,6 +121,15 @@ echo.
 :skip_interactive
 
 REM ---------------------------------------------------------------------------
+REM Apply --variant: viscache overrides graph to full VisCache pipeline
+REM ---------------------------------------------------------------------------
+if /i "%VARIANT%"=="viscache" (
+    if /i not "%RENDERER%"=="minimal" (
+        set "RENDERER=viscache"
+    )
+)
+
+REM ---------------------------------------------------------------------------
 REM Select graph script based on renderer
 REM ---------------------------------------------------------------------------
 set "GRAPH_SCRIPT="
@@ -133,6 +141,7 @@ if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_Graph.py"
 if "%GRAPH_SCRIPT%"=="" (
     echo [quickstart] Unknown renderer: %RENDERER%
     echo [quickstart] Available: viscache, restirpt, rtxdi, pathtracer, minimal
+    echo [quickstart] Add --variant viscache to enable visibility cache with any renderer
     exit /b 1
 )
 

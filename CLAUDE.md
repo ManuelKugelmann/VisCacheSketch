@@ -55,6 +55,18 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
 - Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
 
+## Quickstart / Launch Scripts
+
+- Scripts support `--renderer`, `--variant`, `--scene`, and `--interactive` flags
+- Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT), `viscache` (full VisCache pipeline)
+- Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to pathtracer, rtxdi, restirpt
+- Interactive mode (`-i`): numbered menus for renderer, variant, and scene selection
+- Graph scripts: `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`, `VisCache_Graph.py`
+
+### TODO
+
+- [ ] Per-renderer VisCache graph scripts (e.g. `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`) — currently `--variant viscache` always selects the full VisCache pipeline (`VisCache_Graph.py`) which includes all passes (RTXDI + PathTracer + ReSTIR PT). Ideally each renderer should have its own VisCache-enabled variant that only adds the VisCache pass to that specific renderer's pipeline.
+
 ## Workflow
 
 - Work step by step for large edits — small incremental Edit calls, not massive Write

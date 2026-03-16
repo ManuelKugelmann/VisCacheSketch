@@ -3,7 +3,7 @@ REM run_release.bat — Launch Mogwai with a VisCache scene.
 REM
 REM Usage:  scripts\run_release.bat [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
 REM                                 [--renderer viscache|restirpt|rtxdi|pathtracer|minimal]
-REM                                 [--interactive]
+REM                                 [--variant vanilla|viscache] [--interactive]
 REM
 REM Requires: release\Mogwai.exe (run download_release.bat first)
 REM           media\ scenes (run download_scenes.bat first)
@@ -18,6 +18,7 @@ set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=VeachAjar"
 set "RENDERER=viscache"
+set "VARIANT="
 set "INTERACTIVE=0"
 
 REM ---------------------------------------------------------------------------
@@ -27,10 +28,11 @@ REM ---------------------------------------------------------------------------
 if "%~1"=="" goto :args_done
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--renderer" (set "RENDERER=%~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--variant" (set "VARIANT=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--interactive" (set "INTERACTIVE=1" & shift & goto :parse_args)
 if /i "%~1"=="-i" (set "INTERACTIVE=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene ...] [--renderer viscache^|restirpt^|rtxdi^|pathtracer^|minimal] [--interactive]
+echo Usage: %~nx0 [--scene ...] [--renderer ...] [--variant vanilla^|viscache] [--interactive]
 exit /b 1
 :args_done
 
@@ -59,6 +61,24 @@ if "%RCHOICE%"=="3" set "RENDERER=rtxdi"
 if "%RCHOICE%"=="4" set "RENDERER=restirpt"
 if "%RCHOICE%"=="5" set "RENDERER=viscache"
 
+REM Ask variant for renderers that support VisCache (all except minimal)
+if /i "%RENDERER%"=="minimal" goto :ask_scene_launch
+if /i "%RENDERER%"=="viscache" goto :ask_scene_launch
+
+echo.
+echo  Select variant:
+echo    1. Vanilla   — no visibility cache
+echo    2. VisCache  — with visibility cache
+echo.
+set /p "VCHOICE=  Choice [1-2, default=1]: "
+if "%VCHOICE%"=="" set "VCHOICE=1"
+if "%VCHOICE%"=="1" set "VARIANT=vanilla"
+if "%VCHOICE%"=="2" (
+    set "RENDERER=viscache"
+    set "VARIANT="
+)
+
+:ask_scene_launch
 echo.
 echo  Select scene:
 echo    1. VeachAjar   — small test scene (no download needed)
@@ -77,9 +97,19 @@ if "%SCHOICE%"=="5" set "SCENE=CornellBox"
 
 echo.
 echo  Selected: renderer=%RENDERER%, scene=%SCENE%
+if defined VARIANT echo  Variant: %VARIANT%
 echo.
 
 :skip_interactive_launch
+
+REM ---------------------------------------------------------------------------
+REM Apply --variant: viscache overrides graph to full VisCache pipeline
+REM ---------------------------------------------------------------------------
+if /i "%VARIANT%"=="viscache" (
+    if /i not "%RENDERER%"=="minimal" (
+        set "RENDERER=viscache"
+    )
+)
 
 REM Select graph script based on renderer
 set "GRAPH_SCRIPT="
@@ -91,6 +121,7 @@ if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_Graph.py"
 if "%GRAPH_SCRIPT%"=="" (
     echo [launch] Unknown renderer: %RENDERER%
     echo [launch] Available: viscache, restirpt, rtxdi, pathtracer, minimal
+    echo [launch] Add --variant viscache to enable visibility cache with any renderer
     exit /b 1
 )
 
