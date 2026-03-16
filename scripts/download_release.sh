@@ -3,8 +3,9 @@
 #
 # Usage:  ./scripts/download_release.sh
 #
-# Downloads the dev-latest prerelease archive and extracts to release/.
-# Re-downloads if a newer release is available (compares commit SHA via API).
+# Finds the newest dev-* versioned prerelease via the GitHub API,
+# downloads its archive, and extracts to release/.
+# Re-downloads if a newer release is available (compares commit SHA).
 #
 # Requires: curl or wget, tar
 
@@ -14,28 +15,57 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RELEASE_DIR="${ROOT_DIR}/release"
 REPO="ManuelKugelmann/VisCacheSketch"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/dev-latest/viscache-windows-Release.tar.gz"
 SHA_FILE="${RELEASE_DIR}/.release-sha"
 VERSION_FILE="${RELEASE_DIR}/.release-version"
-API_URL="https://api.github.com/repos/${REPO}/releases/tags/dev-latest"
 
 mkdir -p "$RELEASE_DIR"
 
 # ---------------------------------------------------------------------------
-# Query remote release info from GitHub API (single call)
+# Step 1: Find the latest dev-* prerelease tag via GitHub API
 # ---------------------------------------------------------------------------
 REMOTE_TAG=""
+API_LIST="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+    "https://api.github.com/repos/${REPO}/releases?per_page=10" 2>/dev/null)" || true
+
+if [ -n "$API_LIST" ]; then
+    # Find first tag matching dev-2* (versioned tags, newest first)
+    REMOTE_TAG="$(echo "$API_LIST" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"dev-2[^"]*"' | head -1 | sed 's/.*"\(dev-2[^"]*\)".*/\1/')" || true
+fi
+
+if [ -z "$REMOTE_TAG" ]; then
+    echo "[release] No dev-* prerelease found on GitHub."
+    if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
+        echo "[release] Keeping existing release."
+        exit 0
+    else
+        echo "[release] No existing release and could not query remote."
+        echo "[release] To get Mogwai manually:"
+        echo "[release]   Download: https://github.com/${REPO}/releases"
+        echo "[release]   Build:    run setup-build-system.bat, then cmake --preset windows-vs2022-ci"
+        exit 0
+    fi
+fi
+
+echo "[release] Latest prerelease tag: $REMOTE_TAG"
+
+# ---------------------------------------------------------------------------
+# Step 2: Fetch details for that specific release
+# ---------------------------------------------------------------------------
 REMOTE_DATE=""
 REMOTE_SHA=""
-API_JSON="$(curl -fsSL "$API_URL" 2>/dev/null)" || true
+API_JSON="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+    "https://api.github.com/repos/${REPO}/releases/tags/${REMOTE_TAG}" 2>/dev/null)" || true
+
 if [ -n "$API_JSON" ]; then
-    REMOTE_TAG="$(echo "$API_JSON" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')" || true
-    REMOTE_DATE="$(echo "$API_JSON" | grep -o '"published_at"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/')" || true
-    REMOTE_SHA="$(echo "$API_JSON" | grep -o '"target_commitish"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"target_commitish"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')" || true
+    # Extract full datetime (YYYY-MM-DD HH:MM:SS) from published_at
+    REMOTE_DATE="$(echo "$API_JSON" | grep -o '"published_at"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+        | sed 's/.*"\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)T\([0-9:]*\).*/\1 \2/')" || true
+    REMOTE_SHA="$(echo "$API_JSON" | grep -o '"target_commitish"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+        | sed 's/.*"target_commitish"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')" || true
 fi
 
 # ---------------------------------------------------------------------------
-# Check for newer release via commit SHA from GitHub API
+# Check for newer release via commit SHA
 # ---------------------------------------------------------------------------
 if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
     if [ -f "$SHA_FILE" ]; then
@@ -45,21 +75,17 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
         [ -f "$VERSION_FILE" ] && INSTALLED_VER="$(cat "$VERSION_FILE")"
         OLD_SHA_SHORT="${OLD_SHA:0:7}"
         echo "[release]   Installed: $INSTALLED_VER [$OLD_SHA_SHORT]"
-        if [ -n "$REMOTE_TAG" ]; then
-            if [ -n "$REMOTE_SHA" ]; then
-                REMOTE_SHA_SHORT="${REMOTE_SHA:0:7}"
-                echo "[release]   Remote:    $REMOTE_TAG ($REMOTE_DATE) [$REMOTE_SHA_SHORT]"
-            else
-                echo "[release]   Remote:    $REMOTE_TAG ($REMOTE_DATE)"
-            fi
+        if [ -n "$REMOTE_SHA" ]; then
+            REMOTE_SHA_SHORT="${REMOTE_SHA:0:7}"
+            echo "[release]   Remote:    $REMOTE_TAG ($REMOTE_DATE) [$REMOTE_SHA_SHORT]"
         else
-            echo "[release]   Remote:    (could not query GitHub API)"
+            echo "[release]   Remote:    $REMOTE_TAG ($REMOTE_DATE)"
         fi
         if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" = "$OLD_SHA" ]; then
             echo "[release] Release is up to date."
             exit 0
         elif [ -z "$REMOTE_SHA" ]; then
-            echo "[release] Could not check remote -- keeping existing release."
+            echo "[release] Could not verify remote SHA -- keeping existing release."
             exit 0
         fi
         echo "[release] Newer release available, updating..."
@@ -69,21 +95,22 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Download
+# Download from the versioned tag
 # ---------------------------------------------------------------------------
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${REMOTE_TAG}/viscache-windows-Release.tar.gz"
 echo "[release] Downloading: $DOWNLOAD_URL"
 ARCHIVE="$(mktemp /tmp/viscache-release.XXXXXX.tar.gz)"
 
 if command -v curl >/dev/null 2>&1; then
     curl -fSL --progress-bar -H 'Cache-Control: no-cache' -o "$ARCHIVE" "$DOWNLOAD_URL" || {
-        echo "[release] Download failed -- no dev-latest release yet. Skipping."
+        echo "[release] Download failed. Skipping."
         echo "[release] This is normal for first-time setup or pre-release branches."
         rm -f "$ARCHIVE"
         exit 0
     }
 elif command -v wget >/dev/null 2>&1; then
     wget -q --show-progress -O "$ARCHIVE" "$DOWNLOAD_URL" || {
-        echo "[release] Download failed -- no dev-latest release yet. Skipping."
+        echo "[release] Download failed. Skipping."
         rm -f "$ARCHIVE"
         exit 0
     }
@@ -98,11 +125,7 @@ if [ -n "${REMOTE_SHA:-}" ]; then
 fi
 
 # Save release version for display on next update check
-if [ -n "${REMOTE_TAG:-}" ]; then
-    echo "$REMOTE_TAG ($REMOTE_DATE)" > "$VERSION_FILE"
-else
-    echo "dev-latest" > "$VERSION_FILE"
-fi
+echo "$REMOTE_TAG ($REMOTE_DATE)" > "$VERSION_FILE"
 
 # ---------------------------------------------------------------------------
 # Clean old release — move aside so tar doesn't hit overwrite errors
