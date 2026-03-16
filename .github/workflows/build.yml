@@ -355,12 +355,6 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
-      # -- Caching: sccache for compiled objects --------------------------------
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-        env:
-          SCCACHE_CACHE_SIZE: 2G
-
       # -- Caching: CMake build directory (incremental builds) -----------------
       # Split into restore/save so we can strip large link artifacts before saving
       - name: Restore CMake build cache
@@ -430,7 +424,7 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/Z7" "-DCMAKE_CXX_FLAGS=/Z7"
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
 
       - name: Check NRD availability
         shell: cmd
@@ -454,11 +448,6 @@ jobs:
         run: |
           cd ${{ env.FALCOR_DIR }}
           tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
-
-      - name: Print sccache stats
-        if: always()
-        shell: cmd
-        run: sccache --show-stats
 
       - name: Verify build output
         shell: cmd
