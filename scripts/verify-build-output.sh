@@ -23,6 +23,32 @@ else
     echo "[verify] OK: data files deployed"
 fi
 
+# ---- NRD denoiser DLLs (warn loudly, do not fail) ----
+NRD_WARN=0
+if [ ! -f "$OUTDIR/NRDPass.dll" ]; then
+    NRD_WARN=1
+    echo ""
+    echo "========================================================"
+    echo " WARNING: NRDPass.dll MISSING from build output"
+    echo "========================================================"
+    echo ""
+fi
+if [ ! -f "$OUTDIR/NRD.dll" ]; then
+    NRD_WARN=1
+    echo ""
+    echo "========================================================"
+    echo " WARNING: NRD.dll MISSING from build output"
+    echo "========================================================"
+    echo ""
+fi
+if [ "$NRD_WARN" -ne 0 ]; then
+    echo "[verify] WARNING: NRD denoiser not in build output -- output will be raw noisy radiance."
+    echo "[verify] Rebuild with D3D12 + packman NRD package, or ensure NRDPass is enabled in CMake."
+    echo ""
+else
+    echo "[verify] OK: NRDPass.dll and NRD.dll present"
+fi
+
 if [ "$FAIL" -ne 0 ]; then
     exit 1
 fi
