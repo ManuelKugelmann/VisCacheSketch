@@ -95,28 +95,38 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Download from the versioned tag
+# Download from the versioned tag (fall back to dev-latest if asset missing)
 # ---------------------------------------------------------------------------
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${REMOTE_TAG}/viscache-windows-Release.tar.gz"
+ASSET_NAME="viscache-windows-Release.tar.gz"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${REMOTE_TAG}/${ASSET_NAME}"
 echo "[release] Downloading: $DOWNLOAD_URL"
 ARCHIVE="$(mktemp /tmp/viscache-release.XXXXXX.tar.gz)"
 
+DOWNLOAD_OK=0
 if command -v curl >/dev/null 2>&1; then
-    curl -fSL --progress-bar -H 'Cache-Control: no-cache' -o "$ARCHIVE" "$DOWNLOAD_URL" || {
-        echo "[release] Download failed. Skipping."
-        echo "[release] This is normal for first-time setup or pre-release branches."
-        rm -f "$ARCHIVE"
-        exit 0
-    }
+    curl -fSL --progress-bar -H 'Cache-Control: no-cache' -o "$ARCHIVE" "$DOWNLOAD_URL" 2>/dev/null && DOWNLOAD_OK=1
+    if [ "$DOWNLOAD_OK" -eq 0 ]; then
+        echo "[release] Asset not found on versioned tag, trying dev-latest..."
+        FALLBACK_URL="https://github.com/${REPO}/releases/download/dev-latest/${ASSET_NAME}"
+        curl -fSL --progress-bar -H 'Cache-Control: no-cache' -o "$ARCHIVE" "$FALLBACK_URL" && DOWNLOAD_OK=1
+    fi
 elif command -v wget >/dev/null 2>&1; then
-    wget -q --show-progress -O "$ARCHIVE" "$DOWNLOAD_URL" || {
-        echo "[release] Download failed. Skipping."
-        rm -f "$ARCHIVE"
-        exit 0
-    }
+    wget -q --show-progress -O "$ARCHIVE" "$DOWNLOAD_URL" 2>/dev/null && DOWNLOAD_OK=1
+    if [ "$DOWNLOAD_OK" -eq 0 ]; then
+        echo "[release] Asset not found on versioned tag, trying dev-latest..."
+        FALLBACK_URL="https://github.com/${REPO}/releases/download/dev-latest/${ASSET_NAME}"
+        wget -q --show-progress -O "$ARCHIVE" "$FALLBACK_URL" && DOWNLOAD_OK=1
+    fi
 else
     echo "[release] ERROR: neither curl nor wget found" >&2
     exit 1
+fi
+
+if [ "$DOWNLOAD_OK" -eq 0 ]; then
+    echo "[release] Download failed. Skipping."
+    echo "[release] This is normal for first-time setup or pre-release branches."
+    rm -f "$ARCHIVE"
+    exit 0
 fi
 
 # Save commit SHA for future update checks
