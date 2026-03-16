@@ -133,6 +133,57 @@ would naturally allocate fine resolution
 to caustic shadow boundaries
 while leaving diffuse-dominated regions at coarse levels.
 
+**MegaLights pipeline integration.**
+MegaLights [Conner et al. 2025] (Epic/UE5)
+is a stochastic tile-based direct lighting system
+enabling many dynamic shadowed area lights
+through a scalable, hardware-conscious pipeline.
+Its architectural pattern — tile-based candidate pools
+with stochastic selection — is composable
+with histogram stratification [Salaün et al. 2025]:
+MegaLights generates the candidate pool,
+histogram stratification improves which candidates get selected,
+and the visibility cache provides the μ oracle
+for visibility-weighted sorting.
+The three components operate at different pipeline stages
+and compose without modification to each other.
+
+**Path space filtering and two-level caching.**
+Path space filtering [Binder and Keller 2019]
+uses a spatial hash over path space
+to cache and filter full path contributions —
+a predecessor to SHaRC and closely related
+to the spatial hash lineage of this work.
+The visibility cache is path space filtering
+restricted to the visibility factor.
+Combining full path space filtering (caching path contributions)
+with the visibility cache (caching the hardest-to-evaluate factor)
+gives a two-level cache:
+one for the full integrand, one for visibility.
+The visibility cache's variance signal
+could gate when the path-space filter's cached contribution
+is trustworthy enough to skip the shadow ray entirely,
+while the path-space filter provides the residual estimate
+for the control variate when a ray is traced.
+
+**Real-time Markov chain path guiding.**
+Alber et al. [2025] propose lightweight unbiased path guiding
+for real-time applications using MCMC,
+avoiding costly fitting procedures
+and hierarchical spatial data structures
+that are inefficient on GPU architectures.
+Unlike ReSTIR PG [Zeng et al. 2025],
+which requires ReSTIR output to build guiding distributions,
+MCMC path guiding works standalone —
+making it combinable with ReSTIR PG
+as a fallback for frames or regions
+where ReSTIR has insufficient sample density.
+The visibility cache is orthogonal to both:
+it gates the shadow ray regardless of how the path was guided,
+and its variance signal could inform
+the MCMC proposal's acceptance probability
+in visibility-dominated regions.
+
 **Independent per-endpoint LOD.**
 The current design uses a shared level index —
 both endpoints are quantized at the same cell size,
