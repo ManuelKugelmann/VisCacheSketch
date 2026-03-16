@@ -34,7 +34,7 @@ $content = Get-Content $rpCmake -Raw
 foreach ($sub in @("VisCache", "ReSTIRPTPass")) {
     if ($content -notmatch "add_subdirectory\($sub\)") {
         Add-Content $rpCmake "`nadd_subdirectory($sub)"
-        Write-Host "[integrate] Patched $rpCmake: added $sub"
+        Write-Host "[integrate] Patched ${rpCmake}: added $sub"
     }
 }
 
