@@ -2,16 +2,42 @@
 RTXDI_Graph.py  —  RTXDI (ReSTIR DI) direct lighting render graph.
 
 Direct illumination only via spatiotemporal resampling.
-No VisCache, no path tracing — just GBuffer → RTXDIPass → ToneMapper.
+GBuffer → RTXDIPass → ToneMapper.
+Optionally adds VisCache for visibility-weighted light selection (§11.1) when viscache=True.
 
 Usage:
     Mogwai.exe --script scripts/RTXDI_Graph.py --scene VeachAjar.pyscene
 """
 
+# Shared VisCache pass parameters (same defaults as VisCache_Graph.py)
+_VISCACHE_DEFAULTS = {
+    "tableCapacity":   1 << 22,
+    "bootThreshold":   32,
+    "varThreshold":    0.10,
+    "pMin":            0.05,
+    "fireflyBudget":   0.05,
+    "decayPeriod":     300,
+    "decayPeriodMax":  600,
+    "numLevels":       3,
+    "cellCoarse":      10.0,
+    "cellFine":        0.16,
+    "enableVisCacheRevalidation":   True,
+    "enableVisCacheLightSelection": True,
+    "enableVisCacheWarpReduction":  True,
+    "enableVisCacheVarianceGate":   True,
+    "enableVisCacheDecay":          True,
+    "enableVisCachePressureEvict":  True,
+}
 
-def render_graph_RTXDI():
-    """Build an RTXDI (ReSTIR DI) render graph."""
-    g = RenderGraph("RTXDI")
+
+def render_graph_RTXDI(viscache=False):
+    """Build an RTXDI (ReSTIR DI) render graph.
+
+    Args:
+        viscache: If True, add VisCache pass for light selection (§11.1).
+    """
+    name = "RTXDI_VisCache" if viscache else "RTXDI"
+    g = RenderGraph(name)
 
     # G-Buffer
     gbuf = createPass("GBufferRT", {
@@ -21,6 +47,11 @@ def render_graph_RTXDI():
         "cull":          "Back",
     })
     g.addPass(gbuf, "GBufferRT")
+
+    # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
+    if viscache:
+        vc = createPass("VisCachePass", _VISCACHE_DEFAULTS)
+        g.addPass(vc, "VisCache")
 
     # RTXDI — direct illumination with spatiotemporal resampling
     rtxdi = createPass("RTXDIPass", {

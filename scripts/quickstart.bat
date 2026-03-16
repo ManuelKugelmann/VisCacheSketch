@@ -78,8 +78,8 @@ if "%RCHOICE%"=="3" set "RENDERER=rtxdi"
 if "%RCHOICE%"=="4" set "RENDERER=restirpt"
 if "%RCHOICE%"=="5" set "RENDERER=viscache"
 
-REM Ask variant for renderers that support VisCache (all except minimal)
-if /i "%RENDERER%"=="minimal" goto :ask_scene
+REM Ask variant for all renderers except viscache (already includes VisCache)
+if /i "%RENDERER%"=="viscache" goto :ask_scene
 goto :ask_variant
 
 :ask_variant
@@ -121,16 +121,7 @@ echo.
 :skip_interactive
 
 REM ---------------------------------------------------------------------------
-REM Apply --variant: viscache overrides graph to full VisCache pipeline
-REM ---------------------------------------------------------------------------
-if /i "%VARIANT%"=="viscache" (
-    if /i not "%RENDERER%"=="minimal" (
-        set "RENDERER=viscache"
-    )
-)
-
-REM ---------------------------------------------------------------------------
-REM Select graph script based on renderer
+REM Select graph script based on renderer + variant
 REM ---------------------------------------------------------------------------
 set "GRAPH_SCRIPT="
 if /i "%RENDERER%"=="viscache"    set "GRAPH_SCRIPT=VisCache_Graph.py"
@@ -138,6 +129,15 @@ if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
 if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_Graph.py"
 if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_Graph.py"
 if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_Graph.py"
+
+REM Apply --variant viscache: switch to per-renderer VisCache graph
+if /i "%VARIANT%"=="viscache" (
+    if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_VisCache_Graph.py"
+    if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_VisCache_Graph.py"
+    if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_VisCache_Graph.py"
+    if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=VisCache_Graph.py"
+)
+
 if "%GRAPH_SCRIPT%"=="" (
     echo [quickstart] Unknown renderer: %RENDERER%
     echo [quickstart] Available: viscache, restirpt, rtxdi, pathtracer, minimal

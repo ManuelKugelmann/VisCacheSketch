@@ -1,8 +1,8 @@
 """
 MinimalPathTracer_Graph.py  —  Simple Mogwai render graph using Falcor's MinimalPathTracer.
 
-A lightweight alternative to the full VisCache pipeline. No VisCache, no ReSTIR PT,
-no denoiser — just VBuffer → MinimalPathTracer → AccumulatePass → ToneMapper.
+VBuffer → MinimalPathTracer → AccumulatePass → ToneMapper.
+Optionally adds VisCache for shadow gating (§11.2) when viscache=True.
 
 Good for quick visual checks, scene validation, and learning Falcor basics.
 
@@ -10,10 +10,35 @@ Usage:
     Mogwai.exe --script scripts/MinimalPathTracer_Graph.py --scene CornellBox.pyscene
 """
 
+# Shared VisCache pass parameters (same defaults as VisCache_Graph.py)
+_VISCACHE_DEFAULTS = {
+    "tableCapacity":   1 << 22,
+    "bootThreshold":   32,
+    "varThreshold":    0.10,
+    "pMin":            0.05,
+    "fireflyBudget":   0.05,
+    "decayPeriod":     300,
+    "decayPeriodMax":  600,
+    "numLevels":       3,
+    "cellCoarse":      10.0,
+    "cellFine":        0.16,
+    "enableVisCacheRevalidation":   True,
+    "enableVisCacheLightSelection": True,
+    "enableVisCacheWarpReduction":  True,
+    "enableVisCacheVarianceGate":   True,
+    "enableVisCacheDecay":          True,
+    "enableVisCachePressureEvict":  True,
+}
 
-def render_graph_MinimalPathTracer():
-    """Build a simple MinimalPathTracer render graph."""
-    g = RenderGraph("MinimalPathTracer")
+
+def render_graph_MinimalPathTracer(viscache=False):
+    """Build a MinimalPathTracer render graph.
+
+    Args:
+        viscache: If True, add VisCache pass for shadow gating (§11.2).
+    """
+    name = "MinimalPathTracer_VisCache" if viscache else "MinimalPathTracer"
+    g = RenderGraph(name)
 
     # V-Buffer (visibility buffer — primary ray hits)
     vbuf = createPass("VBufferRT", {
@@ -21,6 +46,11 @@ def render_graph_MinimalPathTracer():
         "sampleCount":   16,
     })
     g.addPass(vbuf, "VBufferRT")
+
+    # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
+    if viscache:
+        vc = createPass("VisCachePass", _VISCACHE_DEFAULTS)
+        g.addPass(vc, "VisCache")
 
     # Minimal path tracer (Falcor built-in)
     pt = createPass("MinimalPathTracer", {

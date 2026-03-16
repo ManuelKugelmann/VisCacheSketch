@@ -2,16 +2,42 @@
 PathTracer_Graph.py  —  Vanilla Falcor PathTracer render graph.
 
 Full-featured path tracer with accumulation and tone mapping.
-No VisCache, no ReSTIR — just VBuffer → PathTracer → AccumulatePass → ToneMapper.
+VBuffer → PathTracer → AccumulatePass → ToneMapper.
+Optionally adds VisCache for shadow gating (§11.2) when viscache=True.
 
 Usage:
     Mogwai.exe --script scripts/PathTracer_Graph.py --scene VeachAjar.pyscene
 """
 
+# Shared VisCache pass parameters (same defaults as VisCache_Graph.py)
+_VISCACHE_DEFAULTS = {
+    "tableCapacity":   1 << 22,
+    "bootThreshold":   32,
+    "varThreshold":    0.10,
+    "pMin":            0.05,
+    "fireflyBudget":   0.05,
+    "decayPeriod":     300,
+    "decayPeriodMax":  600,
+    "numLevels":       3,
+    "cellCoarse":      10.0,
+    "cellFine":        0.16,
+    "enableVisCacheRevalidation":   True,
+    "enableVisCacheLightSelection": True,
+    "enableVisCacheWarpReduction":  True,
+    "enableVisCacheVarianceGate":   True,
+    "enableVisCacheDecay":          True,
+    "enableVisCachePressureEvict":  True,
+}
 
-def render_graph_PathTracer():
-    """Build a vanilla PathTracer render graph."""
-    g = RenderGraph("PathTracer")
+
+def render_graph_PathTracer(viscache=False):
+    """Build a PathTracer render graph.
+
+    Args:
+        viscache: If True, add VisCache pass for shadow gating (§11.2).
+    """
+    name = "PathTracer_VisCache" if viscache else "PathTracer"
+    g = RenderGraph(name)
 
     # V-Buffer (visibility buffer — primary ray hits)
     vbuf = createPass("VBufferRT", {
@@ -19,6 +45,11 @@ def render_graph_PathTracer():
         "sampleCount":   16,
     })
     g.addPass(vbuf, "VBufferRT")
+
+    # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
+    if viscache:
+        vc = createPass("VisCachePass", _VISCACHE_DEFAULTS)
+        g.addPass(vc, "VisCache")
 
     # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
     pt = createPass("PathTracer", {

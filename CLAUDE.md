@@ -61,12 +61,9 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT), `viscache` (full VisCache pipeline)
 - Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to pathtracer, rtxdi, restirpt
 - Interactive mode (`-i`): numbered menus for renderer, variant, and scene selection
-- Graph scripts: `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`, `VisCache_Graph.py`
-
-### TODO
-
-- [ ] Integrate VisCache into PathTracer and MinimalPathTracer graph scripts — create `PathTracer_VisCache_Graph.py` and `MinimalPathTracer_VisCache_Graph.py` that add the VisCache pass (InternalDictionary) to those specific pipelines for shadow gating (§11.2) without pulling in the full ReSTIR PT pipeline
-- [ ] Per-renderer VisCache graph scripts for RTXDI too (`RTXDI_VisCache_Graph.py`) — currently `--variant viscache` always selects the full VisCache pipeline (`VisCache_Graph.py`) which includes all passes (RTXDI + PathTracer + ReSTIR PT). Each renderer should have its own VisCache-enabled variant
+- Graph scripts (vanilla): `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`, `VisCache_Graph.py`
+- Graph scripts (VisCache variants): `MinimalPathTracer_VisCache_Graph.py`, `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`
+- `--variant viscache` maps each renderer to its specific VisCache graph (not the full pipeline); `restirpt --variant viscache` uses `VisCache_Graph.py` (full pipeline)
 
 ## Workflow
 

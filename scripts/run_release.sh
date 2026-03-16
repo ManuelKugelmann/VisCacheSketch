@@ -58,8 +58,8 @@ if [ "$INTERACTIVE" -eq 1 ]; then
         5) RENDERER="viscache" ;;
     esac
 
-    # Ask variant for renderers that support VisCache (all except minimal/viscache)
-    if [[ "$RENDERER" != "minimal" && "$RENDERER" != "viscache" ]]; then
+    # Ask variant for all renderers except viscache (already includes VisCache)
+    if [[ "$RENDERER" != "viscache" ]]; then
         echo ""
         echo "  Select variant:"
         echo "    1. Vanilla   — no visibility cache"
@@ -97,11 +97,6 @@ if [ "$INTERACTIVE" -eq 1 ]; then
     echo ""
 fi
 
-# Apply --variant: viscache overrides to full VisCache pipeline
-if [[ "$VARIANT" == "viscache" && "$RENDERER" != "minimal" ]]; then
-    RENDERER="viscache"
-fi
-
 # Select graph script based on renderer
 case "$RENDERER" in
     viscache)    GRAPH_SCRIPT="VisCache_Graph.py" ;;
@@ -116,6 +111,16 @@ case "$RENDERER" in
         exit 1
         ;;
 esac
+
+# Apply --variant viscache: switch to per-renderer VisCache graph
+if [ "$VARIANT" = "viscache" ]; then
+    case "$RENDERER" in
+        minimal)     GRAPH_SCRIPT="MinimalPathTracer_VisCache_Graph.py" ;;
+        pathtracer)  GRAPH_SCRIPT="PathTracer_VisCache_Graph.py" ;;
+        rtxdi)       GRAPH_SCRIPT="RTXDI_VisCache_Graph.py" ;;
+        restirpt)    GRAPH_SCRIPT="VisCache_Graph.py" ;;
+    esac
+fi
 
 # Deploy fresh scripts from source tree into release/scripts/VisCache/
 # so the release always uses up-to-date graph configs and smoke tests.
