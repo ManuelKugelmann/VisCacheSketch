@@ -46,7 +46,7 @@ bool sampleBSDF(const ShadingData sd, inout SampleGenerator sg, out BSDFSample_ 
 {
     result = {};
     let mi = _getMI(sd);
-    BSDFSample bs;
+    BSDFSample bs = {};
     bool valid = mi.sample(sd, sg, bs, useImportanceSampling);
     if (valid)
     {
