@@ -40,6 +40,11 @@ on:
         required: false
         default: true
         type: boolean
+      clean_build:
+        description: 'Clean build (nuke build dir + sccache, ignore cached objects)'
+        required: false
+        default: false
+        type: boolean
       commit_sha:
         description: 'Commit SHA to build and release (default: HEAD of selected branch)'
         required: false
@@ -283,6 +288,7 @@ jobs:
       # -- Caching: CMake build directory (incremental builds) -----------------
       # Split into restore/save so we can strip large link artifacts before saving
       - name: Restore CMake build cache
+        if: ${{ !inputs.clean_build }}
         id: cmake-cache
         uses: actions/cache/restore@v5
         with:
@@ -335,7 +341,20 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
+      - name: Clean build directory
+        if: ${{ inputs.clean_build }}
+        shell: cmd
+        run: |
+          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
+          if exist "%BUILD_DIR%" (
+            echo [build] Clean build requested — nuking %BUILD_DIR%
+            rmdir /s /q "%BUILD_DIR%"
+          )
+          sccache --stop-server 2>nul
+          echo [build] Cleared sccache server state
+
       - name: Clean stale CMake cache
+        if: ${{ !inputs.clean_build }}
         shell: cmd
         run: |
           set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
@@ -350,7 +369,7 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/FS" "-DCMAKE_CXX_FLAGS=/FS"
 
       - name: Check NRD availability
         shell: cmd
@@ -484,6 +503,7 @@ jobs:
       # -- Caching: CMake build directory (incremental builds) -----------------
       # Split into restore/save so we can strip large link artifacts before saving
       - name: Restore CMake build cache
+        if: ${{ !inputs.clean_build }}
         id: cmake-cache
         uses: actions/cache/restore@v5
         with:
@@ -535,7 +555,20 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
+      - name: Clean build directory
+        if: ${{ inputs.clean_build }}
+        shell: cmd
+        run: |
+          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
+          if exist "%BUILD_DIR%" (
+            echo [build] Clean build requested — nuking %BUILD_DIR%
+            rmdir /s /q "%BUILD_DIR%"
+          )
+          sccache --stop-server 2>nul
+          echo [build] Cleared sccache server state
+
       - name: Clean stale CMake cache
+        if: ${{ !inputs.clean_build }}
         shell: cmd
         run: |
           set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
@@ -550,7 +583,7 @@ jobs:
         shell: cmd
         run: |
           cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/FS" "-DCMAKE_CXX_FLAGS=/FS"
 
       - name: Check NRD availability
         shell: cmd
