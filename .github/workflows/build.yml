@@ -1,18 +1,19 @@
 name: Build
 
 on:
-  push:
-    branches: ["main", "master"]
-    tags: ["v*"]
-    paths:
-      - 'Source/**'
-      - 'Falcor/**'
-      - 'scripts/**'
-      - 'CMakeLists.txt'
-      - 'setup.*'
-      - '.github/workflows/build.yml'
-  pull_request:
-    branches: ["main", "master"]
+  # Auto-triggers disabled — manual releases only for now
+  # push:
+  #   branches: ["main", "master"]
+  #   tags: ["v*"]
+  #   paths:
+  #     - 'Source/**'
+  #     - 'Falcor/**'
+  #     - 'scripts/**'
+  #     - 'CMakeLists.txt'
+  #     - 'setup.*'
+  #     - '.github/workflows/build.yml'
+  # pull_request:
+  #   branches: ["main", "master"]
   workflow_dispatch:
 
 # Queue new runs behind in-progress ones (won't cancel running builds)
