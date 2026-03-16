@@ -161,8 +161,10 @@ jobs:
           SCCACHE_CACHE_SIZE: 2G
 
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -289,6 +291,30 @@ jobs:
           )
           exit /b 0
 
+      # -- Save slimmed CMake build cache (strip PDB/ILK to cut ~60-80% size) --
+      - name: Slim and save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
+          echo [cache] Before cleanup:
+          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
+          del /s /q "%BUILD_DIR%\*.pdb" 2>nul
+          del /s /q "%BUILD_DIR%\*.ilk" 2>nul
+          del /s /q "%BUILD_DIR%\*.exp" 2>nul
+          del /s /q "%BUILD_DIR%\*.ipdb" 2>nul
+          del /s /q "%BUILD_DIR%\*.iobj" 2>nul
+          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
+          echo [cache] After cleanup:
+          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
+
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
+
       - name: Upload build artifacts
         if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6
@@ -337,8 +363,10 @@ jobs:
           SCCACHE_CACHE_SIZE: 2G
 
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -464,6 +492,30 @@ jobs:
           )
           exit /b 0
 
+      # -- Save slimmed CMake build cache (strip PDB/ILK to cut ~60-80% size) --
+      - name: Slim and save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
+          echo [cache] Before cleanup:
+          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
+          del /s /q "%BUILD_DIR%\*.pdb" 2>nul
+          del /s /q "%BUILD_DIR%\*.ilk" 2>nul
+          del /s /q "%BUILD_DIR%\*.exp" 2>nul
+          del /s /q "%BUILD_DIR%\*.ipdb" 2>nul
+          del /s /q "%BUILD_DIR%\*.iobj" 2>nul
+          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
+          echo [cache] After cleanup:
+          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
+
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
+
       - name: Bundle Falcor media scenes
         if: matrix.config == 'Release'
         shell: cmd
@@ -552,8 +604,10 @@ jobs:
           ccache -z
 
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large debug/link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -617,6 +671,26 @@ jobs:
 
       - name: Verify data file deployment
         run: bash scripts/verify-build-output.sh "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin"
+
+      # -- Save slimmed CMake build cache (strip debug symbols to cut size) ----
+      - name: Slim and save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        run: |
+          BUILD_DIR="${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}"
+          echo "[cache] Before cleanup:"
+          du -sh "$BUILD_DIR" 2>/dev/null || true
+          find "$BUILD_DIR" -name '*.dwp' -delete 2>/dev/null || true
+          find "$BUILD_DIR" -name '*.dwo' -delete 2>/dev/null || true
+          rm -rf "$BUILD_DIR/bin" 2>/dev/null || true
+          echo "[cache] After cleanup:"
+          du -sh "$BUILD_DIR" 2>/dev/null || true
+
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
   # ---------------------------------------------------------------------------
   # Dev prerelease — rolling "latest build" on every push to main/master
