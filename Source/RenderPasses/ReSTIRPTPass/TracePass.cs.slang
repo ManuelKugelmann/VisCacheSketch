@@ -42,6 +42,7 @@ void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
     gPathTracer.writeOutput(path, giReservoir, sampleIdx);
 }
 
+[shader("compute")]
 [require(sm_6_6)]
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
