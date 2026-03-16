@@ -715,39 +715,20 @@ jobs:
           echo "VERSION_TAG=${VERSION_TAG}" >> "$GITHUB_ENV"
           echo "BUILD_TIMESTAMP=${TIMESTAMP}" >> "$GITHUB_ENV"
 
-      - name: Delete old dev-latest release
+      - name: Create versioned prerelease
         run: |
-          gh release delete dev-latest --yes --cleanup-tag 2>/dev/null || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create dev-latest prerelease
-        run: |
-          gh release create dev-latest "${{ env.ARCHIVE }}" \
-            --title "Dev Build (${GITHUB_SHA::8})" \
+          gh release create "${{ env.VERSION_TAG }}" "${{ env.ARCHIVE }}" \
+            --title "Dev Build ${BUILD_TIMESTAMP} (${GITHUB_SHA::8})" \
             --notes "Automated prerelease from \`${GITHUB_SHA::8}\` on \`${GITHUB_REF_NAME}\`.
-          Build: ${BUILD_TIMESTAMP}
-          Tag: ${VERSION_TAG}
+          Build timestamp: ${BUILD_TIMESTAMP}
 
-          Latest successful build — updated on every push to main.
           **Not a stable release.** Use tagged \`v*\` releases for production." \
             --prerelease \
             --target "$GITHUB_SHA"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create versioned prerelease tag
-        run: |
-          gh release create "${{ env.VERSION_TAG }}" \
-            --title "Dev Build ${BUILD_TIMESTAMP} (${GITHUB_SHA::8})" \
-            --notes "Automated prerelease from \`${GITHUB_SHA::8}\` on \`${GITHUB_REF_NAME}\`.
-          Build timestamp: ${BUILD_TIMESTAMP}" \
-            --prerelease \
-            --target "$GITHUB_SHA"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prune old versioned prereleases (keep latest 3)
+      - name: Prune old dev prereleases (keep latest 3)
         run: |
           gh release list --json tagName,isPrerelease \
             --jq '[.[] | select(.isPrerelease and (.tagName | startswith("dev-2")))] | sort_by(.tagName) | reverse | .[3:][] | .tagName' \
