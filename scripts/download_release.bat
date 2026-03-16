@@ -11,7 +11,7 @@ REM Requires: curl, tar (both ship with Windows 10+)
 setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
-set "ROOT=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "RELEASE_DIR=%ROOT%\release"
 set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
 set "ETAG_FILE=%RELEASE_DIR%\.release-etag"

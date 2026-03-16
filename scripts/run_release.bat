@@ -9,7 +9,7 @@ REM           media\ scenes (run download_scenes.bat first)
 setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
-set "ROOT=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 
 call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
@@ -35,8 +35,12 @@ set "SCRIPTS_SRC=%ROOT%\scripts"
 set "SCRIPTS_DST=%RELEASE_DIR%\scripts\VisCache"
 if exist "%SCRIPTS_SRC%\smoke_test.py" (
     if not exist "%SCRIPTS_DST%" mkdir "%SCRIPTS_DST%"
-    xcopy "%SCRIPTS_SRC%\*" "%SCRIPTS_DST%\" /s /y /q >nul
-    echo [launch] Deployed fresh scripts from source tree to release\scripts\VisCache\
+    set "_COUNT=0"
+    for /f "delims=" %%F in ('xcopy "%SCRIPTS_SRC%\*" "%SCRIPTS_DST%\" /s /D /Y /F 2^>nul') do (
+        echo [launch]   updated: %%F
+        set /a "_COUNT+=1"
+    )
+    if !_COUNT! gtr 0 echo [launch] !_COUNT! script^(s^) updated in release\scripts\VisCache\
 )
 
 REM ---------------------------------------------------------------------------
