@@ -39,13 +39,22 @@ if errorlevel 1 (
 )
 
 REM ---------------------------------------------------------------------------
-REM Step 2: Copy shaders to release (if release exists)
+REM Step 2: Quickstart (scenes, release, tests, launch)
+REM ---------------------------------------------------------------------------
+echo.
+echo ========================================
+echo  Step 2: Quickstart
+echo ========================================
+call "%ROOT%scripts\quickstart.bat" %QS_ARGS%
+
+REM ---------------------------------------------------------------------------
+REM Step 3: Copy newest shaders into release (overrides release archive)
 REM ---------------------------------------------------------------------------
 set "RELEASE_DIR=%ROOT%release"
 if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo.
     echo ========================================
-    echo  Step 2: Copy shaders to release
+    echo  Step 3: Copy latest shaders to release
     echo ========================================
 
     for %%P in (VisCache ReSTIRPTPass) do (
@@ -57,17 +66,6 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
             echo [update]   %%P shaders copied
         )
     )
-) else (
-    echo [update] No release found, skipping shader copy.
 )
-
-REM ---------------------------------------------------------------------------
-REM Step 3: Quickstart (scenes, release, tests, launch)
-REM ---------------------------------------------------------------------------
-echo.
-echo ========================================
-echo  Step 3: Quickstart
-echo ========================================
-call "%ROOT%scripts\quickstart.bat" %QS_ARGS%
 
 endlocal
