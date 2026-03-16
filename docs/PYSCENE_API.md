@@ -4,6 +4,8 @@ Falcor scene files (`.pyscene`) are Python scripts executed by Mogwai at load ti
 A global `sceneBuilder` object is available for constructing scenes.
 
 > Source: pybind11 bindings in `Falcor/Source/Falcor/Scene/` (SceneBuilder.cpp, Camera.cpp, Light.cpp, Material.cpp, etc.)
+>
+> Reference scenes: [SirKero/RTProgressivePhotonMapper](https://github.com/SirKero/RTProgressivePhotonMapper) `Scenes/` — Bistro (emissive+glass+volumeAbsorption), caustic glass (spotlight), livingRoom (PBRT import, tinted glass), veachBiDir, waterCaustic
 
 ---
 
