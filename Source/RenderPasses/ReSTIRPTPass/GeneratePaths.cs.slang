@@ -86,12 +86,12 @@ struct PathGenerator
     RWTexture2D<float4> outputColor;                ///< Output color buffer if kSamplesPerPixel == 1.
 
 
-    int gSampleId = 0;
+    int gSampleId;
 
     // Render settings that depend on the scene.
     // TODO: Move into scene defines.
     //static bool kUseEnvBackground = USE_ENV_BACKGROUND;
-    bool kUseEnvBackground = false;
+    bool kUseEnvBackground;
 
     /** Entry point for path generator.
         \param[in] tileID Tile ID in x and y on screen.
