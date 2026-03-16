@@ -241,18 +241,24 @@ if not exist "%SCENE_FILE%" (
     goto :done
 )
 
-REM ---- Show checkout vs release commit SHA for diagnostics ----
+REM ---- Show checkout vs release commit SHA + timestamp for diagnostics ----
 set "CHECKOUT_SHA=unknown"
+set "CHECKOUT_DATE=unknown"
 where git >nul 2>&1 && (
     for /f "tokens=*" %%H in ('git -C "%ROOT%." rev-parse --short HEAD 2^>nul') do set "CHECKOUT_SHA=%%H"
+    for /f "tokens=*" %%D in ('git -C "%ROOT%." log -1 --format^=%%ci 2^>nul') do set "CHECKOUT_DATE=%%D"
 )
 set "RELEASE_SHA=unknown"
+set "RELEASE_VER=unknown"
 if exist "%RELEASE_DIR%\.release-sha" (
     set /p RELEASE_SHA=<"%RELEASE_DIR%\.release-sha"
     set "RELEASE_SHA=!RELEASE_SHA:~0,7!"
 )
-echo [quickstart] checkout commit: !CHECKOUT_SHA!
-echo [quickstart] release commit:  !RELEASE_SHA!
+if exist "%RELEASE_DIR%\.release-version" (
+    set /p RELEASE_VER=<"%RELEASE_DIR%\.release-version"
+)
+echo [quickstart] checkout: !CHECKOUT_SHA! ^(!CHECKOUT_DATE!^)
+echo [quickstart] release:  !RELEASE_SHA! ^(!RELEASE_VER!^)
 if not "!CHECKOUT_SHA!"=="unknown" if not "!RELEASE_SHA!"=="unknown" (
     if not "!CHECKOUT_SHA!"=="!RELEASE_SHA!" (
         echo [quickstart] WARNING: checkout and release are from different commits — shader/binary mismatch possible
