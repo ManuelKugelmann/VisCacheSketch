@@ -44,6 +44,7 @@ void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
 
 // SM 6.6 requirement is set at the session level (ProgramManager::setShaderModel),
 // not via [require] which triggers capability checking issues in offline compilation.
+[shader("compute")]
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
