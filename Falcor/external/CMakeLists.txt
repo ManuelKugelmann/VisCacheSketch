@@ -36,6 +36,11 @@ set(GLFW_BUILD_EXAMPLES OFF)
 set(GLFW_BUILD_TESTS OFF)
 set(GLFW_BUILD_DOCS OFF)
 add_subdirectory(glfw)
+# Use /Z7 (debug info in .obj) instead of /Zi (shared .pdb) to avoid PDB
+# contention when sccache wraps parallel cl.exe invocations (C1041 error).
+if(MSVC AND (CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER))
+    target_compile_options(glfw PRIVATE /Z7)
+endif()
 
 # imgui
 add_library(imgui INTERFACE)
