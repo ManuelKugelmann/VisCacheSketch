@@ -77,9 +77,10 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 | CV+VRRR — control variate + variance-driven RR | [Szécsi et al. 2003][r-szecsi] (CV, fixed RR), [Szirmay-Kalos et al. 2005][r-szirmay] (variance-driven RR, scene-global estimate) | Overlap found late in 2006 writing; 2006 added per-point cache (not scene-global) as estimation source |
 | Variance-driven adaptive sampling (trace rate from cache quality) | [Stotko et al. 2025][r-stotko] (variance-driven resolution, TSDF), [Rath et al. 2022][r-rath] (EARS, efficiency-aware RR/splitting) | 2006 coupled variance to trace rate; Stotko to spatial resolution; EARS to path continuation |
 | Per-point spatial cache as prediction source | [Guo et al. 2020][r-guo] (NEE++, voxel-to-voxel visibility), [Bokšanský & Meister 2025][r-boksansky] (neural visibility cache) | 2006 used per-point hash cache vs. scene-global average; NEE++ dense matrix, Bokšanský neural |
-| Visibility caching for shadow ray reduction | [Popov et al. 2013][r-popov] (adaptive quantization, offline), [Guo et al. 2020][r-guo] (NEE++, 80% reduction), [SHaRC (Benyoub et al. 2024)][r-sharc] (roughness-gated LoD, RTX SDK) | 2006 was real-time CPU, single-level; SHaRC is real-time GPU with roughness-gated LoD but no variance-coupled write gate |
+| Visibility caching for shadow ray reduction | [Ward 1991][r-ward] (predates 2006 — conceptual ancestor), [Popov et al. 2013][r-popov] (adaptive quantization, offline), [Guo et al. 2020][r-guo] (NEE++, 80% reduction), [SHaRC (Benyoub et al. 2024)][r-sharc] (roughness-gated LoD, RTX SDK) | Visibility caching itself predates 2006; what 2006 added was the CV+VRRR correction loop on top of the cache, not the caching idea |
 | Algorithm-agnostic pairwise cache | [Bokšanský & Meister 2025][r-boksansky] (works with any light sampler) | 2006 tested on instant radiosity; the cache operates on (point, point) → {0,1} regardless of algorithm |
 
+[r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
 [r-sharc]: https://github.com/NVIDIAGameWorks/RTXGI
 [r-rath]: https://doi.org/10.1145/3528223.3530168
 [r-guo]: https://doi.org/10.1111/cgf.14142
