@@ -59,7 +59,7 @@ struct MaterialSystem
     Texture3D<float4> materialTextures3D[ArrayMax<1, MATERIAL_SYSTEM_TEXTURE_3D_DESC_COUNT>.value];
 
     /// True when any emissive material is using IES
-    static bool kUseLightProfile = MATERIAL_SYSTEM_USE_LIGHT_PROFILE;
+    static const bool kUseLightProfile = MATERIAL_SYSTEM_USE_LIGHT_PROFILE != 0;
     /// IES light profile to use with materials `hasLightProfile(id)` == true
     LightProfile lightProfile;
 
