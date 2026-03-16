@@ -5,12 +5,16 @@ on:
     paths:
       - 'Source/**/*.slang'
       - 'Source/**/*.slangh'
+      - 'Falcor/Source/RenderPasses/**/*.slang'
+      - 'Falcor/Source/RenderPasses/**/*.slangh'
       - '.github/workflows/slang-check.yml'
       - 'scripts/slang-ci-*'
   pull_request:
     paths:
       - 'Source/**/*.slang'
       - 'Source/**/*.slangh'
+      - 'Falcor/Source/RenderPasses/**/*.slang'
+      - 'Falcor/Source/RenderPasses/**/*.slangh'
       - '.github/workflows/slang-check.yml'
       - 'scripts/slang-ci-*'
   workflow_dispatch:

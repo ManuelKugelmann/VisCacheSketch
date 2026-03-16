@@ -3,12 +3,52 @@
 #
 # Expects: BistroInterior.fbx in same directory or FALCOR_MEDIA_FOLDERS.
 # Source:  NVIDIA ORCA (CC-BY 4.0), https://developer.nvidia.com/orca
+#
+# Lighting approach follows SirKero/RTProgressivePhotonMapper and
+# TU-Clausthal-Rendering/ReSTIR-FG: boost all emissives by 1000x
+# (the FBX has emissive lamps/signs at very low default intensity),
+# and configure glass materials for proper specular transmission.
 
 sceneBuilder.importScene('BistroInterior.fbx')
 
+# Camera — counter view looking into the bistro interior
 camera = Camera('VisCacheDefault')
 camera.position = float3(-5.5, 2.0, -0.6)
 camera.target   = float3( 0.5, 1.5, -1.0)
 camera.up       = float3( 0.0, 1.0,  0.0)
 camera.focalLength = 24.0
 sceneBuilder.addCamera(camera)
+
+# Boost all emissive materials (FBX defaults are far too dim)
+for m in sceneBuilder.materials:
+    m.emissiveFactor *= 1000
+
+# Glass — make windows transparent (pattern from SirKero/RTProgressivePhotonMapper)
+glass = sceneBuilder.getMaterial('MASTER_Glass_Exterior')
+if glass:
+    glass.specularTransmission = 1
+    glass.roughness = 0
+    glass.metallic = 0
+    glass.doubleSided = True
+    glass.indexOfRefraction = 1.55
+    glass.nestedPriority = 5
+
+tGlass = sceneBuilder.getMaterial('TransparentGlass')
+if tGlass:
+    tGlass.specularTransmission = 1
+    tGlass.roughness = 0
+    tGlass.metallic = 0
+    tGlass.doubleSided = True
+    tGlass.indexOfRefraction = 1.55
+    tGlass.nestedPriority = 5
+
+# Directional sunlight streaming through windows (warm afternoon)
+sun = DirectionalLight('Sun')
+sun.intensity = float3(2.0, 1.6, 1.1)
+sun.direction = float3(0.5, -0.7, -0.5)
+sceneBuilder.addLight(sun)
+
+# Render settings — emissive geometry is the primary illumination indoors
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True

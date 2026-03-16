@@ -12,7 +12,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass
 - `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
 - `scripts/` — .bat + .sh for quickstart, download, run, test
-- `scenes/` — .pyscene camera configs (copied into release/media/ at runtime)
+- `scenes/` — .pyscene scene configs (camera, lights, env map); see [`docs/PYSCENE_API.md`](docs/PYSCENE_API.md) for Falcor 8 API reference
 - `release/` — extracted release bundle from GitHub Releases (replaces need for local build)
   - `release/shaders/RenderPasses/` — deployed .slang shaders (Falcor runtime looks here)
   - `release/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)
@@ -33,6 +33,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Windows: SDK 10.0.19041.0 required (`windows-2022` runner, NOT `windows-latest`)
 - `target_copy_shaders()` deploys .slang to `${FALCOR_OUTPUT_DIRECTORY}/shaders/RenderPasses/<pass>/`
 - Render passes copied into Falcor source tree during setup/CI
+- **Shader source of truth is `Source/`**, not `release/shaders/` — build/CI deploys shaders into `release/shaders/` automatically, so only edit under `Source/RenderPasses/`
 
 ## CI
 
@@ -46,6 +47,13 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 
 - `.gitattributes`: LF everywhere, CRLF for `.bat` files
 - Edit/Write tools strip `\r` — fine since repo is LF-normalized
+
+## Scenes
+
+- **Default test scene: VeachAjar** (DQLin ReSTIR PT reference scene) — small, no download needed after data deploy
+- VeachAjar lives in source tree: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/`, deployed to `release/data/ReSTIRPTPass/VeachAjar/`
+- Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
+- Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
 
 ## Workflow
 

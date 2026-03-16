@@ -31,15 +31,17 @@ if /i "%~1"=="--dir" (set "DIR=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--branch" (set "BRANCH=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=--skip-scenes" & shift & goto :parse_args)
+if /i "%~1"=="--skip-launch" (set "SKIP_LAUNCH=--skip-launch" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--dir ^<name^>] [--branch ^<branch^>] [--scene ^<scene^>] [--skip-scenes]
+echo Usage: %~nx0 [--dir ^<name^>] [--branch ^<branch^>] [--scene ^<scene^>] [--skip-scenes] [--skip-launch]
 exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
 REM Check git
 REM ---------------------------------------------------------------------------
-where git >nul 2>&1 || (
+where git >nul 2>&1
+if errorlevel 1 (
     echo [install] ERROR: git not found. Install git 2.43+ from https://git-scm.com
     exit /b 1
 )
@@ -91,6 +93,7 @@ REM ---------------------------------------------------------------------------
 set "QS_ARGS="
 if defined SCENE set "QS_ARGS=--scene %SCENE%"
 if defined SKIP_SCENES set "QS_ARGS=%QS_ARGS% %SKIP_SCENES%"
+if defined SKIP_LAUNCH set "QS_ARGS=%QS_ARGS% %SKIP_LAUNCH%"
 
 REM Resolve absolute path so quickstart.bat's %~dp0 points to scripts\
 for %%P in ("%DIR%\scripts\quickstart.bat") do set "QS_SCRIPT=%%~fP"

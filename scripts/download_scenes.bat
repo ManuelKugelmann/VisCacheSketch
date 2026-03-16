@@ -29,8 +29,16 @@ echo Usage: %~nx0 [--dir ^<path^>] [--yes]
 exit /b 1
 :args_done
 
-where curl >nul 2>&1 || (echo ERROR: curl not found in PATH & exit /b 1)
-where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
+where curl >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: curl not found in PATH
+    exit /b 1
+)
+where tar >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: tar not found in PATH
+    exit /b 1
+)
 
 REM Falcor packman CDN — same source CI uses for Arcade + TestScenes
 set "FALCOR_MEDIA_URL=https://d4i3qtqj3r0z5.cloudfront.net/falcor_media@7acdf8b0"
@@ -97,7 +105,7 @@ if not exist "%MEDIA_DIR%\Bistro" (
     echo [scenes] Source: developer.nvidia.com/orca ^(NVIDIA ORCA^)
     echo [scenes] Size: ~3.2 GB compressed
     echo.
-    if %AUTO_YES%==0 (
+    if "%AUTO_YES%"=="0" (
         set /p "YN=[scenes] Download Bistro? [y/N] "
         if /i not "!YN!"=="y" (
             echo [scenes] Skipping Bistro
@@ -151,7 +159,7 @@ if not exist "%MEDIA_DIR%\Sponza" (
     echo [scenes] Source: github.com/jimmiebergmann/Sponza ^(OBJ mirror^)
     echo [scenes] Size: ~70 MB compressed
     echo.
-    if %AUTO_YES%==0 (
+    if "%AUTO_YES%"=="0" (
         set /p "YN=[scenes] Download Sponza? [y/N] "
         if /i not "!YN!"=="y" (
             echo [scenes] Skipping Sponza
@@ -201,7 +209,8 @@ if exist "%VEACHAJAR_DEST%\models" if exist "%VEACHAJAR_DEST%\textures" (
     goto :summary
 )
 
-where git >nul 2>&1 || (
+where git >nul 2>&1
+if errorlevel 1 (
     echo [scenes] git not found -- skipping VeachAjar ^(requires git for sparse clone^)
     goto :summary
 )
@@ -211,7 +220,7 @@ echo [scenes] === VeachAjar ^(Bitterli scene, DQLin OBJ conversion^) ===
 echo [scenes] Source: github.com/DQLin/ReSTIR_PT
 echo [scenes] Size: ~62 MB ^(OBJ models + textures^)
 echo.
-if %AUTO_YES%==0 (
+if "%AUTO_YES%"=="0" (
     set /p "YN=[scenes] Download VeachAjar? [y/N] "
     if /i not "!YN!"=="y" (
         echo [scenes] Skipping VeachAjar

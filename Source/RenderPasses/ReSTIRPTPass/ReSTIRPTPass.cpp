@@ -277,7 +277,7 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
 
     {
         ProgramDesc desc;
-        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_6);
         mpTracePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
@@ -601,6 +601,12 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
         // [Falcor 8] Shader::DefineList → DefineList.
         DefineList defines = mpScene->getSceneDefines();
 
+        // Scene type conformances tell Slang which concrete IMaterial
+        // implementations exist so it can generate code for them.
+        // Without this, scenes that use material types not statically
+        // imported by our shaders (e.g. Bistro) fail with error 50100.
+        auto typeConformances = mpScene->getTypeConformances();
+
         mpGeneratePaths->getProgram()->addDefines(defines);
         mpTracePass->getProgram()->addDefines(defines);
         mpReflectTypes->getProgram()->addDefines(defines);
@@ -611,6 +617,17 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
         mpSpatialReusePass->getProgram()->addDefines(defines);
         mpTemporalReusePass->getProgram()->addDefines(defines);
         mpComputePathReuseMISWeightsPass->getProgram()->addDefines(defines);
+
+        mpGeneratePaths->getProgram()->setTypeConformances(typeConformances);
+        mpTracePass->getProgram()->setTypeConformances(typeConformances);
+        mpReflectTypes->getProgram()->setTypeConformances(typeConformances);
+
+        mpSpatialPathRetracePass->getProgram()->setTypeConformances(typeConformances);
+        mpTemporalPathRetracePass->getProgram()->setTypeConformances(typeConformances);
+
+        mpSpatialReusePass->getProgram()->setTypeConformances(typeConformances);
+        mpTemporalReusePass->getProgram()->setTypeConformances(typeConformances);
+        mpComputePathReuseMISWeightsPass->getProgram()->setTypeConformances(typeConformances);
 
         validateOptions();
 

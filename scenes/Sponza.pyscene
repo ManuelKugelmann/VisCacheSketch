@@ -7,9 +7,27 @@
 
 sceneBuilder.importScene('sponza.obj')
 
+# Camera — classic atrium view from the side corridor
 camera = Camera('VisCacheDefault')
 camera.position = float3(-11.0, 4.0,  0.0)
 camera.target   = float3(  0.0, 2.0,  0.0)
 camera.up       = float3(  0.0, 1.0,  0.0)
 camera.focalLength = 24.0
 sceneBuilder.addCamera(camera)
+
+# Directional sunlight — harsh midday sun through the open roof
+sun = DirectionalLight('Sun')
+sun.intensity = float3(4.0, 3.6, 3.0)
+sun.direction = float3(0.3, -0.9, 0.2)
+sceneBuilder.addLight(sun)
+
+# Bounce fill — subtle warm fill from the floor
+fill = DirectionalLight('BounceFill')
+fill.intensity = float3(0.15, 0.12, 0.08)
+fill.direction = float3(-0.2, -0.3, -0.5)
+sceneBuilder.addLight(fill)
+
+# Render settings
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True
