@@ -230,11 +230,11 @@ jobs:
           echo mock > "%BUILD_DIR%\obj\test.iobj"
           mkdir "%BUILD_DIR%\bin" 2>nul
           echo mock > "%BUILD_DIR%\bin\Mogwai.exe"
-          del /s /q "%BUILD_DIR%\*.pdb" 2>nul
-          del /s /q "%BUILD_DIR%\*.ilk" 2>nul
-          del /s /q "%BUILD_DIR%\*.exp" 2>nul
-          del /s /q "%BUILD_DIR%\*.ipdb" 2>nul
-          del /s /q "%BUILD_DIR%\*.iobj" 2>nul
+          del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
           if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
           if exist "%BUILD_DIR%\obj\test.pdb" (echo FAIL: PDB not cleaned & exit /b 1)
           if exist "%BUILD_DIR%\bin" (echo FAIL: bin not cleaned & exit /b 1)
@@ -415,15 +415,15 @@ jobs:
         run: |
           set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
           echo [cache] Before cleanup:
-          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
-          del /s /q "%BUILD_DIR%\*.pdb" 2>nul
-          del /s /q "%BUILD_DIR%\*.ilk" 2>nul
-          del /s /q "%BUILD_DIR%\*.exp" 2>nul
-          del /s /q "%BUILD_DIR%\*.ipdb" 2>nul
-          del /s /q "%BUILD_DIR%\*.iobj" 2>nul
+          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
+          del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
           if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
           echo [cache] After cleanup:
-          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
+          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
 
       - name: Save CMake build cache
         if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
@@ -614,15 +614,15 @@ jobs:
         run: |
           set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
           echo [cache] Before cleanup:
-          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
-          del /s /q "%BUILD_DIR%\*.pdb" 2>nul
-          del /s /q "%BUILD_DIR%\*.ilk" 2>nul
-          del /s /q "%BUILD_DIR%\*.exp" 2>nul
-          del /s /q "%BUILD_DIR%\*.ipdb" 2>nul
-          del /s /q "%BUILD_DIR%\*.iobj" 2>nul
+          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
+          del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
+          del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
           if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
           echo [cache] After cleanup:
-          dir /s "%BUILD_DIR%" 2>nul | findstr /C:"File(s)"
+          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
 
       - name: Save CMake build cache
         if: always() && steps.cmake-cache.outputs.cache-hit != 'true'

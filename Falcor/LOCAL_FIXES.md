@@ -50,3 +50,27 @@ now set a `VISCACHE_ROOT` environment variable pointing to the project root.
 plain `git submodule update` (no `-C`) when run standalone.
 
 **Upstream status:** N/A (subtree integration issue, not an upstream bug).
+
+---
+
+## 3. GLFW: PDB contention with sccache + Ninja (C1041)
+
+**File:** `external/CMakeLists.txt`
+
+When using `sccache` as a compiler launcher with Ninja on MSVC, parallel
+`cl.exe` invocations for the GLFW static library all write to the same
+`glfw.pdb`, causing `fatal error C1041: cannot open program database`.
+The `/FS` flag (serialize PDB writes) is already set but doesn't help when
+sccache wraps the compiler.
+
+**Fix:** After `add_subdirectory(glfw)`, force `/Z7` on the `glfw` target
+when a compiler launcher is configured. `/Z7` embeds debug info directly
+in `.obj` files, eliminating the shared `.pdb` entirely.
+
+```cmake
+if(MSVC AND (CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER))
+    target_compile_options(glfw PRIVATE /Z7)
+endif()
+```
+
+**Upstream status:** Not yet reported (upstream GLFW doesn't use sccache).
