@@ -91,6 +91,48 @@ This generalizes the current binary visibility cache
 to a multilevel path guiding cache for ReSTIR PG,
 with the same self-regulating budget allocation.
 
+**Connection to Neural Two-Level Monte Carlo.**
+Sanzharov et al. [2025] use a neural incident radiance cache (NIRC)
+in a Two-Level Monte Carlo (MLMC) scheme
+to compensate for cache bias,
+with a Balanced Termination Heuristic (BTH) that decides
+when to trust the cache vs. trace further —
+enabling cache use at the primary bounce,
+unlike NRC's spread-angle heuristic.
+Their BTH is structurally a stochastic version
+of our variance-gated write depth (Sec. 5):
+both decide at which level to stop and trust the cache.
+Our variance-coupled correction rate (Sec. 8)
+maps directly onto the MLMC residual estimator structure —
+the control variate returns the cached prediction,
+the residual corrects it stochastically.
+Combining MLMC with a hash-based visibility cache
+would yield unbiased hash-gated visibility
+with variance-optimal termination depth,
+where both the cache level and the correction rate
+are driven by the same variance signal.
+Their use of world-space multi-level hash encodings
+further parallels our LOD-in-key design (Sec. 4).
+
+**ReSTIR BDPT.**
+Lin et al. [2025] extend GRIS to bidirectional path tracing,
+enabling caustics via technique-aware extended path space
+and caustic reservoirs.
+The reconnection vertex data structures from ReSTIR PT
+port directly into BDPT's hybrid shift —
+and the visibility cache sits on the same shadow ray step.
+Caustics specifically require accurate visibility
+at specular-diffuse-diffuse paths,
+exactly where spatial hash visibility caching has the highest leverage:
+these paths concentrate on narrow geometric regions
+that align well with fine-level cache cells,
+and their high contribution variance
+makes the shadow ray cost dominant.
+The cache's variance-gated write depth
+would naturally allocate fine resolution
+to caustic shadow boundaries
+while leaving diffuse-dominated regions at coarse levels.
+
 **Independent per-endpoint LOD.**
 The current design uses a shared level index —
 both endpoints are quantized at the same cell size,

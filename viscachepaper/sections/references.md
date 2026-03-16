@@ -48,7 +48,11 @@
 
 - [Rath et al. 2022] A. Rath, P. Grittmann, S. Herholz, P. Slusallek, and K. Myszkowski. "EARS: Efficiency-Aware Russian Roulette and Splitting." *ACM Trans. Graph.*, 41(4):81, 2022.
 
+- [Lin et al. 2025] D. Lin et al. "ReSTIR Bidirectional Path Tracing." *ACM Trans. Graph.* (SIGGRAPH), 2025.
+
 - [Salaün et al. 2025] C. Salaün, I. Graux, K. Georgiev, and T. Hašan. "Histogram Stratification for Real-Time Importance Sampling." *ACM SIGGRAPH*, 2025.
+
+- [Sanzharov et al. 2025] V. Sanzharov et al. "Neural Two-Level Monte Carlo Real-Time Rendering." *arXiv*, 2025.
 
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
