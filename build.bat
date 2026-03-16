@@ -13,6 +13,7 @@ REM Safe to re-run: all steps are idempotent.
 setlocal enabledelayedexpansion
 
 set "ROOT=%~dp0"
+set "VISCACHE_ROOT=%ROOT%"
 set "FALCOR_ROOT=%ROOT%Falcor"
 set "CONFIG=Release"
 set "PRESET=windows-vs2022-ci"

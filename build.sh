@@ -13,6 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export VISCACHE_ROOT="${SCRIPT_DIR}"
 FALCOR_ROOT="${SCRIPT_DIR}/Falcor"
 CONFIG="Release"
 PRESET="linux-gcc-ci"
