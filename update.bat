@@ -29,4 +29,30 @@ goto :parse_args
 
 call "%ROOT%scripts\quickstart.bat" %QS_ARGS%
 
+REM ---------------------------------------------------------------------------
+REM Post-update: Validate NRD (denoiser) in release
+REM ---------------------------------------------------------------------------
+set "RELEASE_DIR=%ROOT%release"
+if exist "%RELEASE_DIR%\Mogwai.exe" (
+    set "NRD_OK=1"
+    if not exist "%RELEASE_DIR%\NRDPass.dll" (
+        echo [update]   NRDPass.dll: MISSING
+        set "NRD_OK=0"
+    ) else (
+        echo [update]   NRDPass.dll: OK
+    )
+    if not exist "%RELEASE_DIR%\NRD.dll" (
+        echo [update]   NRD.dll: MISSING
+        set "NRD_OK=0"
+    ) else (
+        echo [update]   NRD.dll: OK
+    )
+    if "!NRD_OK!"=="0" (
+        echo [update]   WARNING: NRD denoiser not in release — denoised output unavailable.
+        echo [update]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
+    ) else (
+        echo [update]   NRD denoiser: available
+    )
+)
+
 endlocal

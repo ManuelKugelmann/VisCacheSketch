@@ -88,6 +88,27 @@ for %%P in (VisCache ReSTIRPTPass) do (
 )
 echo [launch] Shaders deployed from source tree
 
+REM ---- Validate NRD (denoiser) availability in release ----
+set "NRD_OK=1"
+if not exist "%RELEASE_DIR%\NRDPass.dll" (
+    echo [launch]   NRDPass.dll: MISSING
+    set "NRD_OK=0"
+) else (
+    echo [launch]   NRDPass.dll: OK
+)
+if not exist "%RELEASE_DIR%\NRD.dll" (
+    echo [launch]   NRD.dll: MISSING
+    set "NRD_OK=0"
+) else (
+    echo [launch]   NRD.dll: OK
+)
+if "!NRD_OK!"=="0" (
+    echo [launch]   WARNING: NRD denoiser not in release — output will be raw noisy radiance.
+    echo [launch]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
+) else (
+    echo [launch]   NRD denoiser: available
+)
+
 REM Validate (diagnostic — catch wrong locations, partial copies, etc.)
 where python >nul 2>&1 && (
     python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"

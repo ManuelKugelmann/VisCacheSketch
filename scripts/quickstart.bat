@@ -1,7 +1,7 @@
 @echo off
 REM quickstart.bat — Run the full VisCacheSketch quickstart sequence (steps 0-6).
 REM
-REM Usage:  scripts\quickstart.bat [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes] [--skip-pull]
+REM Usage:  scripts\quickstart.bat [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes] [--skip-pull] [--skip-launch]
 REM
 REM Steps:
 REM   0. git pull                   (unless --skip-pull)
@@ -27,6 +27,7 @@ set "MEDIA_DIR=%ROOT%\release\media"
 call "%SCRIPT_DIR%version.bat" quickstart 2>nul
 set "SKIP_SCENES=0"
 set "SKIP_PULL=0"
+set "SKIP_LAUNCH=0"
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -36,8 +37,9 @@ if "%~1"=="" goto :args_done
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=1" & shift & goto :parse_args)
 if /i "%~1"=="--skip-pull" (set "SKIP_PULL=1" & shift & goto :parse_args)
+if /i "%~1"=="--skip-launch" (set "SKIP_LAUNCH=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade] [--skip-scenes] [--skip-pull]
+echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade] [--skip-scenes] [--skip-pull] [--skip-launch]
 exit /b 1
 :args_done
 
@@ -136,6 +138,27 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
         echo [quickstart]   ReSTIRPTPass data deployed
     )
 
+    REM ---- Validate NRD (denoiser) availability in release ----
+    set "NRD_OK=1"
+    if not exist "%RELEASE_DIR%\NRDPass.dll" (
+        echo [quickstart]   NRDPass.dll: MISSING
+        set "NRD_OK=0"
+    ) else (
+        echo [quickstart]   NRDPass.dll: OK
+    )
+    if not exist "%RELEASE_DIR%\NRD.dll" (
+        echo [quickstart]   NRD.dll: MISSING
+        set "NRD_OK=0"
+    ) else (
+        echo [quickstart]   NRD.dll: OK
+    )
+    if "!NRD_OK!"=="0" (
+        echo [quickstart]   WARNING: NRD denoiser not in release — output will be raw noisy radiance.
+        echo [quickstart]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
+    ) else (
+        echo [quickstart]   NRD denoiser: available
+    )
+
     REM ---- Validate shaders (content hash) ----
     REM Diagnostic: compare deployed vs source by SHA-256 to catch wrong
     REM locations, partial copies, or stale files from the release archive.
@@ -163,13 +186,15 @@ call "%SCRIPT_DIR%run-tests.bat"
 if errorlevel 1 echo [quickstart] WARNING: Some tests failed
 
 REM ---------------------------------------------------------------------------
-REM Step 5: Run headless smoke test
+REM Step 5: Run headless smoke test (requires GPU — skip on CI)
 REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
 echo  Step 5: Headless smoke test
 echo ========================================
-if exist "%RELEASE_DIR%\Mogwai.exe" (
+if %SKIP_LAUNCH%==1 (
+    echo [quickstart] step 5 headless smoke test -- skipped ^(--skip-launch^)
+) else if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [quickstart] step 5 run headless smoke test
     "%RELEASE_DIR%\Mogwai.exe" --headless --script "%RELEASE_DIR%\scripts\VisCache\smoke_test.py"
     if errorlevel 1 (
@@ -182,12 +207,16 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
 )
 
 REM ---------------------------------------------------------------------------
-REM Step 6: Launch
+REM Step 6: Launch (requires GPU — skip on CI)
 REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
 echo  Step 6: Launch
 echo ========================================
+if %SKIP_LAUNCH%==1 (
+    echo [quickstart] step 6 launch -- skipped ^(--skip-launch^)
+    goto :done
+)
 if not exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [quickstart] step 6 launch -- skipped ^(Mogwai.exe not found^)
     echo [quickstart] Run scripts\download_release.bat first, or build from source.
