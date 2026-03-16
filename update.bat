@@ -48,7 +48,7 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
         echo [update]   NRD.dll: OK
     )
     if "!NRD_OK!"=="0" (
-        echo [update]   WARNING: NRD denoiser not in release — denoised output unavailable.
+        echo [update]   WARNING: NRD denoiser not in release -- denoised output unavailable.
         echo [update]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
     ) else (
         echo [update]   NRD denoiser: available
