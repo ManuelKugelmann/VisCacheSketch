@@ -35,8 +35,8 @@ on:
           - Debug
           - Release
           - Both
-      create_release:
-        description: 'Create a dev prerelease after build'
+      create_prerelease:
+        description: 'Create a dev prerelease after build (stable releases use v* tags instead)'
         required: false
         default: true
         type: boolean
@@ -780,7 +780,7 @@ jobs:
       !cancelled()
       && needs.prepare.result == 'success'
       && needs.windows-ninja.result == 'success'
-      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_release))
+      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_prerelease))
       && !startsWith(github.ref, 'refs/tags/')
     needs: [prepare, windows-ninja]
     env:
