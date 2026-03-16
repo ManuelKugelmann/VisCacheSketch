@@ -24,7 +24,7 @@ REM Resolve script directory to absolute path (robust in nested call chains)
 for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 set "SCENE=VeachAjar"
-set "RENDERER=viscache"
+set "RENDERER=restirpt"
 set "VARIANT="
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
@@ -68,19 +68,13 @@ echo    1. MinimalPathTracer  — lightweight, progressive accumulation
 echo    2. PathTracer         — full Falcor path tracer (NEE, MIS, volumes)
 echo    3. RTXDI              — ReSTIR DI direct lighting only
 echo    4. ReSTIR PT          — ReSTIR path tracing (indirect + direct)
-echo    5. VisCache           — full VisCache pipeline (ReSTIR PT + visibility cache)
 echo.
-set /p "RCHOICE=  Choice [1-5, default=5]: "
-if "%RCHOICE%"=="" set "RCHOICE=5"
+set /p "RCHOICE=  Choice [1-4, default=4]: "
+if "%RCHOICE%"=="" set "RCHOICE=4"
 if "%RCHOICE%"=="1" set "RENDERER=minimal"
 if "%RCHOICE%"=="2" set "RENDERER=pathtracer"
 if "%RCHOICE%"=="3" set "RENDERER=rtxdi"
 if "%RCHOICE%"=="4" set "RENDERER=restirpt"
-if "%RCHOICE%"=="5" set "RENDERER=viscache"
-
-REM Ask variant for all renderers except viscache (already includes VisCache)
-if /i "%RENDERER%"=="viscache" goto :ask_scene
-goto :ask_variant
 
 :ask_variant
 echo.
@@ -92,7 +86,7 @@ set /p "VCHOICE=  Choice [1-2, default=1]: "
 if "%VCHOICE%"=="" set "VCHOICE=1"
 if "%VCHOICE%"=="1" set "VARIANT=vanilla"
 if "%VCHOICE%"=="2" (
-    set "RENDERER=viscache"
+    set "RENDERER=restirpt"
     set "VARIANT="
 )
 
@@ -124,7 +118,6 @@ REM ---------------------------------------------------------------------------
 REM Select graph script based on renderer + variant
 REM ---------------------------------------------------------------------------
 set "GRAPH_SCRIPT="
-if /i "%RENDERER%"=="viscache"    set "GRAPH_SCRIPT=VisCache_Graph.py"
 if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
 if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_Graph.py"
 if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_Graph.py"
@@ -135,13 +128,13 @@ if /i "%VARIANT%"=="viscache" (
     if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_VisCache_Graph.py"
     if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_VisCache_Graph.py"
     if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_VisCache_Graph.py"
-    if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=VisCache_Graph.py"
+    if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_VisCache_Graph.py"
 )
 
 if "%GRAPH_SCRIPT%"=="" (
     echo [quickstart] Unknown renderer: %RENDERER%
-    echo [quickstart] Available: viscache, restirpt, rtxdi, pathtracer, minimal
-    echo [quickstart] Add --variant viscache to enable visibility cache with any renderer
+    echo [quickstart] Available: restirpt, rtxdi, pathtracer, minimal
+    echo [quickstart] Add --variant viscache to enable visibility cache
     exit /b 1
 )
 

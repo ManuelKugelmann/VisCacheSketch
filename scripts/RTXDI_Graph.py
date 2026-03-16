@@ -9,25 +9,7 @@ Usage:
     Mogwai.exe --script scripts/RTXDI_Graph.py --scene VeachAjar.pyscene
 """
 
-# Shared VisCache pass parameters (same defaults as VisCache_Graph.py)
-_VISCACHE_DEFAULTS = {
-    "tableCapacity":   1 << 22,
-    "bootThreshold":   32,
-    "varThreshold":    0.10,
-    "pMin":            0.05,
-    "fireflyBudget":   0.05,
-    "decayPeriod":     300,
-    "decayPeriodMax":  600,
-    "numLevels":       3,
-    "cellCoarse":      10.0,
-    "cellFine":        0.16,
-    "enableVisCacheRevalidation":   True,
-    "enableVisCacheLightSelection": True,
-    "enableVisCacheWarpReduction":  True,
-    "enableVisCacheVarianceGate":   True,
-    "enableVisCacheDecay":          True,
-    "enableVisCachePressureEvict":  True,
-}
+from viscache_defaults import VISCACHE_DEFAULTS
 
 
 def render_graph_RTXDI(viscache=False):
@@ -50,7 +32,7 @@ def render_graph_RTXDI(viscache=False):
 
     # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
     if viscache:
-        vc = createPass("VisCachePass", _VISCACHE_DEFAULTS)
+        vc = createPass("VisCachePass", VISCACHE_DEFAULTS)
         g.addPass(vc, "VisCache")
 
     # RTXDI — direct illumination with spatiotemporal resampling

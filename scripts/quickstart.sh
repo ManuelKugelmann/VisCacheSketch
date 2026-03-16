@@ -26,7 +26,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "quickstart" 2>/dev/null || true
 SCENE="VeachAjar"
-RENDERER="viscache"
+RENDERER="restirpt"
 VARIANT=""
 INTERACTIVE=0
 RELEASE_DIR="${ROOT_DIR}/release"
@@ -61,20 +61,18 @@ if [ "$INTERACTIVE" -eq 1 ]; then
     echo "    2. PathTracer         — full Falcor path tracer (NEE, MIS, volumes)"
     echo "    3. RTXDI              — ReSTIR DI direct lighting only"
     echo "    4. ReSTIR PT          — ReSTIR path tracing (indirect + direct)"
-    echo "    5. VisCache           — full VisCache pipeline (ReSTIR PT + visibility cache)"
     echo ""
-    read -rp "  Choice [1-5, default=5]: " RCHOICE
-    RCHOICE="${RCHOICE:-5}"
+    read -rp "  Choice [1-4, default=4]: " RCHOICE
+    RCHOICE="${RCHOICE:-4}"
     case "$RCHOICE" in
         1) RENDERER="minimal" ;;
         2) RENDERER="pathtracer" ;;
         3) RENDERER="rtxdi" ;;
         4) RENDERER="restirpt" ;;
-        5) RENDERER="viscache" ;;
     esac
 
-    # Ask variant for all renderers except viscache (already includes VisCache)
-    if [[ "$RENDERER" != "viscache" ]]; then
+    # Ask variant
+    if true; then
         echo ""
         echo "  Select variant:"
         echo "    1. Vanilla   — no visibility cache"
@@ -84,7 +82,7 @@ if [ "$INTERACTIVE" -eq 1 ]; then
         VCHOICE="${VCHOICE:-1}"
         case "$VCHOICE" in
             1) VARIANT="vanilla" ;;
-            2) RENDERER="viscache"; VARIANT="" ;;
+            2) RENDERER="restirpt"; VARIANT="" ;;
         esac
     fi
 
@@ -114,15 +112,14 @@ fi
 
 # Select graph script based on renderer
 case "$RENDERER" in
-    viscache)    GRAPH_SCRIPT="VisCache_Graph.py" ;;
     minimal)     GRAPH_SCRIPT="MinimalPathTracer_Graph.py" ;;
     pathtracer)  GRAPH_SCRIPT="PathTracer_Graph.py" ;;
     rtxdi)       GRAPH_SCRIPT="RTXDI_Graph.py" ;;
     restirpt)    GRAPH_SCRIPT="ReSTIRPT_Graph.py" ;;
     *)
         echo "[quickstart] Unknown renderer: $RENDERER"
-        echo "[quickstart] Available: viscache, restirpt, rtxdi, pathtracer, minimal"
-        echo "[quickstart] Add --variant viscache to enable visibility cache with any renderer"
+        echo "[quickstart] Available: restirpt, rtxdi, pathtracer, minimal"
+        echo "[quickstart] Add --variant viscache to enable visibility cache"
         exit 1
         ;;
 esac
@@ -133,7 +130,7 @@ if [ "$VARIANT" = "viscache" ]; then
         minimal)     GRAPH_SCRIPT="MinimalPathTracer_VisCache_Graph.py" ;;
         pathtracer)  GRAPH_SCRIPT="PathTracer_VisCache_Graph.py" ;;
         rtxdi)       GRAPH_SCRIPT="RTXDI_VisCache_Graph.py" ;;
-        restirpt)    GRAPH_SCRIPT="VisCache_Graph.py" ;;
+        restirpt)    GRAPH_SCRIPT="ReSTIRPT_VisCache_Graph.py" ;;
     esac
 fi
 

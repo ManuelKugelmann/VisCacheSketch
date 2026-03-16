@@ -58,14 +58,16 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 ## Quickstart / Launch Scripts
 
 - Scripts support `--renderer`, `--variant`, `--scene`, and `--interactive` flags
-- Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT), `viscache` (full VisCache pipeline)
-- Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to pathtracer, rtxdi, restirpt
+- Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT) — default: `restirpt`
+- Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to all renderers
 - Interactive mode (`-i`): numbered menus for renderer, variant, and scene selection
-- Graph scripts (vanilla): `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`, `VisCache_Graph.py`
-- Graph scripts (VisCache variants): `MinimalPathTracer_VisCache_Graph.py`, `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`
-- `--variant viscache` maps each renderer to its specific VisCache graph (not the full pipeline); `restirpt --variant viscache` uses `VisCache_Graph.py` (full pipeline)
+- Graph scripts (vanilla): `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`
+- Graph scripts (VisCache): `MinimalPathTracer_VisCache_Graph.py`, `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`, `ReSTIRPT_VisCache_Graph.py` — thin wrappers that call vanilla with `viscache=True`
+- Each vanilla graph script accepts `viscache=True` to add the VisCache pass; no code duplication between vanilla and VisCache variants
+- There is no `renderer=viscache` — VisCache is always a variant, not a renderer
 
 ## Workflow
 
+- **No backwards compatibility** — move forward, don't maintain back-compat aliases or shims
 - Work step by step for large edits — small incremental Edit calls, not massive Write
 - **Fix all errors encountered**, even pre-existing ones
