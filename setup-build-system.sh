@@ -19,6 +19,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 log()  { echo -e "\033[36m[VisCache]\033[0m $1"; }
 fail() { echo -e "\033[31m[VisCache] ERROR:\033[0m $1"; exit 1; }
 
+# Publish the project root so Falcor/setup.sh can find it without relying
+# on fragile relative-path navigation.  Falcor is a subtree, not a standalone
+# repo, so its setup script cannot know the git root on its own.
+export VISCACHE_ROOT="${SCRIPT_DIR}"
+
 # ---------------------------------------------------------------------------
 # Step 1: Resolve Falcor root
 # ---------------------------------------------------------------------------
