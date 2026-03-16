@@ -126,7 +126,7 @@ for visibility-weighted sorting.
 The three components operate at different pipeline stages
 and compose without modification to each other.
 
-**Path space filtering and two-level caching.**
+**Path space filtering with multilevel hash and correction.**
 Path space filtering [Binder and Keller 2019]
 uses a spatial hash over path space
 to cache and filter full path contributions —
@@ -134,15 +134,21 @@ a predecessor to SHaRC and closely related
 to the spatial hash lineage of this work.
 The visibility cache is path space filtering
 restricted to the visibility factor.
-Combining full path space filtering (caching path contributions)
-with the visibility cache (caching the hardest-to-evaluate factor)
-gives a two-level cache:
-one for the full integrand, one for visibility.
-The visibility cache's variance signal
-could gate when the path-space filter's cached contribution
-is trustworthy enough to skip the shadow ray entirely,
-while the path-space filter provides the residual estimate
-for the control variate when a ray is traced.
+Three additions from this work apply directly
+to general path space filtering:
+(1) a multilevel hash map with LOD in the key (Sec. 4),
+giving resolution-adaptive filtering in one flat table;
+(2) variance-gated write depth (Sec. 5),
+so the cache self-regulates which levels receive updates
+based on local filter quality;
+(3) prediction-with-correction (Sec. 8),
+using cached path contributions as control variate
+with RR on the residual to maintain unbiasedness —
+the filtered estimate is returned on RR termination
+instead of zero, and only traced paths update the cache.
+This would turn path space filtering
+from a biased filter into an unbiased estimator
+with variance-optimal spatial resolution.
 
 **Real-time Markov chain path guiding.**
 Alber et al. [2025] propose lightweight unbiased path guiding
