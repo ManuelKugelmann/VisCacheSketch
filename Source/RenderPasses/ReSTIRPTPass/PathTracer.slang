@@ -744,6 +744,7 @@ struct PathTracer
             u -= p[lightType];
         }
 
+        pdf = 0.f;
         return false;
     }
 
@@ -1446,7 +1447,7 @@ struct PathTracer
         }
 
         // daqi: save the incoming direction on rcVertex
-        if (is_rcVertex && valid && (path.length <= 1 || !BPR))
+        if (is_rcVertex && valid && (path.length <= 1 || BPR == 0))
         {
             path.pathBuilder.rcVertexWi[0] = path.dir;
         }

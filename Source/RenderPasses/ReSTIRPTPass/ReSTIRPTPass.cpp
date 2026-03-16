@@ -277,7 +277,7 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
 
     {
         ProgramDesc desc;
-        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_6);
         mpTracePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
