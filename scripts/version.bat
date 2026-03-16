@@ -13,10 +13,11 @@ setlocal enabledelayedexpansion
 set "PREFIX=%~1"
 if "%PREFIX%"=="" set "PREFIX=version"
 
-REM --- Git SHA ---
+REM --- Git SHA (use script's parent dir = repo root) ---
 set "VCS_SHA=unknown"
+for %%F in ("%~dp0.") do set "VCS_REPO=%%~dpF"
 where git >nul 2>&1 && (
-    for /f "tokens=*" %%H in ('git rev-parse --short HEAD 2^>nul') do set "VCS_SHA=%%H"
+    for /f "tokens=*" %%H in ('git -C "%VCS_REPO%." rev-parse --short HEAD 2^>nul') do set "VCS_SHA=%%H"
 )
 
 REM --- Timestamp ---

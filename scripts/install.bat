@@ -94,7 +94,8 @@ if defined SKIP_SCENES set "QS_ARGS=%QS_ARGS% %SKIP_SCENES%"
 
 REM Resolve absolute path so quickstart.bat's %~dp0 points to scripts\
 for %%P in ("%DIR%\scripts\quickstart.bat") do set "QS_SCRIPT=%%~fP"
-echo [install] Running %QS_SCRIPT% %QS_ARGS%
-call "%QS_SCRIPT%" %QS_ARGS%
+REM --skip-pull: install.bat already cloned/pulled above
+echo [install] Running %QS_SCRIPT% --skip-pull %QS_ARGS%
+call "%QS_SCRIPT%" --skip-pull %QS_ARGS%
 
 exit /b %ERRORLEVEL%
