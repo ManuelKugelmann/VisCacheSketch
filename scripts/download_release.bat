@@ -49,13 +49,24 @@ if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
     set "INSTALLED_VER=unknown"
     if exist "%VERSION_FILE%" set /p INSTALLED_VER=<"%VERSION_FILE%"
     echo [release] Checking for newer release...
-    echo [release]   Installed: !INSTALLED_VER!
+    for /f "delims=" %%E in ('curl -fsSL -H "Cache-Control: no-cache" -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
+    REM Extract short ETag hashes for display
+    set "OLD_ETAG_SHORT=!OLD_ETAG:~0,8!"
+    set "REMOTE_ETAG_SHORT="
+    if defined ETAG_LINE (
+        for /f "tokens=2 delims= " %%R in ("!ETAG_LINE!") do set "REMOTE_ETAG_RAW=%%R"
+        set "REMOTE_ETAG_SHORT=!REMOTE_ETAG_RAW:~0,8!"
+    )
+    echo [release]   Installed: !INSTALLED_VER! [etag:!OLD_ETAG_SHORT!]
     if defined REMOTE_TAG (
-        echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^)
+        if defined REMOTE_ETAG_SHORT (
+            echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^) [etag:!REMOTE_ETAG_SHORT!]
+        ) else (
+            echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^)
+        )
     ) else (
         echo [release]   Remote:    ^(could not query GitHub API^)
     )
-    for /f "delims=" %%E in ('curl -fsSL -H "Cache-Control: no-cache" -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
     if defined ETAG_LINE (
         REM Compare stored ETag with remote
         echo !ETAG_LINE! | findstr /c:"!OLD_ETAG!" >nul 2>&1

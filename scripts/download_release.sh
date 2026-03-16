@@ -16,6 +16,8 @@ RELEASE_DIR="${ROOT_DIR}/release"
 REPO="ManuelKugelmann/VisCacheSketch"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/dev-latest/viscache-windows-Release.tar.gz"
 ETAG_FILE="${RELEASE_DIR}/.release-etag"
+VERSION_FILE="${RELEASE_DIR}/.release-version"
+API_URL="https://api.github.com/repos/${REPO}/releases/tags/dev-latest"
 
 mkdir -p "$RELEASE_DIR"
 
@@ -27,6 +29,29 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
         OLD_ETAG="$(cat "$ETAG_FILE")"
         echo "[release] Checking for newer release..."
         REMOTE_ETAG="$(curl -fsSL -H 'Cache-Control: no-cache' -I "$DOWNLOAD_URL" 2>/dev/null | grep -i '^etag:' | awk '{print $2}' | tr -d '\r')" || true
+        # Query GitHub API for tag+date display
+        REMOTE_TAG=""
+        REMOTE_DATE=""
+        API_JSON="$(curl -fsSL "$API_URL" 2>/dev/null)" || true
+        if [ -n "$API_JSON" ]; then
+            REMOTE_TAG="$(echo "$API_JSON" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')" || true
+            REMOTE_DATE="$(echo "$API_JSON" | grep -o '"published_at"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/')" || true
+        fi
+        # Show installed version with short ETag
+        INSTALLED_VER="unknown"
+        [ -f "$VERSION_FILE" ] && INSTALLED_VER="$(cat "$VERSION_FILE")"
+        OLD_ETAG_SHORT="${OLD_ETAG:0:8}"
+        echo "[release]   Installed: $INSTALLED_VER [etag:$OLD_ETAG_SHORT]"
+        if [ -n "$REMOTE_TAG" ]; then
+            if [ -n "$REMOTE_ETAG" ]; then
+                REMOTE_ETAG_SHORT="${REMOTE_ETAG:0:8}"
+                echo "[release]   Remote:    $REMOTE_TAG ($REMOTE_DATE) [etag:$REMOTE_ETAG_SHORT]"
+            else
+                echo "[release]   Remote:    $REMOTE_TAG ($REMOTE_DATE)"
+            fi
+        else
+            echo "[release]   Remote:    (could not query GitHub API)"
+        fi
         if [ -n "$REMOTE_ETAG" ] && [ "$REMOTE_ETAG" = "$OLD_ETAG" ]; then
             echo "[release] Release is up to date."
             exit 0
@@ -72,6 +97,13 @@ if [ -n "$ETAG" ]; then
 fi
 rm -f "$HEADERS"
 
+# Save release version for display on next update check
+if [ -n "${REMOTE_TAG:-}" ]; then
+    echo "$REMOTE_TAG ($REMOTE_DATE)" > "$VERSION_FILE"
+else
+    echo "dev-latest" > "$VERSION_FILE"
+fi
+
 # ---------------------------------------------------------------------------
 # Clean old release — move aside so tar doesn't hit overwrite errors
 # ---------------------------------------------------------------------------
@@ -80,9 +112,12 @@ if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
     echo "[release] Moving old release aside..."
     mv "$RELEASE_DIR" "$OLD_RELEASE/release"
     mkdir -p "$RELEASE_DIR"
-    # Preserve ETag file
+    # Preserve ETag and version files
     if [ -f "$OLD_RELEASE/release/.release-etag" ]; then
         cp "$OLD_RELEASE/release/.release-etag" "$ETAG_FILE"
+    fi
+    if [ -f "$OLD_RELEASE/release/.release-version" ]; then
+        cp "$OLD_RELEASE/release/.release-version" "$VERSION_FILE"
     fi
 fi
 
