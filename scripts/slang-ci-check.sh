@@ -91,10 +91,14 @@ DFLAGS=$(grep '^#define ' "${SCRIPT_DIR}/slang-ci-defines.slangh" \
 SEARCH_PATHS="-I ${FALCOR}/Source/Falcor -I ${FALCOR}/Source -I ${FALCOR}/external/packman/nanovdb/include"
 
 # Platform & shader model defines (added by ProgramManager)
-PLATFORM_DEFS="-DFALCOR_VULKAN=1 -D__SM_6_6__=1"
+# Falcor targets D3D12 (DXIL) with sm_6_6 — match exactly for [require(sm_6_6)]
+PLATFORM_DEFS="-DFALCOR_D3D12=1 -D__SM_6_6__=1"
 
 # Compiler flags matching ProgramManager (lines 732-767 of ProgramManager.cpp)
-COMPILER_FLAGS="-matrix-layout-row-major -disable-short-circuit -capability sm_6_6+spirv_1_5+raytracingstages_compute_fragment_geometry_vertex"
+# Profile sm_6_6 matching Falcor's ProgramManager.  -ignore-capabilities so
+# [require(sm_6_6)] doesn't error on GL_NV_compute_shader_derivatives (ddx/ddy
+# in compute shaders via NVAPI, which isn't available in CI).
+COMPILER_FLAGS="-matrix-layout-row-major -disable-short-circuit -profile sm_6_6 -ignore-capabilities"
 
 # Warning suppressions matching ProgramManager
 WARN_FLAGS="-Wno-15602 -Wno-30056 -Wno-30081 -Wno-41203"
@@ -109,7 +113,8 @@ CODEGEN="-no-codegen"
 VC_STUBS="${SCRIPT_DIR}/slang-ci-viscache-stubs.slang"
 
 # Common flags for all Falcor-dependent shaders
-COMMON="-target spirv ${CODEGEN} ${COMPILER_FLAGS} ${WARN_FLAGS} ${SEARCH_PATHS} ${PLATFORM_DEFS} ${DFLAGS}"
+# Target DXIL (matching Falcor's D3D12 backend) — [require(sm_6_6)] needs this.
+COMMON="-target dxil ${CODEGEN} ${COMPILER_FLAGS} ${WARN_FLAGS} ${SEARCH_PATHS} ${PLATFORM_DEFS} ${DFLAGS}"
 
 VISCACHE_DIR="${FALCOR}/Source/RenderPasses/VisCache"
 PT_DIR="${FALCOR}/Source/RenderPasses/PathTracer"
@@ -123,13 +128,13 @@ echo "--- VisCache ---"
 
 # Self-contained (no Falcor imports)
 check "${VISCACHE_DIR}/VisCache.slang" \
-  -target spirv ${CODEGEN}
+  -target dxil ${CODEGEN}
 
 check "${VISCACHE_DIR}/VisCacheInsert.cs.slang" \
-  -target spirv ${CODEGEN} -I "${VISCACHE_DIR}" -entry csInsert -stage compute
+  -target dxil ${CODEGEN} -I "${VISCACHE_DIR}" -entry csInsert -stage compute
 
 check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" \
-  -target spirv ${CODEGEN} -I "${VISCACHE_DIR}" -entry csDecay -stage compute
+  -target dxil ${CODEGEN} -I "${VISCACHE_DIR}" -entry csDecay -stage compute
 
 # Falcor-dependent (VC_STUBS provide consumer functions: traceShadowRay, evalBRDF)
 check "${VISCACHE_DIR}/VisCacheTracing.slang" \
