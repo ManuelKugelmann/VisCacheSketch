@@ -94,6 +94,10 @@ if not exist "%RP_CMAKE%" (
     exit /b 1
 )
 
+: Restore CMakeLists.txt from git to discard any corruption from prior runs
+: (e.g. truncated lines from unescaped batch parentheses).
+git -C "%FALCOR_ROOT%" checkout -- Source\RenderPasses\CMakeLists.txt >nul 2>&1
+
 findstr /c:"add_subdirectory(VisCache)" "%RP_CMAKE%" >nul 2>&1
 if errorlevel 1 (
     echo add_subdirectory^(VisCache^)>> "%RP_CMAKE%"
