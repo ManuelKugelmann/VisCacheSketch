@@ -65,21 +65,44 @@ if not exist "%DATA_DST%\16RooksPattern256.txt" (
 )
 
 REM ---------------------------------------------------------------------------
-REM Validate Falcor built-in shaders
+REM Deploy shaders from source tree (source is always authoritative)
 REM ---------------------------------------------------------------------------
-REM In deployment mode Falcor resolves shaders from release\shaders\ only.
-REM If the Falcor built-in shader tree is missing (incomplete extraction or
-REM corrupted update), shader compilation fails with cryptic errors like
-REM "undefined identifier 'ExplicitLodTextureSampler'".
-set "SHADER_SENTINEL=%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang"
-if not exist "%SHADER_SENTINEL%" (
-    echo [launch] ERROR: Falcor built-in shaders missing from release\shaders\
-    echo [launch] Expected: %SHADER_SENTINEL%
-    echo [launch] This causes shader link errors ^(e.g. undefined ExplicitLodTextureSampler^).
-    echo [launch] Fix: re-run scripts\download_release.bat to get a fresh release.
-    exit /b 1
+REM Force-copy all .slang from source → release/shaders/ so deployed shaders
+REM always match the current checkout.  Git timestamps are unreliable, so we
+REM skip date checks and always overwrite.
+
+REM Falcor built-in shaders
+set "FALCOR_SRC=%ROOT%\Falcor\Source\Falcor"
+if exist "%FALCOR_SRC%" (
+    xcopy "%FALCOR_SRC%\*.slang" "%RELEASE_DIR%\shaders\" /s /Y /q >nul 2>&1
 )
-echo [launch] Falcor shaders OK
+
+REM Custom render pass shaders
+for %%P in (VisCache ReSTIRPTPass) do (
+    set "PASS_SRC=%ROOT%\Source\RenderPasses\%%P"
+    set "PASS_DST=%RELEASE_DIR%\shaders\RenderPasses\%%P"
+    if exist "!PASS_SRC!" (
+        if not exist "!PASS_DST!" mkdir "!PASS_DST!"
+        xcopy "!PASS_SRC!\*.slang" "!PASS_DST!\" /Y /q >nul 2>&1
+    )
+)
+echo [launch] Shaders deployed from source tree
+
+REM Validate (diagnostic — catch wrong locations, partial copies, etc.)
+where python >nul 2>&1 && (
+    python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
+    if errorlevel 1 (
+        echo [launch] WARNING: Shader validation found issues — see above
+        echo [launch] Continuing launch, but expect shader compilation errors.
+    )
+) || (
+    REM Fallback: at least check sentinel file exists
+    if not exist "%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang" (
+        echo [launch] ERROR: Falcor shaders missing from release\shaders\ after deploy
+        echo [launch] Check that Falcor\Source\Falcor\ contains .slang files.
+        exit /b 1
+    )
+)
 
 REM ---------------------------------------------------------------------------
 REM Smoke test

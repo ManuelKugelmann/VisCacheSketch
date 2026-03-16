@@ -94,77 +94,61 @@ echo ========================================
 echo  Step 3: Copy newer shaders, data, etc. to release
 echo ========================================
 if exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [quickstart] step 3 copy newer shaders, data, etc. to release
+    echo [quickstart] step 3 deploy shaders, scripts, data from source tree to release
 
-    REM Copy .slang shaders from source tree into release (only newer files)
+    REM ---- Deploy ALL .slang shaders (source tree is authoritative) ----
+    REM Force-copy (no /D date check) — git pull/checkout timestamps are unreliable.
+
+    REM Falcor built-in shaders: Falcor\Source\Falcor\**\*.slang → release\shaders\
+    set "FALCOR_SRC=%ROOT%\Falcor\Source\Falcor"
+    set "FALCOR_DST=%RELEASE_DIR%\shaders"
+    if exist "!FALCOR_SRC!" (
+        xcopy "!FALCOR_SRC!\*.slang" "!FALCOR_DST!\" /s /Y /q >nul 2>&1
+        echo [quickstart]   Falcor built-in shaders deployed
+    )
+
+    REM Custom render pass shaders
     for %%P in (VisCache ReSTIRPTPass) do (
         set "SRC=%ROOT%\Source\RenderPasses\%%P"
         set "DST=%RELEASE_DIR%\shaders\RenderPasses\%%P"
         if exist "!SRC!" (
             if not exist "!DST!" mkdir "!DST!"
-            set "_COUNT=0"
-            for /f "delims=" %%F in ('xcopy "!SRC!\*.slang" "!DST!\" /D /Y /F 2^>nul') do (
-                echo [quickstart]   updated: %%F
-                set /a "_COUNT+=1"
-            )
-            if !_COUNT! equ 0 (
-                echo [quickstart]   %%P shaders up to date
-            ) else (
-                echo [quickstart]   %%P !_COUNT! shader^(s^) updated
-            )
+            xcopy "!SRC!\*.slang" "!DST!\" /Y /q >nul 2>&1
+            echo [quickstart]   %%P shaders deployed
         )
     )
 
-    REM Copy scripts into release (only newer files)
+    REM ---- Deploy scripts ----
     set "SCRIPTS_SRC=%ROOT%\scripts"
     set "SCRIPTS_DST=%RELEASE_DIR%\scripts\VisCache"
     if exist "%SCRIPTS_SRC%\smoke_test.py" (
         if not exist "!SCRIPTS_DST!" mkdir "!SCRIPTS_DST!"
-        set "_COUNT=0"
-        for /f "delims=" %%F in ('xcopy "%SCRIPTS_SRC%\*" "!SCRIPTS_DST!\" /s /D /Y /F 2^>nul') do (
-            echo [quickstart]   updated: %%F
-            set /a "_COUNT+=1"
-        )
-        if !_COUNT! equ 0 (
-            echo [quickstart]   scripts up to date
-        ) else (
-            echo [quickstart]   !_COUNT! script^(s^) updated
-        )
+        xcopy "%SCRIPTS_SRC%\*" "!SCRIPTS_DST!\" /s /Y /q >nul 2>&1
+        echo [quickstart]   scripts deployed
     )
 
-    REM Copy ReSTIRPTPass data files (only newer files)
+    REM ---- Deploy ReSTIRPTPass data files ----
     set "DATA_SRC=%ROOT%\Source\RenderPasses\ReSTIRPTPass\Data"
     set "DATA_DST=%RELEASE_DIR%\data\ReSTIRPTPass"
     if exist "!DATA_SRC!\16RooksPattern256.txt" (
         if not exist "!DATA_DST!" mkdir "!DATA_DST!"
-        set "_COUNT=0"
-        for /f "delims=" %%F in ('xcopy "!DATA_SRC!\*" "!DATA_DST!\" /s /D /Y /F 2^>nul') do (
-            echo [quickstart]   updated: %%F
-            set /a "_COUNT+=1"
-        )
-        if !_COUNT! equ 0 (
-            echo [quickstart]   ReSTIRPTPass data up to date
-        ) else (
-            echo [quickstart]   !_COUNT! data file^(s^) updated
-        )
+        xcopy "!DATA_SRC!\*" "!DATA_DST!\" /s /Y /q >nul 2>&1
+        echo [quickstart]   ReSTIRPTPass data deployed
     )
 
-    REM Validate Falcor built-in shaders are present in the release
-    REM The CI build deploys all Falcor shaders via CMake; quickstart only
-    REM copies custom pass shaders on top.  If the built-in shaders are
-    REM missing the release archive was incomplete or corrupted.
-    set "SHADER_SENTINEL=%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang"
-    if not exist "!SHADER_SENTINEL!" (
-        echo [quickstart] ERROR: Falcor built-in shaders missing from release\shaders\
-        echo [quickstart] Expected: !SHADER_SENTINEL!
-        echo [quickstart] The release archive may be incomplete. Re-run download_release.bat.
-        echo [quickstart] Without these shaders, Mogwai will fail with 'undefined identifier'
-        echo [quickstart] errors ^(e.g. ExplicitLodTextureSampler^).
-    ) else (
-        echo [quickstart] Falcor shaders OK
+    REM ---- Validate shaders (content hash) ----
+    REM Diagnostic: compare deployed vs source by SHA-256 to catch wrong
+    REM locations, partial copies, or stale files from the release archive.
+    where python >nul 2>&1 && (
+        python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
+        if errorlevel 1 (
+            echo [quickstart] WARNING: Shader validation found issues ^(see above^)
+        )
+    ) || (
+        echo [quickstart] python not found — skipping shader content validation
     )
 ) else (
-    echo [quickstart] step 3 copy newer shaders, data, etc. to release -- skipped ^(no release found^)
+    echo [quickstart] step 3 deploy shaders, scripts, data -- skipped ^(no release found^)
 )
 
 REM ---------------------------------------------------------------------------
