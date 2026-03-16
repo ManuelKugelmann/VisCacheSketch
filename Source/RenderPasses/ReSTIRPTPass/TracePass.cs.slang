@@ -1,9 +1,6 @@
 /***************************************************************************
  # Copyright (c) 2022, Daqi Lin.  All rights reserved.
  **************************************************************************/
-// Suppress profile auto-upgrade warning (lib_6_5 -> sm_6_6); host sets SM6_6 explicitly.
-#pragma warning(disable: 41012)
-
 import Scene.Raytracing;
 import Utils.Debug.PixelDebug;
 import Rendering.Utils.PixelStats;
@@ -45,6 +42,7 @@ void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
     gPathTracer.writeOutput(path, giReservoir, sampleIdx);
 }
 
+[require(sm_6_6)]
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
