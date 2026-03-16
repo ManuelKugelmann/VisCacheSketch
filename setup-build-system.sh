@@ -4,9 +4,9 @@
 #
 # What this script does:
 #   1. Locates Falcor (Falcor subtree or FALCOR_ROOT override)
-#   2. Calls Falcor's setup.sh (submodule init, packman deps, git hooks)
-#   3. Copies VisCache source files into the Falcor tree
-#   4. Patches CMakeLists.txt to register the plugins
+#   2. Copies VisCache source files into the Falcor tree
+#   3. Patches CMakeLists.txt to register the plugins
+#   4. Calls Falcor's setup.sh (submodule init, packman deps, git hooks)
 #   5. Runs the Python unit tests
 #
 # Usage:
@@ -41,23 +41,12 @@ if [ -d "${SCRIPT_DIR}/.githooks" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: Run Falcor's own setup (submodules + packman deps)
+# Step 2: Copy VisCache sources into Falcor tree
 # ---------------------------------------------------------------------------
-log "Step 2: Running Falcor setup (submodules + packman)..."
-
-FALCOR_SETUP="${FALCOR_ROOT}/setup.sh"
-if [ -x "${FALCOR_SETUP}" ] || [ -f "${FALCOR_SETUP}" ]; then
-    bash "${FALCOR_SETUP}"
-    log "  Falcor setup complete."
-else
-    log "  WARNING: ${FALCOR_SETUP} not found, skipping Falcor setup."
-    log "  You may need to init submodules and fetch packman deps manually."
-fi
-
-# ---------------------------------------------------------------------------
-# Step 3: Copy VisCache sources into Falcor tree
-# ---------------------------------------------------------------------------
-log "Step 3: Copying VisCache RenderPass sources..."
+# NOTE: Sources must be copied BEFORE Falcor setup because setup may run
+# cmake configure. If CMakeLists.txt already has add_subdirectory(ReSTIRPTPass)
+# from a prior run, cmake will fail unless the source directories exist.
+log "Step 2: Copying VisCache RenderPass sources..."
 
 # VisCache
 VISCACHE_DST="${FALCOR_ROOT}/Source/RenderPasses/VisCache"
@@ -95,9 +84,9 @@ cp -r "${SCRIPT_DIR}/tests/"* "${TEST_DST}/"
 log "  Copied: tests"
 
 # ---------------------------------------------------------------------------
-# Step 4: Patch CMakeLists.txt to register plugins
+# Step 3: Patch CMakeLists.txt to register plugins
 # ---------------------------------------------------------------------------
-log "Step 4: Patching Source/RenderPasses/CMakeLists.txt..."
+log "Step 3: Patching Source/RenderPasses/CMakeLists.txt..."
 
 RP_CMAKE="${FALCOR_ROOT}/Source/RenderPasses/CMakeLists.txt"
 [ -f "${RP_CMAKE}" ] || fail "Could not find ${RP_CMAKE}"
@@ -114,6 +103,20 @@ if ! grep -q "add_subdirectory(ReSTIRPTPass)" "${RP_CMAKE}"; then
     log "  Added: add_subdirectory(ReSTIRPTPass)"
 else
     log "  Already present: ReSTIRPTPass (skipped)"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4: Run Falcor's own setup (submodules + packman deps)
+# ---------------------------------------------------------------------------
+log "Step 4: Running Falcor setup (submodules + packman)..."
+
+FALCOR_SETUP="${FALCOR_ROOT}/setup.sh"
+if [ -x "${FALCOR_SETUP}" ] || [ -f "${FALCOR_SETUP}" ]; then
+    bash "${FALCOR_SETUP}"
+    log "  Falcor setup complete."
+else
+    log "  WARNING: ${FALCOR_SETUP} not found, skipping Falcor setup."
+    log "  You may need to init submodules and fetch packman deps manually."
 fi
 
 # ---------------------------------------------------------------------------
