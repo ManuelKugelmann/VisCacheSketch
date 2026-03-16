@@ -2,14 +2,12 @@ name: Slang Shader Check
 
 on:
   push:
-    branches: ["main", "master"]
     paths:
       - 'Source/**/*.slang'
       - 'Source/**/*.slangh'
       - '.github/workflows/slang-check.yml'
       - 'scripts/slang-ci-*'
   pull_request:
-    branches: ["main", "master"]
     paths:
       - 'Source/**/*.slang'
       - 'Source/**/*.slangh'
