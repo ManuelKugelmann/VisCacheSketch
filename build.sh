@@ -5,7 +5,7 @@
 #
 # Steps:
 #   1. update.sh  (git pull + quickstart: scenes, release, tests)
-#   2. setup.sh   (submodules, packman deps, copy sources, patch CMake)
+#   2. setup-build-system.sh (submodules, packman deps, copy sources, patch CMake)
 #   3. cmake --preset ... && cmake --build ...
 #
 # Safe to re-run: all steps are idempotent.
@@ -47,7 +47,7 @@ echo ""
 echo "========================================"
 echo " Step 2: Setup"
 echo "========================================"
-bash "$SCRIPT_DIR/setup.sh"
+bash "$SCRIPT_DIR/setup-build-system.sh"
 
 # ---------------------------------------------------------------------------
 # Step 3: CMake configure + build

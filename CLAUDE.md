@@ -15,7 +15,7 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 ## Falcor Subtree Policy
 
 - Falcor is in `Falcor/` (git subtree, not submodule)
-- **Keep Falcor files as close to the NVIDIA original as possible.** All VisCache-specific setup belongs in root scripts (`setup.sh`, `setup.bat`), not in Falcor's own files.
+- **Keep Falcor files as close to the NVIDIA original as possible.** All VisCache-specific setup belongs in root scripts (`setup-build-system.sh`, `setup-build-system.bat`), not in Falcor's own files.
 - Only acceptable Falcor modifications: upstream bug fixes or changes for ManuelKugelmann/Falcor fork
 - Two `.gitmodules` files exist (root and `Falcor/.gitmodules`) — use `sync-submodules.sh` to keep in sync
 

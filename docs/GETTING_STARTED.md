@@ -68,10 +68,10 @@ git clone https://github.com/ManuelKugelmann/VisCacheSketch.git
 cd VisCacheSketch
 
 # Linux:
-./setup.sh
+./setup-build-system.sh
 
 # Windows:
-.\setup.bat
+.\setup-build-system.bat
 ```
 
 Each root setup script:

@@ -136,8 +136,8 @@ Run: `scripts/VisCache_Reference.py`
 
 ```bash
 # 1. Build Falcor with VisCache plugins
-./setup.sh          # Linux
-# .\setup.bat       # Windows
+./setup-build-system.sh          # Linux
+# .\setup-build-system.bat       # Windows
 
 # 2. Download test scenes (Bistro ~3.2 GB, Sponza ~70 MB)
 ./scripts/download_scenes.sh

@@ -5,7 +5,7 @@ REM Usage:  build.bat [--config Release|Debug] [--preset windows-vs2022-ci|windo
 REM
 REM Steps:
 REM   1. update.bat  (git pull + quickstart: scenes, release, tests)
-REM   2. setup.bat   (submodules, packman deps, copy sources, patch CMake)
+REM   2. setup-build-system.bat (submodules, packman deps, copy sources, patch CMake)
 REM   3. cmake --preset ... && cmake --build ...
 REM
 REM Safe to re-run: all steps are idempotent.
@@ -48,9 +48,9 @@ echo.
 echo ========================================
 echo  Step 2: Setup
 echo ========================================
-call "%ROOT%setup.bat"
+call "%ROOT%setup-build-system.bat"
 if errorlevel 1 (
-    echo [build] ERROR: setup.bat failed!
+    echo [build] ERROR: setup-build-system.bat failed!
     exit /b 1
 )
 
