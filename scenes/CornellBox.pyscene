@@ -17,14 +17,8 @@ camera.up       = float3(0.0, 1.0, 0.0)
 camera.focalLength = 35.0
 sceneBuilder.addCamera(camera)
 
-# The ceiling emissive quad is the canonical light source
-# Add a very subtle point fill inside the box to help with convergence
-fill = PointLight('Fill')
-fill.intensity = float3(0.05, 0.05, 0.05)
-fill.position  = float3(0.0, 1.5, 0.0)
-sceneBuilder.addLight(fill)
-
-# Render settings — emissive ceiling is the primary illumination
+# Render settings — emissive ceiling quad is the sole canonical light source.
+# No analytic fill lights: the standard Cornell Box is a single-emitter scene.
 settings = sceneBuilder.renderSettings
-settings.useAnalyticLights = True
+settings.useAnalyticLights = False
 settings.useEmissiveLights = True

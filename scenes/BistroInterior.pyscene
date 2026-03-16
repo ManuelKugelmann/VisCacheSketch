@@ -23,12 +23,24 @@ sceneBuilder.addCamera(camera)
 for m in sceneBuilder.materials:
     m.emissiveFactor *= 1000
 
-# Glass — make exterior windows transparent
+# Glass — make windows transparent (pattern from SirKero/RTProgressivePhotonMapper)
 glass = sceneBuilder.getMaterial('MASTER_Glass_Exterior')
 if glass:
     glass.specularTransmission = 1
+    glass.roughness = 0
+    glass.metallic = 0
     glass.doubleSided = True
     glass.indexOfRefraction = 1.55
+    glass.nestedPriority = 5
+
+tGlass = sceneBuilder.getMaterial('TransparentGlass')
+if tGlass:
+    tGlass.specularTransmission = 1
+    tGlass.roughness = 0
+    tGlass.metallic = 0
+    tGlass.doubleSided = True
+    tGlass.indexOfRefraction = 1.55
+    tGlass.nestedPriority = 5
 
 # Directional sunlight streaming through windows (warm afternoon)
 sun = DirectionalLight('Sun')
