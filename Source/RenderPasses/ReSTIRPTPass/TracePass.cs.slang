@@ -1,6 +1,9 @@
 /***************************************************************************
  # Copyright (c) 2022, Daqi Lin.  All rights reserved.
  **************************************************************************/
+// Suppress profile auto-upgrade warning (lib_6_5 -> sm_6_6); host sets SM6_6 explicitly.
+#pragma warning(disable: 41012)
+
 import Scene.Raytracing;
 import Utils.Debug.PixelDebug;
 import Rendering.Utils.PixelStats;
