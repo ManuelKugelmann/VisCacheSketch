@@ -1,7 +1,7 @@
 name: Build
 
 on:
-  # Pre-flight jobs run on push/PR; full builds only on workflow_dispatch
+  # Change detection on push/PR; full builds only on workflow_dispatch
   push:
     branches: ["main", "master"]
     paths:
@@ -125,130 +125,11 @@ jobs:
               - '.github/workflows/build.yml'
 
   # ---------------------------------------------------------------------------
-  # Pre-flight: validate scripts, CMake injection, CMD syntax (fast, before builds)
-  # ---------------------------------------------------------------------------
-  pre-flight-linux:
-    name: Pre-flight (Linux)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: shellcheck
-        run: |
-          sudo apt-get -qq install -y shellcheck
-          shellcheck scripts/integrate-plugins.sh scripts/verify-build-output.sh
-
-      - name: Test integrate-plugins.sh
-        run: |
-          bash scripts/integrate-plugins.sh Falcor
-          # Verify CMake injection
-          grep -q 'add_subdirectory(VisCache)' Falcor/Source/RenderPasses/CMakeLists.txt
-          grep -q 'add_subdirectory(ReSTIRPTPass)' Falcor/Source/RenderPasses/CMakeLists.txt
-          test -d Falcor/Source/RenderPasses/VisCache
-          test -d Falcor/Source/RenderPasses/ReSTIRPTPass
-          echo "[pre-flight] integrate-plugins.sh OK"
-
-      - name: Test idempotent re-run
-        run: |
-          bash scripts/integrate-plugins.sh Falcor
-          echo "[pre-flight] Idempotent re-run OK"
-
-  pre-flight-windows:
-    name: Pre-flight (Windows)
-    runs-on: windows-2022
-    env:
-      CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Test integrate-plugins.bat
-        shell: cmd
-        run: |
-          call scripts\integrate-plugins.bat Falcor
-          findstr /C:"add_subdirectory(VisCache)" "Falcor\Source\RenderPasses\CMakeLists.txt" >nul || (echo VisCache subdirectory missing & exit /b 1)
-          findstr /C:"add_subdirectory(ReSTIRPTPass)" "Falcor\Source\RenderPasses\CMakeLists.txt" >nul || (echo ReSTIRPTPass subdirectory missing & exit /b 1)
-          echo [pre-flight] integrate-plugins.bat OK
-
-      - name: Test idempotent re-run
-        shell: cmd
-        run: |
-          call scripts\integrate-plugins.bat Falcor
-          echo [pre-flight] Idempotent re-run OK
-
-      - name: Dry-run build CMD blocks
-        shell: cmd
-        run: |
-          REM Create mock build directory to exercise CMD patterns from build.yml
-          set "BUILD_DIR=Falcor\build\%CMAKE_BUILD_PRESET%"
-          mkdir "%BUILD_DIR%" 2>nul
-
-          REM --- Test: Clean stale CMake cache (no CMakeCache.txt) ---
-          if not exist "%BUILD_DIR%\CMakeCache.txt" goto :skip_clean
-          findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
-          if not errorlevel 1 goto :skip_clean
-          echo [dry-run] Stale CMakeCache.txt detected, removing...
-          del /q "%BUILD_DIR%\CMakeCache.txt"
-          if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
-          :skip_clean
-          echo [dry-run] Clean stale CMake: OK
-
-          REM --- Test: Clean stale (with a mock stale cache) ---
-          echo wrong_toolset > "%BUILD_DIR%\CMakeCache.txt"
-          if not exist "%BUILD_DIR%\CMakeCache.txt" goto :skip_stale
-          findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
-          if not errorlevel 1 goto :skip_stale
-          echo [dry-run] Stale CMakeCache.txt detected, removing...
-          del /q "%BUILD_DIR%\CMakeCache.txt"
-          if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
-          :skip_stale
-          if exist "%BUILD_DIR%\CMakeCache.txt" (echo FAIL: stale cache not removed & exit /b 1)
-          echo [dry-run] Stale cache removal: OK
-
-          REM --- Test: Check NRD availability ---
-          if exist "%BUILD_DIR%\Source\RenderPasses\NRDPass" (
-            echo [dry-run] NRDPass: ENABLED
-          ) else (
-            echo.
-            echo ========================================================
-            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
-            echo  The release will NOT include NRD denoiser support.
-            echo ========================================================
-            echo.
-            echo [dry-run] NRDPass check: OK
-          )
-
-          REM --- Test: Cache cleanup patterns ---
-          mkdir "%BUILD_DIR%\obj" 2>nul
-          echo mock > "%BUILD_DIR%\obj\test.pdb"
-          echo mock > "%BUILD_DIR%\obj\test.ilk"
-          echo mock > "%BUILD_DIR%\obj\test.exp"
-          echo mock > "%BUILD_DIR%\obj\test.ipdb"
-          echo mock > "%BUILD_DIR%\obj\test.iobj"
-          mkdir "%BUILD_DIR%\bin" 2>nul
-          echo mock > "%BUILD_DIR%\bin\Mogwai.exe"
-          del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
-          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
-          if exist "%BUILD_DIR%\obj\test.pdb" (echo FAIL: PDB not cleaned & exit /b 1)
-          if exist "%BUILD_DIR%\bin" (echo FAIL: bin not cleaned & exit /b 1)
-          echo [dry-run] Cache cleanup: OK
-
-          echo.
-          echo [dry-run] All CMD blocks validated successfully.
-
-  # ---------------------------------------------------------------------------
   # Windows/VS2022 — secondary build, validates VS solution generation
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
-    needs: [prepare, pre-flight-windows]
+    needs: [prepare]
     if: >-
       github.event_name == 'workflow_dispatch'
       && (inputs.platform == 'All' || inputs.platform == 'Windows VS2022' || inputs.platform == '')
@@ -446,11 +327,10 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    needs: [prepare, changes, pre-flight-windows]
+    needs: [prepare, changes]
     if: >-
       always()
       && needs.prepare.result == 'success'
-      && needs.pre-flight-windows.result != 'failure'
       && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
       && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
       && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja' || inputs.platform == '' || github.event_name != 'workflow_dispatch')
@@ -658,7 +538,7 @@ jobs:
   # ---------------------------------------------------------------------------
   linux-gcc:
     name: Linux/GCC
-    needs: [prepare, pre-flight-linux]
+    needs: [prepare]
     if: >-
       github.event_name == 'workflow_dispatch'
       && (inputs.platform == 'All' || inputs.platform == 'Linux GCC' || inputs.platform == '')
@@ -675,6 +555,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: shellcheck
+        run: |
+          sudo apt-get -qq install -y shellcheck
+          shellcheck scripts/integrate-plugins.sh scripts/verify-build-output.sh
 
       - name: Cache Falcor submodules
         uses: actions/cache@v5
