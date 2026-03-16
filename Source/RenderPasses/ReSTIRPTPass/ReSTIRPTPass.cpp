@@ -597,37 +597,60 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
         mParams.rejectShiftBasedOnJacobian = enableRobustSettingsByDefault;
         mStaticParams.temporalUpdateForDynamicScene = enableRobustSettingsByDefault;
 
-        // Prepare our programs for the scene.
-        // [Falcor 8] Shader::DefineList → DefineList.
+        // Recreate programs with scene shader modules and type conformances.
+        // Scene shader modules register concrete material implementations
+        // (e.g. StandardMaterial) that Slang needs to compile against.
+        // Without these, scenes using material types not statically imported
+        // by our shaders (e.g. Bistro) fail with "type not found" errors.
         DefineList defines = mpScene->getSceneDefines();
-
-        // Scene type conformances tell Slang which concrete IMaterial
-        // implementations exist so it can generate code for them.
-        // Without this, scenes that use material types not statically
-        // imported by our shaders (e.g. Bistro) fail with error 50100.
         auto typeConformances = mpScene->getTypeConformances();
 
-        mpGeneratePaths->getProgram()->addDefines(defines);
-        mpTracePass->getProgram()->addDefines(defines);
-        mpReflectTypes->getProgram()->addDefines(defines);
+        // Build base ProgramDesc with scene shader modules + type conformances
+        // (mirrors Falcor PathTracer::updatePrograms pattern).
+        ProgramDesc baseDesc;
+        baseDesc.addShaderModules(mpScene->getShaderModules());
+        baseDesc.addTypeConformances(typeConformances);
 
-        mpSpatialPathRetracePass->getProgram()->addDefines(defines);
-        mpTemporalPathRetracePass->getProgram()->addDefines(defines);
-
-        mpSpatialReusePass->getProgram()->addDefines(defines);
-        mpTemporalReusePass->getProgram()->addDefines(defines);
-        mpComputePathReuseMISWeightsPass->getProgram()->addDefines(defines);
-
-        mpGeneratePaths->getProgram()->setTypeConformances(typeConformances);
-        mpTracePass->getProgram()->setTypeConformances(typeConformances);
-        mpReflectTypes->getProgram()->setTypeConformances(typeConformances);
-
-        mpSpatialPathRetracePass->getProgram()->setTypeConformances(typeConformances);
-        mpTemporalPathRetracePass->getProgram()->setTypeConformances(typeConformances);
-
-        mpSpatialReusePass->getProgram()->setTypeConformances(typeConformances);
-        mpTemporalReusePass->getProgram()->setTypeConformances(typeConformances);
-        mpComputePathReuseMISWeightsPass->getProgram()->setTypeConformances(typeConformances);
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kGeneratePathsFilename).csEntry("main");
+            mpGeneratePaths = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kReflectTypesFile).csEntry("main");
+            mpReflectTypes = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_6);
+            mpTracePass = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kSpatialPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+            mpSpatialPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kTemporalPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+            mpTemporalPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kSpatialReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+            mpSpatialReusePass = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kTemporalReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+            mpTemporalReusePass = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kComputePathReuseMISWeightsFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+            mpComputePathReuseMISWeightsPass = ComputePass::create(mpDevice, desc, defines, false);
+        }
 
         validateOptions();
 
