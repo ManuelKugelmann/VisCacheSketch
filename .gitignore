@@ -33,6 +33,9 @@ captures/
 Falcor/Source/RenderPasses/VisCache/
 Falcor/Source/RenderPasses/ReSTIRPTPass/
 
+# Downloaded release (use scripts/download_release.bat)
+release/
+
 # Downloaded test scenes (use scripts/download_scenes.sh)
 media/
 Source/RenderPasses/*/Data/VeachAjar/models/
