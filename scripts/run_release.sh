@@ -55,6 +55,20 @@ if [ ! -f "$DATA_DST/16RooksPattern256.txt" ]; then
     echo "[launch] Expected at: $DATA_DST/16RooksPattern256.txt"
 fi
 
+# Validate Falcor built-in shaders
+# In deployment mode Falcor resolves shaders from release/shaders/ only.
+# If the built-in shader tree is missing, compilation fails with cryptic errors
+# like "undefined identifier 'ExplicitLodTextureSampler'".
+SHADER_SENTINEL="${RELEASE_DIR}/shaders/Scene/Material/TextureSampler.slang"
+if [ ! -f "$SHADER_SENTINEL" ]; then
+    echo "[launch] ERROR: Falcor built-in shaders missing from release/shaders/"
+    echo "[launch] Expected: $SHADER_SENTINEL"
+    echo "[launch] This causes shader link errors (e.g. undefined ExplicitLodTextureSampler)."
+    echo "[launch] Fix: re-run scripts/download_release.sh to get a fresh release."
+    exit 1
+fi
+echo "[launch] Falcor shaders OK"
+
 # Smoke test
 if [ -f "$RELEASE_DIR/Mogwai.exe" ]; then
     echo "[smoke] Running smoke test..."

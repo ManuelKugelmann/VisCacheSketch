@@ -65,6 +65,23 @@ if not exist "%DATA_DST%\16RooksPattern256.txt" (
 )
 
 REM ---------------------------------------------------------------------------
+REM Validate Falcor built-in shaders
+REM ---------------------------------------------------------------------------
+REM In deployment mode Falcor resolves shaders from release\shaders\ only.
+REM If the Falcor built-in shader tree is missing (incomplete extraction or
+REM corrupted update), shader compilation fails with cryptic errors like
+REM "undefined identifier 'ExplicitLodTextureSampler'".
+set "SHADER_SENTINEL=%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang"
+if not exist "%SHADER_SENTINEL%" (
+    echo [launch] ERROR: Falcor built-in shaders missing from release\shaders\
+    echo [launch] Expected: %SHADER_SENTINEL%
+    echo [launch] This causes shader link errors ^(e.g. undefined ExplicitLodTextureSampler^).
+    echo [launch] Fix: re-run scripts\download_release.bat to get a fresh release.
+    exit /b 1
+)
+echo [launch] Falcor shaders OK
+
+REM ---------------------------------------------------------------------------
 REM Smoke test
 REM ---------------------------------------------------------------------------
 if exist "%RELEASE_DIR%\Mogwai.exe" (

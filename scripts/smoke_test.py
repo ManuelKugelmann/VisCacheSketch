@@ -26,11 +26,50 @@ REQUIRED_PASSES = [
     "VisCachePass",
 ]
 
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# ---------------------------------------------------------------------------
+# 0a. Pre-flight: validate Falcor built-in shaders
+# ---------------------------------------------------------------------------
+# In deployment mode Falcor only searches getRuntimeDirectory()/shaders/.
+# If the Falcor built-in shaders are missing (e.g. incomplete extraction),
+# shader compilation will fail with cryptic "undefined identifier" errors.
+# We use TextureSampler.slang as a sentinel — if it's present the rest of
+# the Falcor shader tree should be intact.
+SHADER_SENTINEL = os.path.join("Scene", "Material", "TextureSampler.slang")
+SHADER_SEARCH_DIRS = [
+    # release/scripts/VisCache/ → release/shaders/
+    os.path.join(_script_dir, "..", "..", "shaders"),
+    # scripts/ → release/shaders/
+    os.path.join(_script_dir, "..", "release", "shaders"),
+]
+shaders_ok = False
+for d in SHADER_SEARCH_DIRS:
+    candidate = os.path.join(d, SHADER_SENTINEL)
+    if os.path.isfile(candidate):
+        shaders_ok = True
+        print(f"[smoke] Falcor shaders OK: {os.path.normpath(d)}")
+        break
+
+if not shaders_ok:
+    print(f"[smoke] ERROR: Falcor built-in shaders missing!")
+    print(f"[smoke] Looked for: {SHADER_SENTINEL}")
+    for d in SHADER_SEARCH_DIRS:
+        print(f"  checked: {os.path.normpath(d)}")
+    print(f"[smoke] This causes 'undefined identifier' errors (e.g. ExplicitLodTextureSampler).")
+    print(f"[smoke] Fix: re-run scripts/download_release to get a fresh release with all shaders.")
+    raise RuntimeError(
+        f"Falcor built-in shaders missing from release/shaders/. "
+        f"Expected: shaders/{SHADER_SENTINEL}"
+    )
+
+# ---------------------------------------------------------------------------
+# 0b. Pre-flight: check ReSTIRPTPass data file & register search paths
+# ---------------------------------------------------------------------------
 # ReSTIRPTPass needs 16RooksPattern256.txt deployed to a Falcor data
 # directory.  Check for the file before attempting createPass() — the
 # constructor FALCOR_THROWs on missing data, which can crash ungracefully.
 ROOKS_FILE = "16RooksPattern256.txt"
-_script_dir = os.path.dirname(os.path.abspath(__file__))
 # The script runs from two locations:
 #   source tree:  scripts/smoke_test.py           (dirname = scripts/)
 #   release:      release/scripts/VisCache/smoke_test.py  (dirname = release/scripts/VisCache/)
@@ -46,9 +85,6 @@ ROOKS_SEARCH_DIRS = [
     os.path.join(_script_dir, "..", "release", "data", "ReSTIRPTPass"),
 ]
 
-# ---------------------------------------------------------------------------
-# 0. Pre-flight: check ReSTIRPTPass data file & register search paths
-# ---------------------------------------------------------------------------
 rooks_found = False
 for d in ROOKS_SEARCH_DIRS:
     candidate = os.path.join(d, ROOKS_FILE)

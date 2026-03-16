@@ -148,6 +148,21 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
             echo [quickstart]   !_COUNT! data file^(s^) updated
         )
     )
+
+    REM Validate Falcor built-in shaders are present in the release
+    REM The CI build deploys all Falcor shaders via CMake; quickstart only
+    REM copies custom pass shaders on top.  If the built-in shaders are
+    REM missing the release archive was incomplete or corrupted.
+    set "SHADER_SENTINEL=%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang"
+    if not exist "!SHADER_SENTINEL!" (
+        echo [quickstart] ERROR: Falcor built-in shaders missing from release\shaders\
+        echo [quickstart] Expected: !SHADER_SENTINEL!
+        echo [quickstart] The release archive may be incomplete. Re-run download_release.bat.
+        echo [quickstart] Without these shaders, Mogwai will fail with 'undefined identifier'
+        echo [quickstart] errors ^(e.g. ExplicitLodTextureSampler^).
+    ) else (
+        echo [quickstart] Falcor shaders OK
+    )
 ) else (
     echo [quickstart] step 3 copy newer shaders, data, etc. to release -- skipped ^(no release found^)
 )
