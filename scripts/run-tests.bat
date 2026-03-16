@@ -10,7 +10,11 @@ setlocal enabledelayedexpansion
 REM Ensure Python outputs UTF-8 on Windows (avoids cp1252 UnicodeEncodeError)
 set "PYTHONUTF8=1"
 
-where python >nul 2>&1 || (echo ERROR: python not found in PATH & exit /b 1)
+where python >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: python not found in PATH
+    exit /b 1
+)
 
 set "PASS=0"
 set "FAIL=0"

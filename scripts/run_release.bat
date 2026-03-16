@@ -110,18 +110,19 @@ if "!NRD_OK!"=="0" (
 )
 
 REM Validate (diagnostic — catch wrong locations, partial copies, etc.)
-where python >nul 2>&1 && (
-    python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
-    if errorlevel 1 (
-        echo [launch] WARNING: Shader validation found issues — see above
-        echo [launch] Continuing launch, but expect shader compilation errors.
-    )
-) || (
+where python >nul 2>&1
+if errorlevel 1 (
     REM Fallback: at least check sentinel file exists
     if not exist "%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang" (
         echo [launch] ERROR: Falcor shaders missing from release\shaders\ after deploy
         echo [launch] Check that Falcor\Source\Falcor\ contains .slang files.
         exit /b 1
+    )
+) else (
+    python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
+    if errorlevel 1 (
+        echo [launch] WARNING: Shader validation found issues — see above
+        echo [launch] Continuing launch, but expect shader compilation errors.
     )
 )
 

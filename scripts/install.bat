@@ -40,7 +40,8 @@ exit /b 1
 REM ---------------------------------------------------------------------------
 REM Check git
 REM ---------------------------------------------------------------------------
-where git >nul 2>&1 || (
+where git >nul 2>&1
+if errorlevel 1 (
     echo [install] ERROR: git not found. Install git 2.43+ from https://git-scm.com
     exit /b 1
 )
