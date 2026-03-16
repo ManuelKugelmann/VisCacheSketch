@@ -1,7 +1,7 @@
 @echo off
 REM build.bat — Update repo then build Falcor + VisCache from source.
 REM
-REM Usage:  build.bat [--config Release|Debug] [--preset <preset>] [--skip-setup] [--skip-scenes] [--scene <name>] [--open]
+REM Usage:  build.bat [--config Release|Debug] [--preset <preset>] [--skip-setup] [--skip-scenes] [--scene <name>] [--clean] [--open]
 REM
 REM Presets:  windows-vs2022 (default), windows-ninja-msvc, windows-vs2022-ci, windows-ninja-msvc-ci
 REM Configs:  Release (default), Debug
@@ -9,6 +9,7 @@ REM
 REM Options:
 REM   --skip-setup   Skip update + setup (submodules/packman/plugin integration)
 REM   --skip-scenes  Skip scene downloads during update
+REM   --clean        Remove stale CMakeCache before configure (fixes toolset mismatches)
 REM   --open         Open the VS solution after build (VS2022 presets only)
 REM
 REM Steps:
@@ -28,6 +29,7 @@ set "CONFIG=Release"
 set "PRESET=windows-vs2022"
 set "UPDATE_ARGS="
 set "SKIP_SETUP=0"
+set "CLEAN_CACHE=0"
 set "OPEN_IDE=0"
 
 REM ---------------------------------------------------------------------------
@@ -40,9 +42,10 @@ if /i "%~1"=="--preset" (set "PRESET=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--skip-setup" (set "SKIP_SETUP=1" & shift & goto :parse_args)
 if /i "%~1"=="--skip-scenes" (set "UPDATE_ARGS=!UPDATE_ARGS! --skip-scenes" & shift & goto :parse_args)
 if /i "%~1"=="--scene" (set "UPDATE_ARGS=!UPDATE_ARGS! --scene %~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--clean" (set "CLEAN_CACHE=1" & shift & goto :parse_args)
 if /i "%~1"=="--open" (set "OPEN_IDE=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--config Release^|Debug] [--preset ^<preset^>] [--skip-setup] [--skip-scenes] [--scene ^<name^>] [--open]
+echo Usage: %~nx0 [--config Release^|Debug] [--preset ^<preset^>] [--skip-setup] [--skip-scenes] [--scene ^<name^>] [--clean] [--open]
 exit /b 1
 :args_done
 
@@ -78,6 +81,15 @@ REM Use packman cmake if available, otherwise system cmake
 set "CMAKE=cmake"
 if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
     set "CMAKE=%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe"
+)
+
+set "BUILD_DIR=%FALCOR_ROOT%\build\%PRESET%"
+if "%CLEAN_CACHE%"=="1" (
+    if exist "!BUILD_DIR!\CMakeCache.txt" (
+        echo [build] --clean: removing CMakeCache.txt and CMakeFiles...
+        del /q "!BUILD_DIR!\CMakeCache.txt"
+        if exist "!BUILD_DIR!\CMakeFiles" rmdir /s /q "!BUILD_DIR!\CMakeFiles"
+    )
 )
 
 echo [build] Configuring: %CMAKE% --preset %PRESET%
