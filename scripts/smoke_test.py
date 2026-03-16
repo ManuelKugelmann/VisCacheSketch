@@ -21,16 +21,86 @@ validates runtime integration when a GPU is available.
 """
 
 import os
+import sys
 
 REQUIRED_PASSES = [
     "VisCachePass",
 ]
 
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# ---------------------------------------------------------------------------
+# 0a. Pre-flight: validate deployed shaders against source tree
+# ---------------------------------------------------------------------------
+# Compares content hashes (not file dates) because git checkout/pull sets
+# mtime to "now" and tar extraction preserves CI build timestamps — neither
+# reflects actual content freshness.
+
+# Find project root (contains Falcor/ directory)
+_root_candidates = [
+    os.path.join(_script_dir, ".."),                    # scripts/
+    os.path.join(_script_dir, "..", "..", ".."),         # release/scripts/VisCache/
+]
+_project_root = None
+for _c in _root_candidates:
+    if os.path.isdir(os.path.join(_c, "Falcor")):
+        _project_root = os.path.normpath(_c)
+        break
+
+# Find deploy dir (release/shaders/)
+_deploy_candidates = [
+    os.path.join(_script_dir, "..", "..", "shaders"),    # release/scripts/VisCache/
+    os.path.join(_script_dir, "..", "release", "shaders"),  # scripts/
+]
+_deploy_dir = None
+for _d in _deploy_candidates:
+    if os.path.isdir(_d):
+        _deploy_dir = os.path.normpath(_d)
+        break
+
+if _deploy_dir is None:
+    print("[smoke] ERROR: No shaders directory found in release/")
+    print("[smoke] This causes 'undefined identifier' errors (e.g. ExplicitLodTextureSampler).")
+    print("[smoke] Fix: re-run download_release to get a fresh release with all shaders.")
+    raise RuntimeError("No shaders directory found in release/")
+
+if _project_root is not None:
+    # Import or inline the validation logic
+    sys.path.insert(0, _script_dir)
+    try:
+        from validate_shaders import check_shaders
+        stale, missing = check_shaders(_project_root, _deploy_dir)
+        if missing:
+            print(f"[smoke] WARNING: {len(missing)} shader(s) missing from release/shaders/:")
+            for f in sorted(missing)[:10]:
+                print(f"  MISSING: {f}")
+            if len(missing) > 10:
+                print(f"  ... and {len(missing) - 10} more")
+        if stale:
+            print(f"[smoke] WARNING: {len(stale)} shader(s) stale (source differs from deployed):")
+            for f in sorted(stale)[:10]:
+                print(f"  STALE:   {f}")
+            if len(stale) > 10:
+                print(f"  ... and {len(stale) - 10} more")
+        if missing or stale:
+            print(f"[smoke] Stale shaders cause 'undefined identifier' or wrong behavior at runtime.")
+            print(f"[smoke] Fix: re-run quickstart to re-deploy shaders from source.")
+        else:
+            print(f"[smoke] All {len(os.listdir(_deploy_dir))}+ deployed shaders match source tree.")
+    except Exception as e:
+        print(f"[smoke] WARNING: Shader validation failed: {e}")
+        print(f"[smoke] Continuing with smoke test...")
+else:
+    print("[smoke] WARNING: Could not find project root — skipping shader content validation")
+    print(f"[smoke] Deploy dir: {_deploy_dir}")
+
+# ---------------------------------------------------------------------------
+# 0b. Pre-flight: check ReSTIRPTPass data file & register search paths
+# ---------------------------------------------------------------------------
 # ReSTIRPTPass needs 16RooksPattern256.txt deployed to a Falcor data
 # directory.  Check for the file before attempting createPass() — the
 # constructor FALCOR_THROWs on missing data, which can crash ungracefully.
 ROOKS_FILE = "16RooksPattern256.txt"
-_script_dir = os.path.dirname(os.path.abspath(__file__))
 # The script runs from two locations:
 #   source tree:  scripts/smoke_test.py           (dirname = scripts/)
 #   release:      release/scripts/VisCache/smoke_test.py  (dirname = release/scripts/VisCache/)
@@ -46,9 +116,6 @@ ROOKS_SEARCH_DIRS = [
     os.path.join(_script_dir, "..", "release", "data", "ReSTIRPTPass"),
 ]
 
-# ---------------------------------------------------------------------------
-# 0. Pre-flight: check ReSTIRPTPass data file & register search paths
-# ---------------------------------------------------------------------------
 rooks_found = False
 for d in ROOKS_SEARCH_DIRS:
     candidate = os.path.join(d, ROOKS_FILE)
