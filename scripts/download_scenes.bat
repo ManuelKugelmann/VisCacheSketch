@@ -13,7 +13,7 @@ REM --yes skips interactive prompts (download everything).
 setlocal enabledelayedexpansion
 
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "MEDIA_DIR=%ROOT%\media"
+set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENES_DIR=%ROOT%\scenes"
 set "AUTO_YES=0"
 

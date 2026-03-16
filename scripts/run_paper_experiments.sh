@@ -38,7 +38,7 @@ source "$SCRIPT_DIR/version.sh" "experiments" 2>/dev/null || true
 # Defaults
 # ---------------------------------------------------------------------------
 MOGWAI=""
-SCENE_DIR="$ROOT_DIR/media"
+SCENE_DIR="$ROOT_DIR/release/media"
 OUTPUT_DIR="$ROOT_DIR/captures"
 SKIP_BASELINES=false
 SKIP_ABLATION=false

@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-MEDIA_DIR="${ROOT_DIR}/media"
+MEDIA_DIR="${ROOT_DIR}/release/media"
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "scenes" 2>/dev/null || true

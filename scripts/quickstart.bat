@@ -22,7 +22,7 @@ for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 set "SCENE=Bistro"
 set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\media"
+set "MEDIA_DIR=%ROOT%\release\media"
 
 call "%SCRIPT_DIR%version.bat" quickstart 2>nul
 set "SKIP_SCENES=0"
@@ -82,7 +82,7 @@ if %SKIP_SCENES%==1 (
     echo [quickstart] step 2 download scenes -- skipped ^(--skip-scenes^)
 ) else (
     echo [quickstart] step 2 download scenes
-    call "%SCRIPT_DIR%download_scenes.bat" --dir "%ROOT%\media" --yes
+    call "%SCRIPT_DIR%download_scenes.bat" --dir "%MEDIA_DIR%" --yes
     if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
 )
 

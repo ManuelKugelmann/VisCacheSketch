@@ -14,7 +14,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "launch" 2>/dev/null || true
 RELEASE_DIR="${ROOT_DIR}/release"
-MEDIA_DIR="${ROOT_DIR}/media"
+MEDIA_DIR="${ROOT_DIR}/release/media"
 REPO="ManuelKugelmann/VisCacheSketch"
 SCENE="Bistro"
 

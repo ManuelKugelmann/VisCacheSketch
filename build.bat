@@ -83,13 +83,32 @@ if errorlevel 1 (
 )
 
 REM ---------------------------------------------------------------------------
-REM Done
+REM Step 4: Deploy build output to release/
 REM ---------------------------------------------------------------------------
+echo.
+echo ========================================
+echo  Step 4: Deploy to release\
+echo ========================================
+set "BUILD_OUT=%FALCOR_ROOT%\build\%PRESET%\bin\%CONFIG%"
+set "RELEASE_DIR=%ROOT%release"
+
+if not exist "%BUILD_OUT%\Mogwai.exe" (
+    echo [build] WARNING: Mogwai.exe not found at %BUILD_OUT%
+    goto :done
+)
+
+echo [build] Copying build output to %RELEASE_DIR%\
+if not exist "%RELEASE_DIR%" mkdir "%RELEASE_DIR%"
+xcopy /E /I /Q /Y "%BUILD_OUT%\*" "%RELEASE_DIR%\" >nul
+echo [build] Deployed to %RELEASE_DIR%\
+
+:done
 echo.
 echo ========================================
 echo  Build complete
 echo ========================================
-echo [build] Output: %FALCOR_ROOT%\build\%PRESET%\bin\%CONFIG%
+echo [build] Build output: %BUILD_OUT%
+echo [build] Deployed to:  %RELEASE_DIR%\
 echo.
 
 endlocal
