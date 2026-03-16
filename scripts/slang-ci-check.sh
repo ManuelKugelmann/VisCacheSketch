@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
 # slang-ci-check.sh — Offline Slang shader compilation for CI.
 #
-# Mimics the include-path setup that Falcor's ProgramManager uses at runtime
-# (see Falcor/Source/Falcor/Core/Platform/OS.cpp getInitialShaderDirectories):
-#   1. <project>/Source/Falcor   (Scene.*, Utils.*, Rendering.*)
-#   2. <project>/Source          (RenderPasses.*)
+# Mirrors Falcor's ProgramManager::createSlangCompileRequest() as closely as
+# possible, without a GPU:
 #
-# We copy our render passes into the Falcor tree (same as build.yml) so that
-# import paths like `RenderPasses.VisCache.VisCache` resolve correctly.
-# Falcor defines from slang-ci-defines.slangh are injected via -D flags.
+#   - Front-end only (-no-codegen) — same as Falcor's initial compile pass
+#     (SLANG_COMPILE_FLAG_NO_CODEGEN).  Type conformances are applied at
+#     specialization time, so codegen errors like 50100 don't apply here.
+#   - Row-major matrices (-matrix-layout-row-major)
+#   - Short-circuit disabled (-disable-short-circuit)
+#   - Warning suppressions matching ProgramManager (15602, 30056, 30081, 41203)
+#   - Include paths: Source/Falcor, Source, external/packman/nanovdb/include
+#   - Platform defines: FALCOR_VULKAN=1, __SM_6_6__=1
 #
 # Usage: scripts/slang-ci-check.sh <path-to-slangc>
-#
-# Three tiers:
-#   Tier 1 — Self-contained VisCache core (no Falcor deps).
-#            Failures block the PR.
-#   Tier 2 — VisCache shaders with Falcor imports (Scene.*, Utils.*).
-#            Compiled with default Falcor defines + CI stubs.
-#            Failures block the PR.
-#   Tier 3 — ReSTIRPTPass shaders (deep Falcor scene system deps).
-#            Best-effort: reported but do not block.
 
 set -euo pipefail
 
@@ -27,27 +21,19 @@ SLANGC="${1:?Usage: $0 <path-to-slangc>}"
 RESULTS="slang-check-results.log"
 : > "$RESULTS"
 
-# slangc SPIR-V backend cannot write to /dev/null — use a real temp file.
-TMPOUT="$(mktemp /tmp/slang-ci-XXXXXX.spv)"
-trap 'rm -f "$TMPOUT"' EXIT
-
 PASS=0
 FAIL=0
-SKIP=0
 
-# Colours (CI-friendly: only when stdout is a terminal)
 if [ -t 1 ]; then
-  GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
+  GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 else
-  GREEN=''; RED=''; YELLOW=''; NC=''
+  GREEN=''; RED=''; NC=''
 fi
 
 check() {
   local file="$1"; shift
-  local tier="$1"; shift
-  local label="$1"; shift
 
-  printf "  %-55s " "$file"
+  printf "  %-65s " "$file"
 
   # shellcheck disable=SC2068
   if output=$("$SLANGC" $@ "$file" 2>&1); then
@@ -55,17 +41,11 @@ check() {
     echo "OK   $file" >> "$RESULTS"
     PASS=$((PASS + 1))
   else
-    if [ "$tier" = "3" ]; then
-      printf "${YELLOW}SKIP${NC} (${label})\n"
-      echo "SKIP $file ($label)" >> "$RESULTS"
-      SKIP=$((SKIP + 1))
-    else
-      printf "${RED}FAIL${NC} (tier ${tier})\n"
-      echo "FAIL $file" >> "$RESULTS"
-      echo "$output" >> "$RESULTS"
-      echo "$output" >&2
-      FAIL=$((FAIL + 1))
-    fi
+    printf "${RED}FAIL${NC}\n"
+    echo "FAIL $file" >> "$RESULTS"
+    echo "$output" >> "$RESULTS"
+    echo "$output" >&2
+    FAIL=$((FAIL + 1))
   fi
 }
 
@@ -73,8 +53,7 @@ echo "=== Slang Shader CI Check ==="
 echo ""
 
 # ---------------------------------------------------------------------------
-# Setup: copy render passes into Falcor tree (same as build.yml)
-# This makes `import RenderPasses.VisCache.VisCache` resolve correctly.
+# Setup: copy render passes into Falcor tree (same as build.yml / CMake)
 # ---------------------------------------------------------------------------
 FALCOR="Falcor"
 echo "Integrating render passes into Falcor source tree..."
@@ -106,79 +85,128 @@ DFLAGS=$(grep '^#define ' "${SCRIPT_DIR}/slang-ci-defines.slangh" \
   | tr '\n' ' ')
 
 # ---------------------------------------------------------------------------
-# Include paths — mirrors Falcor ProgramManager's getInitialShaderDirectories
+# Flags — mirrors Falcor ProgramManager::createSlangCompileRequest()
 # ---------------------------------------------------------------------------
+# Include paths (getShaderDirectoriesList in dev mode)
 SEARCH_PATHS="-I ${FALCOR}/Source/Falcor -I ${FALCOR}/Source -I ${FALCOR}/external/packman/nanovdb/include"
 
-# Tier 1: self-contained, no defines needed
+# Platform & shader model defines (added by ProgramManager)
+PLATFORM_DEFS="-DFALCOR_VULKAN=1 -D__SM_6_6__=1"
+
+# Compiler flags matching ProgramManager (lines 732-767 of ProgramManager.cpp)
+COMPILER_FLAGS="-matrix-layout-row-major -disable-short-circuit -capability sm_6_6+spirv_1_5+raytracingstages_compute_fragment_geometry_vertex"
+
+# Warning suppressions matching ProgramManager
+WARN_FLAGS="-Wno-15602 -Wno-30056 -Wno-30081 -Wno-41203"
+
+# Front-end only — matches Falcor's SLANG_COMPILE_FLAG_NO_CODEGEN.
+# Type conformances (IMaterial, IMaterialInstance) are provided at runtime
+# by MaterialSystem::getTypeConformances(); front-end check doesn't need them.
+CODEGEN="-no-codegen"
+
+# VisCache consumer stubs (traceShadowRay / evalBRDF / ShadingData — normally
+# provided by the host pass that imports VisCache modules)
+VC_STUBS="${SCRIPT_DIR}/slang-ci-viscache-stubs.slang"
+
+# Common flags for all Falcor-dependent shaders
+COMMON="-target spirv ${CODEGEN} ${COMPILER_FLAGS} ${WARN_FLAGS} ${SEARCH_PATHS} ${PLATFORM_DEFS} ${DFLAGS}"
+
 VISCACHE_DIR="${FALCOR}/Source/RenderPasses/VisCache"
-T1_FLAGS="-target spirv -I ${VISCACHE_DIR}"
-
-# Tier 2: Falcor imports + defines + stubs
-T2_FLAGS="-target spirv ${SEARCH_PATHS} ${DFLAGS}"
-STUBS="${SCRIPT_DIR}/slang-ci-stubs.slang"
-
-# ---------------------------------------------------------------------------
-# Tier 1: Self-contained VisCache core
-# ---------------------------------------------------------------------------
-echo "--- Tier 1: VisCache core (self-contained) ---"
-
-# Library module (no entry point)
-check "${VISCACHE_DIR}/VisCache.slang" 1 "" \
-  -target spirv -o "$TMPOUT"
-
-# Compute shaders with entry points
-check "${VISCACHE_DIR}/VisCacheInsert.cs.slang" 1 "" \
-  ${T1_FLAGS} -entry csInsert -stage compute -o "$TMPOUT"
-
-check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" 1 "" \
-  ${T1_FLAGS} -entry csDecay -stage compute -o "$TMPOUT"
-
-echo ""
-
-# ---------------------------------------------------------------------------
-# Tier 2: VisCache shaders with Falcor dependencies
-# ---------------------------------------------------------------------------
-echo "--- Tier 2: VisCache Falcor-dependent shaders ---"
-
-check "${VISCACHE_DIR}/VisCacheTracing.slang" 2 "" \
-  ${T2_FLAGS} -o "$TMPOUT" "${STUBS}"
-
-check "${VISCACHE_DIR}/ShadingCV.slang" 2 "" \
-  ${T2_FLAGS} -o "$TMPOUT" "${STUBS}"
-
-check "${VISCACHE_DIR}/RevalidationCommon.slang" 2 "" \
-  ${T2_FLAGS} -o "$TMPOUT" "${STUBS}"
-
-echo ""
-
-# ---------------------------------------------------------------------------
-# Tier 3: ReSTIRPTPass shaders (best-effort)
-# ---------------------------------------------------------------------------
-echo "--- Tier 3: ReSTIRPTPass shaders (best-effort) ---"
-
+PT_DIR="${FALCOR}/Source/RenderPasses/PathTracer"
+RTXDI_DIR="${FALCOR}/Source/RenderPasses/RTXDIPass"
 RESTIR_DIR="${FALCOR}/Source/RenderPasses/ReSTIRPTPass"
+
+# ===========================================================================
+# VisCache — self-contained core + Falcor-dependent modules
+# ===========================================================================
+echo "--- VisCache ---"
+
+# Self-contained (no Falcor imports)
+check "${VISCACHE_DIR}/VisCache.slang" \
+  -target spirv ${CODEGEN}
+
+check "${VISCACHE_DIR}/VisCacheInsert.cs.slang" \
+  -target spirv ${CODEGEN} -I "${VISCACHE_DIR}" -entry csInsert -stage compute
+
+check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" \
+  -target spirv ${CODEGEN} -I "${VISCACHE_DIR}" -entry csDecay -stage compute
+
+# Falcor-dependent (VC_STUBS provide consumer functions: traceShadowRay, evalBRDF)
+check "${VISCACHE_DIR}/VisCacheTracing.slang" \
+  ${COMMON} "${VC_STUBS}"
+
+check "${VISCACHE_DIR}/ShadingCV.slang" \
+  ${COMMON} "${VC_STUBS}"
+
+check "${VISCACHE_DIR}/RevalidationCommon.slang" \
+  ${COMMON} "${VC_STUBS}"
+
+echo ""
+
+# ===========================================================================
+# PathTracer — entry-point shaders
+# ===========================================================================
+echo "--- PathTracer ---"
+
+PT_FLAGS="${COMMON} -I ${PT_DIR}"
+
+check "${PT_DIR}/GeneratePaths.cs.slang" \
+  ${PT_FLAGS} -entry main -stage compute
+
+check "${PT_DIR}/ReflectTypes.cs.slang" \
+  ${PT_FLAGS} -entry main -stage compute
+
+check "${PT_DIR}/ResolvePass.cs.slang" \
+  ${PT_FLAGS} -entry main -stage compute
+
+check "${PT_DIR}/TracePass.rt.slang" \
+  ${PT_FLAGS}
+
+echo ""
+
+# ===========================================================================
+# RTXDIPass — entry-point shaders
+# ===========================================================================
+echo "--- RTXDIPass ---"
+
+RTXDI_FLAGS="${COMMON} -I ${RTXDI_DIR}"
+
+check "${RTXDI_DIR}/PrepareSurfaceData.cs.slang" \
+  ${RTXDI_FLAGS} -entry main -stage compute
+
+# FinalShading.cs.slang accesses gRTXDI.frameIndex which requires the RTXDI
+# SDK (RTXDI_INSTALLED=1).  At runtime Falcor only compiles this shader when
+# the SDK is present, so we skip it in CI — same as Falcor would.
+echo "  (skip FinalShading.cs.slang — requires RTXDI SDK)"
+
+echo ""
+
+# ===========================================================================
+# ReSTIRPTPass — entry-point shaders
+# ===========================================================================
+echo "--- ReSTIRPTPass ---"
+
+RESTIR_FLAGS="${COMMON} -I ${RESTIR_DIR}"
+
 if [ -d "$RESTIR_DIR" ]; then
   for f in "$RESTIR_DIR"/*.cs.slang; do
     [ -f "$f" ] || continue
-    # Extract entry point name (first function after [numthreads])
-    entry=$(grep -oP '(?<=void )\w+(?=\()' "$f" | head -1 || true)
-    if [ -n "$entry" ]; then
-      check "$f" 3 "ReSTIRPTPass deep deps" \
-        ${T2_FLAGS} -I "${RESTIR_DIR}" -entry "$entry" -stage compute -o "$TMPOUT" "${STUBS}"
-    fi
+    entry=$(grep -oP '(?<=void )\w+(?=\()' "$f" | tail -1 || true)
+    [ -n "$entry" ] || continue
+    check "$f" \
+      ${RESTIR_FLAGS} -entry "$entry" -stage compute
   done
 fi
 
 echo ""
 
-# ---------------------------------------------------------------------------
+# ===========================================================================
 # Summary
-# ---------------------------------------------------------------------------
-TOTAL=$((PASS + FAIL + SKIP))
-echo "=== Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped (${TOTAL} total) ==="
+# ===========================================================================
+TOTAL=$((PASS + FAIL))
+echo "=== Results: ${PASS} passed, ${FAIL} failed (${TOTAL} total) ==="
 echo "" >> "$RESULTS"
-echo "Total: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped" >> "$RESULTS"
+echo "Total: ${PASS} passed, ${FAIL} failed" >> "$RESULTS"
 
 if [ "$FAIL" -gt 0 ]; then
   echo ""
@@ -187,4 +215,4 @@ if [ "$FAIL" -gt 0 ]; then
 fi
 
 echo ""
-echo "All blocking shaders (Tier 1 + Tier 2) compiled successfully."
+echo "All shaders compiled successfully."

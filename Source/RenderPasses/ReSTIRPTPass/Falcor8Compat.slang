@@ -12,6 +12,8 @@ import Scene.Material.TextureSampler;       // ExplicitLodTextureSampler
 import Scene.Material.MaterialFactory;      // MaterialSystem.getMaterialInstance()
 import Rendering.Materials.IMaterialInstance;
 import Utils.Sampling.SampleGenerator;
+import Scene.Camera.Camera;                 // Camera, CameraData
+import Utils.Math.Ray;                      // Ray
 
 // ---------------------------------------------------------------------------
 // BSDFSample_ -- compatibility struct
@@ -78,7 +80,7 @@ bool sampleBSDF_Reference(const ShadingData sd, inout SampleGenerator sg, out BS
 // ---------------------------------------------------------------------------
 float3 evalBSDFCosine(const ShadingData sd, float3 dir)
 {
-    SampleGenerator sg = SampleGenerator(0); // dummy – eval doesn't consume samples
+    SampleGenerator sg = SampleGenerator(uint2(0), 0); // dummy – eval doesn't consume samples
     let mi = _getMI(sd);
     return mi.eval(sd, dir, sg);
 }
@@ -89,7 +91,7 @@ float3 evalBSDFCosine(const ShadingData sd, float3 dir, uint allowedFlags)
     ShadingData sdCopy = sd;
     if (allowedFlags != 0xffffffff)
         sdCopy.mtl.setActiveLobes(allowedFlags);
-    SampleGenerator sg = SampleGenerator(0);
+    SampleGenerator sg = SampleGenerator(uint2(0), 0);
     let mi = _getMI(sdCopy);
     return mi.eval(sdCopy, dir, sg);
 }
@@ -112,6 +114,12 @@ float evalPdfBSDF(const ShadingData sd, float3 dir)
 {
     let mi = _getMI(sd);
     return mi.evalPdf(sd, dir, true);
+}
+
+float evalPdfBSDF(const ShadingData sd, float3 dir, uint allowedFlags)
+{
+    float pdfAll;
+    return evalPdfBSDF(sd, dir, pdfAll, allowedFlags);
 }
 
 float evalPdfBSDF(const ShadingData sd, float3 dir, out float pdfAll, uint allowedFlags)
@@ -206,4 +214,48 @@ float3 getEmission(const ShadingData sd)
 {
     let mi = _getMI(sd);
     return mi.getProperties(sd).emission;
+}
+
+// ---------------------------------------------------------------------------
+// computeRayPinholePrevFrame  --  Falcor 4.x camera helper
+//
+// Falcor 4 had Camera::computeRayPinholePrevFrame().  Falcor 8 removed it.
+// We reconstruct the previous-frame ray using prevViewMat (rotation part)
+// combined with current-frame intrinsics (cameraU/V/W lengths = FOV scaling,
+// which don't change between frames).
+// ---------------------------------------------------------------------------
+extension Camera
+{
+    Ray computeRayPinholePrevFrame(uint2 pixel, uint2 frameDim, bool applyJitter = true)
+    {
+        // Previous-frame camera basis: extract orientation from prevViewMat
+        // rows, scale by current-frame intrinsic lengths.
+        float lenU = length(data.cameraU);
+        float lenV = length(data.cameraV);
+        float lenW = length(data.cameraW);
+
+        // prevViewMat rows give right/up/forward in world space (transposed).
+        float3 prevRight   = float3(data.prevViewMat[0][0], data.prevViewMat[0][1], data.prevViewMat[0][2]);
+        float3 prevUp      = float3(data.prevViewMat[1][0], data.prevViewMat[1][1], data.prevViewMat[1][2]);
+        float3 prevForward = float3(data.prevViewMat[2][0], data.prevViewMat[2][1], data.prevViewMat[2][2]);
+
+        float3 prevCameraU = normalize(prevRight)   * lenU;
+        float3 prevCameraV = normalize(prevUp)      * lenV;
+        float3 prevCameraW = normalize(prevForward)  * lenW;
+
+        // Compute sample position (same as computeRayPinhole).
+        float2 p = (pixel + float2(0.5f, 0.5f)) / frameDim;
+        if (applyJitter) p += float2(-data.jitterX, data.jitterY);
+        float2 ndc = float2(2, -2) * p + float2(-1, 1);
+
+        Ray ray;
+        ray.origin = data.prevPosW;
+        ray.dir = normalize(ndc.x * prevCameraU + ndc.y * prevCameraV + prevCameraW);
+
+        float invCos = 1.f / dot(normalize(prevCameraW), ray.dir);
+        ray.tMin = data.nearZ * invCos;
+        ray.tMax = data.farZ * invCos;
+
+        return ray;
+    }
 }
