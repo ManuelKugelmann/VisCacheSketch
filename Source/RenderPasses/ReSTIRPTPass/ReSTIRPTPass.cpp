@@ -1155,8 +1155,8 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
 
         // [Falcor 8] mpDevice->createStructuredBuffer replaces Buffer::createStructured.
         if (mStaticParams.shiftStrategy == ShiftMapping::Hybrid && (!mReconnectionDataBuffer ||
-            mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getStructSize() != 512 ||
-            !mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getStructSize() != 256))
+            (mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getStructSize() != 512) ||
+            (!mStaticParams.rcDataOfflineMode && mReconnectionDataBuffer->getStructSize() != 256)))
         {
             mReconnectionDataBuffer = mpDevice->createStructuredBuffer(var["reconnectionDataBuffer"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             //printf("rcDataSize size: %d\n", mReconnectionDataBuffer->getStructSize());
@@ -1168,9 +1168,9 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         uint32_t pathTreeReservoirSize = 128;
 
         if (mpOutputReservoirs &&
-            (mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse && mpOutputReservoirs->getStructSize() != pathTreeReservoirSize ||
-                mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse && mpOutputReservoirs->getStructSize() != baseReservoirSize ||
-                mpTemporalReservoirs.size() != mStaticParams.samplesPerPixel && mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse))
+            ((mStaticParams.pathSamplingMode == PathSamplingMode::PathReuse && mpOutputReservoirs->getStructSize() != pathTreeReservoirSize) ||
+                (mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse && mpOutputReservoirs->getStructSize() != baseReservoirSize) ||
+                (mpTemporalReservoirs.size() != mStaticParams.samplesPerPixel && mStaticParams.pathSamplingMode != PathSamplingMode::PathReuse)))
         {
             mpOutputReservoirs = mpDevice->createStructuredBuffer(var["outputReservoirs"], reservoirCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
             //printf("reservoir size: %d\n", mpOutputReservoirs->getStructSize());
