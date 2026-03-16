@@ -19,22 +19,22 @@ on:
       platform:
         description: 'Platform to build'
         required: false
-        default: 'All'
+        default: 'Windows Ninja'
         type: choice
         options:
-          - All
           - Windows Ninja
+          - All
           - Windows VS2022
           - Linux GCC
       config:
         description: 'Build configuration'
         required: false
-        default: 'Both'
+        default: 'Debug'
         type: choice
         options:
-          - Both
-          - Release
           - Debug
+          - Release
+          - Both
       create_release:
         description: 'Create a dev prerelease after build'
         required: false
@@ -616,7 +616,6 @@ jobs:
           )
 
       - name: Upload build artifacts
-        if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6
         with:
           name: falcor-windows-ninja-${{ matrix.config }}
@@ -783,23 +782,25 @@ jobs:
       && needs.windows-ninja.result == 'success'
       && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_release))
       && !startsWith(github.ref, 'refs/tags/')
-      && inputs.config != 'Debug'
     needs: [prepare, windows-ninja]
+    env:
+      # Release if available, otherwise Debug
+      RELEASE_CONFIG: ${{ inputs.config == 'Debug' && 'Debug' || 'Release' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
-      - name: Download Ninja Release artifact
+      - name: Download Ninja build artifact
         uses: actions/download-artifact@v7
         with:
-          name: falcor-windows-ninja-Release
+          name: falcor-windows-ninja-${{ env.RELEASE_CONFIG }}
           path: release-bin/
 
       - name: Package release archive
         run: |
-          ARCHIVE="viscache-windows-Release.tar.gz"
+          ARCHIVE="viscache-windows-${{ env.RELEASE_CONFIG }}.tar.gz"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
           tar -czf "${ARCHIVE}" -C release-bin .
           ls -lh "${ARCHIVE}"
@@ -819,6 +820,7 @@ jobs:
           |-------|-------|
           | Commit | \`${SHA}\` |
           | Version | \`${VERSION}\` |
+          | Config | ${{ env.RELEASE_CONFIG }} |
 
           **Not a stable release.** Use tagged \`v*\` releases for production." \
             --prerelease \
