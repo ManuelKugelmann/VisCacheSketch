@@ -10,6 +10,7 @@ target_sources(ReSTIRPTPass PRIVATE
     PathReservoir.slang
     PathBuilder.slang
     PathTracer.slang
+    Falcor8Compat.slang
     Shift.slang
     LoadShadingData.slang
     NRDHelpers.slang
