@@ -220,7 +220,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: viscache-windows-${{ inputs.config }}-${{ needs.prepare.outputs.sha_short }}
+          name: viscache-windows-${{ inputs.config }}
           path: |
             ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ inputs.config }}/
           retention-days: 90
