@@ -77,3 +77,26 @@ PDF, using the original (pre-renormalization) lobe selection weights.
 
 **Upstream status:** Enhancement, not a bug fix. Useful for any algorithm
 needing per-lobe PDF decomposition without weight renormalization.
+
+---
+
+## 4. Emissive light samplers: restore skipRandomNumber()
+
+**Files:**
+- `Source/Falcor/Rendering/Lights/EmissivePowerSampler.slang`
+- `Source/Falcor/Rendering/Lights/LightBVHSampler.slang`
+- `Source/Falcor/Rendering/Lights/EmissiveUniformSampler.slang`
+- `Source/Falcor/Rendering/Lights/EmissiveLightSampler.slang` (NullEmissiveSampler)
+
+Falcor 4.x had `skipRandomNumber()` on the `IEmissiveLightSampler` interface.
+Falcor 8 removed it. ReSTIR PT path replay needs to advance the random sequence
+by the exact number of random numbers that `sampleLight()` consumes when
+skipping an emissive light sampling step. Each sampler consumes a different
+count: EmissivePower uses 1D+1D+2D=4, LightBVH uses 1D+2D=3, Uniform uses
+1D+2D=3. Hardcoding a fixed skip causes random sequence misalignment.
+
+Restored `skipRandomNumber()` as a non-interface method on each sampler struct.
+Not added back to `IEmissiveLightSampler` (not needed — called via concrete
+type `EmissiveLightSampler` which is a compile-time typedef).
+
+**Upstream status:** Enhancement for path replay algorithms.

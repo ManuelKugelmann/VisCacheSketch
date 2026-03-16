@@ -80,6 +80,8 @@ __exported import Utils.Sampling.SampleGeneratorInterface;
             return 0.f;
         }
 
+        void skipRandomNumber<S : ISampleGenerator>(inout S sg) {}
+
         int _dummy; // Dummy variable to make sure Slang doesn't remove the struct.
     };
     typedef NullEmissiveSampler EmissiveLightSampler;

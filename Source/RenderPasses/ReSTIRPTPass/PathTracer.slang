@@ -826,7 +826,7 @@ struct PathTracer
         if (kUseEmissiveLights && lightType == (uint)LightSampleType::Emissive)
         {
             if (!kUseEmissiveLights) valid = false;
-            else { sampleNext1D(sg); sampleNext2D(sg); } // Skip same random numbers as emissive sampler consumes.
+            else emissiveSampler.skipRandomNumber(sg);
         }
         if (kUseAnalyticLights && lightType == (uint)LightSampleType::Analytic)
         {
