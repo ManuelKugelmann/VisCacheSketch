@@ -283,9 +283,9 @@ mesh.addTriangle(i0=0, i1=1, i2=2)
 anim = Animation('name', nodeID, duration)  # duration in seconds
 anim.addKeyframe(time, transform)           # time in seconds
 
-anim.preInfinityBehavior  = ...  # behavior before first keyframe
-anim.postInfinityBehavior = ...  # behavior after last keyframe
-anim.interpolationMode    = ...
+anim.preInfinityBehavior  = Animation.Behavior.Constant   # or Linear, Cycle, Oscillate
+anim.postInfinityBehavior = Animation.Behavior.Constant
+anim.interpolationMode    = Animation.InterpolationMode.Linear  # or Hermite
 anim.enableWarping        = True/False
 ```
 
@@ -301,6 +301,67 @@ settings.useEmissiveLights    = True   # enable emissive geometry
 settings.useGridVolumes       = True   # enable volumetric grids
 settings.diffuseAlbedoMultiplier = 1.0 # global albedo scale
 ```
+
+---
+
+## GridVolume
+
+```python
+volume = GridVolume('name')
+volume.loadGrid(GridVolume.GridSlot.Density, 'path/to/volume.vdb', 'gridname')
+volume.loadGridSequence(GridVolume.GridSlot.Density, ['frame0.vdb', 'frame1.vdb'], 'gridname')
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `str` | Volume name |
+| `densityGrid` | `Grid` | Density grid |
+| `densityScale` | `float` | Density scaling factor |
+| `emissionGrid` | `Grid` | Emission grid |
+| `emissionScale` | `float` | Emission scaling factor |
+| `albedo` | `float3` | Volume albedo |
+| `anisotropy` | `float` | Phase function anisotropy |
+| `emissionMode` | enum | `Direct` or `Blackbody` |
+| `emissionTemperature` | `float` | Blackbody temperature |
+| `gridFrame` | `uint32` | Current grid frame |
+| `gridFrameCount` | `uint32` | Read-only, total frames |
+| `frameRate` | `float` | Playback frame rate |
+| `playbackEnabled` | `bool` | Enable/disable playback |
+
+**GridSlot** values: `Density`, `Emission`
+
+---
+
+## SceneBuilderFlags
+
+```python
+# Pass via importScene options or check via sceneBuilder.flags
+SceneBuilderFlags.Default
+SceneBuilderFlags.DontMergeMaterials
+SceneBuilderFlags.DontMergeMeshes
+SceneBuilderFlags.DontOptimizeGraph
+SceneBuilderFlags.DontOptimizeMaterials
+SceneBuilderFlags.DontUseDisplacement
+SceneBuilderFlags.UseOriginalTangentSpace
+SceneBuilderFlags.AssumeLinearSpaceTextures
+SceneBuilderFlags.UseSpecGlossMaterials
+SceneBuilderFlags.UseMetalRoughMaterials
+SceneBuilderFlags.UseCompressedHitInfo
+SceneBuilderFlags.UseCache
+SceneBuilderFlags.RebuildCache
+```
+
+---
+
+## Vector Types
+
+Available globally in .pyscene scripts:
+
+- `float2(x, y)`, `float3(x, y, z)`, `float4(x, y, z, w)`
+- `int2`, `int3`, `int4`, `uint2`, `uint3`, `uint4`
+- `bool2`, `bool3`, `bool4`
+- Component access: `.x`, `.y`, `.z`, `.w`
+- Arithmetic operators: `+`, `-`, `*`, `/`
 
 ---
 
