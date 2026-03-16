@@ -32,6 +32,32 @@ if not exist "%OUTDIR%\Mogwai.exe" (
     echo [verify] OK: Mogwai.exe present
 )
 
+REM ---- NRD denoiser DLLs (warn loudly, do not fail) ----
+set NRD_WARN=0
+if not exist "%OUTDIR%\NRDPass.dll" (
+    set NRD_WARN=1
+    echo.
+    echo ========================================================
+    echo  WARNING: NRDPass.dll MISSING from build output
+    echo ========================================================
+    echo.
+)
+if not exist "%OUTDIR%\NRD.dll" (
+    set NRD_WARN=1
+    echo.
+    echo ========================================================
+    echo  WARNING: NRD.dll MISSING from build output
+    echo ========================================================
+    echo.
+)
+if !NRD_WARN!==1 (
+    echo [verify] WARNING: NRD denoiser not in build output -- output will be raw noisy radiance.
+    echo [verify] Rebuild with D3D12 + packman NRD package, or ensure NRDPass is enabled in CMake.
+    echo.
+) else (
+    echo [verify] OK: NRDPass.dll and NRD.dll present
+)
+
 if %FAIL%==1 (
     echo [verify] Data file deployment check failed!
     dir /s /b "%OUTDIR%\data" 2>nul || echo [verify] No data directory found
