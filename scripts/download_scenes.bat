@@ -2,8 +2,7 @@
 REM download_scenes.bat — Download test scenes for VisCache paper experiments.
 REM
 REM Windows port of download_scenes.sh. Requires: curl, tar (both ship with
-REM Windows 10+). On older systems, or if you prefer, run via WSL:
-REM     wsl bash scripts/download_scenes.sh
+REM Windows 10+).
 REM
 REM Usage:
 REM     scripts\download_scenes.bat [--dir <path>] [--yes]
@@ -13,7 +12,7 @@ REM --yes skips interactive prompts (download everything).
 
 setlocal enabledelayedexpansion
 
-set "ROOT=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "MEDIA_DIR=%ROOT%\media"
 set "SCENES_DIR=%ROOT%\scenes"
 set "AUTO_YES=0"
@@ -31,7 +30,7 @@ exit /b 1
 :args_done
 
 where curl >nul 2>&1 || (echo ERROR: curl not found in PATH & exit /b 1)
-where tar >nul 2>&1 || (echo ERROR: tar not found in PATH. Try: wsl bash scripts/download_scenes.sh & exit /b 1)
+where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
 
 call "%~dp0version.bat" scenes 2>nul
 
@@ -39,30 +38,40 @@ mkdir "%MEDIA_DIR%" 2>nul
 echo [scenes] Download directory: %MEDIA_DIR%
 
 REM ---------------------------------------------------------------------------
-REM 1. Arcade — bundled with Falcor
+REM 1. Arcade — bundled in release or Falcor media
 REM ---------------------------------------------------------------------------
-if exist "%ROOT%\Falcor\media\Arcade" (
-    if not exist "%MEDIA_DIR%\Arcade" (
+if not exist "%MEDIA_DIR%\Arcade" (
+    if exist "%ROOT%\release\media\Arcade" (
+        echo [scenes] Copying Arcade from release bundle...
+        xcopy /E /I /Q "%ROOT%\release\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
+    ) else if exist "%ROOT%\Falcor\media\Arcade" (
         echo [scenes] Copying Arcade from Falcor\media\...
         xcopy /E /I /Q "%ROOT%\Falcor\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
     ) else (
-        echo [scenes] Arcade already exists, skipping
+        echo [scenes] Arcade not found -- download release first or run setup
     )
 ) else (
-    echo [scenes] WARNING: Falcor\media\Arcade not found -- run setup first
+    echo [scenes] Arcade already exists, skipping
 )
 
 REM ---------------------------------------------------------------------------
-REM 2. Cornell Box — from Falcor test_scenes
+REM 2. Cornell Box — bundled in release or Falcor test_scenes
 REM ---------------------------------------------------------------------------
-if exist "%ROOT%\Falcor\media\TestScenes" (
-    if not exist "%MEDIA_DIR%\TestScenes" (
+if not exist "%MEDIA_DIR%\TestScenes" (
+    if exist "%ROOT%\release\media\TestScenes" (
+        echo [scenes] Copying TestScenes from release bundle...
+        xcopy /E /I /Q "%ROOT%\release\media\TestScenes" "%MEDIA_DIR%\TestScenes" >nul
+    ) else if exist "%ROOT%\Falcor\media\TestScenes" (
         echo [scenes] Copying TestScenes from Falcor\media\...
         xcopy /E /I /Q "%ROOT%\Falcor\media\TestScenes" "%MEDIA_DIR%\TestScenes" >nul
     ) else (
-        echo [scenes] TestScenes already exists, skipping
+        echo [scenes] TestScenes not found -- download release first or run setup
     )
-    REM Copy CornellBox pyscene from repo if missing
+) else (
+    echo [scenes] TestScenes already exists, skipping
+)
+REM Copy CornellBox pyscene from repo if missing
+if exist "%MEDIA_DIR%\TestScenes" (
     if not exist "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" (
         if exist "%SCENES_DIR%\CornellBox.pyscene" (
             copy /y "%SCENES_DIR%\CornellBox.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" >nul
@@ -252,6 +261,6 @@ echo.
 echo [scenes] Or pass --scene with full path:
 echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 echo.
-echo [scenes] WSL alternative: wsl bash scripts/download_scenes.sh
+
 
 endlocal

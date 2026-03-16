@@ -14,7 +14,7 @@ where python >nul 2>&1 || (echo ERROR: python not found in PATH & exit /b 1)
 
 set "PASS=0"
 set "FAIL=0"
-set "ROOT=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 
 if /i "%~1"=="quick" (
     echo === Quick: convergence tests only ===

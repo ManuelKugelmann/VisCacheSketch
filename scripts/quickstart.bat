@@ -19,7 +19,7 @@ setlocal enabledelayedexpansion
 
 REM Resolve script directory to absolute path (robust in nested call chains)
 for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
-set "ROOT=%SCRIPT_DIR%.."
+for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 set "SCENE=Bistro"
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\media"
@@ -96,33 +96,57 @@ echo ========================================
 if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [quickstart] step 3 copy newer shaders, data, etc. to release
 
-    REM Copy .slang shaders from source tree into release
+    REM Copy .slang shaders from source tree into release (only newer files)
     for %%P in (VisCache ReSTIRPTPass) do (
         set "SRC=%ROOT%\Source\RenderPasses\%%P"
-        set "DST=%RELEASE_DIR%\RenderPasses\%%P"
+        set "DST=%RELEASE_DIR%\shaders\RenderPasses\%%P"
         if exist "!SRC!" (
             if not exist "!DST!" mkdir "!DST!"
-            xcopy "!SRC!\*.slang" "!DST!\" /y /q >nul 2>&1
-            echo [quickstart]   %%P shaders copied
+            set "_COUNT=0"
+            for /f "delims=" %%F in ('xcopy "!SRC!\*.slang" "!DST!\" /D /Y /F 2^>nul') do (
+                echo [quickstart]   updated: %%F
+                set /a "_COUNT+=1"
+            )
+            if !_COUNT! equ 0 (
+                echo [quickstart]   %%P shaders up to date
+            ) else (
+                echo [quickstart]   %%P !_COUNT! shader^(s^) updated
+            )
         )
     )
 
-    REM Copy scripts into release
+    REM Copy scripts into release (only newer files)
     set "SCRIPTS_SRC=%ROOT%\scripts"
     set "SCRIPTS_DST=%RELEASE_DIR%\scripts\VisCache"
     if exist "%SCRIPTS_SRC%\smoke_test.py" (
         if not exist "!SCRIPTS_DST!" mkdir "!SCRIPTS_DST!"
-        xcopy "%SCRIPTS_SRC%\*" "!SCRIPTS_DST!\" /s /y /q >nul
-        echo [quickstart]   scripts copied
+        set "_COUNT=0"
+        for /f "delims=" %%F in ('xcopy "%SCRIPTS_SRC%\*" "!SCRIPTS_DST!\" /s /D /Y /F 2^>nul') do (
+            echo [quickstart]   updated: %%F
+            set /a "_COUNT+=1"
+        )
+        if !_COUNT! equ 0 (
+            echo [quickstart]   scripts up to date
+        ) else (
+            echo [quickstart]   !_COUNT! script^(s^) updated
+        )
     )
 
-    REM Copy ReSTIRPTPass data files
+    REM Copy ReSTIRPTPass data files (only newer files)
     set "DATA_SRC=%ROOT%\Source\RenderPasses\ReSTIRPTPass\Data"
     set "DATA_DST=%RELEASE_DIR%\data\ReSTIRPTPass"
     if exist "!DATA_SRC!\16RooksPattern256.txt" (
         if not exist "!DATA_DST!" mkdir "!DATA_DST!"
-        xcopy "!DATA_SRC!\*" "!DATA_DST!\" /s /y /q >nul
-        echo [quickstart]   ReSTIRPTPass data copied
+        set "_COUNT=0"
+        for /f "delims=" %%F in ('xcopy "!DATA_SRC!\*" "!DATA_DST!\" /s /D /Y /F 2^>nul') do (
+            echo [quickstart]   updated: %%F
+            set /a "_COUNT+=1"
+        )
+        if !_COUNT! equ 0 (
+            echo [quickstart]   ReSTIRPTPass data up to date
+        ) else (
+            echo [quickstart]   !_COUNT! data file^(s^) updated
+        )
     )
 ) else (
     echo [quickstart] step 3 copy newer shaders, data, etc. to release -- skipped ^(no release found^)

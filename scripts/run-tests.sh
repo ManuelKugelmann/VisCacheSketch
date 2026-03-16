@@ -6,7 +6,6 @@
 #     ./scripts/run-tests.sh quick      Run convergence tests only
 #
 # Windows alternative: scripts\run-tests.bat
-# WSL:                 wsl bash scripts/run-tests.sh
 
 set -euo pipefail
 
