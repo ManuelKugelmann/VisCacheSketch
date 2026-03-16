@@ -1,6 +1,6 @@
 #!/bin/bash
-# setup.sh — VisCache Falcor 8.0 integration setup script
-# Run from the VisCache package root: ./setup.sh
+# setup-build-system.sh — VisCache Falcor 8.0 integration setup script
+# Run from the VisCache package root: ./setup-build-system.sh
 #
 # What this script does:
 #   1. Locates Falcor (Falcor subtree or FALCOR_ROOT override)
@@ -10,8 +10,8 @@
 #   5. Runs the Python unit tests
 #
 # Usage:
-#   ./setup.sh                              # use bundled subtree
-#   FALCOR_ROOT=/path/to/falcor ./setup.sh  # use external Falcor
+#   ./setup-build-system.sh                              # use bundled subtree
+#   FALCOR_ROOT=/path/to/falcor ./setup-build-system.sh  # use external Falcor
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -25,7 +25,7 @@ This document reviews all TODOs across the project and classifies them as
 | TODO | Reason |
 |------|--------|
 | "Consider alternative title: Revisiting Visibility..." (`TODO.md` S3.3, `paper/TODO.md`) | Title was already decided and renamed (marked `[x]`). `RESEARCH_NOTES.md` shows the decision is pending between two candidates. **Action:** make a final title decision and remove the TODO. |
-| "Test setup.sh end-to-end on clean clone" (`TODO.md` S1.3) | CI already runs `setup.sh` on clean runners (`ubuntu-22.04`, `windows-2022`). Replace with "verify CI is green" which is a standing practice, not a TODO. |
+| "Test setup-build-system.sh end-to-end on clean clone" (`TODO.md` S1.3) | CI already runs `setup-build-system.sh` on clean runners (`ubuntu-22.04`, `windows-2022`). Replace with "verify CI is green" which is a standing practice, not a TODO. |
 | "Add Linux/Mac build notes" (`TODO.md` S1.3) | Linux builds work in CI. Mac is not targeted. Change to a one-line note in README: "Windows + Linux supported; macOS untested." |
 | 6-week build sequence table (`TODO.md` S5) | Timeline is stale. Week 1 is done, weeks 2-6 are all "pending" with no dates. Either re-baseline with real dates or remove. |
 | `paper/CITATIONS.md` items for Muller 2022, Lin 2022, Stotko 2025 | These say "Already cited. No new text needed." They are tracking items, not action items. Remove once confirmed in the paper. |

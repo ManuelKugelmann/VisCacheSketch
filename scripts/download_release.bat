@@ -57,7 +57,7 @@ if errorlevel 1 (
     echo [release]
     echo [release] To get Mogwai manually:
     echo [release]   Download: https://github.com/%REPO%/releases
-    echo [release]   Build:    run setup.bat, then cmake --preset windows-vs2022-ci
+    echo [release]   Build:    run setup-build-system.bat, then cmake --preset windows-vs2022-ci
     del "%ARCHIVE%" 2>nul
     exit /b 0
 )
