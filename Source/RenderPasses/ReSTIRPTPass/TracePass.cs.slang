@@ -43,7 +43,7 @@ void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
 }
 
 [shader("compute")]
-[require(sm_6_6)]
+[require(sm_6_6, GL_NV_compute_shader_derivatives)]
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
