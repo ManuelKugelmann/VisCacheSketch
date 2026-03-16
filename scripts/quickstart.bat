@@ -50,7 +50,7 @@ echo.
 echo ========================================
 echo  Step 0: Pull latest changes
 echo ========================================
-if %SKIP_PULL%==1 (
+if "%SKIP_PULL%"=="1" (
     echo [quickstart] step 0 pull -- skipped ^(--skip-pull^)
 ) else (
     for /f "delims=" %%B in ('git -C "%ROOT%." rev-parse --abbrev-ref HEAD 2^>nul') do set "BRANCH=%%B"
@@ -80,7 +80,7 @@ echo.
 echo ========================================
 echo  Step 2: Download test scenes
 echo ========================================
-if %SKIP_SCENES%==1 (
+if "%SKIP_SCENES%"=="1" (
     echo [quickstart] step 2 download scenes -- skipped ^(--skip-scenes^)
 ) else (
     echo [quickstart] step 2 download scenes
@@ -162,13 +162,14 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
     REM ---- Validate shaders (content hash) ----
     REM Diagnostic: compare deployed vs source by SHA-256 to catch wrong
     REM locations, partial copies, or stale files from the release archive.
-    where python >nul 2>&1 && (
+    where python >nul 2>&1
+    if errorlevel 1 (
+        echo [quickstart] python not found — skipping shader content validation
+    ) else (
         python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
         if errorlevel 1 (
             echo [quickstart] WARNING: Shader validation found issues ^(see above^)
         )
-    ) || (
-        echo [quickstart] python not found — skipping shader content validation
     )
 ) else (
     echo [quickstart] step 3 deploy shaders, scripts, data -- skipped ^(no release found^)
@@ -192,7 +193,7 @@ echo.
 echo ========================================
 echo  Step 5: Headless smoke test
 echo ========================================
-if %SKIP_LAUNCH%==1 (
+if "%SKIP_LAUNCH%"=="1" (
     echo [quickstart] step 5 headless smoke test -- skipped ^(--skip-launch^)
 ) else if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [quickstart] step 5 run headless smoke test
@@ -213,7 +214,7 @@ echo.
 echo ========================================
 echo  Step 6: Launch
 echo ========================================
-if %SKIP_LAUNCH%==1 (
+if "%SKIP_LAUNCH%"=="1" (
     echo [quickstart] step 6 launch -- skipped ^(--skip-launch^)
     goto :done
 )

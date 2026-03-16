@@ -19,8 +19,16 @@ set "VERSION_FILE=%RELEASE_DIR%\.release-version"
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 set "API_URL=https://api.github.com/repos/%REPO%/releases/tags/dev-latest"
 
-where curl >nul 2>&1 || (echo [release] ERROR: curl not found in PATH & exit /b 1)
-where tar >nul 2>&1 || (echo [release] ERROR: tar not found in PATH & exit /b 1)
+where curl >nul 2>&1
+if errorlevel 1 (
+    echo [release] ERROR: curl not found in PATH
+    exit /b 1
+)
+where tar >nul 2>&1
+if errorlevel 1 (
+    echo [release] ERROR: tar not found in PATH
+    exit /b 1
+)
 
 mkdir "%RELEASE_DIR%" 2>nul
 
