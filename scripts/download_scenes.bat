@@ -40,9 +40,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Falcor packman CDN — same source CI uses for Arcade + TestScenes
-set "FALCOR_MEDIA_URL=https://d4i3qtqj3r0z5.cloudfront.net/falcor_media@7acdf8b0"
-
 call "%~dp0version.bat" scenes 2>nul
 
 mkdir "%MEDIA_DIR%" 2>nul
@@ -59,7 +56,7 @@ if not exist "%MEDIA_DIR%\Arcade" (
         echo [scenes] Copying Arcade from Falcor\media\...
         xcopy /E /I /Q "%ROOT%\Falcor\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
     ) else (
-        call :download_falcor_media_scene Arcade
+        echo [scenes] WARNING: Arcade not found. Run download_release first, or build Falcor to get Falcor\media\Arcade.
     )
 ) else (
     echo [scenes] Arcade already exists, skipping
@@ -76,7 +73,7 @@ if not exist "%MEDIA_DIR%\TestScenes" (
         echo [scenes] Copying TestScenes from Falcor\media\...
         xcopy /E /I /Q "%ROOT%\Falcor\media\TestScenes" "%MEDIA_DIR%\TestScenes" >nul
     ) else (
-        call :download_falcor_media_scene TestScenes
+        echo [scenes] WARNING: TestScenes not found. Run download_release first, or build Falcor to get Falcor\media\TestScenes.
     )
 ) else (
     echo [scenes] TestScenes already exists, skipping
@@ -275,52 +272,6 @@ echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 echo.
 
 
-goto :eof
-
-REM ---------------------------------------------------------------------------
-REM Subroutine: download a scene from the Falcor packman CDN
-REM Usage: call :download_falcor_media_scene <SceneName>
-REM ---------------------------------------------------------------------------
-:download_falcor_media_scene
-set "FM_NAME=%~1"
-set "FM_DEST=%MEDIA_DIR%\%FM_NAME%"
-set "FM_ZIP=%TEMP%\falcor_media_%RANDOM%.zip"
-set "FM_TMP=%TEMP%\falcor_media_extract_%RANDOM%"
-
-echo [scenes] Downloading %FM_NAME% from Falcor media CDN...
-curl -fSL --progress-bar -o "%FM_ZIP%" "%FALCOR_MEDIA_URL%"
-if errorlevel 1 (
-    echo [scenes] ERROR: Failed to download falcor_media package
-    del "%FM_ZIP%" 2>nul
-    goto :eof
-)
-
-echo [scenes] Extracting %FM_NAME% from falcor_media...
-mkdir "%FM_TMP%" 2>nul
-tar xf "%FM_ZIP%" -C "%FM_TMP%"
-del "%FM_ZIP%" 2>nul
-
-REM Look for scene directory at top level or one level deep
-if exist "%FM_TMP%\%FM_NAME%" (
-    mkdir "%FM_DEST%" 2>nul
-    xcopy /E /I /Q /Y "%FM_TMP%\%FM_NAME%" "%FM_DEST%" >nul
-    echo [scenes] %FM_NAME% ready at %FM_DEST%
-) else (
-    REM Search one level deep for wrapper directory
-    set "FM_FOUND=0"
-    for /d %%D in ("%FM_TMP%\*") do (
-        if exist "%%D\%FM_NAME%" (
-            mkdir "%FM_DEST%" 2>nul
-            xcopy /E /I /Q /Y "%%D\%FM_NAME%" "%FM_DEST%" >nul
-            echo [scenes] %FM_NAME% ready at %FM_DEST%
-            set "FM_FOUND=1"
-        )
-    )
-    if "!FM_FOUND!"=="0" (
-        echo [scenes] WARNING: %FM_NAME% not found in falcor_media package
-    )
-)
-rd /s /q "%FM_TMP%" 2>nul
 goto :eof
 
 endlocal
