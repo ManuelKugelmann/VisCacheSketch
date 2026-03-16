@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # run_release.sh — Launch Mogwai with a VisCache scene.
 #
-# Usage:  ./scripts/run_release.sh [--scene VeachAjar|Bistro|Sponza|Arcade]
+# Usage:  ./scripts/run_release.sh [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
+#                                  [--renderer viscache|minimal]
 #
 # Requires: release/ (run download_release.sh first)
 #           media/ scenes (run download_scenes.sh first)
@@ -17,14 +18,27 @@ RELEASE_DIR="${ROOT_DIR}/release"
 MEDIA_DIR="${ROOT_DIR}/release/media"
 REPO="ManuelKugelmann/VisCacheSketch"
 SCENE="VeachAjar"
+RENDERER="viscache"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --scene) SCENE="$2"; shift 2 ;;
-        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade]"; exit 1 ;;
+        --renderer) RENDERER="$2"; shift 2 ;;
+        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox] [--renderer viscache|minimal]"; exit 1 ;;
     esac
 done
+
+# Select graph script based on renderer
+case "$RENDERER" in
+    viscache) GRAPH_SCRIPT="VisCache_Graph.py" ;;
+    minimal)  GRAPH_SCRIPT="MinimalPathTracer_Graph.py" ;;
+    *)
+        echo "[launch] Unknown renderer: $RENDERER"
+        echo "[launch] Available: viscache, minimal"
+        exit 1
+        ;;
+esac
 
 # Deploy fresh scripts from source tree into release/scripts/VisCache/
 # so the release always uses up-to-date graph configs and smoke tests.
@@ -103,13 +117,14 @@ fi
 
 # Resolve scene path
 case "$SCENE" in
-    VeachAjar) SCENE_FILE="$RELEASE_DIR/data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene" ;;
-    Bistro)    SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
-    Sponza)    SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
-    Arcade)    SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
+    VeachAjar)  SCENE_FILE="$RELEASE_DIR/data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene" ;;
+    Bistro)     SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
+    Sponza)     SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
+    Arcade)     SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
+    CornellBox) SCENE_FILE="$ROOT_DIR/scenes/CornellBox.pyscene" ;;
     *)
         echo "[launch] Unknown scene: $SCENE"
-        echo "[launch] Available: VeachAjar, Bistro, Sponza, Arcade"
+        echo "[launch] Available: VeachAjar, Bistro, Sponza, Arcade, CornellBox"
         exit 1
         ;;
 esac
@@ -120,6 +135,6 @@ if [ ! -f "$SCENE_FILE" ]; then
     exit 1
 fi
 
-echo "[launch] Starting Mogwai with $SCENE..."
+echo "[launch] Starting Mogwai with $SCENE (renderer: $RENDERER)..."
 export FALCOR_MEDIA_FOLDERS="$MEDIA_DIR"
-"$RELEASE_DIR/Mogwai.exe" --script "$RELEASE_DIR/scripts/VisCache/VisCache_Graph.py" --scene "$SCENE_FILE"
+"$RELEASE_DIR/Mogwai.exe" --script "$RELEASE_DIR/scripts/VisCache/$GRAPH_SCRIPT" --scene "$SCENE_FILE"

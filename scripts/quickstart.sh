@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # quickstart.sh — Run the full VisCacheSketch quickstart sequence.
 #
-# Usage:  ./scripts/quickstart.sh [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes]
+# Usage:  ./scripts/quickstart.sh [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
+#                                 [--renderer viscache|minimal] [--skip-scenes]
 #
 # Calls each step in order:
 #   1. download_release.sh  — download latest GitHub release
@@ -16,6 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENE="VeachAjar"
+RENDERER="viscache"
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "quickstart" 2>/dev/null || true
@@ -25,8 +27,9 @@ SKIP_SCENES=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --scene) SCENE="$2"; shift 2 ;;
+        --renderer) RENDERER="$2"; shift 2 ;;
         --skip-scenes) SKIP_SCENES=1; shift ;;
-        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes]"; exit 1 ;;
+        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox] [--renderer viscache|minimal] [--skip-scenes]"; exit 1 ;;
     esac
 done
 
@@ -60,4 +63,4 @@ echo ""
 echo "========================================"
 echo " Step 4: Launch"
 echo "========================================"
-bash "$SCRIPT_DIR/run_release.sh" --scene "$SCENE"
+bash "$SCRIPT_DIR/run_release.sh" --scene "$SCENE" --renderer "$RENDERER"
