@@ -2,10 +2,11 @@
 : Run from the VisCache package root: .\setup-build-system.bat
 :
 : What this script does:
-:   1. Calls Falcor\setup_vs2022.bat (submodule init, packman deps, VS2022 solution)
+:   1. Verifies Falcor root, enables git hooks
 :   2. Copies VisCache source files into the Falcor tree
 :   3. Patches CMakeLists.txt to register the plugins
-:   4. Runs the Python unit tests
+:   4. Calls Falcor\setup_vs2022.bat (submodule init, packman deps, VS2022 solution)
+:   5. Runs the Python unit tests
 
 @echo off
 setlocal enabledelayedexpansion
@@ -39,31 +40,13 @@ if not exist "%FALCOR_ROOT%\CMakeLists.txt" (
 )
 
 : ---------------------------------------------------------------------------
-: Step 2: Run Falcor's own setup (submodules, packman deps, VS2022 solution)
+: Step 2: Copy VisCache sources into Falcor tree
 : ---------------------------------------------------------------------------
-echo [VisCache] Step 2: Running Falcor setup (submodules + packman + VS2022)...
-
-if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
-    : setup_vs2022.bat runs cmake --preset which needs CWD inside Falcor
-    : where CMakePresets.json lives.
-    pushd "%FALCOR_ROOT%"
-    call setup_vs2022.bat
-    set SETUP_ERR=!errorlevel!
-    popd
-    if !SETUP_ERR! neq 0 (
-        echo [VisCache] ERROR: Falcor setup failed!
-        exit /b 1
-    )
-    echo [VisCache]   Falcor setup complete.
-) else (
-    echo [VisCache]   WARNING: setup_vs2022.bat not found, skipping Falcor setup.
-    echo [VisCache]   You may need to init submodules and fetch packman deps manually.
-)
-
-: ---------------------------------------------------------------------------
-: Step 3: Copy VisCache sources into Falcor tree
-: ---------------------------------------------------------------------------
-echo [VisCache] Step 3: Copying VisCache RenderPass sources...
+: NOTE: Sources must be copied BEFORE Falcor setup because setup_vs2022.bat
+: runs cmake --preset which configures the project. If CMakeLists.txt already
+: has add_subdirectory(ReSTIRPTPass) from a prior run, cmake will fail unless
+: the source directories exist.
+echo [VisCache] Step 2: Copying VisCache RenderPass sources...
 
 : VisCache
 set VISCACHE_DST=%FALCOR_ROOT%\Source\RenderPasses\VisCache
@@ -101,9 +84,9 @@ xcopy "%SCRIPT_DIR%tests\*" "%TEST_DST%\" /s /y /q
 echo [VisCache]   Copied: tests
 
 : ---------------------------------------------------------------------------
-: Step 4: Patch CMakeLists.txt to register plugins
+: Step 3: Patch CMakeLists.txt to register plugins
 : ---------------------------------------------------------------------------
-echo [VisCache] Step 4: Patching Source\RenderPasses\CMakeLists.txt...
+echo [VisCache] Step 3: Patching Source\RenderPasses\CMakeLists.txt...
 
 set RP_CMAKE=%FALCOR_ROOT%\Source\RenderPasses\CMakeLists.txt
 if not exist "%RP_CMAKE%" (
@@ -125,6 +108,28 @@ if errorlevel 1 (
     echo [VisCache]   Added: add_subdirectory(ReSTIRPTPass)
 ) else (
     echo [VisCache]   Already present: ReSTIRPTPass (skipped)
+)
+
+: ---------------------------------------------------------------------------
+: Step 4: Run Falcor's own setup (submodules, packman deps, VS2022 solution)
+: ---------------------------------------------------------------------------
+echo [VisCache] Step 4: Running Falcor setup (submodules + packman + VS2022)...
+
+if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
+    : setup_vs2022.bat runs cmake --preset which needs CWD inside Falcor
+    : where CMakePresets.json lives.
+    pushd "%FALCOR_ROOT%"
+    call setup_vs2022.bat
+    set SETUP_ERR=!errorlevel!
+    popd
+    if !SETUP_ERR! neq 0 (
+        echo [VisCache] ERROR: Falcor setup failed!
+        exit /b 1
+    )
+    echo [VisCache]   Falcor setup complete.
+) else (
+    echo [VisCache]   WARNING: setup_vs2022.bat not found, skipping Falcor setup.
+    echo [VisCache]   You may need to init submodules and fetch packman deps manually.
 )
 
 : ---------------------------------------------------------------------------
