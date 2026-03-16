@@ -240,7 +240,14 @@ jobs:
           if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
             echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
           ) else (
-            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
+            echo.
+            echo ========================================================
+            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
+            echo  The release will NOT include NRD denoiser support.
+            echo  Output will be raw noisy radiance.
+            echo ========================================================
+            echo.
+            echo ::warning::NRDPass DISABLED - release will not include NRD denoiser (missing NRD package or D3D12)
           )
 
       - name: Build
@@ -254,7 +261,7 @@ jobs:
         shell: cmd
         run: sccache --show-stats
 
-      - name: Verify data file deployment
+      - name: Verify build output
         shell: cmd
         run: |
           set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
@@ -408,7 +415,14 @@ jobs:
           if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
             echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
           ) else (
-            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
+            echo.
+            echo ========================================================
+            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
+            echo  The release will NOT include NRD denoiser support.
+            echo  Output will be raw noisy radiance.
+            echo ========================================================
+            echo.
+            echo ::warning::NRDPass DISABLED - release will not include NRD denoiser (missing NRD package or D3D12)
           )
 
       - name: Build
@@ -422,7 +436,7 @@ jobs:
         shell: cmd
         run: sccache --show-stats
 
-      - name: Verify data file deployment
+      - name: Verify build output
         shell: cmd
         run: |
           set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
@@ -583,7 +597,13 @@ jobs:
           if [ -d "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/Source/RenderPasses/NRDPass" ]; then
             echo "[build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)"
           else
-            echo "[build] NRDPass: DISABLED (missing NRD package or D3D12 — expected on Linux)"
+            echo ""
+            echo "========================================================"
+            echo " WARNING: NRDPass DISABLED - missing NRD package or D3D12"
+            echo " (Expected on Linux — NRD requires D3D12)"
+            echo "========================================================"
+            echo ""
+            echo "::warning::NRDPass DISABLED on Linux (expected — NRD requires D3D12)"
           fi
 
       - name: Build
