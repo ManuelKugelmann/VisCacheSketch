@@ -79,7 +79,7 @@ if not errorlevel 1 (
             set "REMOTE_DATE=%%D"
             set "_HOUR=%%E"
         )
-        for /f "tokens=1 delims=Z^" " %%S in ("!_SECZ!") do set "_SEC=%%S"
+        for /f "tokens=1 delims=Z" %%S in ("!_SECZ!") do set "_SEC=%%S"
         if defined _HOUR if defined _MIN if defined _SEC (
             set "REMOTE_DATE=!REMOTE_DATE! !_HOUR!:!_MIN!:!_SEC!"
         )
