@@ -708,6 +708,13 @@ jobs:
           tar -czf "${ARCHIVE}" -C release-bin .
           ls -lh "${ARCHIVE}"
 
+      - name: Compute versioned tag
+        run: |
+          TIMESTAMP="$(date -u +'%Y%m%d-%H%M%S')"
+          VERSION_TAG="dev-${TIMESTAMP}-${GITHUB_SHA::8}"
+          echo "VERSION_TAG=${VERSION_TAG}" >> "$GITHUB_ENV"
+          echo "BUILD_TIMESTAMP=${TIMESTAMP}" >> "$GITHUB_ENV"
+
       - name: Delete old dev-latest release
         run: |
           gh release delete dev-latest --yes --cleanup-tag 2>/dev/null || true
@@ -719,9 +726,22 @@ jobs:
           gh release create dev-latest "${{ env.ARCHIVE }}" \
             --title "Dev Build (${GITHUB_SHA::8})" \
             --notes "Automated prerelease from \`${GITHUB_SHA::8}\` on \`${GITHUB_REF_NAME}\`.
+          Build: ${BUILD_TIMESTAMP}
+          Tag: ${VERSION_TAG}
 
           Latest successful build — updated on every push to main.
           **Not a stable release.** Use tagged \`v*\` releases for production." \
+            --prerelease \
+            --target "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create versioned prerelease tag
+        run: |
+          gh release create "${{ env.VERSION_TAG }}" \
+            --title "Dev Build ${BUILD_TIMESTAMP} (${GITHUB_SHA::8})" \
+            --notes "Automated prerelease from \`${GITHUB_SHA::8}\` on \`${GITHUB_REF_NAME}\`.
+          Build timestamp: ${BUILD_TIMESTAMP}" \
             --prerelease \
             --target "$GITHUB_SHA"
         env:

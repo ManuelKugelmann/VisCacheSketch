@@ -39,13 +39,25 @@ set "REMOTE_TAG="
 set "REMOTE_DATE="
 set "REMOTE_SHA="
 set "API_JSON=%TEMP%\vc-release-api.json"
-curl -fsSL "%API_URL%" -o "%API_JSON%" 2>nul
+curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "%API_URL%" -o "%API_JSON%" 2>nul
 if not errorlevel 1 (
     for /f "tokens=2 delims=:, " %%A in ('findstr /i "\"tag_name\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_TAG set "REMOTE_TAG=%%~A"
-    REM Extract just the date (YYYY-MM-DD) from published_at to avoid colon issues
-    for /f "tokens=2 delims=:, " %%A in ('findstr /i "\"published_at\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_DATE (
-        set "_RAW=%%~A"
-        for /f "tokens=1 delims=T" %%D in ("!_RAW!") do set "REMOTE_DATE=%%D"
+    REM Extract date+time (YYYY-MM-DD HH:MM:SS) from published_at
+    REM JSON field: "published_at": "2026-03-16T14:48:02Z"
+    REM With delims=:, <space> tokens split as:
+    REM   1="published_at"  2="2026-03-16T14"  3=48  4=02Z"
+    for /f "tokens=2,3,4 delims=:, " %%A in ('findstr /i "\"published_at\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_DATE (
+        set "_DATE_HOUR=%%~A"
+        set "_MIN=%%B"
+        set "_SECZ=%%C"
+        for /f "tokens=1,2 delims=T" %%D in ("!_DATE_HOUR!") do (
+            set "REMOTE_DATE=%%D"
+            set "_HOUR=%%E"
+        )
+        for /f "tokens=1 delims=Z^" " %%S in ("!_SECZ!") do set "_SEC=%%S"
+        if defined _HOUR if defined _MIN if defined _SEC (
+            set "REMOTE_DATE=!REMOTE_DATE! !_HOUR!:!_MIN!:!_SEC!"
+        )
     )
     for /f "tokens=2 delims=:, " %%A in ('findstr /i "\"target_commitish\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_SHA set "REMOTE_SHA=%%~A"
 )
