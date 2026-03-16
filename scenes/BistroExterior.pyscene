@@ -3,6 +3,9 @@
 #
 # Expects: BistroExterior.fbx in same directory or FALCOR_MEDIA_FOLDERS.
 # Source:  NVIDIA ORCA (CC-BY 4.0), https://developer.nvidia.com/orca
+#
+# Lighting approach follows SirKero/RTProgressivePhotonMapper:
+# boost all emissives by 1000x and configure glass for transmission.
 
 sceneBuilder.importScene('BistroExterior.fbx')
 
@@ -13,6 +16,17 @@ camera.target   = float3( 3.0, 1.5, -1.5)
 camera.up       = float3( 0.0, 1.0,  0.0)
 camera.focalLength = 24.0
 sceneBuilder.addCamera(camera)
+
+# Boost all emissive materials (FBX defaults are far too dim)
+for m in sceneBuilder.materials:
+    m.emissiveFactor *= 1000
+
+# Glass — make windows transparent
+glass = sceneBuilder.getMaterial('MASTER_Glass_Exterior')
+if glass:
+    glass.specularTransmission = 1
+    glass.doubleSided = True
+    glass.indexOfRefraction = 1.55
 
 # Directional sunlight — warm late-afternoon sun from the side
 sun = DirectionalLight('Sun')
@@ -26,7 +40,7 @@ skyFill.intensity = float3(0.15, 0.2, 0.35)
 skyFill.direction = float3(-0.4, -0.5, 0.3)
 sceneBuilder.addLight(skyFill)
 
-# Enable emissive geometry (street lamps, signs, etc.)
+# Render settings
 settings = sceneBuilder.renderSettings
 settings.useAnalyticLights = True
 settings.useEmissiveLights = True
