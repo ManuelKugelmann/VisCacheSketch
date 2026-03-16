@@ -8,7 +8,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 
 ## Directory Layout & Paths
 
-- `Falcor/` — git subtree (not submodule), keep close to NVIDIA original
+- `Falcor/` — git subtree (not submodule), keep close to NVIDIA original; local bug fixes listed in `Falcor/LOCAL_FIXES.md`
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass
 - `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
 - `scripts/` — .bat + .sh for quickstart, download, run, test

@@ -163,6 +163,8 @@ void ToneMapper::parseProperties(const Properties& props)
             setFNumber(value);
         else if (key == kShutter)
             setShutter(value);
+        else if (key == kExposureValue)
+            setExposureValue(value);
         else if (key == kExposureMode)
             setExposureMode(value);
         else
