@@ -66,4 +66,6 @@
 
 - [Ward 1991] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *2nd Eurographics Workshop on Rendering*, Barcelona, 1991. Published in *Photorealistic Rendering in Computer Graphics*, pp. 11–20, Springer-Verlag, 1994.
 
+- [Zeng et al. 2025] Z. Zeng et al. "ReSTIR Path Guiding." *ACM SIGGRAPH*, 2025.
+
 - [Zhang et al. 2024] Y. Zhang et al. "Area ReSTIR: Re-Sampling for Real-Time Defocus and Antialiasing." *ACM SIGGRAPH*, 2024.
