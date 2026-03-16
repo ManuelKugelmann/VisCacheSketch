@@ -219,95 +219,15 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Clean stale CMake cache
+      - name: Build + verify + deploy
         shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          if not exist "%BUILD_DIR%\CMakeCache.txt" goto :eof
-          findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
-          if not errorlevel 1 goto :eof
-          echo [build] Stale CMakeCache.txt detected, removing...
-          del /q "%BUILD_DIR%\CMakeCache.txt"
-          if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
-
-      - name: CMake Configure
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/Z7" "-DCMAKE_CXX_FLAGS=/Z7"
-
-      - name: Check NRD availability
-        shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          if exist "%BUILD_DIR%\Source\RenderPasses\NRDPass" (
-            echo [build] NRDPass: ENABLED
-          ) else (
-            echo.
-            echo ========================================================
-            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
-            echo  The release will NOT include NRD denoiser support.
-            echo  Output will be raw noisy radiance.
-            echo ========================================================
-            echo.
-            echo ::warning::NRDPass DISABLED - release will not include NRD denoiser
-          )
-
-      - name: Build
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }} -- /m
+        continue-on-error: false
+        run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }} --sccache
 
       - name: Print sccache stats
         if: always()
         shell: cmd
         run: sccache --show-stats
-
-      - name: Verify build output
-        shell: cmd
-        run: |
-          set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
-          call scripts\verify-build-output.bat "%OUTDIR%"
-
-      - name: Deploy scripts to build output
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
-          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
-          echo [CI] Deployed scripts to build output
-
-      - name: Headless smoke test
-        if: matrix.config == 'Release'
-        shell: cmd
-        continue-on-error: true   # no GPU on CI — device creation will fail
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
-            echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
-          )
-          exit /b 0
-
-      # -- Save slimmed CMake build cache (strip PDB/ILK to cut ~60-80% size) --
-      - name: Slim and save CMake build cache
-        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
-        shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          echo [cache] Before cleanup:
-          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
-          del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
-          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
-          echo [cache] After cleanup:
-          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
 
       - name: Save CMake build cache
         if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
@@ -315,20 +235,6 @@ jobs:
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
-
-      - name: Bundle Falcor media scenes
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
-            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
-            echo [CI] Bundled Arcade scene
-          )
-          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
-            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
-            echo [CI] Bundled TestScenes
-          )
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -423,89 +329,10 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Clean stale CMake cache
+      - name: Build + verify + deploy
         shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          if not exist "%BUILD_DIR%\CMakeCache.txt" goto :eof
-          findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
-          if not errorlevel 1 goto :eof
-          echo [build] Stale CMakeCache.txt detected, removing...
-          del /q "%BUILD_DIR%\CMakeCache.txt"
-          if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
-
-      - name: CMake Configure
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET%
-
-      - name: Check NRD availability
-        shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          if exist "%BUILD_DIR%\Source\RenderPasses\NRDPass" (
-            echo [build] NRDPass: ENABLED
-          ) else (
-            echo.
-            echo ========================================================
-            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
-            echo  The release will NOT include NRD denoiser support.
-            echo  Output will be raw noisy radiance.
-            echo ========================================================
-            echo.
-            echo ::warning::NRDPass DISABLED - release will not include NRD denoiser
-          )
-
-      - name: Build
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
-
-      - name: Verify build output
-        shell: cmd
-        run: |
-          set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
-          call scripts\verify-build-output.bat "%OUTDIR%"
-
-      - name: Deploy scripts to build output
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
-          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
-          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
-          echo [CI] Deployed scripts to build output
-
-      - name: Headless smoke test
-        if: matrix.config == 'Release'
-        shell: cmd
-        continue-on-error: true   # no GPU on CI — device creation will fail
-        run: |
-          set "BINDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
-          echo [CI] Attempting headless smoke test...
-          "%BINDIR%\Mogwai.exe" --headless --script "%BINDIR%\scripts\VisCache\smoke_test.py" 2>&1 || (
-            echo [CI] Mogwai exited — expected without GPU
-          )
-          exit /b 0
-
-      # -- Save slimmed CMake build cache (strip PDB/ILK to cut ~60-80% size) --
-      - name: Slim and save CMake build cache
-        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
-        shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          echo [cache] Before cleanup:
-          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
-          del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
-          del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
-          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
-          echo [cache] After cleanup:
-          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
+        continue-on-error: false
+        run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }}
 
       - name: Save CMake build cache
         if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
@@ -513,20 +340,6 @@ jobs:
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
-
-      - name: Bundle Falcor media scenes
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
-            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
-            echo [CI] Bundled Arcade scene
-          )
-          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
-            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
-            echo [CI] Bundled TestScenes
-          )
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
