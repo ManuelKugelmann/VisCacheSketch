@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # quickstart.sh — Run the full VisCacheSketch quickstart sequence.
 #
-# Usage:  ./scripts/quickstart.sh [--scene Bistro|Sponza|Arcade] [--skip-scenes]
+# Usage:  ./scripts/quickstart.sh [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes]
 #
 # Calls each step in order:
 #   1. download_release.sh  — download latest GitHub release
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SCENE="Bistro"
+SCENE="VeachAjar"
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "quickstart" 2>/dev/null || true
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --scene) SCENE="$2"; shift 2 ;;
         --skip-scenes) SKIP_SCENES=1; shift ;;
-        *) echo "Usage: $0 [--scene Bistro|Sponza|Arcade] [--skip-scenes]"; exit 1 ;;
+        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes]"; exit 1 ;;
     esac
 done
 

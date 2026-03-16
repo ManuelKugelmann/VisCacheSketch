@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_release.sh — Launch Mogwai with a VisCache scene.
 #
-# Usage:  ./scripts/run_release.sh [--scene Bistro|Sponza|Arcade]
+# Usage:  ./scripts/run_release.sh [--scene VeachAjar|Bistro|Sponza|Arcade]
 #
 # Requires: release/ (run download_release.sh first)
 #           media/ scenes (run download_scenes.sh first)
@@ -16,13 +16,13 @@ source "$SCRIPT_DIR/version.sh" "launch" 2>/dev/null || true
 RELEASE_DIR="${ROOT_DIR}/release"
 MEDIA_DIR="${ROOT_DIR}/release/media"
 REPO="ManuelKugelmann/VisCacheSketch"
-SCENE="Bistro"
+SCENE="VeachAjar"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --scene) SCENE="$2"; shift 2 ;;
-        *) echo "Usage: $0 [--scene Bistro|Sponza|Arcade]"; exit 1 ;;
+        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade]"; exit 1 ;;
     esac
 done
 
@@ -103,12 +103,13 @@ fi
 
 # Resolve scene path
 case "$SCENE" in
-    Bistro)  SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
-    Sponza)  SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
-    Arcade)  SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
+    VeachAjar) SCENE_FILE="$RELEASE_DIR/data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene" ;;
+    Bistro)    SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
+    Sponza)    SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
+    Arcade)    SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
     *)
         echo "[launch] Unknown scene: $SCENE"
-        echo "[launch] Available: Bistro, Sponza, Arcade"
+        echo "[launch] Available: VeachAjar, Bistro, Sponza, Arcade"
         exit 1
         ;;
 esac

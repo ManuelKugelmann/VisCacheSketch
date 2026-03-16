@@ -1,7 +1,7 @@
 @echo off
 REM run_release.bat — Launch Mogwai with a VisCache scene.
 REM
-REM Usage:  scripts\run_release.bat [--scene Bistro|Sponza|Arcade]
+REM Usage:  scripts\run_release.bat [--scene VeachAjar|Bistro|Sponza|Arcade]
 REM
 REM Requires: release\Mogwai.exe (run download_release.bat first)
 REM           media\ scenes (run download_scenes.bat first)
@@ -14,7 +14,7 @@ for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
-set "SCENE=Bistro"
+set "SCENE=VeachAjar"
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -23,7 +23,7 @@ REM ---------------------------------------------------------------------------
 if "%~1"=="" goto :args_done
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene Bistro^|Sponza^|Arcade]
+echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade]
 exit /b 1
 :args_done
 
@@ -147,13 +147,14 @@ REM ---------------------------------------------------------------------------
 REM Resolve scene path and launch
 REM ---------------------------------------------------------------------------
 set "SCENE_FILE="
+if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RELEASE_DIR%\data\ReSTIRPTPass\VeachAjar\VeachAjar.pyscene"
 if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
 
 if "%SCENE_FILE%"=="" (
     echo [launch] Unknown scene: %SCENE%
-    echo [launch] Available: Bistro, Sponza, Arcade
+    echo [launch] Available: VeachAjar, Bistro, Sponza, Arcade
     exit /b 1
 )
 

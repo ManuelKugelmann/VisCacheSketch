@@ -26,7 +26,7 @@
 cmd /c "curl -sL https://raw.githubusercontent.com/ManuelKugelmann/VisCacheSketch/main/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"
 ```
 
-This clones (or pulls if already cloned), downloads test scenes, downloads the latest release, runs CPU tests + smoke test, and launches Mogwai with Bistro.
+This clones (or pulls if already cloned), downloads test scenes, downloads the latest release, runs CPU tests + smoke test, and launches Mogwai with VeachAjar (the DQLin ReSTIR PT test scene).
 
 **With options:**
 
