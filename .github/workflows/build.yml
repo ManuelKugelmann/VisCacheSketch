@@ -16,6 +16,30 @@ on:
   #   branches: ["main", "master"]
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Platform to build'
+        required: false
+        default: 'All'
+        type: choice
+        options:
+          - All
+          - Windows Ninja
+          - Windows VS2022
+          - Linux GCC
+      config:
+        description: 'Build configuration'
+        required: false
+        default: 'Both'
+        type: choice
+        options:
+          - Both
+          - Release
+          - Debug
+      create_release:
+        description: 'Create a dev prerelease after build'
+        required: false
+        default: true
+        type: boolean
       commit_sha:
         description: 'Commit SHA to build and release (default: HEAD of selected branch)'
         required: false
@@ -105,13 +129,15 @@ jobs:
   windows-vs2022:
     name: Windows VS2022
     needs: [prepare]
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name != 'pull_request'
+      && (inputs.platform == 'All' || inputs.platform == 'Windows VS2022' || inputs.platform == '')
     runs-on: windows-2022
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ fromJSON('["Release", "Debug"]') }}
+        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-vs2022-ci
       # Pin packman cache location for reproducible caching on Windows
@@ -354,12 +380,13 @@ jobs:
       always()
       && needs.prepare.result == 'success'
       && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
+      && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja' || inputs.platform == '' || github.event_name != 'workflow_dispatch')
     runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
-        # PRs: Debug only; pushes to main/tags: Debug + Release
-        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+        # PRs: Debug only; manual dispatch: respect input; pushes: both
+        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
       PM_PACKAGES_ROOT: C:\packman-cache
@@ -603,13 +630,15 @@ jobs:
   linux-gcc:
     name: Linux/GCC
     needs: [prepare]
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name != 'pull_request'
+      && (inputs.platform == 'All' || inputs.platform == 'Linux GCC' || inputs.platform == '')
     runs-on: ubuntu-22.04
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        config: [Release, Debug]
+        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: linux-gcc-ci
     steps:
@@ -751,8 +780,10 @@ jobs:
     if: >-
       !cancelled()
       && needs.prepare.result == 'success'
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.windows-ninja.result == 'success'
+      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_release))
       && !startsWith(github.ref, 'refs/tags/')
+      && inputs.config != 'Debug'
     needs: [prepare, windows-ninja]
     steps:
       - name: Checkout
