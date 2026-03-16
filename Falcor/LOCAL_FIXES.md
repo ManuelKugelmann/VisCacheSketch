@@ -31,19 +31,22 @@ else if (key == kExposureValue)
 
 ---
 
-## 2. setup.bat/sh: wrong parent depth for git submodule update
+## 2. setup.bat/sh: use VISCACHE_ROOT env var for git submodule update
 
 **Files:** `setup.bat`, `setup.sh`
 
-`git -C %~dp0\..\..` (bat) and `git -C "${BASE_DIR}/../.."` (sh) navigate two
-levels above the `Falcor/` directory. Since Falcor is a subtree inside the
-VisCacheSketch repo, this lands outside the git repository, causing:
+The original scripts used `git -C %~dp0\..\..` (bat) and
+`git -C "${BASE_DIR}/../.."` (sh) to navigate to the git root for submodule
+init. Since Falcor is a subtree inside the VisCacheSketch repo, this relative
+path landed outside the repository, causing:
 
 ```
 fatal: not a git repository (or any of the parent directories): .git
 ```
 
-**Fix:** Changed `\..\..` → `\..` (bat) and `/../..` → `/..` (sh) so the
-path resolves to the VisCacheSketch repo root where `.gitmodules` lives.
+**Fix:** The parent scripts (`setup-build-system.bat/.sh`, `build.bat/.sh`)
+now set a `VISCACHE_ROOT` environment variable pointing to the project root.
+`Falcor/setup.bat/.sh` use `VISCACHE_ROOT` when available, falling back to a
+plain `git submodule update` (no `-C`) when run standalone.
 
 **Upstream status:** N/A (subtree integration issue, not an upstream bug).

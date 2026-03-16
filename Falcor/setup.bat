@@ -13,7 +13,11 @@ if errorlevel 1 (
     echo Cannot find git on PATH! Please initialize submodules manually and rerun.
     exit /b 1
 ) ELSE (
-    git -C %~dp0\.. submodule update --init --depth 1
+    if defined VISCACHE_ROOT (
+        git -C "%VISCACHE_ROOT%" submodule update --init --depth 1
+    ) else (
+        git submodule update --init --depth 1
+    )
 )
 
 echo Fetching dependencies ...
