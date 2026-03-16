@@ -751,10 +751,16 @@ SlangCompileRequest* ProgramManager::createSlangCompileRequest(const Program& pr
     addIntOption(slang::CompilerOptionName::DisableShortCircuit, 1);
 
     // Disable noisy warnings enabled in newer slang versions.
+    // See also: https://github.com/shader-slang/slang/discussions/5802 (disabling warnings)
+    //           https://github.com/shader-slang/slang/issues/3108     (warning suppression issues)
     addStringOption(slang::CompilerOptionName::DisableWarning, "15602"); // #pragma once in modules
     addStringOption(slang::CompilerOptionName::DisableWarning, "30056"); // non-short-circuiting `?:` operator is deprecated, use 'select'
                                                                          // instead
-    addStringOption(slang::CompilerOptionName::DisableWarning, "30081"); // implicit conversion
+    addStringOption(slang::CompilerOptionName::DisableWarning, "30081"); // implicit conversion from 'int' to 'bool': command-line defines
+                                                                         // like -DFOO=0 trigger this when used in #if or assigned to
+                                                                         // static const bool (even with != 0). All shader code already
+                                                                         // uses explicit != 0 comparisons; the warning comes from the
+                                                                         // define value itself at "command line(1)".
     addStringOption(slang::CompilerOptionName::DisableWarning, "41203"); // reinterpret<> into not equally sized types
 
     sessionDesc.compilerOptionEntries = compilerOptionEntries.data();
