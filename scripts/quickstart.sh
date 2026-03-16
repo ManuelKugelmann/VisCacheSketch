@@ -2,8 +2,9 @@
 # quickstart.sh — Run the full VisCacheSketch quickstart sequence (steps 0-6).
 #
 # Usage:  ./scripts/quickstart.sh [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
-#                                 [--renderer viscache|minimal] [--skip-scenes]
-#                                 [--skip-pull] [--skip-launch]
+#                                 [--renderer viscache|restirpt|rtxdi|pathtracer|minimal]
+#                                 [--variant vanilla|viscache]
+#                                 [--skip-scenes] [--skip-pull] [--skip-launch] [--interactive]
 #
 # Steps:
 #   0. git pull                   (unless --skip-pull)
@@ -25,7 +26,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "quickstart" 2>/dev/null || true
 SCENE="VeachAjar"
-RENDERER="viscache"
+RENDERER="restirpt"
+VARIANT=""
+INTERACTIVE=0
 RELEASE_DIR="${ROOT_DIR}/release"
 MEDIA_DIR="${ROOT_DIR}/release/media"
 SKIP_SCENES=0
@@ -37,23 +40,99 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --scene) SCENE="$2"; shift 2 ;;
         --renderer) RENDERER="$2"; shift 2 ;;
+        --variant) VARIANT="$2"; shift 2 ;;
         --skip-scenes) SKIP_SCENES=1; shift ;;
         --skip-pull) SKIP_PULL=1; shift ;;
         --skip-launch) SKIP_LAUNCH=1; shift ;;
-        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox] [--renderer viscache|minimal] [--skip-scenes] [--skip-pull] [--skip-launch]"; exit 1 ;;
+        --interactive|-i) INTERACTIVE=1; shift ;;
+        *) echo "Usage: $0 [--scene ...] [--renderer ...] [--variant vanilla|viscache] [--skip-scenes] [--skip-pull] [--skip-launch] [--interactive]"; exit 1 ;;
     esac
 done
 
+# Interactive selection
+if [ "$INTERACTIVE" -eq 1 ]; then
+    echo ""
+    echo "========================================"
+    echo " VisCacheSketch — Interactive Setup"
+    echo "========================================"
+    echo ""
+    echo "  Select renderer:"
+    echo "    1. MinimalPathTracer  — lightweight, progressive accumulation"
+    echo "    2. PathTracer         — full Falcor path tracer (NEE, MIS, volumes)"
+    echo "    3. RTXDI              — ReSTIR DI direct lighting only"
+    echo "    4. ReSTIR PT          — ReSTIR path tracing (indirect + direct)"
+    echo ""
+    read -rp "  Choice [1-4, default=4]: " RCHOICE
+    RCHOICE="${RCHOICE:-4}"
+    case "$RCHOICE" in
+        1) RENDERER="minimal" ;;
+        2) RENDERER="pathtracer" ;;
+        3) RENDERER="rtxdi" ;;
+        4) RENDERER="restirpt" ;;
+    esac
+
+    # Ask variant
+    if true; then
+        echo ""
+        echo "  Select variant:"
+        echo "    1. Vanilla   — no visibility cache"
+        echo "    2. VisCache  — with visibility cache"
+        echo ""
+        read -rp "  Choice [1-2, default=1]: " VCHOICE
+        VCHOICE="${VCHOICE:-1}"
+        case "$VCHOICE" in
+            1) VARIANT="vanilla" ;;
+            2) RENDERER="restirpt"; VARIANT="" ;;
+        esac
+    fi
+
+    echo ""
+    echo "  Select scene:"
+    echo "    1. VeachAjar   — small test scene (no download needed)"
+    echo "    2. Bistro      — restaurant interior (~3.2 GB download)"
+    echo "    3. Sponza      — classic atrium (~70 MB download)"
+    echo "    4. Arcade      — game arcade (bundled with release)"
+    echo "    5. CornellBox  — simple box scene"
+    echo ""
+    read -rp "  Choice [1-5, default=1]: " SCHOICE
+    SCHOICE="${SCHOICE:-1}"
+    case "$SCHOICE" in
+        1) SCENE="VeachAjar" ;;
+        2) SCENE="Bistro" ;;
+        3) SCENE="Sponza" ;;
+        4) SCENE="Arcade" ;;
+        5) SCENE="CornellBox" ;;
+    esac
+
+    echo ""
+    echo "  Selected: renderer=$RENDERER, scene=$SCENE"
+    [ -n "$VARIANT" ] && echo "  Variant: $VARIANT"
+    echo ""
+fi
+
 # Select graph script based on renderer
 case "$RENDERER" in
-    viscache) GRAPH_SCRIPT="VisCache_Graph.py" ;;
-    minimal)  GRAPH_SCRIPT="MinimalPathTracer_Graph.py" ;;
+    minimal)     GRAPH_SCRIPT="MinimalPathTracer_Graph.py" ;;
+    pathtracer)  GRAPH_SCRIPT="PathTracer_Graph.py" ;;
+    rtxdi)       GRAPH_SCRIPT="RTXDI_Graph.py" ;;
+    restirpt)    GRAPH_SCRIPT="ReSTIRPT_Graph.py" ;;
     *)
         echo "[quickstart] Unknown renderer: $RENDERER"
-        echo "[quickstart] Available: viscache, minimal"
+        echo "[quickstart] Available: restirpt, rtxdi, pathtracer, minimal"
+        echo "[quickstart] Add --variant viscache to enable visibility cache"
         exit 1
         ;;
 esac
+
+# Apply --variant viscache: switch to per-renderer VisCache graph
+if [ "$VARIANT" = "viscache" ]; then
+    case "$RENDERER" in
+        minimal)     GRAPH_SCRIPT="MinimalPathTracer_VisCache_Graph.py" ;;
+        pathtracer)  GRAPH_SCRIPT="PathTracer_VisCache_Graph.py" ;;
+        rtxdi)       GRAPH_SCRIPT="RTXDI_VisCache_Graph.py" ;;
+        restirpt)    GRAPH_SCRIPT="ReSTIRPT_VisCache_Graph.py" ;;
+    esac
+fi
 
 # ---------------------------------------------------------------------------
 # Step 0: Pull latest
