@@ -50,3 +50,30 @@ now set a `VISCACHE_ROOT` environment variable pointing to the project root.
 plain `git submodule update` (no `-C`) when run standalone.
 
 **Upstream status:** N/A (subtree integration issue, not an upstream bug).
+
+---
+
+## 3. IMaterialInstance / StandardBSDF: add evalBsdfAndPdf(lobeMask)
+
+**Files:**
+- `Source/Falcor/Rendering/Materials/IMaterialInstance.slang`
+- `Source/Falcor/Rendering/Materials/BSDFs/StandardBSDF.slang`
+- `Source/Falcor/Rendering/Materials/StandardMaterialInstance.slang`
+
+ReSTIR PT shift mapping requires per-lobe-class PDF evaluation (e.g., "PDF
+from diffuse lobes only") using the original lobe selection weights. Falcor 8's
+`setActiveLobes()` zeroes disabled lobes and renormalizes the remaining weights,
+which changes the PDF values and produces incorrect shift mapping Jacobians.
+
+Ported `evalBsdfAndPdf(lobeMask)` from the NVlabs Conditional ReSTIR prototype
+(Lin et al., SIGGRAPH 2023). The method evaluates BSDF and PDF simultaneously,
+returning filtered results for lobes matching `lobeMask` alongside the all-lobe
+PDF, using the original (pre-renormalization) lobe selection weights.
+
+- `StandardBSDF::evalBsdfAndPdf()` — core implementation with per-lobe filtering
+- `StandardMaterialInstance::evalBsdfAndPdf()` — world-to-local coordinate wrapper
+- `IMaterialInstance::evalBsdfAndPdf()` — interface method (new)
+- `MaterialInstanceBase::evalBsdfAndPdf()` — default stub returning zeros
+
+**Upstream status:** Enhancement, not a bug fix. Useful for any algorithm
+needing per-lobe PDF decomposition without weight renormalization.

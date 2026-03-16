@@ -184,6 +184,22 @@ interface IMaterialInstance
         \return Volume properties.
     */
     VolumeProperties getVolumeProperties();
+
+    /** Evaluates the BSDF and PDF simultaneously with per-lobe filtering.
+        Returns BSDF*cosTheta for lobes matching lobeMask, the filtered PDF,
+        and the all-lobe PDF. The filtered PDF uses the original lobe selection
+        weights (not renormalized), which is critical for correct ReSTIR PT
+        shift mapping Jacobians.
+
+        \param[in] sd Shading data.
+        \param[in] wo Outgoing direction.
+        \param[in,out] sg Sample generator.
+        \param[in] lobeMask LobeType flags selecting which lobes to include.
+        \param[out] pdf Filtered PDF (partial sum of selected lobe contributions).
+        \param[out] pdfAllLobes All-lobe PDF.
+        \return f(wi, wo) * dot(wo, n) for the selected lobes.
+    */
+    float3 evalBsdfAndPdf<S : ISampleGenerator>(const ShadingData sd, const float3 wo, inout S sg, uint lobeMask, out float pdf, out float pdfAllLobes);
 }
 
 [open]
@@ -201,7 +217,18 @@ struct MaterialInstanceBase
         result.sigmaS = 0.f;
         result.phaseFunction = NullPhaseFunction();
         return result;
+    }
 
+    /** Default evalBsdfAndPdf: returns zeros.
+        Only StandardMaterialInstance provides proper per-lobe filtering.
+        Non-standard materials should not be used with ReSTIR PT's
+        lobe-filtered PDF evaluation paths.
+    */
+    float3 evalBsdfAndPdf<S : ISampleGenerator>(const ShadingData sd, const float3 wo, inout S sg, uint lobeMask, out float pdf, out float pdfAllLobes)
+    {
+        pdf = 0.f;
+        pdfAllLobes = 0.f;
+        return float3(0.f);
     }
 }
 

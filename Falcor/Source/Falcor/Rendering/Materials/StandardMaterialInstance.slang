@@ -127,6 +127,20 @@ struct StandardMaterialInstance : MaterialInstanceBase, IMaterialInstance
         }
     }
 
+    float3 evalBsdfAndPdf<S : ISampleGenerator>(const ShadingData sd, const float3 wo, inout S sg, uint lobeMask, out float pdf, out float pdfAllLobes)
+    {
+        pdf = 0.f;
+        pdfAllLobes = 0.f;
+
+        float3 wiLocal = sf.toLocal(sd.V);
+        float3 woLocal = sf.toLocal(wo);
+
+        if (!isValidHemisphereReflectionOrTransmission(sd, sf, wiLocal, woLocal, wo)) return float3(0.f);
+
+        StandardBSDF bsdf = StandardBSDF(wiLocal, sd.mtl, data);
+        return bsdf.evalBsdfAndPdf(wiLocal, woLocal, sg, lobeMask, pdf, pdfAllLobes, BSDFContext());
+    }
+
     BSDFProperties getProperties(const ShadingData sd)
     {
         BSDFProperties p = {};

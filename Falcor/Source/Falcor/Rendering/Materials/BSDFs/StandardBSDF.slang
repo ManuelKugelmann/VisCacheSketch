@@ -326,6 +326,83 @@ struct StandardBSDF : IBSDF, IDifferentiable
         return pdf;
     }
 
+    /** Evaluates the BSDF and PDF simultaneously with per-lobe filtering.
+        Returns BSDF*cosTheta for lobes matching lobeMask, the filtered PDF,
+        and the all-lobe PDF. Uses the lobe selection weights computed at
+        construction time (before any setActiveLobes renormalization), which
+        is critical for correct ReSTIR PT shift mapping Jacobians.
+
+        This is the Falcor 8 equivalent of NVlabs' FalcorBSDF::evalBsdfAndPdf()
+        from the Conditional ReSTIR prototype (Lin et al., SIGGRAPH 2023).
+
+        \param[in] wi Incident direction in local space.
+        \param[in] wo Outgoing direction in local space.
+        \param[in,out] sg Sample generator.
+        \param[in] lobeMask LobeType flags selecting which lobes to include in
+                   the filtered result. Use LobeType::All (0xff) for no filtering.
+        \param[out] pdf PDF for the selected lobes only (partial, unnormalized sum).
+        \param[out] pdfAllLobes PDF over all lobes.
+        \param[in] bc BSDF context.
+        \return f(wi, wo) * dot(wo, n) for the selected lobes only.
+    */
+    float3 evalBsdfAndPdf<S : ISampleGenerator>(
+        const float3 wi,
+        const float3 wo,
+        inout S sg,
+        uint lobeMask,
+        out float pdf,
+        out float pdfAllLobes,
+        BSDFContext bc
+    )
+    {
+        pdf = 0.f;
+        pdfAllLobes = 0.f;
+        float3 result = 0.f;
+
+        if (pDiffuseReflection > 0.f)
+        {
+            float lobePdf = pDiffuseReflection * diffuseReflection.evalPdf(wi, wo, bc);
+            pdfAllLobes += lobePdf;
+            if ((lobeMask & (uint)LobeType::DiffuseReflection) != 0)
+            {
+                pdf += lobePdf;
+                result += (1.f - specTrans) * (1.f - diffTrans) * diffuseReflection.eval(wi, wo, sg, bc);
+            }
+        }
+        if (pDiffuseTransmission > 0.f)
+        {
+            float lobePdf = pDiffuseTransmission * diffuseTransmission.evalPdf(wi, wo, bc);
+            pdfAllLobes += lobePdf;
+            if ((lobeMask & (uint)LobeType::DiffuseTransmission) != 0)
+            {
+                pdf += lobePdf;
+                result += (1.f - specTrans) * diffTrans * diffuseTransmission.eval(wi, wo, sg, bc);
+            }
+        }
+        if (pSpecularReflection > 0.f)
+        {
+            float lobePdf = pSpecularReflection * specularReflection.evalPdf(wi, wo, bc);
+            pdfAllLobes += lobePdf;
+            if ((lobeMask & ((uint)LobeType::SpecularReflection | (uint)LobeType::DeltaReflection)) != 0)
+            {
+                pdf += lobePdf;
+                result += (1.f - specTrans) * specularReflection.eval(wi, wo, sg, bc);
+            }
+        }
+        if (pSpecularTransmission > 0.f)
+        {
+            float lobePdf = pSpecularTransmission * specularTransmission.evalPdf(wi, wo, bc);
+            pdfAllLobes += lobePdf;
+            if ((lobeMask & ((uint)LobeType::SpecularTransmission | (uint)LobeType::DeltaTransmission)) != 0)
+            {
+                pdf += lobePdf;
+                result += specTrans * specularTransmission.eval(wi, wo, sg, bc);
+            }
+        }
+
+        return result;
+    }
+
     AlbedoContributions evalAlbedo(const float3 wi, const LobeType lobetype)
     {
         AlbedoContributions a = { 0.0f, 0.0f, 0.0f, 0.0f };

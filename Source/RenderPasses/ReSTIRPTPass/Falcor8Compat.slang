@@ -6,15 +6,12 @@
  # that DQLin's ReSTIR PT code relied on.  Keeping shims in one place
  # minimises the diff in PathTracer.slang and Shift.slang.
  #
- # Known approximation: evalPdfBSDF with lobe filtering uses setActiveLobes
- # which renormalizes lobe selection weights. The original DQLin/NVlabs code
- # used unnormalized partial PDFs (sum of pLobe*lobePdf for selected lobes
- # only, with original full-BSDF weights). NVlabs solved this by adding
- # evalBsdfAndPdf() to FalcorBSDF with a lobeMask parameter. Our approach
- # is self-consistent (sampleBSDF.pdfSingle and evalPdfBSDF use the same
- # renormalization) but Jacobian ratios may differ slightly when source and
- # destination vertices have very different lobe weight distributions.
- # For exact parity, add evalBsdfAndPdf(lobeMask) to Falcor 8's StandardBSDF.
+ # Per-lobe PDF filtering uses IMaterialInstance::evalBsdfAndPdf() which
+ # was ported from the NVlabs Conditional ReSTIR prototype. This avoids
+ # the setActiveLobes renormalization issue: the original DQLin/NVlabs
+ # code used unnormalized partial PDFs (sum of pLobe*lobePdf for selected
+ # lobes only, with original full-BSDF weights). evalBsdfAndPdf() provides
+ # exactly this, giving correct shift mapping Jacobians for ReSTIR PT.
  **************************************************************************/
 
 import Scene.Shading;
@@ -70,17 +67,15 @@ bool sampleBSDF(const ShadingData sd, inout SampleGenerator sg, out BSDFSample_ 
         // Compute pdfSingle: the PDF contribution from only the sampled lobe class.
         // In DQLin's Falcor 4.4, bsdf.sample() returned this as a separate output
         // (the per-lobe selection-weighted PDF before adding cross-lobe MIS terms).
-        // Falcor 8's mi.sample() only returns the combined PDF. We approximate
-        // pdfSingle by re-evaluating with setActiveLobes, which is consistent with
-        // how evalPdfBSDF computes filtered PDFs in shift mapping.
+        // We use evalBsdfAndPdf with a lobeMask to get the unnormalized partial PDF,
+        // matching the original DQLin/NVlabs behavior exactly.
         bool isSampledSpecular = (bs.lobeType & ((uint)LobeType::Specular | (uint)LobeType::Delta)) != 0;
         // Specular class: 0x66 = Specular|Delta (reflection+transmission)
         // Diffuse class:  0x11 = Diffuse (reflection+transmission)
         uint sampledClassFlags = isSampledSpecular ? 0x66 : 0x11;
-        ShadingData sdCopy = sd;
-        sdCopy.mtl.setActiveLobes(sampledClassFlags);
-        let miFiltered = _getMI(sdCopy);
-        result.pdfSingle = miFiltered.evalPdf(sdCopy, bs.wo, useImportanceSampling);
+        float pdfAll;
+        SampleGenerator sgDummy = SampleGenerator(uint2(0), 0);
+        mi.evalBsdfAndPdf(sd, bs.wo, sgDummy, sampledClassFlags, result.pdfSingle, pdfAll);
     }
     return valid;
 }
@@ -111,13 +106,19 @@ float3 evalBSDFCosine(const ShadingData sd, float3 dir)
 
 float3 evalBSDFCosine(const ShadingData sd, float3 dir, uint allowedFlags)
 {
-    // Apply lobe mask via mtl.setActiveLobes before eval.
-    ShadingData sdCopy = sd;
-    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
-        sdCopy.mtl.setActiveLobes(allowedFlags);
     SampleGenerator sg = SampleGenerator(uint2(0), 0);
-    let mi = _getMI(sdCopy);
-    return mi.eval(sdCopy, dir, sg);
+    let mi = _getMI(sd);
+    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
+    {
+        // Use evalBsdfAndPdf for per-lobe filtering without setActiveLobes
+        // renormalization. The BSDF eval values are not affected by lobe
+        // weight renormalization (they use material blend weights directly),
+        // but we use evalBsdfAndPdf for consistency and to avoid the extra
+        // material instance construction.
+        float pdf, pdfAll;
+        return mi.evalBsdfAndPdf(sd, dir, sg, allowedFlags, pdf, pdfAll);
+    }
+    return mi.eval(sd, dir, sg);
 }
 
 float3 evalBSDFCosine(const ShadingData sd, float3 dir, uint allowedFlags, bool isDelta)
@@ -148,20 +149,19 @@ float evalPdfBSDF(const ShadingData sd, float3 dir, uint allowedFlags)
 
 float evalPdfBSDF(const ShadingData sd, float3 dir, out float pdfAll, uint allowedFlags)
 {
-    // Full (all-lobe) PDF.
     let mi = _getMI(sd);
-    pdfAll = mi.evalPdf(sd, dir, true);
 
-    // Component PDF with lobe mask.
+    // Use evalBsdfAndPdf for per-lobe filtering: returns both filtered and
+    // all-lobe PDFs using original (unnormalized) lobe selection weights.
     // 0xff = LobeType::All, 0xffffffff = legacy "all" sentinel — both mean no filtering.
     if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
     {
-        ShadingData sdCopy = sd;
-        sdCopy.mtl.setActiveLobes(allowedFlags);
-        let miFiltered = _getMI(sdCopy);
-        float componentPdf = miFiltered.evalPdf(sdCopy, dir, true);
+        float componentPdf;
+        SampleGenerator sg = SampleGenerator(uint2(0), 0);
+        mi.evalBsdfAndPdf(sd, dir, sg, allowedFlags, componentPdf, pdfAll);
         return componentPdf;
     }
+    pdfAll = mi.evalPdf(sd, dir, true);
     return pdfAll;
 }
 
@@ -182,9 +182,14 @@ float evalPdfBSDFWithV(const ShadingData sd, float3 newV, float3 dir, uint allow
 {
     ShadingData sdCopy = sd;
     sdCopy.V = newV;
-    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
-        sdCopy.mtl.setActiveLobes(allowedFlags);
     let mi = _getMI(sdCopy);
+    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
+    {
+        float componentPdf, pdfAll;
+        SampleGenerator sg = SampleGenerator(uint2(0), 0);
+        mi.evalBsdfAndPdf(sdCopy, dir, sg, allowedFlags, componentPdf, pdfAll);
+        return componentPdf;
+    }
     return mi.evalPdf(sdCopy, dir, true);
 }
 
