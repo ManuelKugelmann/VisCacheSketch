@@ -136,6 +136,27 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
         echo [quickstart]   ReSTIRPTPass data deployed
     )
 
+    REM ---- Validate NRD (denoiser) availability in release ----
+    set "NRD_OK=1"
+    if not exist "%RELEASE_DIR%\NRDPass.dll" (
+        echo [quickstart]   NRDPass.dll: MISSING
+        set "NRD_OK=0"
+    ) else (
+        echo [quickstart]   NRDPass.dll: OK
+    )
+    if not exist "%RELEASE_DIR%\NRD.dll" (
+        echo [quickstart]   NRD.dll: MISSING
+        set "NRD_OK=0"
+    ) else (
+        echo [quickstart]   NRD.dll: OK
+    )
+    if "!NRD_OK!"=="0" (
+        echo [quickstart]   WARNING: NRD denoiser not in release — output will be raw noisy radiance.
+        echo [quickstart]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
+    ) else (
+        echo [quickstart]   NRD denoiser: available
+    )
+
     REM ---- Validate shaders (content hash) ----
     REM Diagnostic: compare deployed vs source by SHA-256 to catch wrong
     REM locations, partial copies, or stale files from the release archive.
