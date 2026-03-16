@@ -4,8 +4,8 @@
 # Usage:  ./scripts/quickstart.sh [--scene Bistro|Sponza|Arcade] [--skip-scenes]
 #
 # Calls each step in order:
-#   1. download_scenes.sh   — fetch test scenes (unless --skip-scenes)
-#   2. download_release.sh  — download latest GitHub release
+#   1. download_release.sh  — download latest GitHub release
+#   2. download_scenes.sh   — fetch test scenes (unless --skip-scenes) — bundled scenes pre-populated from release
 #   3. run-tests.sh         — CPU algorithm tests
 #   4. run_release.sh       — smoke test + launch Mogwai
 #
@@ -30,23 +30,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 1. Download scenes
+# 1. Download release
+echo ""
+echo "========================================"
+echo " Step 1: Download latest release"
+echo "========================================"
+bash "$SCRIPT_DIR/download_release.sh"
+
+# 2. Download scenes (bundled scenes pre-populated from release)
 if [ "$SKIP_SCENES" -eq 1 ]; then
     echo "[quickstart] Skipping scene download (--skip-scenes)"
 else
     echo ""
     echo "========================================"
-    echo " Step 1: Download test scenes"
+    echo " Step 2: Download test scenes"
     echo "========================================"
     bash "$SCRIPT_DIR/download_scenes.sh" || echo "[quickstart] WARNING: Some scenes failed to download"
 fi
-
-# 2. Download release
-echo ""
-echo "========================================"
-echo " Step 2: Download latest release"
-echo "========================================"
-bash "$SCRIPT_DIR/download_release.sh"
 
 # 3. Run tests
 echo ""
