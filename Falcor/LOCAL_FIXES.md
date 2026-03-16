@@ -31,6 +31,22 @@ else if (key == kExposureValue)
 
 ---
 
+## 5. Falcor: add /EHsc for MSVC exception handling
+
+**File:** `Source/Falcor/CMakeLists.txt`
+
+MSVC 14.44+ (VS 2022) `ppltasks.h` and `<vector>` use C++ exception
+handlers internally. Without `/EHsc`, the compiler emits warning C4530
+("C++ exception handler used, but unwind semantics are not enabled").
+Combined with `/WX` (warnings as errors), this breaks the build.
+
+**Fix:** Added `/EHsc` to the PUBLIC MSVC compile options for the Falcor
+target, enabling standard C++ exception handling with stack unwinding.
+
+**Upstream status:** Not yet reported.
+
+---
+
 ## 2. setup.bat/sh: use VISCACHE_ROOT env var for git submodule update
 
 **Files:** `setup.bat`, `setup.sh`
@@ -50,26 +66,6 @@ now set a `VISCACHE_ROOT` environment variable pointing to the project root.
 plain `git submodule update` (no `-C`) when run standalone.
 
 **Upstream status:** N/A (subtree integration issue, not an upstream bug).
-
----
-
-## 3. GLFW: sccache fails to cache PDB when /Zi and /Z7 conflict
-
-**File:** `external/CMakeLists.txt`
-
-When using `sccache` as a compiler launcher with Ninja on MSVC, GLFW
-compilation fails because sccache tries to zip up the PDB file specified
-by `/Fd`, but no PDB is actually created. This happens when `/Z7` is
-appended to flags that already contain `/Zi` — the compiler uses `/Z7`
-(last wins, embeds debug info in `.obj`), but sccache still expects the
-PDB that `/Fd` points to.
-
-**Fix:** Before `add_subdirectory(glfw)`, replace `/Zi` with `/Z7` in
-`CMAKE_C_FLAGS_DEBUG`, `CMAKE_CXX_FLAGS_DEBUG`, and their RelWithDebInfo
-counterparts. The original flags are restored after `add_subdirectory()`
-so other targets are unaffected.
-
-**Upstream status:** Not yet reported (upstream GLFW doesn't use sccache).
 
 ---
 
