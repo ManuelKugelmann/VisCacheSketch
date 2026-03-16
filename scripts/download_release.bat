@@ -151,6 +151,24 @@ REM Save release version for display on next update check
 echo !REMOTE_TAG! ^(!REMOTE_DATE!^)> "%VERSION_FILE%"
 
 REM ---------------------------------------------------------------------------
+REM Preserve local data (downloaded scenes, deployed data) across updates
+REM ---------------------------------------------------------------------------
+set "LOCAL_DATA_BACKUP=%TEMP%\viscache-local-data-%RANDOM%"
+mkdir "%LOCAL_DATA_BACKUP%" 2>nul
+set "PRESERVED_MEDIA=0"
+set "PRESERVED_DATA=0"
+if exist "%RELEASE_DIR%\media" (
+    echo [release] Preserving local media\...
+    move /y "%RELEASE_DIR%\media" "%LOCAL_DATA_BACKUP%\media" >nul 2>&1
+    set "PRESERVED_MEDIA=1"
+)
+if exist "%RELEASE_DIR%\data" (
+    echo [release] Preserving local data\...
+    move /y "%RELEASE_DIR%\data" "%LOCAL_DATA_BACKUP%\data" >nul 2>&1
+    set "PRESERVED_DATA=1"
+)
+
+REM ---------------------------------------------------------------------------
 REM Clean old release — move aside so tar doesn't hit "Refusing to overwrite"
 REM ---------------------------------------------------------------------------
 set "OLD_RELEASE=%TEMP%\viscache-old-release-%RANDOM%"
@@ -172,10 +190,37 @@ if errorlevel 1 (
         rd /s /q "%RELEASE_DIR%" 2>nul
         move /y "%OLD_RELEASE%" "%RELEASE_DIR%" >nul 2>&1
     )
+    REM Restore local data on failure
+    if "!PRESERVED_MEDIA!"=="1" if exist "%LOCAL_DATA_BACKUP%\media" move /y "%LOCAL_DATA_BACKUP%\media" "%RELEASE_DIR%\media" >nul 2>&1
+    if "!PRESERVED_DATA!"=="1" if exist "%LOCAL_DATA_BACKUP%\data" move /y "%LOCAL_DATA_BACKUP%\data" "%RELEASE_DIR%\data" >nul 2>&1
+    rd /s /q "%LOCAL_DATA_BACKUP%" 2>nul
     del "%ARCHIVE%" 2>nul
     exit /b 1
 )
 del "%ARCHIVE%" 2>nul
+
+REM ---------------------------------------------------------------------------
+REM Merge preserved local data back (keep new release files, add back local-only)
+REM ---------------------------------------------------------------------------
+for %%L in (media data) do (
+    if exist "%LOCAL_DATA_BACKUP%\%%L" (
+        mkdir "%RELEASE_DIR%\%%L" 2>nul
+        REM Copy back items that don't exist in the new release (no overwrite)
+        for /d %%D in ("%LOCAL_DATA_BACKUP%\%%L\*") do (
+            if not exist "%RELEASE_DIR%\%%L\%%~nxD" (
+                echo [release] Restoring local %%L\%%~nxD
+                move /y "%%D" "%RELEASE_DIR%\%%L\%%~nxD" >nul 2>&1
+            )
+        )
+        REM Also restore loose files (not just directories)
+        for %%F in ("%LOCAL_DATA_BACKUP%\%%L\*") do (
+            if not exist "%RELEASE_DIR%\%%L\%%~nxF" (
+                move /y "%%F" "%RELEASE_DIR%\%%L\%%~nxF" >nul 2>&1
+            )
+        )
+    )
+)
+rd /s /q "%LOCAL_DATA_BACKUP%" 2>nul
 
 REM Remove old release now that extraction succeeded
 if exist "%OLD_RELEASE%" rd /s /q "%OLD_RELEASE%" 2>nul

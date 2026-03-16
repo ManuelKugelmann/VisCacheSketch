@@ -138,6 +138,19 @@ fi
 echo "$REMOTE_TAG ($REMOTE_DATE)" > "$VERSION_FILE"
 
 # ---------------------------------------------------------------------------
+# Preserve local data (downloaded scenes, deployed data) across updates
+# ---------------------------------------------------------------------------
+LOCAL_DATA_BACKUP="$(mktemp -d /tmp/viscache-local-data.XXXXXX)"
+LOCAL_DIRS_PRESERVED=()
+for LOCAL_DIR in media data; do
+    if [ -d "$RELEASE_DIR/$LOCAL_DIR" ]; then
+        echo "[release] Preserving local $LOCAL_DIR/..."
+        mv "$RELEASE_DIR/$LOCAL_DIR" "$LOCAL_DATA_BACKUP/$LOCAL_DIR"
+        LOCAL_DIRS_PRESERVED+=("$LOCAL_DIR")
+    fi
+done
+
+# ---------------------------------------------------------------------------
 # Clean old release — move aside so tar doesn't hit overwrite errors
 # ---------------------------------------------------------------------------
 OLD_RELEASE="$(mktemp -d /tmp/viscache-old-release.XXXXXX)"
@@ -162,10 +175,36 @@ if ! tar xzf "$ARCHIVE" -C "$RELEASE_DIR"; then
         rm -rf "$RELEASE_DIR"
         mv "$OLD_RELEASE/release" "$RELEASE_DIR"
     fi
+    # Restore local data on failure
+    for LOCAL_DIR in "${LOCAL_DIRS_PRESERVED[@]}"; do
+        if [ -d "$LOCAL_DATA_BACKUP/$LOCAL_DIR" ]; then
+            mv "$LOCAL_DATA_BACKUP/$LOCAL_DIR" "$RELEASE_DIR/$LOCAL_DIR"
+        fi
+    done
+    rm -rf "$LOCAL_DATA_BACKUP"
     rm -f "$ARCHIVE"
     exit 1
 fi
 rm -f "$ARCHIVE"
+
+# ---------------------------------------------------------------------------
+# Merge preserved local data back (keep new release files, add back local-only)
+# ---------------------------------------------------------------------------
+for LOCAL_DIR in "${LOCAL_DIRS_PRESERVED[@]}"; do
+    if [ -d "$LOCAL_DATA_BACKUP/$LOCAL_DIR" ]; then
+        mkdir -p "$RELEASE_DIR/$LOCAL_DIR"
+        # Copy back items that don't exist in the new release (no overwrite)
+        for item in "$LOCAL_DATA_BACKUP/$LOCAL_DIR"/*; do
+            [ -e "$item" ] || continue
+            basename_item="$(basename "$item")"
+            if [ ! -e "$RELEASE_DIR/$LOCAL_DIR/$basename_item" ]; then
+                echo "[release] Restoring local $LOCAL_DIR/$basename_item"
+                mv "$item" "$RELEASE_DIR/$LOCAL_DIR/$basename_item"
+            fi
+        done
+    fi
+done
+rm -rf "$LOCAL_DATA_BACKUP"
 
 # Remove old release now that extraction succeeded
 rm -rf "$OLD_RELEASE"
