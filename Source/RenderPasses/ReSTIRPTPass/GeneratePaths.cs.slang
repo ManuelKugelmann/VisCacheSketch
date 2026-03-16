@@ -98,8 +98,10 @@ struct PathGenerator
     */
     __init()
     {
-        // Resource fields (vbuffer, outputColor, params) are bound by the host.
-        // Scalar fields use their inline default values above.
+        // Resource fields are bound by the host via cbuffer;
+        // explicit default-init silences Slang warning 41020.
+        vbuffer = {};
+        outputColor = {};
     }
 
     /** Entry point for path generator.
