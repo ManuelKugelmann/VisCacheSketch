@@ -46,7 +46,7 @@ REM ---------------------------------------------------------------------------
 :configure
 echo [build] Configuring: %CMAKE% --preset %PRESET%
 if "%USE_SCCACHE%"=="1" (
-    "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache "-DCMAKE_C_FLAGS=/Z7" "-DCMAKE_CXX_FLAGS=/Z7"
+    "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 ) else (
     "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%"
 )
