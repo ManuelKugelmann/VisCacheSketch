@@ -135,6 +135,13 @@ if [ ! -f "$SCENE_FILE" ]; then
     exit 1
 fi
 
+SCRIPT_PATH="$RELEASE_DIR/scripts/VisCache/$GRAPH_SCRIPT"
+if [ ! -f "$SCRIPT_PATH" ]; then
+    echo "[launch] ERROR: Graph script not found: $SCRIPT_PATH"
+    echo "[launch] Check that scripts were deployed to release/scripts/VisCache/"
+    exit 1
+fi
+
 echo "[launch] Starting Mogwai with $SCENE (renderer: $RENDERER)..."
 export FALCOR_MEDIA_FOLDERS="$MEDIA_DIR"
-"$RELEASE_DIR/Mogwai.exe" --script "$RELEASE_DIR/scripts/VisCache/$GRAPH_SCRIPT" --scene "$SCENE_FILE"
+"$RELEASE_DIR/Mogwai.exe" --script "$SCRIPT_PATH" --scene "$SCENE_FILE"
