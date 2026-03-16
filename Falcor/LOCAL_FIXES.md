@@ -31,6 +31,22 @@ else if (key == kExposureValue)
 
 ---
 
+## 5. Falcor: add /EHsc for MSVC exception handling
+
+**File:** `Source/Falcor/CMakeLists.txt`
+
+MSVC 14.44+ (VS 2022) `ppltasks.h` and `<vector>` use C++ exception
+handlers internally. Without `/EHsc`, the compiler emits warning C4530
+("C++ exception handler used, but unwind semantics are not enabled").
+Combined with `/WX` (warnings as errors), this breaks the build.
+
+**Fix:** Added `/EHsc` to the PUBLIC MSVC compile options for the Falcor
+target, enabling standard C++ exception handling with stack unwinding.
+
+**Upstream status:** Not yet reported.
+
+---
+
 ## 2. setup.bat/sh: use VISCACHE_ROOT env var for git submodule update
 
 **Files:** `setup.bat`, `setup.sh`

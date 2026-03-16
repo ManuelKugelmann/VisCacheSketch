@@ -826,6 +826,7 @@ target_compile_options(Falcor
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:
             /Zi                             # generate debug symbols
             /MP                             # enable multi-processor compilation
+            /EHsc                           # enable C++ exception handling (unwind semantics)
             # Configure warnings
             /WX                             # warnings as errors
             /W4                             # increase warning level
