@@ -179,10 +179,20 @@ if not exist "%SCENE_FILE%" (
     exit /b 1
 )
 
+REM Build full script path and validate before launch.
+REM Quoting a path ending in "\" on Windows causes the MSVC CRT to interpret
+REM \" as an escaped quote, merging subsequent arguments into the path.
+set "SCRIPT_PATH=%RELEASE_DIR%\scripts\VisCache\%GRAPH_SCRIPT%"
+if not exist "%SCRIPT_PATH%" (
+    echo [launch] ERROR: Graph script not found: %SCRIPT_PATH%
+    echo [launch] Check that scripts were deployed to release\scripts\VisCache\
+    exit /b 1
+)
+
 echo [launch] Starting Mogwai with %SCENE% (renderer: %RENDERER%)...
 echo [launch] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\%GRAPH_SCRIPT% --scene %SCENE_FILE%
 echo.
 set "FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%"
-"%RELEASE_DIR%\Mogwai.exe" --script "%RELEASE_DIR%\scripts\VisCache\%GRAPH_SCRIPT%" --scene "%SCENE_FILE%"
+"%RELEASE_DIR%\Mogwai.exe" --script "%SCRIPT_PATH%" --scene "%SCENE_FILE%"
 
 endlocal
