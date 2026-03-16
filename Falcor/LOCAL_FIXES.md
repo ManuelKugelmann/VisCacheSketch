@@ -70,3 +70,24 @@ counterparts. The original flags are restored after `add_subdirectory()`
 so other targets are unaffected.
 
 **Upstream status:** Not yet reported (upstream GLFW doesn't use sccache).
+
+---
+
+## 4. CudaInterop: suppress C4100 and LNK4098 warnings on MSVC
+
+**File:** `Source/Samples/CudaInterop/CMakeLists.txt`
+
+CUDA separable compilation generates device-link registration files
+(`tmpxft_*_CudaInterop.device-link.reg.c`) with an unused
+`prelinked_fatbinc` parameter, triggering MSVC warning C4100. The CUDA
+runtime also statically links LIBCMT, conflicting with Falcor's dynamic
+CRT (MSVCRT), producing linker warning LNK4098.
+
+**Fix:** Added MSVC-only compile/link options:
+
+```cmake
+target_compile_options(CudaInterop PRIVATE /wd4100)
+target_link_options(CudaInterop PRIVATE /NODEFAULTLIB:LIBCMT)
+```
+
+**Upstream status:** Not yet reported.

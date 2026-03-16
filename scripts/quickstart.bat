@@ -324,24 +324,6 @@ if not exist "%RELEASE_DIR%\Mogwai.exe" (
     goto :done
 )
 
-set "SCENE_FILE="
-if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RELEASE_DIR%\data\ReSTIRPTPass\VeachAjar\VeachAjar.pyscene"
-if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
-if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
-if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
-if /i "%SCENE%"=="CornellBox" set "SCENE_FILE=%ROOT%\scenes\CornellBox.pyscene"
-
-if "%SCENE_FILE%"=="" (
-    echo [quickstart] step 6 launch -- skipped ^(unknown scene: %SCENE%^)
-    goto :done
-)
-
-if not exist "%SCENE_FILE%" (
-    echo [quickstart] step 6 launch -- skipped ^(scene file not found: %SCENE_FILE%^)
-    echo [quickstart] Run scripts\download_scenes.bat first.
-    goto :done
-)
-
 REM ---- Show checkout vs release commit SHA + timestamp for diagnostics ----
 set "CHECKOUT_SHA=unknown"
 set "CHECKOUT_DATE=unknown"
@@ -366,21 +348,11 @@ if not "!CHECKOUT_SHA!"=="unknown" if not "!RELEASE_SHA!"=="unknown" (
     )
 )
 
-REM Build full script path and validate before launch.
-REM Quoting a path ending in "\" on Windows causes the MSVC CRT to interpret
-REM \" as an escaped quote, merging subsequent arguments into the path.
-set "SCRIPT_PATH=%RELEASE_DIR%\scripts\VisCache\%GRAPH_SCRIPT%"
-if not exist "!SCRIPT_PATH!" (
-    echo [quickstart] ERROR: Graph script not found: !SCRIPT_PATH!
-    echo [quickstart] Check that scripts were deployed to release\scripts\VisCache\
-    goto :done
-)
-
+REM Delegate to run_release.bat
 echo [quickstart] step 6 launch ^(%SCENE%, renderer: %RENDERER%^)
-echo [quickstart] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\%GRAPH_SCRIPT% --scene %SCENE_FILE%
-echo.
-set "FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%"
-"%RELEASE_DIR%\Mogwai.exe" --script "!SCRIPT_PATH!" --scene "%SCENE_FILE%"
+set "_LAUNCH_ARGS=--scene %SCENE% --renderer %RENDERER%"
+if defined VARIANT set "_LAUNCH_ARGS=!_LAUNCH_ARGS! --variant !VARIANT!"
+call "%SCRIPT_DIR%run_release.bat" !_LAUNCH_ARGS!
 
 :done
 endlocal

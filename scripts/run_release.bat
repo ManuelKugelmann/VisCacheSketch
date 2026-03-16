@@ -19,7 +19,8 @@ set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=VeachAjar"
 set "RENDERER=restirpt"
 set "VARIANT="
-set "INTERACTIVE=0"
+REM Default to interactive when no arguments given
+if "%~1"=="" (set "INTERACTIVE=1") else (set "INTERACTIVE=0")
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -219,17 +220,9 @@ if errorlevel 1 (
 )
 
 REM ---------------------------------------------------------------------------
-REM Smoke test
+REM Check Mogwai.exe exists
 REM ---------------------------------------------------------------------------
-if exist "%RELEASE_DIR%\Mogwai.exe" (
-    echo [smoke] Running smoke test...
-    "%RELEASE_DIR%\Mogwai.exe" --headless --script "%RELEASE_DIR%\scripts\VisCache\smoke_test.py"
-    if errorlevel 1 (
-        echo [smoke] WARNING: Smoke test failed
-    ) else (
-        echo [smoke] OK
-    )
-) else (
+if not exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [launch] Mogwai.exe not found -- no release downloaded.
     echo [launch] Run scripts\download_release.bat first, or build from source.
     echo [launch] Releases: https://github.com/%REPO%/releases

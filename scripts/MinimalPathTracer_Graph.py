@@ -10,6 +10,8 @@ Usage:
     Mogwai.exe --script scripts/MinimalPathTracer_Graph.py --scene CornellBox.pyscene
 """
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
 
