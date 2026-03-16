@@ -16,7 +16,9 @@ set FALCOR_ROOT=%SCRIPT_DIR%Falcor
 : Publish the project root so Falcor\setup.bat can find it without relying
 : on fragile relative-path navigation.  Falcor is a subtree, not a standalone
 : repo, so its setup script cannot know the git root on its own.
+: Strip trailing backslash so "git -C "%VISCACHE_ROOT%"" does not see \"
 set VISCACHE_ROOT=%SCRIPT_DIR%
+if "%VISCACHE_ROOT:~-1%"=="\" set VISCACHE_ROOT=%VISCACHE_ROOT:~0,-1%
 
 : ---------------------------------------------------------------------------
 : Step 1: Verify Falcor root
