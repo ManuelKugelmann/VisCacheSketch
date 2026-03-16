@@ -44,8 +44,13 @@ if not exist "%FALCOR_ROOT%\CMakeLists.txt" (
 echo [VisCache] Step 2: Running Falcor setup (submodules + packman + VS2022)...
 
 if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
-    call "%FALCOR_ROOT%\setup_vs2022.bat"
-    if errorlevel 1 (
+    : setup_vs2022.bat runs cmake --preset which needs CWD inside Falcor
+    : where CMakePresets.json lives.
+    pushd "%FALCOR_ROOT%"
+    call setup_vs2022.bat
+    set SETUP_ERR=!errorlevel!
+    popd
+    if !SETUP_ERR! neq 0 (
         echo [VisCache] ERROR: Falcor setup failed!
         exit /b 1
     )
