@@ -49,6 +49,8 @@ call "%ROOT%scripts\quickstart.bat" %QS_ARGS%
 
 REM ---------------------------------------------------------------------------
 REM Step 3: Copy newest shaders into release (overrides release archive)
+REM The release archive lags ~20 min behind due to CI build time.
+REM This ensures the repo's .slang files are always up to date.
 REM ---------------------------------------------------------------------------
 set "RELEASE_DIR=%ROOT%release"
 if exist "%RELEASE_DIR%\Mogwai.exe" (
