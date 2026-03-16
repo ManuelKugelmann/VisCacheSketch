@@ -667,7 +667,7 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
     }
 #endif
 
-    RayDesc ray = { sourceVertex, 0.f, dir, tMax }; // TODO: use offset position instead
+    Ray ray = Ray(sourceVertex, dir, 0.f, tMax); // TODO: use offset position instead
 
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
@@ -684,6 +684,6 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
 bool traceVisibilityRay(const Ray ray)
 {
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-    return sceneRayQuery.traceVisibilityRay(ray.toRayDesc(), RAY_FLAG_NONE, 0xff);
+    return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 }
 

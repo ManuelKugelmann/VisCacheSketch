@@ -384,7 +384,7 @@ struct PathTracer
                 path.setDelta();
             }
 
-            if (result.isLobe(LobeType::SpecularOrDelta))
+            if (result.isLobe(LobeType::Specular) || result.isLobe(LobeType::Delta))
             {
                 path.setSpecularBounce();
             }
@@ -817,7 +817,7 @@ struct PathTracer
         if (kUseEmissiveLights && lightType == (uint)LightSampleType::Emissive)
         {
             if (!kUseEmissiveLights) valid = false;
-            else emissiveSampler.skipRandomNumber(sg);
+            else { sampleNext1D(sg); sampleNext2D(sg); } // Skip same random numbers as emissive sampler consumes.
         }
         if (kUseAnalyticLights && lightType == (uint)LightSampleType::Analytic)
         {
@@ -831,13 +831,14 @@ struct PathTracer
     void nextVertex(inout PathState path)
     {
         // Setup ray.
-        RayDesc ray = path.getScatterRay();
+        RayDesc rayDesc = path.getScatterRay();
+        Ray ray = Ray(rayDesc.Origin, rayDesc.Direction, rayDesc.TMin, rayDesc.TMax);
 
         logTraceRay(PixelStatsRayType::ClosestHit);
-        HitInfo hit;
         float hitT;
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-        if (sceneRayQuery.traceRay(ray, hit, hitT, RAY_FLAG_NONE, 0xff))
+        HitInfo hit = sceneRayQuery.traceRay(ray, hitT, RAY_FLAG_NONE, 0xff);
+        if (hit.isValid())
         {
             // Store hit info.
             path.setHit(hit);
@@ -857,10 +858,9 @@ struct PathTracer
     */
     bool traceVisibilityRay(const Ray ray)
     {
-        // TODO rename to PixelStatsRayType::Visibility
-        logTraceRay(PixelStatsRayType::Shadow);
+        logTraceRay(PixelStatsRayType::Visibility);
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-        return sceneRayQuery.traceVisibilityRay(ray.toRayDesc(), RAY_FLAG_NONE, 0xff);
+        return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
     }
 
     /** Handle scattering in homogeneous volumes.
@@ -870,13 +870,15 @@ struct PathTracer
     {
         if (!path.interiorList.isEmpty())
         {
-            HomogeneousVolumeSampler hvs = HomogeneousVolumeSampler::create(path.interiorList.getTopMaterialID());
+            const uint materialID = path.interiorList.getTopMaterialID();
+            let material = gScene.materials.getMaterial(materialID);
+            let vp = material.getHomogeneousVolumeProperties(gScene.materials, materialID);
             const float surfaceDistance = length(path.origin - sd.posW);
 
             // our implementation doesn't support volume scattering
             {
                 // Handle volume extinction.
-                updatePathThroughput(path, exp(-hvs.sigmaT * surfaceDistance));
+                updatePathThroughput(path, HomogeneousVolumeSampler::evalTransmittance(vp, surfaceDistance));
             }
         }
 
@@ -1112,9 +1114,9 @@ struct PathTracer
                     bool isFarField = length(sd.posW - path.origin) >= params.nearFieldDistance;
                     bool isLastVertexAcceptableForRcPrev = path.isLastVertexClassifiedAsRough;
 
-                    if (!(params.localStrategyType & (uint)LocalStrategy::DistanceCondition && !isFarField || params.localStrategyType & (uint)LocalStrategy::RoughnessCondition && !isLastVertexAcceptableForRcPrev))
+                    if (!((params.localStrategyType & (uint)LocalStrategy::DistanceCondition) != 0 && !isFarField || (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0 && !isLastVertexAcceptableForRcPrev))
                     {
-                        if (path.isReplayForHybridShift) // non-invertible case 
+                        if (path.isReplayForHybridShift) // non-invertible case
                         {
                             path.L = 0.f;
                         }
@@ -1178,8 +1180,8 @@ struct PathTracer
         if (!path.isReplayForHybridShift && PathSamplingMode(kPathSamplingMode) != PathSamplingMode::PathTracing)
         {
             bool canConnect = (path.length >= 1 && path.length < path.pathBuilder.rcVertexLength &&
-                (!(params.localStrategyType & (uint)LocalStrategy::DistanceCondition && !isFarField ||
-                        params.localStrategyType & (uint)LocalStrategy::RoughnessCondition && !(isCurrentVertexClassifiedAsRough && isLastVertexAcceptableForRcPrev))));
+                (!((params.localStrategyType & (uint)LocalStrategy::DistanceCondition) != 0 && !isFarField ||
+                        (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0 && !(isCurrentVertexClassifiedAsRough && isLastVertexAcceptableForRcPrev))));
 
             if (!path.useHybridShift && path.length == 1 || path.useHybridShift && canConnect)
             {
@@ -1214,7 +1216,7 @@ struct PathTracer
             {
                 if (kSeparatePathBSDF)
                 {
-                    if (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition)
+                    if ((params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0)
                     {
                         // method 2
                         //non-invertible if this bounce is an NEE bounce for the base path but the current vertex is not connectible in base path but is connectible in offset path
@@ -1222,17 +1224,17 @@ struct PathTracer
                         //non-invertible because current vertex will be assigned as a diffuse bounce by connecting to the reconnection vertex
                         if (path.length == path.pathBuilder.rcVertexLength - 1 && isLastVertexAcceptableForRcPrev) invertible = false;
 
-                        if (params.localStrategyType & (uint)LocalStrategy::DistanceCondition && !isFarField) invertible = true;
+                        if ((params.localStrategyType & (uint)LocalStrategy::DistanceCondition) != 0 && !isFarField) invertible = true;
                     }
                     else
                     {
-                        if (params.localStrategyType & (uint)LocalStrategy::DistanceCondition && isFarField) invertible = false;
+                        if ((params.localStrategyType & (uint)LocalStrategy::DistanceCondition) != 0 && isFarField) invertible = false;
                     }
                 }
                 else
                 {
-                    if (!(params.localStrategyType & (uint)LocalStrategy::DistanceCondition && !isFarField ||
-                        params.localStrategyType & (uint)LocalStrategy::RoughnessCondition && !(/*supportsNEE &&*/ isCurrentVertexClassifiedAsRough && isLastVertexAcceptableForRcPrev)))
+                    if (!((params.localStrategyType & (uint)LocalStrategy::DistanceCondition) != 0 && !isFarField ||
+                        (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0 && !(/*supportsNEE &&*/ isCurrentVertexClassifiedAsRough && isLastVertexAcceptableForRcPrev)))
                         invertible = false;
                 }
             }
@@ -1241,7 +1243,7 @@ struct PathTracer
             if (path.length == path.pathBuilder.rcVertexLength - 1 && invertible)
             {
                 // not possible to generate a diffuse bounce
-                if (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition &&
+                if ((params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0 &&
                         (kSeparatePathBSDF && (path.pathBuilder.pathFlags.decodeIsSpecularBounce(true) ? getRoughness(sd) <= params.specularRoughnessThreshold : !hasRoughComponent(sd, 1.f)) ||
                         !kSeparatePathBSDF && !isCurrentVertexClassifiedAsRough))
                 {
@@ -1284,7 +1286,7 @@ struct PathTracer
                 // cache (NEE sampling) seed for temporal validation (only possible for non early direction reuse since it uses the cachedRandomSeed slot)
                 if (path.length == path.pathBuilder.rcVertexLength)
                 {
-                    path.pathBuilder.cachedRandomSeed = path.sg.getCurrentSeed();
+                    path.pathBuilder.cachedRandomSeed = path.sg.rng.state;
                 }
 
                 LightSample ls;
@@ -1406,21 +1408,21 @@ struct PathTracer
         if (path.length == 0)
         {
             // daqi: save current random seed, this is required to do random number replay to construct a path
-            path.pathReservoir.initRandomSeed = path.sg.getCurrentSeed();
+            path.pathReservoir.initRandomSeed = path.sg.rng.state;
         }
 
         // Generate the next path segment or terminate.
         bool valid = generateScatterRay(sd, path);
 
         // forbid current vertex being rcVertex
-        if (kSeparatePathBSDF && params.localStrategyType & (uint)LocalStrategy::RoughnessCondition)
+        if (kSeparatePathBSDF && (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0)
         {
             bool seenAsConnectible = !path.isSpecularBounce() || getRoughness(sd) > params.specularRoughnessThreshold;
 
             if (path.isReplayForHybridShift && seenAsConnectible && isLastVertexAcceptableForRcPrev && path.length >= 1)
             {
                 // check if near field rejection is satisfied
-                if (isFarField || !(params.localStrategyType & (uint)LocalStrategy::DistanceCondition))
+                if (isFarField || (params.localStrategyType & (uint)LocalStrategy::DistanceCondition) == 0)
                 {
                     // non-invertible
                     invalidateAndTerminateReplayPath(path);
@@ -1440,11 +1442,11 @@ struct PathTracer
         // cache seed for temporal validation (only possible for non early direction reuse since it uses the cachedRandomSeed slot)
         if (path.length == path.pathBuilder.rcVertexLength)
         {
-            path.pathBuilder.cachedRandomSeed = path.sg.getCurrentSeed();
+            path.pathBuilder.cachedRandomSeed = path.sg.rng.state;
         }
 
         // daqi: save the incoming direction on rcVertex
-        if (is_rcVertex && valid && (int(path.length > 1) == 0 || !BPR))
+        if (is_rcVertex && valid && (path.length <= 1 || !BPR))
         {
             path.pathBuilder.rcVertexWi[0] = path.dir;
         }
@@ -1565,7 +1567,7 @@ struct PathTracer
                     bool isLastVertexAcceptableForRcPrev = path.isLastVertexClassifiedAsRough;
 
                     // daqi: in the case of escaped to infinitely far, we always satisfy the far field requirement
-                    if (!(params.localStrategyType & (uint)LocalStrategy::RoughnessCondition && !isLastVertexAcceptableForRcPrev))
+                    if (!((params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0 && !isLastVertexAcceptableForRcPrev))
                     {
                         if (path.isReplayForHybridShift) // non-invertible case 
                         {
