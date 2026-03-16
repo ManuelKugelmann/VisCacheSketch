@@ -40,11 +40,6 @@ on:
         required: false
         default: true
         type: boolean
-      clean_build:
-        description: 'Clean build (nuke build dir + sccache, ignore cached objects)'
-        required: false
-        default: false
-        type: boolean
       commit_sha:
         description: 'Commit SHA to build and release (default: HEAD of selected branch)'
         required: false
@@ -288,7 +283,6 @@ jobs:
       # -- Caching: CMake build directory (incremental builds) -----------------
       # Split into restore/save so we can strip large link artifacts before saving
       - name: Restore CMake build cache
-        if: ${{ !inputs.clean_build }}
         id: cmake-cache
         uses: actions/cache/restore@v5
         with:
@@ -341,20 +335,7 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Clean build directory
-        if: ${{ inputs.clean_build }}
-        shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          if exist "%BUILD_DIR%" (
-            echo [build] Clean build requested — nuking %BUILD_DIR%
-            rmdir /s /q "%BUILD_DIR%"
-          )
-          sccache --stop-server 2>nul
-          echo [build] Cleared sccache server state
-
       - name: Clean stale CMake cache
-        if: ${{ !inputs.clean_build }}
         shell: cmd
         run: |
           set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
@@ -503,7 +484,6 @@ jobs:
       # -- Caching: CMake build directory (incremental builds) -----------------
       # Split into restore/save so we can strip large link artifacts before saving
       - name: Restore CMake build cache
-        if: ${{ !inputs.clean_build }}
         id: cmake-cache
         uses: actions/cache/restore@v5
         with:
@@ -555,20 +535,7 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Clean build directory
-        if: ${{ inputs.clean_build }}
-        shell: cmd
-        run: |
-          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
-          if exist "%BUILD_DIR%" (
-            echo [build] Clean build requested — nuking %BUILD_DIR%
-            rmdir /s /q "%BUILD_DIR%"
-          )
-          sccache --stop-server 2>nul
-          echo [build] Cleared sccache server state
-
       - name: Clean stale CMake cache
-        if: ${{ !inputs.clean_build }}
         shell: cmd
         run: |
           set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%"
@@ -754,7 +721,6 @@ jobs:
       # -- Caching: CMake build directory (incremental builds) -----------------
       # Split into restore/save so we can strip large debug/link artifacts before saving
       - name: Restore CMake build cache
-        if: ${{ !inputs.clean_build }}
         id: cmake-cache
         uses: actions/cache/restore@v5
         with:
@@ -783,17 +749,6 @@ jobs:
 
       - name: Integrate VisCache plugins into Falcor tree
         run: bash scripts/integrate-plugins.sh ${{ env.FALCOR_DIR }}
-
-      - name: Clean build directory
-        if: ${{ inputs.clean_build }}
-        run: |
-          BUILD_DIR="${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}"
-          if [ -d "$BUILD_DIR" ]; then
-            echo "[build] Clean build requested — nuking $BUILD_DIR"
-            rm -rf "$BUILD_DIR"
-          fi
-          ccache -C 2>/dev/null || true
-          echo "[build] Cleared ccache"
 
       - name: CMake Configure
         run: |
