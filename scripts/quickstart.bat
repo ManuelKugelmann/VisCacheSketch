@@ -153,7 +153,7 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
         echo [quickstart]   NRD.dll: OK
     )
     if "!NRD_OK!"=="0" (
-        echo [quickstart]   WARNING: NRD denoiser not in release — output will be raw noisy radiance.
+        echo [quickstart]   WARNING: NRD denoiser not in release -- output will be raw noisy radiance.
         echo [quickstart]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
     ) else (
         echo [quickstart]   NRD denoiser: available
@@ -164,7 +164,7 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
     REM locations, partial copies, or stale files from the release archive.
     where python >nul 2>&1
     if errorlevel 1 (
-        echo [quickstart] python not found — skipping shader content validation
+        echo [quickstart] python not found -- skipping shader content validation
     ) else (
         python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
         if errorlevel 1 (
@@ -261,7 +261,7 @@ echo [quickstart] checkout: !CHECKOUT_SHA! ^(!CHECKOUT_DATE!^)
 echo [quickstart] release:  !RELEASE_SHA! ^(!RELEASE_VER!^)
 if not "!CHECKOUT_SHA!"=="unknown" if not "!RELEASE_SHA!"=="unknown" (
     if not "!CHECKOUT_SHA!"=="!RELEASE_SHA!" (
-        echo [quickstart] WARNING: checkout and release are from different commits — shader/binary mismatch possible
+        echo [quickstart] WARNING: checkout and release are from different commits -- shader/binary mismatch possible
     )
 )
 

@@ -48,6 +48,7 @@ private:
     ReSTIRPTPass(ref<Device> pDevice, const Properties& props);
     bool parseDictionary(const Properties& props);
     void validateOptions();
+    void resetPrograms();
     void updatePrograms();
     void prepareResources(RenderContext* pRenderContext, const RenderData& renderData);
     void setNRDData(const ShaderVar& var, const RenderData& renderData) const;

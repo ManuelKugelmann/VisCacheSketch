@@ -268,48 +268,8 @@ ReSTIRPTPass::ReSTIRPTPass(ref<Device> pDevice, const Properties& props)
     // Create neighbor offset texture.
     mpNeighborOffsets = createNeighborOffsetTexture(kNeighborOffsetCount);
 
-    // Create programs.
-    // [Falcor 8] ComputePass::create takes device; ProgramDesc replaces Program::Desc.
-    auto defines = mStaticParams.getDefines(*this);
-
-    mpGeneratePaths = ComputePass::create(mpDevice, kGeneratePathsFilename, "main", defines, false);
-    mpReflectTypes = ComputePass::create(mpDevice, kReflectTypesFile, "main", defines, false);
-
-    {
-        ProgramDesc desc;
-        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_6);
-        mpTracePass = ComputePass::create(mpDevice, desc, defines, false);
-    }
-
-    {
-        ProgramDesc desc;
-        desc.addShaderLibrary(kSpatialPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
-        mpSpatialPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
-    }
-
-    {
-        ProgramDesc desc;
-        desc.addShaderLibrary(kTemporalPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
-        mpTemporalPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
-    }
-
-    {
-        ProgramDesc desc;
-        desc.addShaderLibrary(kSpatialReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
-        mpSpatialReusePass = ComputePass::create(mpDevice, desc, defines, false);
-    }
-
-    {
-        ProgramDesc desc;
-        desc.addShaderLibrary(kTemporalReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
-        mpTemporalReusePass = ComputePass::create(mpDevice, desc, defines, false);
-    }
-
-    {
-        ProgramDesc desc;
-        desc.addShaderLibrary(kComputePathReuseMISWeightsFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
-        mpComputePathReuseMISWeightsPass = ComputePass::create(mpDevice, desc, defines, false);
-    }
+    // Programs are lazily created in updatePrograms() because a scene
+    // needs to be present for shader modules and type conformances.
 
     // Allocate resources that don't change in size.
     // [Falcor 8] mpDevice->createBuffer replaces Buffer::create.
@@ -533,8 +493,8 @@ Properties ReSTIRPTPass::getProperties() const
     d[kTemporalHistoryLength] = mTemporalHistoryLength;
     d[kUseMaxHistory] = mUseMaxHistory;
     d[kSeedOffset] = mSeedOffset;
-    d[kEnableTemporalReuse] = mEnableSpatialReuse;
-    d[kEnableSpatialReuse] = mEnableTemporalReuse;
+    d[kEnableTemporalReuse] = mEnableTemporalReuse;
+    d[kEnableSpatialReuse] = mEnableSpatialReuse;
     d[kNumSpatialRounds] = mNumSpatialRounds;
     d[kPathSamplingMode] = mStaticParams.pathSamplingMode;
     d[kLocalStrategyType] = mParams.localStrategyType;
@@ -597,41 +557,11 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
         mParams.rejectShiftBasedOnJacobian = enableRobustSettingsByDefault;
         mStaticParams.temporalUpdateForDynamicScene = enableRobustSettingsByDefault;
 
-        // Prepare our programs for the scene.
-        // [Falcor 8] Shader::DefineList → DefineList.
-        DefineList defines = mpScene->getSceneDefines();
-
-        // Scene type conformances tell Slang which concrete IMaterial
-        // implementations exist so it can generate code for them.
-        // Without this, scenes that use material types not statically
-        // imported by our shaders (e.g. Bistro) fail with error 50100.
-        auto typeConformances = mpScene->getTypeConformances();
-
-        mpGeneratePaths->getProgram()->addDefines(defines);
-        mpTracePass->getProgram()->addDefines(defines);
-        mpReflectTypes->getProgram()->addDefines(defines);
-
-        mpSpatialPathRetracePass->getProgram()->addDefines(defines);
-        mpTemporalPathRetracePass->getProgram()->addDefines(defines);
-
-        mpSpatialReusePass->getProgram()->addDefines(defines);
-        mpTemporalReusePass->getProgram()->addDefines(defines);
-        mpComputePathReuseMISWeightsPass->getProgram()->addDefines(defines);
-
-        mpGeneratePaths->getProgram()->setTypeConformances(typeConformances);
-        mpTracePass->getProgram()->setTypeConformances(typeConformances);
-        mpReflectTypes->getProgram()->setTypeConformances(typeConformances);
-
-        mpSpatialPathRetracePass->getProgram()->setTypeConformances(typeConformances);
-        mpTemporalPathRetracePass->getProgram()->setTypeConformances(typeConformances);
-
-        mpSpatialReusePass->getProgram()->setTypeConformances(typeConformances);
-        mpTemporalReusePass->getProgram()->setTypeConformances(typeConformances);
-        mpComputePathReuseMISWeightsPass->getProgram()->setTypeConformances(typeConformances);
+        // Reset all programs so updatePrograms() recreates them with
+        // scene shader modules and type conformances (lazy creation).
+        resetPrograms();
 
         validateOptions();
-
-        mRecompile = true;
     }
 
     mOptionsChanged = true;
@@ -1105,34 +1035,104 @@ bool ReSTIRPTPass::onMouseEvent(const MouseEvent& mouseEvent)
     return mpPixelDebug->onMouseEvent(mouseEvent);
 }
 
+void ReSTIRPTPass::resetPrograms()
+{
+    // Null all program objects so updatePrograms() recreates them with
+    // current scene shader modules and type conformances.
+    mpGeneratePaths = nullptr;
+    mpTracePass = nullptr;
+    mpReflectTypes = nullptr;
+    mpSpatialPathRetracePass = nullptr;
+    mpTemporalPathRetracePass = nullptr;
+    mpSpatialReusePass = nullptr;
+    mpTemporalReusePass = nullptr;
+    mpComputePathReuseMISWeightsPass = nullptr;
+
+    mRecompile = true;
+}
+
 void ReSTIRPTPass::updatePrograms()
 {
     if (mRecompile == false) return;
 
+    FALCOR_ASSERT(mpScene);
+
     mStaticParams.rcDataOfflineMode = mSpatialNeighborCount > 3 && mStaticParams.shiftStrategy == ShiftMapping::Hybrid;
 
     auto defines = mStaticParams.getDefines(*this);
+    auto typeConformances = mpScene->getTypeConformances();
 
-    // Update program specialization. This is done through defines in lieu of specialization constants.
-    mpGeneratePaths->getProgram()->addDefines(defines);
-    mpTracePass->getProgram()->addDefines(defines);
-    mpReflectTypes->getProgram()->addDefines(defines);
-    mpSpatialPathRetracePass->getProgram()->addDefines(defines);
-    mpTemporalPathRetracePass->getProgram()->addDefines(defines);
-    mpSpatialReusePass->getProgram()->addDefines(defines);
-    mpTemporalReusePass->getProgram()->addDefines(defines);
-    mpComputePathReuseMISWeightsPass->getProgram()->addDefines(defines);
+    // Build base ProgramDesc with scene shader modules + type conformances.
+    ProgramDesc baseDesc;
+    baseDesc.addShaderModules(mpScene->getShaderModules());
+    baseDesc.addTypeConformances(typeConformances);
 
-    // Recreate program vars. This may trigger recompilation if needed.
-    // Note that program versions are cached, so switching to a previously used specialization is faster.
-    mpGeneratePaths->setVars(nullptr);
-    mpTracePass->setVars(nullptr);
-    mpReflectTypes->setVars(nullptr);
-    mpSpatialPathRetracePass->setVars(nullptr);
-    mpTemporalPathRetracePass->setVars(nullptr);
-    mpSpatialReusePass->setVars(nullptr);
-    mpTemporalReusePass->setVars(nullptr);
-    mpComputePathReuseMISWeightsPass->setVars(nullptr);
+    // Lazily recreate programs that were reset (nullptr), or update defines on existing ones.
+    // Programs are nulled by resetPrograms() when type conformances or shader modules change.
+    if (!mpGeneratePaths)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kGeneratePathsFilename).csEntry("main");
+        mpGeneratePaths = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpReflectTypes)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kReflectTypesFile).csEntry("main");
+        mpReflectTypes = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpTracePass)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kTracePassFilename).csEntry("main").setShaderModel(ShaderModel::SM6_6);
+        mpTracePass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpSpatialPathRetracePass)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kSpatialPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpSpatialPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpTemporalPathRetracePass)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kTemporalPathRetraceFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpTemporalPathRetracePass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpSpatialReusePass)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kSpatialReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpSpatialReusePass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpTemporalReusePass)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kTemporalReusePassFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpTemporalReusePass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+    if (!mpComputePathReuseMISWeightsPass)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kComputePathReuseMISWeightsFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
+        mpComputePathReuseMISWeightsPass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+
+    // Update defines on all programs. Use setDefines (not addDefines) to replace
+    // any stale state, matching PathTracer::updatePrograms() pattern.
+    auto preparePass = [&](ref<ComputePass> pass)
+    {
+        pass->getProgram()->setDefines(defines);
+        pass->setVars(nullptr);
+    };
+    preparePass(mpGeneratePaths);
+    preparePass(mpTracePass);
+    preparePass(mpReflectTypes);
+    preparePass(mpSpatialPathRetracePass);
+    preparePass(mpTemporalPathRetracePass);
+    preparePass(mpSpatialReusePass);
+    preparePass(mpTemporalReusePass);
+    preparePass(mpComputePathReuseMISWeightsPass);
 
     mVarsChanged = true;
     mRecompile = false;
@@ -1263,11 +1263,17 @@ void ReSTIRPTPass::resetLighting()
 
 void ReSTIRPTPass::prepareMaterials(RenderContext* pRenderContext)
 {
-    // This functions checks for material changes and performs any necessary update.
-    // For now all we need to do is to trigger a recompile so that the right defines get set.
-    // In the future, we might want to do additional material-specific setup here.
+    // Check for scene changes that require shader recompilation.
+    // When materials or geometry change, programs must be recreated with
+    // updated type conformances, shader modules, and defines.
+    auto updates = mpScene->getUpdates();
 
-    if (is_set(mpScene->getUpdates(), Scene::UpdateFlags::MaterialsChanged))
+    if (is_set(updates, Scene::UpdateFlags::RecompileNeeded) ||
+        is_set(updates, Scene::UpdateFlags::GeometryChanged))
+    {
+        resetPrograms();
+    }
+    else if (is_set(updates, Scene::UpdateFlags::MaterialsChanged))
     {
         mRecompile = true;
     }
@@ -1361,13 +1367,8 @@ bool ReSTIRPTPass::prepareLighting(RenderContext* pRenderContext)
     if (mpEmissiveSampler)
     {
         lightingChanged |= mpEmissiveSampler->update(pRenderContext, mpScene->getILightCollection(pRenderContext));
-        auto defines = mpEmissiveSampler->getDefines();
-        if (mpTracePass->getProgram()->addDefines(defines)) mRecompile = true;
-        if (mpSpatialPathRetracePass->getProgram()->addDefines(defines)) mRecompile = true;
-        if (mpTemporalPathRetracePass->getProgram()->addDefines(defines)) mRecompile = true;
-        if (mpSpatialReusePass->getProgram()->addDefines(defines)) mRecompile = true;
-        if (mpTemporalReusePass->getProgram()->addDefines(defines)) mRecompile = true;
-        if (mpComputePathReuseMISWeightsPass->getProgram()->addDefines(defines)) mRecompile = true;
+        // Emissive sampler defines are included via getDefines() and applied
+        // by updatePrograms(). Setting mRecompile ensures they take effect.
     }
 
     return lightingChanged;
@@ -1443,6 +1444,9 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
 
         return false;
     }
+
+    // Update materials (checks for type conformance / geometry changes).
+    prepareMaterials(pRenderContext);
 
     // Update the env map and emissive sampler to the current frame.
     bool lightingChanged = prepareLighting(pRenderContext);
@@ -1853,8 +1857,27 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_REVAL", owner.mVisCacheAvailable ? "1" : "0");
 
-    // Scene-specific configuration.
-    const auto& scene = owner.mpScene;
+    // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).
+    // Scene defines include material system config, geometry types, hit info, etc.
+    defines.add("USE_ENV_LIGHT", "0");
+    defines.add("USE_ANALYTIC_LIGHTS", "0");
+    defines.add("USE_EMISSIVE_LIGHTS", "0");
+    defines.add("USE_CURVES", "0");
+    defines.add("USE_SDF_GRIDS", "0");
+    defines.add("USE_HAIR_MATERIAL", "0");
+
+    if (owner.mpScene)
+    {
+        defines.add(owner.mpScene->getSceneDefines());
+        defines.add("USE_ENV_LIGHT", owner.mpScene->useEnvLight() ? "1" : "0");
+        defines.add("USE_ANALYTIC_LIGHTS", owner.mpScene->useAnalyticLights() ? "1" : "0");
+        defines.add("USE_EMISSIVE_LIGHTS", owner.mpScene->useEmissiveLights() ? "1" : "0");
+        defines.add("USE_CURVES", owner.mpScene->hasGeometryType(Scene::GeometryType::Curve) ? "1" : "0");
+        defines.add("USE_SDF_GRIDS", owner.mpScene->hasGeometryType(Scene::GeometryType::SDFGrid) ? "1" : "0");
+        defines.add("USE_HAIR_MATERIAL", owner.mpScene->getMaterialCountByType(MaterialType::Hair) > 0u ? "1" : "0");
+    }
+
+    if (owner.mpEmissiveSampler) defines.add(owner.mpEmissiveSampler->getDefines());
 
     // Set default (off) values for additional features.
     defines.add("OUTPUT_GUIDE_DATA", "0");

@@ -60,7 +60,7 @@ if not exist "%DATA_DST%\16RooksPattern256.txt" (
 )
 REM Verify data file is present before smoke test
 if not exist "%DATA_DST%\16RooksPattern256.txt" (
-    echo [launch] WARNING: 16RooksPattern256.txt missing — ReSTIRPTPass will fail to load
+    echo [launch] WARNING: 16RooksPattern256.txt missing -- ReSTIRPTPass will fail to load
     echo [launch] Expected at: %DATA_DST%\16RooksPattern256.txt
 )
 
@@ -103,13 +103,13 @@ if not exist "%RELEASE_DIR%\NRD.dll" (
     echo [launch]   NRD.dll: OK
 )
 if "!NRD_OK!"=="0" (
-    echo [launch]   WARNING: NRD denoiser not in release — output will be raw noisy radiance.
+    echo [launch]   WARNING: NRD denoiser not in release -- output will be raw noisy radiance.
     echo [launch]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
 ) else (
     echo [launch]   NRD denoiser: available
 )
 
-REM Validate (diagnostic — catch wrong locations, partial copies, etc.)
+REM Validate (diagnostic -- catch wrong locations, partial copies, etc.)
 where python >nul 2>&1
 if errorlevel 1 (
     REM Fallback: at least check sentinel file exists
@@ -121,7 +121,7 @@ if errorlevel 1 (
 ) else (
     python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
     if errorlevel 1 (
-        echo [launch] WARNING: Shader validation found issues — see above
+        echo [launch] WARNING: Shader validation found issues -- see above
         echo [launch] Continuing launch, but expect shader compilation errors.
     )
 )
