@@ -9,6 +9,8 @@ Usage:
     Mogwai.exe --script scripts/PathTracer_Graph.py --scene VeachAjar.pyscene
 """
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
 

@@ -13,6 +13,8 @@ Usage:
 # VisCache defaults & ablation presets (paper §15)
 # ---------------------------------------------------------------------------
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
 ABLATIONS = {
