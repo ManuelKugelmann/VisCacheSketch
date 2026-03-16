@@ -20,9 +20,24 @@ for pass in VisCache ReSTIRPTPass; do
     echo "[integrate] Copied ${pass} -> ${dest}"
 done
 
+# Copy data files (16RooksPattern256.txt, VeachAjar pyscenes) into Falcor/data/
+# so AssetResolver finds them at runtime without waiting for CMake POST_BUILD.
+if [ -d "Source/RenderPasses/ReSTIRPTPass/Data" ]; then
+    mkdir -p "${FALCOR}/data/ReSTIRPTPass"
+    cp -r Source/RenderPasses/ReSTIRPTPass/Data/* "${FALCOR}/data/ReSTIRPTPass/"
+    echo "[integrate] Copied ReSTIRPTPass data -> ${FALCOR}/data/ReSTIRPTPass/"
+fi
+
 mkdir -p "${FALCOR}/scripts/VisCache"
 cp -r scripts/* "${FALCOR}/scripts/VisCache/"
 echo "[integrate] Copied scripts -> ${FALCOR}/scripts/VisCache/"
+
+# Copy tests
+if [ -d "tests" ]; then
+    mkdir -p "${FALCOR}/scripts/VisCache/tests"
+    cp -r tests/* "${FALCOR}/scripts/VisCache/tests/"
+    echo "[integrate] Copied tests -> ${FALCOR}/scripts/VisCache/tests/"
+fi
 
 # ------------------------------------------------------------------
 # 2. Patch RenderPasses/CMakeLists.txt to add our subdirectories
