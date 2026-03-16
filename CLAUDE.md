@@ -33,6 +33,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Windows: SDK 10.0.19041.0 required (`windows-2022` runner, NOT `windows-latest`)
 - `target_copy_shaders()` deploys .slang to `${FALCOR_OUTPUT_DIRECTORY}/shaders/RenderPasses/<pass>/`
 - Render passes copied into Falcor source tree during setup/CI
+- **Shader source of truth is `Source/`**, not `release/shaders/` — build/CI deploys shaders into `release/shaders/` automatically, so only edit under `Source/RenderPasses/`
 
 ## CI
 
