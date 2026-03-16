@@ -49,13 +49,16 @@ by incorporating per-ray traversal cost,
 backing off RR when rays are cheap
 and being more aggressive when BVH traversal is expensive.
 **Histogram stratification × VisCache.**
+Histogram stratification [Salaün et al. 2025]
+sorts light candidates by estimated contribution
+into histogram bins and applies QMC within each stratum,
+reducing variance from O(1/N) to O(1/N²) for smooth integrands.
 The visibility cache's per-light μ estimates are composable
-with histogram-based light stratification
-at the same pipeline stage.
+with this at the same pipeline stage.
 VisCache serves as a cheap visibility oracle
 that enables large-K candidate evaluation:
 generate K candidate lights,
-sort by visibility-weighted contribution (histogram sort),
+sort by visibility-weighted contribution f̂ = fs × Le × G × μ (histogram sort),
 apply QMC pick on the sorted distribution,
 then trace one accurate shadow ray for the winner.
 The benefit is multiplicative —

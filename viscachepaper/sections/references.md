@@ -48,6 +48,8 @@
 
 - [Rath et al. 2022] A. Rath, P. Grittmann, S. Herholz, P. Slusallek, and K. Myszkowski. "EARS: Efficiency-Aware Russian Roulette and Splitting." *ACM Trans. Graph.*, 41(4):81, 2022.
 
+- [Salaün et al. 2025] C. Salaün, I. Graux, K. Georgiev, and T. Hašan. "Histogram Stratification for Real-Time Importance Sampling." *ACM SIGGRAPH*, 2025.
+
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
 - [Szécsi et al. 2003] L. Szécsi, L. Szirmay-Kalos, and C. Kelemen. "Variance Reduction for Russian Roulette." *Journal of WSCG*, 11(1), 2003.
