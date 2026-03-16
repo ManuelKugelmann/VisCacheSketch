@@ -1,4 +1,5 @@
 @echo off
+cls
 REM update.bat — In-repo equivalent of the one-liner install command.
 REM
 REM Usage:  update.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes]
