@@ -180,6 +180,25 @@ and ADRRS's coupling of one signal to one decision (path continuation)
 maps onto our coupling of one signal to two decisions —
 correction rate and write depth — as detailed in Sec. 8.
 
+Sanzharov et al. [2025] (Neural Two-Level Monte Carlo)
+use a neural incident radiance cache
+in a Two-Level Monte Carlo scheme
+to compensate for cache bias,
+introducing a Balanced Termination Heuristic (BTH)
+that decides when to trust the cache vs. trace further.
+Their BTH is structurally a stochastic version
+of our variance-gated write depth (Sec. 5):
+both decide at which level to stop and trust the cache.
+Our variance-coupled correction rate (Sec. 8)
+maps directly onto the MLMC residual estimator structure —
+the control variate returns the cached prediction,
+the residual corrects it stochastically.
+Their use of world-space multi-level hash encodings
+further parallels our LOD-in-key design (Sec. 4).
+The key difference is the domain:
+they cache radiance (continuous, high-dimensional),
+we cache binary visibility (Bernoulli, variance-free from mean).
+
 ## 2.5 Integration Targets (Orthogonal)
 
 Our implementation is built on Falcor [Kallweit et al. 2022],
