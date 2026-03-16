@@ -52,7 +52,7 @@ jobs:
         shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          call "${{ github.workspace }}\scripts\install.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
+          call "${{ github.workspace }}\scripts\install.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes --skip-launch
 
       - name: Verify clone succeeded
         shell: cmd
@@ -65,7 +65,7 @@ jobs:
         shell: cmd
         working-directory: ${{ runner.temp }}
         run: |
-          call "${{ github.workspace }}\scripts\install.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes
+          call "${{ github.workspace }}\scripts\install.bat" --dir VCS-test --branch ${{ github.head_ref || github.ref_name }} --skip-scenes --skip-launch
 
       - name: Verify repo still valid after re-run
         shell: cmd
