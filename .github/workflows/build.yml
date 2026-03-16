@@ -445,8 +445,8 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
 
-      - name: Verify data file deployment
-        run: bash scripts/verify-build-output.sh "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin"
+      # Linux build validates compilation only — no data/DLL verification
+      # (NRD requires D3D12, data deployment is Windows-specific)
 
   # ---------------------------------------------------------------------------
   # Dev prerelease — rolling "latest build" on every push to main/master

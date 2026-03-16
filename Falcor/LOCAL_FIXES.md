@@ -47,6 +47,22 @@ target, enabling standard C++ exception handling with stack unwinding.
 
 ---
 
+## 6. validate_headers: propagate COMPILE_OPTIONS to VH targets
+
+**File:** `CMakeLists.txt` (root)
+
+The `validate_headers()` function copies `INCLUDE_DIRECTORIES`,
+`LINK_LIBRARIES`, `COMPILE_DEFINITIONS`, and `COMPILE_FEATURES` from the
+original target to the VH validation target, but not `COMPILE_OPTIONS`.
+This means `/EHsc`, `/WX`, `/W4` etc. set via `target_compile_options()`
+do not propagate, causing C4530 warnings on the VH targets.
+
+**Fix:** Added `COMPILE_OPTIONS` to the property copy loop.
+
+**Upstream status:** Not yet reported.
+
+---
+
 ## 2. setup.bat/sh: use VISCACHE_ROOT env var for git submodule update
 
 **Files:** `setup.bat`, `setup.sh`
