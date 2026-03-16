@@ -3,9 +3,10 @@ REM update.bat — In-repo equivalent of the one-liner install command.
 REM
 REM Usage:  update.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes]
 REM
-REM What it does (same as the curl one-liner, but from inside the repo):
+REM What it does:
 REM   1. git pull origin <current branch>
-REM   2. scripts\quickstart.bat (download scenes, download release, run tests, launch)
+REM   2. Copy latest shaders (.slang) from source tree into release\
+REM   3. scripts\quickstart.bat (download scenes, download release, run tests, launch)
 
 setlocal enabledelayedexpansion
 
@@ -45,5 +46,28 @@ echo ========================================
 echo  Step 2: Quickstart
 echo ========================================
 call "%ROOT%scripts\quickstart.bat" %QS_ARGS%
+
+REM ---------------------------------------------------------------------------
+REM Step 3: Copy newest shaders into release (overrides release archive)
+REM The release archive lags ~20 min behind due to CI build time.
+REM This ensures the repo's .slang files are always up to date.
+REM ---------------------------------------------------------------------------
+set "RELEASE_DIR=%ROOT%release"
+if exist "%RELEASE_DIR%\Mogwai.exe" (
+    echo.
+    echo ========================================
+    echo  Step 3: Copy latest shaders to release
+    echo ========================================
+
+    for %%P in (VisCache ReSTIRPTPass) do (
+        set "SRC=%ROOT%Source\RenderPasses\%%P"
+        set "DST=%RELEASE_DIR%\RenderPasses\%%P"
+        if exist "!SRC!" (
+            if not exist "!DST!" mkdir "!DST!"
+            xcopy "!SRC!\*.slang" "!DST!\" /y /q >nul 2>&1
+            echo [update]   %%P shaders copied
+        )
+    )
+)
 
 endlocal
