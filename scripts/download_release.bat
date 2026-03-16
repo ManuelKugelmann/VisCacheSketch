@@ -4,7 +4,7 @@ REM
 REM Usage:  scripts\download_release.bat
 REM
 REM Downloads the dev-latest prerelease archive and extracts to release\.
-REM Re-downloads if a newer release is available (uses ETag to check).
+REM Re-downloads if a newer release is available (compares commit SHA via API).
 REM
 REM Requires: curl, tar (both ship with Windows 10+)
 
@@ -14,7 +14,7 @@ set "REPO=ManuelKugelmann/VisCacheSketch"
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "RELEASE_DIR=%ROOT%\release"
 set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
-set "ETAG_FILE=%RELEASE_DIR%\.release-etag"
+set "SHA_FILE=%RELEASE_DIR%\.release-sha"
 set "VERSION_FILE=%RELEASE_DIR%\.release-version"
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 set "API_URL=https://api.github.com/repos/%REPO%/releases/tags/dev-latest"
@@ -29,6 +29,7 @@ REM Query remote release info from GitHub API (single call)
 REM ---------------------------------------------------------------------------
 set "REMOTE_TAG="
 set "REMOTE_DATE="
+set "REMOTE_SHA="
 set "API_JSON=%TEMP%\vc-release-api.json"
 curl -fsSL "%API_URL%" -o "%API_JSON%" 2>nul
 if not errorlevel 1 (
@@ -38,39 +39,32 @@ if not errorlevel 1 (
         set "_RAW=%%~A"
         for /f "tokens=1 delims=T" %%D in ("!_RAW!") do set "REMOTE_DATE=%%D"
     )
+    for /f "tokens=2 delims=:, " %%A in ('findstr /i "\"target_commitish\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_SHA set "REMOTE_SHA=%%~A"
 )
 del "%API_JSON%" 2>nul
 
 REM ---------------------------------------------------------------------------
-REM Check for newer release via ETag
+REM Check for newer release via commit SHA from GitHub API
 REM ---------------------------------------------------------------------------
-if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
-    set /p OLD_ETAG=<"%ETAG_FILE%"
+if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%SHA_FILE%" (
+    set /p OLD_SHA=<"%SHA_FILE%"
     set "INSTALLED_VER=unknown"
     if exist "%VERSION_FILE%" set /p INSTALLED_VER=<"%VERSION_FILE%"
     echo [release] Checking for newer release...
-    for /f "delims=" %%E in ('curl -fsSL -H "Cache-Control: no-cache" -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
-    REM Extract short ETag hashes for display
-    set "OLD_ETAG_SHORT=!OLD_ETAG:~0,8!"
-    set "REMOTE_ETAG_SHORT="
-    if defined ETAG_LINE (
-        for /f "tokens=2 delims= " %%R in ("!ETAG_LINE!") do set "REMOTE_ETAG_RAW=%%R"
-        set "REMOTE_ETAG_SHORT=!REMOTE_ETAG_RAW:~0,8!"
-    )
-    echo [release]   Installed: !INSTALLED_VER! [etag:!OLD_ETAG_SHORT!]
+    set "OLD_SHA_SHORT=!OLD_SHA:~0,7!"
+    echo [release]   Installed: !INSTALLED_VER! [!OLD_SHA_SHORT!]
     if defined REMOTE_TAG (
-        if defined REMOTE_ETAG_SHORT (
-            echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^) [etag:!REMOTE_ETAG_SHORT!]
+        if defined REMOTE_SHA (
+            set "REMOTE_SHA_SHORT=!REMOTE_SHA:~0,7!"
+            echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^) [!REMOTE_SHA_SHORT!]
         ) else (
             echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^)
         )
     ) else (
         echo [release]   Remote:    ^(could not query GitHub API^)
     )
-    if defined ETAG_LINE (
-        REM Compare stored ETag with remote
-        echo !ETAG_LINE! | findstr /c:"!OLD_ETAG!" >nul 2>&1
-        if not errorlevel 1 (
+    if defined REMOTE_SHA (
+        if "!OLD_SHA!"=="!REMOTE_SHA!" (
             echo [release] Mogwai.exe is up to date.
             exit /b 0
         )
@@ -80,7 +74,7 @@ if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
         exit /b 0
     )
 ) else if exist "%RELEASE_DIR%\Mogwai.exe" (
-    REM Mogwai exists but no ETag saved -- re-download to establish baseline
+    REM Mogwai exists but no SHA saved -- re-download to establish baseline
     echo [release] Mogwai.exe exists but no version info. Re-downloading...
 )
 
@@ -88,7 +82,7 @@ REM ---------------------------------------------------------------------------
 REM Download
 REM ---------------------------------------------------------------------------
 echo [release] Downloading: %DOWNLOAD_URL%
-curl -fSL --progress-bar -H "Cache-Control: no-cache" -D "%TEMP%\vc-release-headers.txt" -o "%ARCHIVE%" "%DOWNLOAD_URL%"
+curl -fSL --progress-bar -H "Cache-Control: no-cache" -o "%ARCHIVE%" "%DOWNLOAD_URL%"
 if errorlevel 1 (
     echo [release] Download failed -- no dev-latest release yet. Skipping.
     echo [release] This is normal for first-time setup or pre-release branches.
@@ -100,11 +94,10 @@ if errorlevel 1 (
     exit /b 0
 )
 
-REM Save ETag for future update checks
-for /f "tokens=2 delims= " %%E in ('findstr /i "^etag:" "%TEMP%\vc-release-headers.txt" 2^>nul') do (
-    echo %%E> "%ETAG_FILE%"
+REM Save commit SHA for future update checks
+if defined REMOTE_SHA (
+    echo !REMOTE_SHA!> "%SHA_FILE%"
 )
-del "%TEMP%\vc-release-headers.txt" 2>nul
 
 REM Save release version for display on next update check
 if defined REMOTE_TAG (
@@ -121,8 +114,8 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [release] Moving old release aside...
     move /y "%RELEASE_DIR%" "%OLD_RELEASE%" >nul 2>&1
     mkdir "%RELEASE_DIR%" 2>nul
-    REM Preserve ETag and version files
-    if exist "%OLD_RELEASE%\.release-etag" copy /y "%OLD_RELEASE%\.release-etag" "%ETAG_FILE%" >nul 2>&1
+    REM Preserve SHA and version files
+    if exist "%OLD_RELEASE%\.release-sha" copy /y "%OLD_RELEASE%\.release-sha" "%SHA_FILE%" >nul 2>&1
     if exist "%OLD_RELEASE%\.release-version" copy /y "%OLD_RELEASE%\.release-version" "%VERSION_FILE%" >nul 2>&1
 )
 
