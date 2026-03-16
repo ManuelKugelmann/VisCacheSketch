@@ -12,13 +12,12 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass
 - `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
 - `scripts/` — .bat + .sh for quickstart, download, run, test
-- `scenes/` — .pyscene camera configs (copied into media/ at runtime)
-- `media/` — downloaded scene assets (Bistro, Sponza, Arcade, TestScenes)
-- `release/` — extracted release bundle from GitHub Releases
+- `scenes/` — .pyscene camera configs (copied into release/media/ at runtime)
+- `release/` — extracted release bundle from GitHub Releases (replaces need for local build)
   - `release/shaders/RenderPasses/` — deployed .slang shaders (Falcor runtime looks here)
   - `release/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)
   - `release/scripts/VisCache/` — graph configs and smoke tests
-  - `release/media/` — bundled Arcade + TestScenes from CI
+  - `release/media/` — all scene assets (Arcade + TestScenes bundled from CI; Bistro, Sponza downloaded)
 - `viscachepaper/sections/*.md` — WIP paper content
 
 ## Scripting

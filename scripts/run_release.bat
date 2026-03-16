@@ -13,7 +13,7 @@ for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 
 call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\media"
+set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=Bistro"
 
 REM ---------------------------------------------------------------------------

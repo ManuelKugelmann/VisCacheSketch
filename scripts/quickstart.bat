@@ -5,8 +5,8 @@ REM Usage:  scripts\quickstart.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes
 REM
 REM Steps:
 REM   0. git pull                   (unless --skip-pull)
-REM   1. download_scenes.bat        (unless --skip-scenes)
-REM   2. download_release.bat       — download latest GitHub release (Mogwai)
+REM   1. download_release.bat       — download latest GitHub release (Mogwai)
+REM   2. download_scenes.bat        (unless --skip-scenes) — bundled scenes pre-populated from release
 REM   3. copy shaders/data          — copy newest .slang + data into release
 REM   4. run-tests.bat              — CPU algorithm tests
 REM   5. headless smoke test        — Mogwai --headless
@@ -22,7 +22,7 @@ for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 set "SCENE=Bistro"
 set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\media"
+set "MEDIA_DIR=%ROOT%\release\media"
 
 call "%SCRIPT_DIR%version.bat" quickstart 2>nul
 set "SKIP_SCENES=0"
@@ -62,29 +62,29 @@ if %SKIP_PULL%==1 (
 )
 
 REM ---------------------------------------------------------------------------
-REM Step 1: Download scenes
+REM Step 1: Download release
 REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
-echo  Step 1: Download test scenes
+echo  Step 1: Download latest release
 echo ========================================
-if %SKIP_SCENES%==1 (
-    echo [quickstart] step 1 download scenes -- skipped ^(--skip-scenes^)
-) else (
-    echo [quickstart] step 1 download scenes
-    call "%SCRIPT_DIR%download_scenes.bat" --dir "%ROOT%\media" --yes
-    if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
-)
+echo [quickstart] step 1 download release
+call "%SCRIPT_DIR%download_release.bat"
 
 REM ---------------------------------------------------------------------------
-REM Step 2: Download release
+REM Step 2: Download scenes (bundled scenes pre-populated from release)
 REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
-echo  Step 2: Download latest release
+echo  Step 2: Download test scenes
 echo ========================================
-echo [quickstart] step 2 download release
-call "%SCRIPT_DIR%download_release.bat"
+if %SKIP_SCENES%==1 (
+    echo [quickstart] step 2 download scenes -- skipped ^(--skip-scenes^)
+) else (
+    echo [quickstart] step 2 download scenes
+    call "%SCRIPT_DIR%download_scenes.bat" --dir "%MEDIA_DIR%" --yes
+    if errorlevel 1 echo [quickstart] WARNING: Some scenes failed to download
+)
 
 REM ---------------------------------------------------------------------------
 REM Step 3: Copy newer shaders, data, etc. to release
