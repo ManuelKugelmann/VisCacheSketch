@@ -10,6 +10,7 @@ on:
       - 'scripts/download_scenes.*'
       - 'scripts/run_release.*'
       - 'scripts/run-tests.*'
+      - 'scripts/integrate-plugins.*'
       - '.github/workflows/quickstart.yml'
   pull_request:
     branches: ["main", "master"]
@@ -20,6 +21,7 @@ on:
       - 'scripts/download_scenes.*'
       - 'scripts/run_release.*'
       - 'scripts/run-tests.*'
+      - 'scripts/integrate-plugins.*'
       - '.github/workflows/quickstart.yml'
   workflow_dispatch:
 
@@ -102,6 +104,82 @@ jobs:
         run: scripts\run-tests.bat
       - name: run-tests.bat (quick) — idempotent re-run
         run: scripts\run-tests.bat quick
+
+  # ---------------------------------------------------------------------------
+  # integrate-plugins.bat smoke test (Windows) — verify CMake patching works
+  # ---------------------------------------------------------------------------
+  integrate-plugins-windows:
+    name: Integrate Plugins (Windows)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Run integrate-plugins.bat
+        shell: cmd
+        run: call scripts\integrate-plugins.bat Falcor
+
+      - name: Verify plugin sources copied
+        shell: cmd
+        run: |
+          if not exist "Falcor\Source\RenderPasses\VisCache" (echo VisCache not copied & exit /b 1)
+          if not exist "Falcor\Source\RenderPasses\ReSTIRPTPass" (echo ReSTIRPTPass not copied & exit /b 1)
+          echo Plugin sources OK
+
+      - name: Verify CMake subdirectories patched
+        shell: cmd
+        run: |
+          findstr /C:"add_subdirectory(VisCache)" "Falcor\Source\RenderPasses\CMakeLists.txt" >nul || (echo VisCache subdirectory missing & exit /b 1)
+          findstr /C:"add_subdirectory(ReSTIRPTPass)" "Falcor\Source\RenderPasses\CMakeLists.txt" >nul || (echo ReSTIRPTPass subdirectory missing & exit /b 1)
+          echo CMake subdirectories OK
+
+      - name: Verify deprecation patches applied
+        shell: cmd
+        run: |
+          findstr /C:"_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING" "Falcor\external\CMakeLists.txt" >nul || (echo fmt patch missing & exit /b 1)
+          findstr /C:"TBB_SUPPRESS_DEPRECATED_MESSAGES" "Falcor\external\CMakeLists.txt" >nul || (echo TBB patch missing & exit /b 1)
+          echo Deprecation patches OK
+
+      - name: Verify linker flags patched
+        shell: cmd
+        run: |
+          findstr /C:"NODEFAULTLIB:MSVCRT" "Falcor\Source\Falcor\CMakeLists.txt" >nul || (echo Linker patch missing & exit /b 1)
+          echo Linker flags OK
+
+      - name: Verify idempotent re-run
+        shell: cmd
+        run: |
+          call scripts\integrate-plugins.bat Falcor
+          echo Idempotent re-run OK
+
+  # ---------------------------------------------------------------------------
+  # integrate-plugins.sh smoke test (Linux) — verify CMake patching works
+  # ---------------------------------------------------------------------------
+  integrate-plugins-linux:
+    name: Integrate Plugins (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Run integrate-plugins.sh
+        run: bash scripts/integrate-plugins.sh Falcor
+
+      - name: Verify patches applied
+        run: |
+          set -euo pipefail
+          grep -q 'add_subdirectory(VisCache)' Falcor/Source/RenderPasses/CMakeLists.txt
+          grep -q 'add_subdirectory(ReSTIRPTPass)' Falcor/Source/RenderPasses/CMakeLists.txt
+          test -d Falcor/Source/RenderPasses/VisCache
+          test -d Falcor/Source/RenderPasses/ReSTIRPTPass
+          echo "All checks passed"
+
+      - name: Verify idempotent re-run
+        run: |
+          bash scripts/integrate-plugins.sh Falcor
+          echo "Idempotent re-run OK"
 
   # ---------------------------------------------------------------------------
   # Validate scene download URLs are reachable (HEAD request, no full download)
