@@ -700,41 +700,7 @@ jobs:
           git submodule update --init --depth 1
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
-
-      - name: Cache ccache
-        uses: actions/cache@v5
-        with:
-          path: ~/.ccache
-          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
-            ccache-${{ runner.os }}-gcc-
-
-      - name: Configure ccache
-        run: |
-          ccache --set-config=max_size=2G
-          ccache --set-config=compression=true
-          ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime
-          ccache -z
-
-      # -- Caching: CMake build directory (incremental builds) -----------------
-      # Split into restore/save so we can strip large debug/link artifacts before saving
-      - name: Restore CMake build cache
-        id: cmake-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
-          key: cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
-          restore-keys: |
-            cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-
-
-      - name: Cache packman packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/packman
-          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
-          restore-keys: packman-
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev
 
       - name: Fetch Falcor packman dependencies
         run: |
@@ -756,8 +722,6 @@ jobs:
           SRCDIR="$(pwd)"
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
             -DFALCOR_VALIDATE_HEADERS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="
 
@@ -780,32 +744,8 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
 
-      - name: Print ccache stats
-        if: always()
-        run: ccache -s
-
       - name: Verify data file deployment
         run: bash scripts/verify-build-output.sh "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin"
-
-      # -- Save slimmed CMake build cache (strip debug symbols to cut size) ----
-      - name: Slim and save CMake build cache
-        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
-        run: |
-          BUILD_DIR="${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}"
-          echo "[cache] Before cleanup:"
-          du -sh "$BUILD_DIR" 2>/dev/null || true
-          find "$BUILD_DIR" -name '*.dwp' -delete 2>/dev/null || true
-          find "$BUILD_DIR" -name '*.dwo' -delete 2>/dev/null || true
-          rm -rf "$BUILD_DIR/bin" 2>/dev/null || true
-          echo "[cache] After cleanup:"
-          du -sh "$BUILD_DIR" 2>/dev/null || true
-
-      - name: Save CMake build cache
-        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
-          key: cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
   # ---------------------------------------------------------------------------
   # Dev prerelease — rolling "latest build" on every push to main/master

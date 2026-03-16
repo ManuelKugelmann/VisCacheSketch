@@ -35,25 +35,7 @@ message(STATUS "Configure glfw")
 set(GLFW_BUILD_EXAMPLES OFF)
 set(GLFW_BUILD_TESTS OFF)
 set(GLFW_BUILD_DOCS OFF)
-# Replace /Zi with /Z7 so sccache doesn't try to cache a non-existent PDB.
-# Just appending /Z7 leaves /Zi in the flags; sccache sees /Fd, expects a
-# .pdb file, and fails with "file not found" when /Z7 suppresses PDB output.
-if(MSVC AND (CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER))
-    foreach(_flag_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG
-                      CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-        set(_saved_${_flag_var} "${${_flag_var}}")
-        if(${_flag_var} MATCHES "/Zi")
-            string(REPLACE "/Zi" "/Z7" ${_flag_var} "${${_flag_var}}")
-        endif()
-    endforeach()
-endif()
 add_subdirectory(glfw)
-if(MSVC AND (CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER))
-    foreach(_flag_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG
-                      CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-        set(${_flag_var} "${_saved_${_flag_var}}")
-    endforeach()
-endif()
 
 # imgui
 add_library(imgui INTERFACE)

@@ -12,7 +12,6 @@ on:
           - all
           - cmake-build
           - sccache
-          - ccache
           - packman
           - submodules
 
@@ -37,7 +36,6 @@ jobs:
           case "$SCOPE" in
             cmake-build) FILTER="cmake-build-" ;;
             sccache)     FILTER="sccache-" ;;
-            ccache)      FILTER="ccache-" ;;
             packman)     FILTER="packman-" ;;
             submodules)  FILTER="falcor-submodules-" ;;
             all)         FILTER="" ;;

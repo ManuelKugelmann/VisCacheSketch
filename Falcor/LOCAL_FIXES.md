@@ -69,26 +69,6 @@ plain `git submodule update` (no `-C`) when run standalone.
 
 ---
 
-## 3. GLFW: sccache fails to cache PDB when /Zi and /Z7 conflict
-
-**File:** `external/CMakeLists.txt`
-
-When using `sccache` as a compiler launcher with Ninja on MSVC, GLFW
-compilation fails because sccache tries to zip up the PDB file specified
-by `/Fd`, but no PDB is actually created. This happens when `/Z7` is
-appended to flags that already contain `/Zi` — the compiler uses `/Z7`
-(last wins, embeds debug info in `.obj`), but sccache still expects the
-PDB that `/Fd` points to.
-
-**Fix:** Before `add_subdirectory(glfw)`, replace `/Zi` with `/Z7` in
-`CMAKE_C_FLAGS_DEBUG`, `CMAKE_CXX_FLAGS_DEBUG`, and their RelWithDebInfo
-counterparts. The original flags are restored after `add_subdirectory()`
-so other targets are unaffected.
-
-**Upstream status:** Not yet reported (upstream GLFW doesn't use sccache).
-
----
-
 ## 4. CudaInterop: suppress C4100 and LNK4098 warnings on MSVC
 
 **File:** `Source/Samples/CudaInterop/CMakeLists.txt`
