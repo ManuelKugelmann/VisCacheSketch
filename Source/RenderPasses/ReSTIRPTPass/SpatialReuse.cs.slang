@@ -7,6 +7,8 @@ import Scene.HitInfo;
 import PathReservoir;
 import PathTracer;
 import Scene.Scene;
+import Scene.Material.TextureSampler;       // [Falcor 8] ExplicitLodTextureSampler
+import Scene.Material.MaterialFactory;      // [Falcor 8] getMaterialInstance
 import Utils.Debug.PixelDebug;
 import Rendering.Utils.PixelStats;
 import Utils.Sampling.TinyUniformSampleGenerator;
@@ -74,7 +76,7 @@ struct PathReusePass
         float3 camPos = gScene.camera.data.posW;
         float centralDist = distance(camPos, centralSd.posW);
         float neighborDist = distance(camPos, neighborSd.posW);
-        return dot(centralSd.N, neighborSd.N) >= 0.5f && abs(centralDist - neighborDist) < 0.1f * centralDist;
+        return dot(centralSd.frame.N, neighborSd.frame.N) >= 0.5f && abs(centralDist - neighborDist) < 0.1f * centralDist;
     }
 
     ShadingData getPixelShadingData(int2 pixel, out PackedHitInfo PrimaryHitPacked)
@@ -84,7 +86,7 @@ struct PathReusePass
         PrimaryHitPacked = vbuffer[pixel];
         if (isValidPackedHitInfo(PrimaryHitPacked))
         {
-            HitInfo PrimaryHit; PrimaryHit.unpack(PrimaryHitPacked);
+            HitInfo PrimaryHit = HitInfo(PrimaryHitPacked);
 
             TriangleHit th = PrimaryHit.getTriangleHit();
             sd = loadShadingData(PrimaryHit, -ray.dir, true);
@@ -572,7 +574,10 @@ struct PathReusePass
                         bool isDiffusePrimaryHit = !dstReservoir.pathFlags.decodeIsSpecularBounce(true);
                         bool isSpecularPrimaryHit = dstReservoir.pathFlags.decodeIsSpecularBounce(true) && !dstReservoir.pathFlags.decodeIsDeltaEvent(true);
 
-                        reflectance = computeSampleReflectance(kUseNRDDemodulation, isDiffusePrimaryHit, isSpecularPrimaryHit, centralPrimarySd);
+                        // [Falcor 8] computeSampleReflectance needs BSDFProperties
+                        let mi = gScene.materials.getMaterialInstance(centralPrimarySd, ExplicitLodTextureSampler(0.f));
+                        let centralBsdfProperties = mi.getProperties(centralPrimarySd);
+                        reflectance = computeSampleReflectance(kUseNRDDemodulation, isDiffusePrimaryHit, isSpecularPrimaryHit, centralPrimarySd, centralBsdfProperties);
 
                         ShadingData RcVertexSd = loadShadingDataWithPrevVertexPosition(dstReservoir.rcVertexHit.getHitInfo(), centralPrimarySd.posW, false);
                         hitDist = length(RcVertexSd.posW - centralPrimarySd.posW);
@@ -586,7 +591,7 @@ struct PathReusePass
                 }
                 else
                 {
-                    HitInfo centralPrimaryHit; centralPrimaryHit.unpack(centralPrimaryHitPacked);
+                    HitInfo centralPrimaryHit = HitInfo(centralPrimaryHitPacked);
                     Ray ray = Ray(gScene.camera.getPosition(), -centralPrimarySd.V, 0, kRayTMax);
 
                     traceDenoiserData(params, centralPrimaryHitPacked, centralPrimarySd,

@@ -6,6 +6,7 @@ import Shift;
 import Scene.HitInfo;
 import PathReservoir;
 import PathTracer;
+import Falcor8Compat;
 import Scene.Scene;
 import Utils.Debug.PixelDebug;
 import Rendering.Utils.PixelStats;
@@ -58,7 +59,7 @@ struct PathReusePass
         PrimaryHitPacked = vbuffer[pixel];
         if (isValidPackedHitInfo(PrimaryHitPacked))
         {
-            HitInfo PrimaryHit; PrimaryHit.unpack(PrimaryHitPacked);
+            HitInfo PrimaryHit = HitInfo(PrimaryHitPacked);
             sd = loadShadingData(PrimaryHit, -ray.dir, true);
         }
         return sd;
@@ -71,7 +72,7 @@ struct PathReusePass
         PrimaryHitPacked = temporalVbuffer[pixel];
         if (isValidPackedHitInfo(PrimaryHitPacked))
         {
-            HitInfo PrimaryHit; PrimaryHit.unpack(PrimaryHitPacked);
+            HitInfo PrimaryHit = HitInfo(PrimaryHitPacked);
             sd = loadShadingData(PrimaryHit, -ray.dir, true);
         }
         return sd;
