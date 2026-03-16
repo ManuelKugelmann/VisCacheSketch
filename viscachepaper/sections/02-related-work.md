@@ -107,6 +107,18 @@ variance-driven resolution adaptation in a flat hash for TSDF reconstruction —
 the same principle as our variance-gated write depth,
 applied to a different domain.
 
+SHaRC [Benyoub et al. 2024] (Spatial Hash Radiance Cache),
+shipped in NVIDIA's RTX SDK,
+uses world-space spatial hashing with two-pass update (sparse update + query)
+and roughness-gated LOD selection.
+Their LOD gating by surface roughness —
+coarse cells for glossy surfaces, fine cells for sharp reflections —
+is complementary to our variance-gated write depth:
+roughness gates the *query* resolution,
+variance gates the *write* resolution.
+SHaRC does not use a variance-coupled write gate,
+which is the mechanism that makes our cache self-regulating (Sec. 5).
+
 For hash noise we use pcg3d [Jarzynski and Olano 2020],
 a GPU hash function that passes all but one BigCrush test
 at ~12 ALU with no lookup table.

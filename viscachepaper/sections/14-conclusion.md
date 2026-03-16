@@ -48,6 +48,26 @@ could further improve budget allocation
 by incorporating per-ray traversal cost,
 backing off RR when rays are cheap
 and being more aggressive when BVH traversal is expensive.
+**Histogram stratification × VisCache.**
+The visibility cache's per-light μ estimates are composable
+with histogram-based light stratification
+at the same pipeline stage.
+VisCache serves as a cheap visibility oracle
+that enables large-K candidate evaluation:
+generate K candidate lights,
+sort by visibility-weighted contribution (histogram sort),
+apply QMC pick on the sorted distribution,
+then trace one accurate shadow ray for the winner.
+The benefit is multiplicative —
+cheaper K evaluations (cache lookup vs. shadow ray)
+*and* better distribution (histogram sort over the visibility-informed proposal).
+Crucially, the histogram sort operates on the proposal f̂,
+while exact evaluation (the traced shadow ray) is applied only to the winner —
+so approximate visibility in f̂ does not introduce bias,
+only changes sampling efficiency.
+This combination of VisCache with histogram stratification
+is a novel integration point.
+
 **Independent per-endpoint LOD.**
 The current design uses a shared level index —
 both endpoints are quantized at the same cell size,

@@ -2,6 +2,8 @@
 
 - [Aldous and Vazirani 1994] D. Aldous and U. Vazirani. "'Go with the Winners' Algorithms." *Proc. 35th IEEE FOCS*, pp. 492–501, 1994.
 
+- [Benyoub et al. 2024] A. Benyoub, K. Marteaux, and P. Boudier. "SHaRC: Spatial Hash Radiance Cache." NVIDIA RTX SDK, GDC 2024. [https://github.com/NVIDIAGameWorks/RTXGI](https://github.com/NVIDIAGameWorks/RTXGI)
+
 - [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Fast Path Space Filtering by Jittered Spatial Hashing." *ACM SIGGRAPH Talks*, 2018. Extended version: "Massively Parallel Path Space Filtering." *arXiv:1902.05942*, 2019.
 
 - [Bolin and Meyer 1997] M. R. Bolin and G. W. Meyer. "An Error Metric for Monte Carlo Ray Tracing." *Rendering Techniques '97* (Proc. Eurographics Workshop on Rendering), pp. 57–68, Springer, 1997.
