@@ -115,30 +115,6 @@ echo.
 :skip_interactive
 
 REM ---------------------------------------------------------------------------
-REM Select graph script based on renderer + variant
-REM ---------------------------------------------------------------------------
-set "GRAPH_SCRIPT="
-if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
-if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_Graph.py"
-if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_Graph.py"
-if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_Graph.py"
-
-REM Apply --variant viscache: switch to per-renderer VisCache graph
-if /i "%VARIANT%"=="viscache" (
-    if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_VisCache_Graph.py"
-    if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_VisCache_Graph.py"
-    if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_VisCache_Graph.py"
-    if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_VisCache_Graph.py"
-)
-
-if "%GRAPH_SCRIPT%"=="" (
-    echo [quickstart] Unknown renderer: %RENDERER%
-    echo [quickstart] Available: restirpt, rtxdi, pathtracer, minimal
-    echo [quickstart] Add --variant viscache to enable visibility cache
-    exit /b 1
-)
-
-REM ---------------------------------------------------------------------------
 REM Step 0: Pull latest
 REM ---------------------------------------------------------------------------
 echo.
@@ -197,80 +173,7 @@ echo  Step 3: Copy newer shaders, data, etc. to release
 echo ========================================
 if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [quickstart] step 3 deploy shaders, scripts, data from source tree to release
-
-    REM ---- Deploy ALL .slang shaders (source tree is authoritative) ----
-    REM Force-copy (no /D date check) — git pull/checkout timestamps are unreliable.
-
-    REM Falcor built-in shaders: Falcor\Source\Falcor\**\*.slang → release\shaders\
-    set "FALCOR_SRC=%ROOT%\Falcor\Source\Falcor"
-    set "FALCOR_DST=%RELEASE_DIR%\shaders"
-    if exist "!FALCOR_SRC!" (
-        xcopy "!FALCOR_SRC!\*.slang" "!FALCOR_DST!\" /s /Y /q >nul 2>&1
-        echo [quickstart]   Falcor built-in shaders deployed
-    )
-
-    REM Custom render pass shaders
-    for %%P in (VisCache ReSTIRPTPass) do (
-        set "SRC=%ROOT%\Source\RenderPasses\%%P"
-        set "DST=%RELEASE_DIR%\shaders\RenderPasses\%%P"
-        if exist "!SRC!" (
-            if not exist "!DST!" mkdir "!DST!"
-            xcopy "!SRC!\*.slang" "!DST!\" /Y /q >nul 2>&1
-            echo [quickstart]   %%P shaders deployed
-        )
-    )
-
-    REM ---- Deploy scripts ----
-    set "SCRIPTS_SRC=%ROOT%\scripts"
-    set "SCRIPTS_DST=%RELEASE_DIR%\scripts\VisCache"
-    if exist "%SCRIPTS_SRC%\smoke_test.py" (
-        if not exist "!SCRIPTS_DST!" mkdir "!SCRIPTS_DST!"
-        xcopy "%SCRIPTS_SRC%\*" "!SCRIPTS_DST!\" /s /Y /q >nul 2>&1
-        echo [quickstart]   scripts deployed
-    )
-
-    REM ---- Deploy ReSTIRPTPass data files ----
-    set "DATA_SRC=%ROOT%\Source\RenderPasses\ReSTIRPTPass\Data"
-    set "DATA_DST=%RELEASE_DIR%\data\ReSTIRPTPass"
-    if exist "!DATA_SRC!\16RooksPattern256.txt" (
-        if not exist "!DATA_DST!" mkdir "!DATA_DST!"
-        xcopy "!DATA_SRC!\*" "!DATA_DST!\" /s /Y /q >nul 2>&1
-        echo [quickstart]   ReSTIRPTPass data deployed
-    )
-
-    REM ---- Validate NRD (denoiser) availability in release ----
-    set "NRD_OK=1"
-    if not exist "%RELEASE_DIR%\NRDPass.dll" (
-        echo [quickstart]   NRDPass.dll: MISSING
-        set "NRD_OK=0"
-    ) else (
-        echo [quickstart]   NRDPass.dll: OK
-    )
-    if not exist "%RELEASE_DIR%\NRD.dll" (
-        echo [quickstart]   NRD.dll: MISSING
-        set "NRD_OK=0"
-    ) else (
-        echo [quickstart]   NRD.dll: OK
-    )
-    if "!NRD_OK!"=="0" (
-        echo [quickstart]   WARNING: NRD denoiser not in release -- output will be raw noisy radiance.
-        echo [quickstart]   Rebuild with D3D12 + packman NRD package, or download a release that includes NRD.
-    ) else (
-        echo [quickstart]   NRD denoiser: available
-    )
-
-    REM ---- Validate shaders (content hash) ----
-    REM Diagnostic: compare deployed vs source by SHA-256 to catch wrong
-    REM locations, partial copies, or stale files from the release archive.
-    where python >nul 2>&1
-    if errorlevel 1 (
-        echo [quickstart] python not found -- skipping shader content validation
-    ) else (
-        python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
-        if errorlevel 1 (
-            echo [quickstart] WARNING: Shader validation found issues ^(see above^)
-        )
-    )
+    call "%SCRIPT_DIR%deploy_to_release.bat"
 ) else (
     echo [quickstart] step 3 deploy shaders, scripts, data -- skipped ^(no release found^)
 )

@@ -66,8 +66,17 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Each vanilla graph script accepts `viscache=True` to add the VisCache pass; no code duplication between vanilla and VisCache variants
 - There is no `renderer=viscache` — VisCache is always a variant, not a renderer
 
+## Scripting Architecture
+
+- **No duplicated code** — shared logic lives in helper scripts, never copy-pasted between scripts
+  - `deploy_to_release.bat/.sh` — shader/script/data deploy + NRD check + shader validation (called by `quickstart` step 3 and `run_release` before launch)
+  - `quickstart` step 6 delegates to `run_release` (no duplicated scene resolution or Mogwai launch)
+  - `run_release` defaults to interactive mode when called with no arguments
+- When adding new deploy/validation steps, add them to the helper script, not inline
+
 ## Workflow
 
 - **No backwards compatibility** — move forward, don't maintain back-compat aliases or shims
+- **No duplicated code** — extract shared logic into helper scripts; never copy-paste between .bat/.sh files
 - Work step by step for large edits — small incremental Edit calls, not massive Write
 - **Fix all errors encountered**, even pre-existing ones
