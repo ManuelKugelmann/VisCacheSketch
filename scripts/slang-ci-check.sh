@@ -7,11 +7,14 @@
 #   - Front-end only (-no-codegen) — same as Falcor's initial compile pass
 #     (SLANG_COMPILE_FLAG_NO_CODEGEN).  Type conformances are applied at
 #     specialization time, so codegen errors like 50100 don't apply here.
+#   - DXIL target with sm_6_6 profile (matches Falcor's D3D12 backend)
 #   - Row-major matrices (-matrix-layout-row-major)
 #   - Short-circuit disabled (-disable-short-circuit)
 #   - Warning suppressions matching ProgramManager (15602, 30056, 30081, 41203)
 #   - Include paths: Source/Falcor, Source, external/packman/nanovdb/include
-#   - Platform defines: FALCOR_VULKAN=1, __SM_6_6__=1
+#   - Platform defines: FALCOR_D3D12=1, __SM_6_6__=1
+#
+# Compiles ALL Falcor render-pass entry-point shaders (.cs.slang / .rt.slang).
 #
 # Usage: scripts/slang-ci-check.sh <path-to-slangc>
 
@@ -23,11 +26,12 @@ RESULTS="slang-check-results.log"
 
 PASS=0
 FAIL=0
+SKIP=0
 
 if [ -t 1 ]; then
-  GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
+  GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
 else
-  GREEN=''; RED=''; NC=''
+  GREEN=''; RED=''; YELLOW=''; NC=''
 fi
 
 check() {
@@ -47,6 +51,14 @@ check() {
     echo "$output" >&2
     FAIL=$((FAIL + 1))
   fi
+}
+
+skip() {
+  local file="$1"; shift
+  local reason="$1"
+  printf "  %-65s ${YELLOW}SKIP${NC} (%s)\n" "$file" "$reason"
+  echo "SKIP $file ($reason)" >> "$RESULTS"
+  SKIP=$((SKIP + 1))
 }
 
 echo "=== Slang Shader CI Check ==="
@@ -116,10 +128,19 @@ VC_STUBS="${SCRIPT_DIR}/slang-ci-viscache-stubs.slang"
 # Target DXIL (matching Falcor's D3D12 backend) — [require(sm_6_6)] needs this.
 COMMON="-target dxil ${CODEGEN} ${COMPILER_FLAGS} ${WARN_FLAGS} ${SEARCH_PATHS} ${PLATFORM_DEFS} ${DFLAGS}"
 
-VISCACHE_DIR="${FALCOR}/Source/RenderPasses/VisCache"
-PT_DIR="${FALCOR}/Source/RenderPasses/PathTracer"
-RTXDI_DIR="${FALCOR}/Source/RenderPasses/RTXDIPass"
-RESTIR_DIR="${FALCOR}/Source/RenderPasses/ReSTIRPTPass"
+RP_DIR="${FALCOR}/Source/RenderPasses"
+VISCACHE_DIR="${RP_DIR}/VisCache"
+
+# ---------------------------------------------------------------------------
+# Skip list: shaders that need external SDKs not available in CI
+# ---------------------------------------------------------------------------
+# FinalShading.cs.slang — accesses gRTXDI.frameIndex (needs RTXDI SDK)
+# TestPyTorchPass.cs.slang — needs PyTorch/CUDA interop
+declare -A SKIP_FILES
+SKIP_FILES["FinalShading.cs.slang"]="requires RTXDI SDK"
+SKIP_FILES["TestPyTorchPass.cs.slang"]="requires PyTorch interop"
+SKIP_FILES["PackRadiance.cs.slang"]="requires NRD SDK"
+SKIP_FILES["BSDFOptimizer.cs.slang"]="differentiable programming (error 41020)"
 
 # ===========================================================================
 # VisCache — self-contained core + Falcor-dependent modules
@@ -149,69 +170,59 @@ check "${VISCACHE_DIR}/RevalidationCommon.slang" \
 echo ""
 
 # ===========================================================================
-# PathTracer — entry-point shaders
+# All Falcor render passes — auto-discover .cs.slang and .rt.slang
 # ===========================================================================
-echo "--- PathTracer ---"
+# Iterate every render-pass directory and compile all entry-point shaders,
+# exactly as Falcor's ProgramManager would at runtime.
 
-PT_FLAGS="${COMMON} -I ${PT_DIR}"
+for pass_dir in "${RP_DIR}"/*/; do
+  pass_name=$(basename "$pass_dir")
 
-check "${PT_DIR}/GeneratePaths.cs.slang" \
-  ${PT_FLAGS} -entry main -stage compute
+  # VisCache entry points are handled above (self-contained + stubs)
+  [ "$pass_name" = "VisCache" ] && continue
 
-check "${PT_DIR}/ReflectTypes.cs.slang" \
-  ${PT_FLAGS} -entry main -stage compute
+  # Collect entry-point files (.cs.slang and .rt.slang)
+  shaders=$(find "$pass_dir" -name '*.cs.slang' -o -name '*.rt.slang' | sort)
 
-check "${PT_DIR}/ResolvePass.cs.slang" \
-  ${PT_FLAGS} -entry main -stage compute
+  [ -z "$shaders" ] && continue
 
-check "${PT_DIR}/TracePass.rt.slang" \
-  ${PT_FLAGS}
+  echo "--- ${pass_name} ---"
 
-echo ""
+  PASS_FLAGS="${COMMON} -I ${pass_dir}"
 
-# ===========================================================================
-# RTXDIPass — entry-point shaders
-# ===========================================================================
-echo "--- RTXDIPass ---"
+  while IFS= read -r f; do
+    fname=$(basename "$f")
 
-RTXDI_FLAGS="${COMMON} -I ${RTXDI_DIR}"
+    # Check skip list
+    if [ -n "${SKIP_FILES[$fname]+x}" ]; then
+      skip "$f" "${SKIP_FILES[$fname]}"
+      continue
+    fi
 
-check "${RTXDI_DIR}/PrepareSurfaceData.cs.slang" \
-  ${RTXDI_FLAGS} -entry main -stage compute
+    if [[ "$fname" == *.rt.slang ]]; then
+      # Raytracing shaders — no explicit entry point / stage
+      check "$f" ${PASS_FLAGS}
+    else
+      # Compute shaders — detect entry point name from source
+      entry=$(grep -oP '(?<=void )\w+(?=\()' "$f" | tail -1 || true)
+      if [ -z "$entry" ]; then
+        skip "$f" "no entry point found"
+        continue
+      fi
+      check "$f" ${PASS_FLAGS} -entry "$entry" -stage compute
+    fi
+  done <<< "$shaders"
 
-# FinalShading.cs.slang accesses gRTXDI.frameIndex which requires the RTXDI
-# SDK (RTXDI_INSTALLED=1).  At runtime Falcor only compiles this shader when
-# the SDK is present, so we skip it in CI — same as Falcor would.
-echo "  (skip FinalShading.cs.slang — requires RTXDI SDK)"
-
-echo ""
-
-# ===========================================================================
-# ReSTIRPTPass — entry-point shaders
-# ===========================================================================
-echo "--- ReSTIRPTPass ---"
-
-RESTIR_FLAGS="${COMMON} -I ${RESTIR_DIR}"
-
-if [ -d "$RESTIR_DIR" ]; then
-  for f in "$RESTIR_DIR"/*.cs.slang; do
-    [ -f "$f" ] || continue
-    entry=$(grep -oP '(?<=void )\w+(?=\()' "$f" | tail -1 || true)
-    [ -n "$entry" ] || continue
-    check "$f" \
-      ${RESTIR_FLAGS} -entry "$entry" -stage compute
-  done
-fi
-
-echo ""
+  echo ""
+done
 
 # ===========================================================================
 # Summary
 # ===========================================================================
 TOTAL=$((PASS + FAIL))
-echo "=== Results: ${PASS} passed, ${FAIL} failed (${TOTAL} total) ==="
+echo "=== Results: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped (${TOTAL} compiled) ==="
 echo "" >> "$RESULTS"
-echo "Total: ${PASS} passed, ${FAIL} failed" >> "$RESULTS"
+echo "Total: ${PASS} passed, ${FAIL} failed, ${SKIP} skipped" >> "$RESULTS"
 
 if [ "$FAIL" -gt 0 ]; then
   echo ""

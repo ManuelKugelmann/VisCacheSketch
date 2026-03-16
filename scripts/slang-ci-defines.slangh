@@ -157,3 +157,87 @@
 #define SEPARATE_PATH_BSDF 0
 #define RCDATA_PATH_NUM 6
 #define RCDATA_PAD_SIZE 1
+
+// ---- GBuffer defines (GBufferRT.slang / VBufferRT.slang) ------------------
+#define COMPUTE_DEPTH_OF_FIELD 0
+#define DISABLE_ALPHA_TEST 0
+#define LOD_MODE 0
+#define ADJUST_SHADING_NORMALS_GBUFFER 1
+#define PER_PRIMITIVE_NORMALS 0
+#define USE_ENV_MAP_BACKGROUND 1
+// GBufferRT.slang checks these exist (doesn't require specific values)
+#define is_valid_gPosW 1
+#define is_valid_gNormW 1
+#define is_valid_gTangentW 1
+#define is_valid_gFaceNormalW 1
+#define is_valid_gTexC 1
+#define is_valid_gTexGrads 0
+#define is_valid_gMVec 1
+#define is_valid_gVBuffer 1
+#define is_valid_gViewW 1
+#define is_valid_gMaterialData 1
+#define is_valid_gLinearZ 1
+#define is_valid_gDepth 1
+#define is_valid_gDisocclusion 0
+#define is_valid_gMask 0
+#define is_valid_gTime 0
+#define is_valid_gSurfaceSpreadAngle 0
+#define is_valid_gMotionVector 1
+#define is_valid_gMotionVectorW 0
+#define is_valid_gGuideNormalW 0
+#define is_valid_gDiffOpacity 0
+#define is_valid_gSpecRough 0
+#define is_valid_gEmissive 0
+#define is_valid_gNormalWRoughnessMaterialID 0
+
+// ---- MinimalPathTracer -------------------------------------------------
+#define MAX_BOUNCES 3
+#define COMPUTE_DIRECT 1
+#define TEX_LOD_MODE 0
+#define RAY_FLAGS 0
+#define USE_IMPORTANCE_SAMPLING 1
+
+// ---- WhittedRayTracer --------------------------------------------------
+#define RAY_CONE_MODE 0
+#define RAY_CONE_FILTER_MODE 0
+#define RAY_DIFF_FILTER_MODE 0
+#define USE_ROUGHNESS_TO_VARIANCE 0
+#define VISUALIZE_SURFACE_SPREAD 0
+#define USE_FRESNEL_AS_BRDF 0
+
+// ---- FLIPPass -------------------------------------------------------------
+#define TONE_MAPPER 0
+
+// ---- ModulateIllumination -------------------------------------------------
+#define is_valid_gDiffuseRadiance 1
+#define is_valid_gDiffuseReflectance_MI 1
+#define is_valid_gSpecularRadiance 1
+#define is_valid_gSpecularReflectance_MI 1
+#define is_valid_gResidualRadiance 0
+#define is_valid_gDeltaReflectionEmission 0
+#define is_valid_gDeltaReflectionRadiance 0
+#define is_valid_gDeltaReflectionReflectance 0
+#define is_valid_gDeltaTransmissionEmission 0
+#define is_valid_gDeltaTransmissionRadiance 0
+#define is_valid_gDeltaTransmissionReflectance 0
+
+// ---- PixelInspectorPass ---------------------------------------------------
+#define is_valid_gTextureGrads 1
+
+// ---- Composite pass -------------------------------------------------------
+#define COMPOSITE_MODE 0
+#define OUTPUT_FORMAT 0
+
+// ---- TestPasses -----------------------------------------------------------
+#define MODE 0
+
+// ---- WARDiffPathTracer ----------------------------------------------------
+#define DIFF_MODE 0
+#define USE_WAR 0
+#define SAMPLES_PER_PIXEL_WARDIFF 1
+#define AUX_SAMPLE_COUNT 16
+#define LOG10_VMF_CONCENTRATION 1.0
+#define LOG10_VMF_CONCENTRATION_SCREEN 1.0
+#define BOUNDARY_TERM_BETA 0.01
+#define USE_ANTITHETIC_SAMPLING 0
+#define HARMONIC_GAMMA 2.0
