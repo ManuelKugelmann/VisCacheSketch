@@ -1,7 +1,8 @@
 @echo off
 REM run_release.bat — Launch Mogwai with a VisCache scene.
 REM
-REM Usage:  scripts\run_release.bat [--scene VeachAjar|Bistro|Sponza|Arcade]
+REM Usage:  scripts\run_release.bat [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
+REM                                 [--renderer viscache|minimal]
 REM
 REM Requires: release\Mogwai.exe (run download_release.bat first)
 REM           media\ scenes (run download_scenes.bat first)
@@ -15,6 +16,7 @@ call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=VeachAjar"
+set "RENDERER=viscache"
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -22,10 +24,21 @@ REM ---------------------------------------------------------------------------
 :parse_args
 if "%~1"=="" goto :args_done
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--renderer" (set "RENDERER=%~2" & shift & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade]
+echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade^|CornellBox] [--renderer viscache^|minimal]
 exit /b 1
 :args_done
+
+REM Select graph script based on renderer
+set "GRAPH_SCRIPT="
+if /i "%RENDERER%"=="viscache" set "GRAPH_SCRIPT=VisCache_Graph.py"
+if /i "%RENDERER%"=="minimal" set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
+if "%GRAPH_SCRIPT%"=="" (
+    echo [launch] Unknown renderer: %RENDERER%
+    echo [launch] Available: viscache, minimal
+    exit /b 1
+)
 
 REM ---------------------------------------------------------------------------
 REM Deploy fresh scripts from source tree into release/scripts/VisCache/
@@ -152,10 +165,11 @@ if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RELEASE_DIR%\data\ReSTIRPTPass\Vea
 if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
+if /i "%SCENE%"=="CornellBox" set "SCENE_FILE=%ROOT%\scenes\CornellBox.pyscene"
 
 if "%SCENE_FILE%"=="" (
     echo [launch] Unknown scene: %SCENE%
-    echo [launch] Available: VeachAjar, Bistro, Sponza, Arcade
+    echo [launch] Available: VeachAjar, Bistro, Sponza, Arcade, CornellBox
     exit /b 1
 )
 
@@ -165,10 +179,10 @@ if not exist "%SCENE_FILE%" (
     exit /b 1
 )
 
-echo [launch] Starting Mogwai with %SCENE%...
-echo [launch] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene %SCENE_FILE%
+echo [launch] Starting Mogwai with %SCENE% (renderer: %RENDERER%)...
+echo [launch] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\%GRAPH_SCRIPT% --scene %SCENE_FILE%
 echo.
 set "FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%"
-"%RELEASE_DIR%\Mogwai.exe" --script "%RELEASE_DIR%\scripts\VisCache\VisCache_Graph.py" --scene "%SCENE_FILE%"
+"%RELEASE_DIR%\Mogwai.exe" --script "%RELEASE_DIR%\scripts\VisCache\%GRAPH_SCRIPT%" --scene "%SCENE_FILE%"
 
 endlocal

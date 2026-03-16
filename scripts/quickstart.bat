@@ -1,7 +1,8 @@
 @echo off
 REM quickstart.bat — Run the full VisCacheSketch quickstart sequence (steps 0-6).
 REM
-REM Usage:  scripts\quickstart.bat [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes] [--skip-pull] [--skip-launch]
+REM Usage:  scripts\quickstart.bat [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
+REM                                [--renderer viscache|minimal] [--skip-scenes] [--skip-pull] [--skip-launch]
 REM
 REM Steps:
 REM   0. git pull                   (unless --skip-pull)
@@ -21,6 +22,7 @@ REM Resolve script directory to absolute path (robust in nested call chains)
 for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 set "SCENE=VeachAjar"
+set "RENDERER=viscache"
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
 
@@ -35,13 +37,24 @@ REM ---------------------------------------------------------------------------
 :parse_args
 if "%~1"=="" goto :args_done
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--renderer" (set "RENDERER=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=1" & shift & goto :parse_args)
 if /i "%~1"=="--skip-pull" (set "SKIP_PULL=1" & shift & goto :parse_args)
 if /i "%~1"=="--skip-launch" (set "SKIP_LAUNCH=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade] [--skip-scenes] [--skip-pull] [--skip-launch]
+echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade^|CornellBox] [--renderer viscache^|minimal] [--skip-scenes] [--skip-pull] [--skip-launch]
 exit /b 1
 :args_done
+
+REM Select graph script based on renderer
+set "GRAPH_SCRIPT="
+if /i "%RENDERER%"=="viscache" set "GRAPH_SCRIPT=VisCache_Graph.py"
+if /i "%RENDERER%"=="minimal" set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
+if "%GRAPH_SCRIPT%"=="" (
+    echo [quickstart] Unknown renderer: %RENDERER%
+    echo [quickstart] Available: viscache, minimal
+    exit /b 1
+)
 
 REM ---------------------------------------------------------------------------
 REM Step 0: Pull latest
@@ -56,8 +69,13 @@ if "%SKIP_PULL%"=="1" (
     for /f "delims=" %%B in ('git -C "%ROOT%." rev-parse --abbrev-ref HEAD 2^>nul') do set "BRANCH=%%B"
     if defined BRANCH (
         echo [quickstart] step 0 pull ^(branch: !BRANCH!^)
+        REM Stash local changes that setup-build-system may have made (e.g. CMakeLists.txt)
+        REM so pull does not fail with "local changes would be overwritten".
+        git -C "%ROOT%." stash --quiet 2>nul
         git -C "%ROOT%." pull origin !BRANCH!
         if errorlevel 1 echo [quickstart] WARNING: pull failed, continuing with current checkout
+        REM Re-apply stashed changes (if any); ignore conflicts since step 3 re-deploys anyway
+        git -C "%ROOT%." stash pop --quiet 2>nul
     ) else (
         echo [quickstart] step 0 pull -- skipped ^(not a git repo^)
     )
@@ -229,6 +247,7 @@ if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RELEASE_DIR%\data\ReSTIRPTPass\Vea
 if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
+if /i "%SCENE%"=="CornellBox" set "SCENE_FILE=%ROOT%\scenes\CornellBox.pyscene"
 
 if "%SCENE_FILE%"=="" (
     echo [quickstart] step 6 launch -- skipped ^(unknown scene: %SCENE%^)
@@ -265,11 +284,11 @@ if not "!CHECKOUT_SHA!"=="unknown" if not "!RELEASE_SHA!"=="unknown" (
     )
 )
 
-echo [quickstart] step 6 launch ^(%SCENE%^)
-echo [quickstart] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\VisCache_Graph.py --scene %SCENE_FILE%
+echo [quickstart] step 6 launch ^(%SCENE%, renderer: %RENDERER%^)
+echo [quickstart] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\%GRAPH_SCRIPT% --scene %SCENE_FILE%
 echo.
 set "FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%"
-"%RELEASE_DIR%\Mogwai.exe" --script "%RELEASE_DIR%\scripts\VisCache\VisCache_Graph.py" --scene "%SCENE_FILE%"
+"%RELEASE_DIR%\Mogwai.exe" --script "%RELEASE_DIR%\scripts\VisCache\%GRAPH_SCRIPT%" --scene "%SCENE_FILE%"
 
 :done
 endlocal
