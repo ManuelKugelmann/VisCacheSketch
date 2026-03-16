@@ -120,20 +120,26 @@ if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%SHA_FILE%" (
 )
 
 REM ---------------------------------------------------------------------------
-REM Download from the versioned tag
+REM Download from the versioned tag (fall back to dev-latest if asset missing)
 REM ---------------------------------------------------------------------------
-set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/!REMOTE_TAG!/viscache-windows-Release.tar.gz"
+set "ASSET_NAME=viscache-windows-Release.tar.gz"
+set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/!REMOTE_TAG!/!ASSET_NAME!"
 echo [release] Downloading: !DOWNLOAD_URL!
-curl -fSL --progress-bar -H "Cache-Control: no-cache" -o "%ARCHIVE%" "!DOWNLOAD_URL!"
+curl -fSL --progress-bar -H "Cache-Control: no-cache" -o "%ARCHIVE%" "!DOWNLOAD_URL!" 2>nul
 if errorlevel 1 (
-    echo [release] Download failed. Skipping.
-    echo [release] This is normal for first-time setup or pre-release branches.
-    echo [release]
-    echo [release] To get Mogwai manually:
-    echo [release]   Download: https://github.com/%REPO%/releases
-    echo [release]   Build:    run setup-build-system.bat, then cmake --preset windows-vs2022-ci
-    del "%ARCHIVE%" 2>nul
-    exit /b 0
+    echo [release] Asset not found on versioned tag, trying dev-latest...
+    set "FALLBACK_URL=https://github.com/%REPO%/releases/download/dev-latest/!ASSET_NAME!"
+    curl -fSL --progress-bar -H "Cache-Control: no-cache" -o "%ARCHIVE%" "!FALLBACK_URL!"
+    if errorlevel 1 (
+        echo [release] Download failed. Skipping.
+        echo [release] This is normal for first-time setup or pre-release branches.
+        echo [release]
+        echo [release] To get Mogwai manually:
+        echo [release]   Download: https://github.com/%REPO%/releases
+        echo [release]   Build:    run setup-build-system.bat, then cmake --preset windows-vs2022-ci
+        del "%ARCHIVE%" 2>nul
+        exit /b 0
+    )
 )
 
 REM Save commit SHA for future update checks
