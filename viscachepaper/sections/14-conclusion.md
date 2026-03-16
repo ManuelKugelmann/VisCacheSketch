@@ -150,17 +150,10 @@ for real-time applications using MCMC,
 avoiding costly fitting procedures
 and hierarchical spatial data structures
 that are inefficient on GPU architectures.
-Unlike ReSTIR PG [Zeng et al. 2025],
-which requires ReSTIR output to build guiding distributions,
-MCMC path guiding works standalone —
-making it combinable with ReSTIR PG
-as a fallback for frames or regions
-where ReSTIR has insufficient sample density.
-The visibility cache is orthogonal to both:
-it gates the shadow ray regardless of how the path was guided,
-and its variance signal could inform
-the MCMC proposal's acceptance probability
-in visibility-dominated regions.
+The visibility cache is orthogonal:
+it operates on pairwise (point, point) → {0,1} queries
+regardless of how those points were generated —
+whether by MCMC path guiding, ReSTIR, or any other sampler.
 
 **Independent per-endpoint LOD.**
 The current design uses a shared level index —
