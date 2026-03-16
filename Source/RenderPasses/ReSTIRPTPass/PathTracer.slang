@@ -37,8 +37,12 @@ __exported import Params;
 
 uint getAllowedBSDFFlags(bool isSpecularBounce)
 {
-    if (kSeparatePathBSDF) return isSpecularBounce ? 0xc : 0x3;
-    else return -1;
+    // DQLin original used SampledBSDFFlags {DiffuseRefl=1, DiffuseTrans=2, SpecRefl=4, SpecTrans=8}.
+    // Falcor 8 LobeType uses different bit layout; map accordingly.
+    // Specular class: SpecularReflection(0x02)|DeltaReflection(0x04)|SpecularTransmission(0x20)|DeltaTransmission(0x40) = 0x66
+    // Diffuse class:  DiffuseReflection(0x01)|DiffuseTransmission(0x10) = 0x11
+    if (kSeparatePathBSDF) return isSpecularBounce ? 0x66 : 0x11;
+    else return 0xff; // LobeType::All
 }
 
 /// Porting shim: DQLin's getBSDFLobes(sd) -> Falcor 8.0 IMaterialInstance.getLobeTypes(sd).
@@ -312,7 +316,11 @@ struct PathTracer
         bool valid;
         BSDFSample_ result;
 
-        if (kUseBSDFSampling) valid = sampleBSDF(sd, path.sg, result, !kSeparatePathBSDF); // daqi: indicate using deterministic BSDF
+        // Always importance-sample. The original DQLin code's 4th parameter was
+        // "useDeterministicBSDF" (extra lobe-filtered re-evaluation), NOT
+        // "useImportanceSampling". Falcor 8's mi.sample() handles hemisphere
+        // consistency internally, so the deterministic re-eval is not needed.
+        if (kUseBSDFSampling) valid = sampleBSDF(sd, path.sg, result, true);
         else valid = sampleBSDF_Reference(sd, path.sg, result);
 
         float pdfAll = result.pdf;

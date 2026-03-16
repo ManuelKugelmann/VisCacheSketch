@@ -54,9 +54,23 @@ bool sampleBSDF(const ShadingData sd, inout SampleGenerator sg, out BSDFSample_ 
     {
         result.wi        = bs.wo;
         result.pdf       = bs.pdf;
-        result.pdfSingle = bs.pdf;   // Overwritten by caller when kSeparatePathBSDF.
         result.weight    = bs.weight;
         result.lobe      = bs.lobeType;
+
+        // Compute pdfSingle: the PDF contribution from only the sampled lobe class.
+        // In DQLin's Falcor 4.4, bsdf.sample() returned this as a separate output
+        // (the per-lobe selection-weighted PDF before adding cross-lobe MIS terms).
+        // Falcor 8's mi.sample() only returns the combined PDF. We approximate
+        // pdfSingle by re-evaluating with setActiveLobes, which is consistent with
+        // how evalPdfBSDF computes filtered PDFs in shift mapping.
+        bool isSampledSpecular = (bs.lobeType & ((uint)LobeType::Specular | (uint)LobeType::Delta)) != 0;
+        // Specular class: 0x66 = Specular|Delta (reflection+transmission)
+        // Diffuse class:  0x11 = Diffuse (reflection+transmission)
+        uint sampledClassFlags = isSampledSpecular ? 0x66 : 0x11;
+        ShadingData sdCopy = sd;
+        sdCopy.mtl.setActiveLobes(sampledClassFlags);
+        let miFiltered = _getMI(sdCopy);
+        result.pdfSingle = miFiltered.evalPdf(sdCopy, bs.wo, useImportanceSampling);
     }
     return valid;
 }
@@ -87,9 +101,9 @@ float3 evalBSDFCosine(const ShadingData sd, float3 dir)
 
 float3 evalBSDFCosine(const ShadingData sd, float3 dir, uint allowedFlags)
 {
-    // Apply lobe mask via mtl.setActiveLobes before eval, then restore.
+    // Apply lobe mask via mtl.setActiveLobes before eval.
     ShadingData sdCopy = sd;
-    if (allowedFlags != 0xffffffff)
+    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
         sdCopy.mtl.setActiveLobes(allowedFlags);
     SampleGenerator sg = SampleGenerator(uint2(0), 0);
     let mi = _getMI(sdCopy);
@@ -129,7 +143,8 @@ float evalPdfBSDF(const ShadingData sd, float3 dir, out float pdfAll, uint allow
     pdfAll = mi.evalPdf(sd, dir, true);
 
     // Component PDF with lobe mask.
-    if (allowedFlags != 0xffffffff)
+    // 0xff = LobeType::All, 0xffffffff = legacy "all" sentinel — both mean no filtering.
+    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
     {
         ShadingData sdCopy = sd;
         sdCopy.mtl.setActiveLobes(allowedFlags);
@@ -157,7 +172,7 @@ float evalPdfBSDFWithV(const ShadingData sd, float3 newV, float3 dir, uint allow
 {
     ShadingData sdCopy = sd;
     sdCopy.V = newV;
-    if (allowedFlags != 0xffffffff)
+    if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
         sdCopy.mtl.setActiveLobes(allowedFlags);
     let mi = _getMI(sdCopy);
     return mi.evalPdf(sdCopy, dir, true);
