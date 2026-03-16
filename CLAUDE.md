@@ -48,6 +48,13 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - `.gitattributes`: LF everywhere, CRLF for `.bat` files
 - Edit/Write tools strip `\r` — fine since repo is LF-normalized
 
+## Scenes
+
+- **Default test scene: VeachAjar** (DQLin ReSTIR PT reference scene) — small, no download needed after data deploy
+- VeachAjar lives in source tree: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/`, deployed to `release/data/ReSTIRPTPass/VeachAjar/`
+- Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
+- Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
+
 ## Workflow
 
 - Work step by step for large edits — small incremental Edit calls, not massive Write

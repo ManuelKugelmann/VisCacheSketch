@@ -1,7 +1,7 @@
 @echo off
 REM quickstart.bat — Run the full VisCacheSketch quickstart sequence (steps 0-6).
 REM
-REM Usage:  scripts\quickstart.bat [--scene Bistro|Sponza|Arcade] [--skip-scenes] [--skip-pull]
+REM Usage:  scripts\quickstart.bat [--scene VeachAjar|Bistro|Sponza|Arcade] [--skip-scenes] [--skip-pull]
 REM
 REM Steps:
 REM   0. git pull                   (unless --skip-pull)
@@ -20,7 +20,7 @@ setlocal enabledelayedexpansion
 REM Resolve script directory to absolute path (robust in nested call chains)
 for %%F in ("%~f0") do set "SCRIPT_DIR=%%~dpF"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
-set "SCENE=Bistro"
+set "SCENE=VeachAjar"
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
 
@@ -37,7 +37,7 @@ if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--skip-scenes" (set "SKIP_SCENES=1" & shift & goto :parse_args)
 if /i "%~1"=="--skip-pull" (set "SKIP_PULL=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene Bistro^|Sponza^|Arcade] [--skip-scenes] [--skip-pull]
+echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade] [--skip-scenes] [--skip-pull]
 exit /b 1
 :args_done
 
@@ -195,6 +195,7 @@ if not exist "%RELEASE_DIR%\Mogwai.exe" (
 )
 
 set "SCENE_FILE="
+if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RELEASE_DIR%\data\ReSTIRPTPass\VeachAjar\VeachAjar.pyscene"
 if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
