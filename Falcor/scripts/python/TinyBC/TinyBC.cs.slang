@@ -28,7 +28,7 @@
 
 import BCTypes;
 
-static bool kUseAdam = USE_ADAM;
+static const bool kUseAdam = USE_ADAM != 0;
 static int kNumOptimizationSteps = NUM_OPTIMIZATION_STEPS;
 
 uniform float lr;

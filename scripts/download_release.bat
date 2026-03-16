@@ -11,11 +11,13 @@ REM Requires: curl, tar (both ship with Windows 10+)
 setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
-set "ROOT=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "RELEASE_DIR=%ROOT%\release"
 set "DOWNLOAD_URL=https://github.com/%REPO%/releases/download/dev-latest/viscache-windows-Release.tar.gz"
 set "ETAG_FILE=%RELEASE_DIR%\.release-etag"
+set "VERSION_FILE=%RELEASE_DIR%\.release-version"
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
+set "API_URL=https://api.github.com/repos/%REPO%/releases/tags/dev-latest"
 
 where curl >nul 2>&1 || (echo [release] ERROR: curl not found in PATH & exit /b 1)
 where tar >nul 2>&1 || (echo [release] ERROR: tar not found in PATH & exit /b 1)
@@ -23,11 +25,36 @@ where tar >nul 2>&1 || (echo [release] ERROR: tar not found in PATH & exit /b 1)
 mkdir "%RELEASE_DIR%" 2>nul
 
 REM ---------------------------------------------------------------------------
+REM Query remote release info from GitHub API (single call)
+REM ---------------------------------------------------------------------------
+set "REMOTE_TAG="
+set "REMOTE_DATE="
+set "API_JSON=%TEMP%\vc-release-api.json"
+curl -fsSL "%API_URL%" -o "%API_JSON%" 2>nul
+if not errorlevel 1 (
+    for /f "tokens=2 delims=:, " %%A in ('findstr /i "\"tag_name\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_TAG set "REMOTE_TAG=%%~A"
+    REM Extract just the date (YYYY-MM-DD) from published_at to avoid colon issues
+    for /f "tokens=2 delims=:, " %%A in ('findstr /i "\"published_at\"" "%API_JSON%" 2^>nul') do if not defined REMOTE_DATE (
+        set "_RAW=%%~A"
+        for /f "tokens=1 delims=T" %%D in ("!_RAW!") do set "REMOTE_DATE=%%D"
+    )
+)
+del "%API_JSON%" 2>nul
+
+REM ---------------------------------------------------------------------------
 REM Check for newer release via ETag
 REM ---------------------------------------------------------------------------
 if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%ETAG_FILE%" (
     set /p OLD_ETAG=<"%ETAG_FILE%"
+    set "INSTALLED_VER=unknown"
+    if exist "%VERSION_FILE%" set /p INSTALLED_VER=<"%VERSION_FILE%"
     echo [release] Checking for newer release...
+    echo [release]   Installed: !INSTALLED_VER!
+    if defined REMOTE_TAG (
+        echo [release]   Remote:    !REMOTE_TAG! ^(!REMOTE_DATE!^)
+    ) else (
+        echo [release]   Remote:    ^(could not query GitHub API^)
+    )
     for /f "delims=" %%E in ('curl -fsSL -H "Cache-Control: no-cache" -I "%DOWNLOAD_URL%" 2^>nul ^| findstr /i "^etag:"') do set "ETAG_LINE=%%E"
     if defined ETAG_LINE (
         REM Compare stored ETag with remote
@@ -57,7 +84,7 @@ if errorlevel 1 (
     echo [release]
     echo [release] To get Mogwai manually:
     echo [release]   Download: https://github.com/%REPO%/releases
-    echo [release]   Build:    run setup.bat, then cmake --preset windows-vs2022-ci
+    echo [release]   Build:    run setup-build-system.bat, then cmake --preset windows-vs2022-ci
     del "%ARCHIVE%" 2>nul
     exit /b 0
 )
@@ -68,6 +95,13 @@ for /f "tokens=2 delims= " %%E in ('findstr /i "^etag:" "%TEMP%\vc-release-heade
 )
 del "%TEMP%\vc-release-headers.txt" 2>nul
 
+REM Save release version for display on next update check
+if defined REMOTE_TAG (
+    echo !REMOTE_TAG! ^(!REMOTE_DATE!^)> "%VERSION_FILE%"
+) else (
+    echo dev-latest> "%VERSION_FILE%"
+)
+
 REM ---------------------------------------------------------------------------
 REM Clean old release — move aside so tar doesn't hit "Refusing to overwrite"
 REM ---------------------------------------------------------------------------
@@ -76,8 +110,9 @@ if exist "%RELEASE_DIR%\Mogwai.exe" (
     echo [release] Moving old release aside...
     move /y "%RELEASE_DIR%" "%OLD_RELEASE%" >nul 2>&1
     mkdir "%RELEASE_DIR%" 2>nul
-    REM Preserve ETag file
+    REM Preserve ETag and version files
     if exist "%OLD_RELEASE%\.release-etag" copy /y "%OLD_RELEASE%\.release-etag" "%ETAG_FILE%" >nul 2>&1
+    if exist "%OLD_RELEASE%\.release-version" copy /y "%OLD_RELEASE%\.release-version" "%VERSION_FILE%" >nul 2>&1
 )
 
 echo [release] Extracting to %RELEASE_DIR%...

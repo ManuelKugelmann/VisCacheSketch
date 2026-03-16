@@ -7,10 +7,10 @@
  # minimises the diff in PathTracer.slang and Shift.slang.
  **************************************************************************/
 
-import Scene.Scene;
-import Scene.ShadingData;
+import Scene.Shading;
+import Scene.Material.TextureSampler;       // ExplicitLodTextureSampler
+import Scene.Material.MaterialFactory;      // MaterialSystem.getMaterialInstance()
 import Rendering.Materials.IMaterialInstance;
-import Rendering.Materials.TexLODHelpers;
 import Utils.Sampling.SampleGenerator;
 
 // ---------------------------------------------------------------------------

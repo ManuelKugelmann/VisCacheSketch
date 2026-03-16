@@ -515,6 +515,20 @@ jobs:
           )
           exit /b 0
 
+      - name: Bundle Falcor media scenes
+        if: matrix.config == 'Release'
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
+            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
+            echo [CI] Bundled Arcade scene
+          )
+          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
+            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
+            echo [CI] Bundled TestScenes
+          )
+
       - name: Upload build artifacts
         if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6

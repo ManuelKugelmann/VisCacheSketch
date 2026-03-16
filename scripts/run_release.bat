@@ -9,11 +9,11 @@ REM           media\ scenes (run download_scenes.bat first)
 setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
-set "ROOT=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 
 call "%~dp0version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\media"
+set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=Bistro"
 
 REM ---------------------------------------------------------------------------
@@ -35,8 +35,12 @@ set "SCRIPTS_SRC=%ROOT%\scripts"
 set "SCRIPTS_DST=%RELEASE_DIR%\scripts\VisCache"
 if exist "%SCRIPTS_SRC%\smoke_test.py" (
     if not exist "%SCRIPTS_DST%" mkdir "%SCRIPTS_DST%"
-    xcopy "%SCRIPTS_SRC%\*" "%SCRIPTS_DST%\" /s /y /q >nul
-    echo [launch] Deployed fresh scripts from source tree to release\scripts\VisCache\
+    set "_COUNT=0"
+    for /f "delims=" %%F in ('xcopy "%SCRIPTS_SRC%\*" "%SCRIPTS_DST%\" /s /D /Y /F 2^>nul') do (
+        echo [launch]   updated: %%F
+        set /a "_COUNT+=1"
+    )
+    if !_COUNT! gtr 0 echo [launch] !_COUNT! script^(s^) updated in release\scripts\VisCache\
 )
 
 REM ---------------------------------------------------------------------------
@@ -58,6 +62,46 @@ REM Verify data file is present before smoke test
 if not exist "%DATA_DST%\16RooksPattern256.txt" (
     echo [launch] WARNING: 16RooksPattern256.txt missing — ReSTIRPTPass will fail to load
     echo [launch] Expected at: %DATA_DST%\16RooksPattern256.txt
+)
+
+REM ---------------------------------------------------------------------------
+REM Deploy shaders from source tree (source is always authoritative)
+REM ---------------------------------------------------------------------------
+REM Force-copy all .slang from source → release/shaders/ so deployed shaders
+REM always match the current checkout.  Git timestamps are unreliable, so we
+REM skip date checks and always overwrite.
+
+REM Falcor built-in shaders
+set "FALCOR_SRC=%ROOT%\Falcor\Source\Falcor"
+if exist "%FALCOR_SRC%" (
+    xcopy "%FALCOR_SRC%\*.slang" "%RELEASE_DIR%\shaders\" /s /Y /q >nul 2>&1
+)
+
+REM Custom render pass shaders
+for %%P in (VisCache ReSTIRPTPass) do (
+    set "PASS_SRC=%ROOT%\Source\RenderPasses\%%P"
+    set "PASS_DST=%RELEASE_DIR%\shaders\RenderPasses\%%P"
+    if exist "!PASS_SRC!" (
+        if not exist "!PASS_DST!" mkdir "!PASS_DST!"
+        xcopy "!PASS_SRC!\*.slang" "!PASS_DST!\" /Y /q >nul 2>&1
+    )
+)
+echo [launch] Shaders deployed from source tree
+
+REM Validate (diagnostic — catch wrong locations, partial copies, etc.)
+where python >nul 2>&1 && (
+    python "%ROOT%\scripts\validate_shaders.py" --root-dir "%ROOT%" --release-dir "%RELEASE_DIR%"
+    if errorlevel 1 (
+        echo [launch] WARNING: Shader validation found issues — see above
+        echo [launch] Continuing launch, but expect shader compilation errors.
+    )
+) || (
+    REM Fallback: at least check sentinel file exists
+    if not exist "%RELEASE_DIR%\shaders\Scene\Material\TextureSampler.slang" (
+        echo [launch] ERROR: Falcor shaders missing from release\shaders\ after deploy
+        echo [launch] Check that Falcor\Source\Falcor\ contains .slang files.
+        exit /b 1
+    )
 )
 
 REM ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
-: setup.bat — VisCache Falcor 8.0 integration setup script (Windows)
-: Run from the VisCache package root: .\setup.bat
+: setup-build-system.bat — VisCache Falcor 8.0 integration setup script (Windows)
+: Run from the VisCache package root: .\setup-build-system.bat
 :
 : What this script does:
 :   1. Calls Falcor\setup_vs2022.bat (submodule init, packman deps, VS2022 solution)

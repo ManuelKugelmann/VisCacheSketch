@@ -14,7 +14,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "launch" 2>/dev/null || true
 RELEASE_DIR="${ROOT_DIR}/release"
-MEDIA_DIR="${ROOT_DIR}/media"
+MEDIA_DIR="${ROOT_DIR}/release/media"
 REPO="ManuelKugelmann/VisCacheSketch"
 SCENE="Bistro"
 
@@ -53,6 +53,41 @@ fi
 if [ ! -f "$DATA_DST/16RooksPattern256.txt" ]; then
     echo "[launch] WARNING: 16RooksPattern256.txt missing — ReSTIRPTPass will fail to load"
     echo "[launch] Expected at: $DATA_DST/16RooksPattern256.txt"
+fi
+
+# Deploy shaders from source tree (source is always authoritative)
+# Force-copy all .slang from source → release/shaders/ so deployed shaders
+# always match the current checkout.  Git timestamps are unreliable.
+FALCOR_SRC="${ROOT_DIR}/Falcor/Source/Falcor"
+if [ -d "$FALCOR_SRC" ]; then
+    find "$FALCOR_SRC" -name "*.slang" -print0 | while IFS= read -r -d '' src; do
+        rel="${src#$FALCOR_SRC/}"
+        dst="${RELEASE_DIR}/shaders/${rel}"
+        mkdir -p "$(dirname "$dst")"
+        cp -f "$src" "$dst"
+    done
+fi
+for pass in VisCache ReSTIRPTPass; do
+    PASS_SRC="${ROOT_DIR}/Source/RenderPasses/${pass}"
+    PASS_DST="${RELEASE_DIR}/shaders/RenderPasses/${pass}"
+    if [ -d "$PASS_SRC" ]; then
+        mkdir -p "$PASS_DST"
+        find "$PASS_SRC" -name "*.slang" -exec cp -f {} "$PASS_DST/" \;
+    fi
+done
+echo "[launch] Shaders deployed from source tree"
+
+# Validate (diagnostic — catch wrong locations, partial copies, etc.)
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+    PYTHON_CMD=$(command -v python3 || command -v python)
+    "$PYTHON_CMD" "${ROOT_DIR}/scripts/validate_shaders.py" --root-dir "${ROOT_DIR}" --release-dir "${RELEASE_DIR}" || \
+        echo "[launch] WARNING: Shader validation found issues — see above"
+else
+    # Fallback: at least check sentinel
+    if [ ! -f "${RELEASE_DIR}/shaders/Scene/Material/TextureSampler.slang" ]; then
+        echo "[launch] ERROR: Falcor shaders missing from release/shaders/ after deploy"
+        exit 1
+    fi
 fi
 
 # Smoke test

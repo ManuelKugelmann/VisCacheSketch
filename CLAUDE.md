@@ -4,49 +4,43 @@
 
 VisCacheSketch — Visibility Prediction-with-Correction for real-time path tracing. Flat multilevel spatial hash cache with lock-free atomic updates, Bernoulli variance-driven adaptive sampling. Built as Falcor 8.0 render passes.
 
-Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)).
-2006 ancestor: `docs/references/Kugelmann2006_ThesisMK.pdf` ("thesismk").
+Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html). 2006 ancestor: `docs/references/Kugelmann2006_ThesisMK.pdf`.
+
+## Directory Layout & Paths
+
+- `Falcor/` — git subtree (not submodule), keep close to NVIDIA original; local bug fixes listed in `Falcor/LOCAL_FIXES.md`
+- `Source/RenderPasses/VisCache/` — Visibility Cache pass
+- `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
+- `scripts/` — .bat + .sh for quickstart, download, run, test
+- `scenes/` — .pyscene camera configs (copied into release/media/ at runtime)
+- `release/` — extracted release bundle from GitHub Releases (replaces need for local build)
+  - `release/shaders/RenderPasses/` — deployed .slang shaders (Falcor runtime looks here)
+  - `release/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)
+  - `release/scripts/VisCache/` — graph configs and smoke tests
+  - `release/media/` — all scene assets (Arcade + TestScenes bundled from CI; Bistro, Sponza downloaded)
+- `viscachepaper/sections/*.md` — WIP paper content
 
 ## Scripting
 
-- **Prefer `.bat` over `.ps1`** for Windows scripts. PowerShell execution policies block `.ps1` by default. `.bat` works everywhere (cmd, PowerShell, CI).
-- Install one-liner: `cmd /c "curl -sL <url>/scripts/install.bat?%RANDOM% -o %TEMP%\vc-install.bat && %TEMP%\vc-install.bat"`
-
-## Falcor Subtree Policy
-
-- Falcor is in `Falcor/` (git subtree, not submodule)
-- **Keep Falcor files as close to the NVIDIA original as possible.** All VisCache-specific setup belongs in root scripts (`setup.sh`, `setup.bat`), not in Falcor's own files.
-- Only acceptable Falcor modifications: upstream bug fixes or changes for ManuelKugelmann/Falcor fork
-- Two `.gitmodules` files exist (root and `Falcor/.gitmodules`) — use `sync-submodules.sh` to keep in sync
+- **Prefer `.bat` over `.ps1`** — PowerShell execution policies block `.ps1`
+- All .bat scripts resolve ROOT with `for %%I in ("%~dp0..") do set "ROOT=%%~fI"` (clean absolute path, no `..`)
+- Two `.gitmodules` (root + `Falcor/`) — use `sync-submodules.sh` to sync
 
 ## Build System
 
-- Falcor submodules: shallow-cloned (subtree squash strips `.gitmodules`)
-- NVIDIA packman fetches binary deps (CUDA, D3D12 Agility SDK, nvtt, slang)
-- Linux: `libnvtt.so.30106` → `libnvtt.so` copy (see `Falcor/setup.sh`)
+- Packman fetches binary deps (CUDA, D3D12 Agility SDK, nvtt, slang); also `falcor_media` (Arcade, TestScenes)
 - CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
 - Windows: SDK 10.0.19041.0 required (`windows-2022` runner, NOT `windows-latest`)
-
-## Paper Workflow
-
-- `viscachepaper/sections/*.md` — WIP paper content (edit directly)
-- `viscachepaper/paper-sketch.md` — index/TOC only
-- CI (`paper.yml`) combines sections into `paper-combined.md` → GitHub Pages
-- PDF generation moving to LaTeX
+- `target_copy_shaders()` deploys .slang to `${FALCOR_OUTPUT_DIRECTORY}/shaders/RenderPasses/<pass>/`
+- Render passes copied into Falcor source tree during setup/CI
 
 ## CI
 
-- `.github/workflows/paper.yml` — Paper combine + GitHub Pages deploy
-- `.github/workflows/validate.yml` — Algorithm validation tests
-- `.github/workflows/build.yml` — Binary builds + release
-- `.github/workflows/quickstart.yml` — Quickstart idempotency + CPU tests
-- Runs on: `ubuntu-22.04` (Linux/GCC), `windows-2022` (VS2022 + Ninja/MSVC)
-
-## Render Passes
-
-- `Source/RenderPasses/VisCache/` — Visibility Cache pass
-- `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin [Lin et al. SIGGRAPH 2022] ported to Falcor 8)
-- Copied into Falcor source tree during setup/CI
+- `paper.yml` — paper combine + GitHub Pages
+- `validate.yml` — algorithm validation tests
+- `build.yml` — binary builds + release (bundles Arcade + TestScenes in archive)
+- `quickstart.yml` — quickstart idempotency + CPU tests
+- Runs on: `ubuntu-22.04`, `windows-2022`
 
 ## Line Endings
 
@@ -56,4 +50,4 @@ Paper draft: `viscachepaper/sections/*.md` (combined at [GitHub Pages](https://M
 ## Workflow
 
 - Work step by step for large edits — small incremental Edit calls, not massive Write
-- **Fix all errors encountered**, even pre-existing ones — do not discard or skip them because they were not introduced by the current task
+- **Fix all errors encountered**, even pre-existing ones

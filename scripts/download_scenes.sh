@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-MEDIA_DIR="${ROOT_DIR}/media"
+MEDIA_DIR="${ROOT_DIR}/release/media"
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "scenes" 2>/dev/null || true
@@ -34,6 +34,60 @@ mkdir -p "$MEDIA_DIR"
 echo "[scenes] Download directory: $MEDIA_DIR"
 
 SCENES_DIR="${ROOT_DIR}/scenes"
+
+# Falcor packman CDN — same source CI uses for Arcade + TestScenes
+FALCOR_MEDIA_URL="https://d4i3qtqj3r0z5.cloudfront.net/falcor_media@7acdf8b0"
+
+# ---------------------------------------------------------------------------
+# Helper: download falcor_media package and extract a named subdirectory
+# Usage: download_falcor_media_scene <name>   (e.g. "TestScenes", "Arcade")
+# ---------------------------------------------------------------------------
+download_falcor_media_scene() {
+    local name="$1"
+    local dest="$MEDIA_DIR/$name"
+
+    echo "[scenes] Downloading $name from Falcor media CDN..."
+    local tmpzip
+    tmpzip="$(mktemp /tmp/falcor_media.XXXXXX.zip)"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL --progress-bar -o "$tmpzip" "$FALCOR_MEDIA_URL"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --show-progress -O "$tmpzip" "$FALCOR_MEDIA_URL"
+    else
+        echo "[scenes] ERROR: neither wget nor curl found" >&2
+        return 1
+    fi
+
+    echo "[scenes] Extracting $name from falcor_media..."
+    local tmpdir
+    tmpdir="$(mktemp -d /tmp/falcor_media.XXXXXX)"
+    unzip -q -o "$tmpzip" -d "$tmpdir"
+    rm -f "$tmpzip"
+
+    # Find the scene directory inside the extracted archive
+    local src=""
+    if [ -d "$tmpdir/$name" ]; then
+        src="$tmpdir/$name"
+    else
+        # Search one level deep (some archives have a wrapper dir)
+        for d in "$tmpdir"/*/; do
+            if [ -d "${d}$name" ]; then
+                src="${d}$name"
+                break
+            fi
+        done
+    fi
+
+    if [ -n "$src" ] && [ -d "$src" ]; then
+        mkdir -p "$dest"
+        cp -r "$src"/* "$dest/"
+        echo "[scenes] $name ready at $dest"
+    else
+        echo "[scenes] WARNING: $name not found in falcor_media package"
+    fi
+    rm -rf "$tmpdir"
+}
 
 # ---------------------------------------------------------------------------
 # Helper: download and extract a zip from a URL
@@ -82,34 +136,42 @@ download_and_extract() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Arcade — bundled with Falcor
+# 1. Arcade — bundled in release or Falcor media
 # ---------------------------------------------------------------------------
-if [ -d "$ROOT_DIR/Falcor/media/Arcade" ]; then
-    if [ ! -d "$MEDIA_DIR/Arcade" ]; then
+if [ ! -d "$MEDIA_DIR/Arcade" ]; then
+    if [ -d "$ROOT_DIR/release/media/Arcade" ]; then
+        echo "[scenes] Copying Arcade from release bundle..."
+        cp -r "$ROOT_DIR/release/media/Arcade" "$MEDIA_DIR/Arcade"
+    elif [ -d "$ROOT_DIR/Falcor/media/Arcade" ]; then
         echo "[scenes] Copying Arcade from Falcor/media/..."
         cp -r "$ROOT_DIR/Falcor/media/Arcade" "$MEDIA_DIR/Arcade"
     else
-        echo "[scenes] Arcade already exists, skipping"
+        download_falcor_media_scene "Arcade"
     fi
 else
-    echo "[scenes] WARNING: Falcor/media/Arcade not found — run setup first"
+    echo "[scenes] Arcade already exists, skipping"
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Cornell Box — from Falcor test_scenes
+# 2. Cornell Box — bundled in release or Falcor test_scenes
 # ---------------------------------------------------------------------------
-if [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
-    if [ ! -d "$MEDIA_DIR/TestScenes" ]; then
+if [ ! -d "$MEDIA_DIR/TestScenes" ]; then
+    if [ -d "$ROOT_DIR/release/media/TestScenes" ]; then
+        echo "[scenes] Copying TestScenes from release bundle..."
+        cp -r "$ROOT_DIR/release/media/TestScenes" "$MEDIA_DIR/TestScenes"
+    elif [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
         echo "[scenes] Copying TestScenes from Falcor/media/..."
         cp -r "$ROOT_DIR/Falcor/media/TestScenes" "$MEDIA_DIR/TestScenes"
     else
-        echo "[scenes] TestScenes already exists, skipping"
+        download_falcor_media_scene "TestScenes"
     fi
-    # Copy CornellBox pyscene from repo if missing
-    if [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
-        cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
-        echo "[scenes] Copied CornellBox.pyscene from scenes/"
-    fi
+else
+    echo "[scenes] TestScenes already exists, skipping"
+fi
+# Copy CornellBox pyscene from repo if missing
+if [ -d "$MEDIA_DIR/TestScenes" ] && [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
+    cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
+    echo "[scenes] Copied CornellBox.pyscene from scenes/"
 fi
 
 # ---------------------------------------------------------------------------

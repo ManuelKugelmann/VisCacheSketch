@@ -15,7 +15,7 @@
 #     --dry-run           Print commands without executing
 #
 # Prerequisites:
-#     1. Build Falcor with VisCache plugins (./setup.sh or ./setup.bat)
+#     1. Build Falcor with VisCache plugins (./setup-build-system.sh or ./setup-build-system.bat)
 #     2. Download scenes (./scripts/download_scenes.sh)
 #     3. GPU with DXR 1.1 (RTX 20xx+)
 #
@@ -38,7 +38,7 @@ source "$SCRIPT_DIR/version.sh" "experiments" 2>/dev/null || true
 # Defaults
 # ---------------------------------------------------------------------------
 MOGWAI=""
-SCENE_DIR="$ROOT_DIR/media"
+SCENE_DIR="$ROOT_DIR/release/media"
 OUTPUT_DIR="$ROOT_DIR/captures"
 SKIP_BASELINES=false
 SKIP_ABLATION=false

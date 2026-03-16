@@ -5,7 +5,7 @@ REM Usage:  build.bat [--config Release|Debug] [--preset windows-vs2022-ci|windo
 REM
 REM Steps:
 REM   1. update.bat  (git pull + quickstart: scenes, release, tests)
-REM   2. setup.bat   (submodules, packman deps, copy sources, patch CMake)
+REM   2. setup-build-system.bat (submodules, packman deps, copy sources, patch CMake)
 REM   3. cmake --preset ... && cmake --build ...
 REM
 REM Safe to re-run: all steps are idempotent.
@@ -48,9 +48,9 @@ echo.
 echo ========================================
 echo  Step 2: Setup
 echo ========================================
-call "%ROOT%setup.bat"
+call "%ROOT%setup-build-system.bat"
 if errorlevel 1 (
-    echo [build] ERROR: setup.bat failed!
+    echo [build] ERROR: setup-build-system.bat failed!
     exit /b 1
 )
 
@@ -83,13 +83,32 @@ if errorlevel 1 (
 )
 
 REM ---------------------------------------------------------------------------
-REM Done
+REM Step 4: Deploy build output to release/
 REM ---------------------------------------------------------------------------
+echo.
+echo ========================================
+echo  Step 4: Deploy to release\
+echo ========================================
+set "BUILD_OUT=%FALCOR_ROOT%\build\%PRESET%\bin\%CONFIG%"
+set "RELEASE_DIR=%ROOT%release"
+
+if not exist "%BUILD_OUT%\Mogwai.exe" (
+    echo [build] WARNING: Mogwai.exe not found at %BUILD_OUT%
+    goto :done
+)
+
+echo [build] Copying build output to %RELEASE_DIR%\
+if not exist "%RELEASE_DIR%" mkdir "%RELEASE_DIR%"
+xcopy /E /I /Q /Y "%BUILD_OUT%\*" "%RELEASE_DIR%\" >nul
+echo [build] Deployed to %RELEASE_DIR%\
+
+:done
 echo.
 echo ========================================
 echo  Build complete
 echo ========================================
-echo [build] Output: %FALCOR_ROOT%\build\%PRESET%\bin\%CONFIG%
+echo [build] Build output: %BUILD_OUT%
+echo [build] Deployed to:  %RELEASE_DIR%\
 echo.
 
 endlocal

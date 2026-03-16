@@ -5,7 +5,7 @@
 #
 # Steps:
 #   1. update.sh  (git pull + quickstart: scenes, release, tests)
-#   2. setup.sh   (submodules, packman deps, copy sources, patch CMake)
+#   2. setup-build-system.sh (submodules, packman deps, copy sources, patch CMake)
 #   3. cmake --preset ... && cmake --build ...
 #
 # Safe to re-run: all steps are idempotent.
@@ -47,7 +47,7 @@ echo ""
 echo "========================================"
 echo " Step 2: Setup"
 echo "========================================"
-bash "$SCRIPT_DIR/setup.sh"
+bash "$SCRIPT_DIR/setup-build-system.sh"
 
 # ---------------------------------------------------------------------------
 # Step 3: CMake configure + build
@@ -70,11 +70,31 @@ echo "[build] Building: $CMAKE --build ... --config $CONFIG"
 "$CMAKE" --build "$FALCOR_ROOT/build/$PRESET" --config "$CONFIG" -j "$(nproc)"
 
 # ---------------------------------------------------------------------------
+# Step 4: Deploy build output to release/
+# ---------------------------------------------------------------------------
+echo ""
+echo "========================================"
+echo " Step 4: Deploy to release/"
+echo "========================================"
+BUILD_OUT="$FALCOR_ROOT/build/$PRESET/bin/$CONFIG"
+RELEASE_DIR="${SCRIPT_DIR}/release"
+
+if [ -f "$BUILD_OUT/Mogwai" ] || [ -f "$BUILD_OUT/Mogwai.exe" ]; then
+    echo "[build] Copying build output to $RELEASE_DIR/"
+    mkdir -p "$RELEASE_DIR"
+    cp -r "$BUILD_OUT/"* "$RELEASE_DIR/"
+    echo "[build] Deployed to $RELEASE_DIR/"
+else
+    echo "[build] WARNING: Mogwai not found at $BUILD_OUT"
+fi
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 echo ""
 echo "========================================"
 echo " Build complete"
 echo "========================================"
-echo "[build] Output: $FALCOR_ROOT/build/$PRESET/bin/$CONFIG"
+echo "[build] Build output: $BUILD_OUT"
+echo "[build] Deployed to:  $RELEASE_DIR/"
 echo ""
