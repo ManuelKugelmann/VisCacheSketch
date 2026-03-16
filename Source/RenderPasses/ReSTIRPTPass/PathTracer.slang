@@ -1760,7 +1760,7 @@ struct PathTracer
         if (tempPathReservoir.pathFlags.lastVertexNEE() && tempPathReservoir.pathFlags.pathLength() == rcVertexLength)
         {
             path = {};
-            path.length = rcVertexLength;
+            path.length = (uint16_t)rcVertexLength;
             // call light sampling function
             LightSample ls;
             bool validSample = true;
@@ -1806,7 +1806,7 @@ struct PathTracer
             // should always be false in this case
             bool isRcVertexEscapedVertex = false;
             generateRandomReplayPath(path, tempPathReservoir.rcVertexHit.getHitInfo(), emptyRay, tempPathReservoir.rcRandomSeed, tempPathReservoir.pathFlags.pathLength(), tempPathReservoir.pathFlags.lastVertexNEE(), isRcVertexEscapedVertex);
-            path.length = rcVertexLength;
+            path.length = (uint16_t)rcVertexLength;
             path.useHybridShift = false;
             path.isReplayForHybridShift = false;
 
