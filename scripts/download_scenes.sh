@@ -82,34 +82,42 @@ download_and_extract() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Arcade — bundled with Falcor
+# 1. Arcade — bundled in release or Falcor media
 # ---------------------------------------------------------------------------
-if [ -d "$ROOT_DIR/Falcor/media/Arcade" ]; then
-    if [ ! -d "$MEDIA_DIR/Arcade" ]; then
+if [ ! -d "$MEDIA_DIR/Arcade" ]; then
+    if [ -d "$ROOT_DIR/release/media/Arcade" ]; then
+        echo "[scenes] Copying Arcade from release bundle..."
+        cp -r "$ROOT_DIR/release/media/Arcade" "$MEDIA_DIR/Arcade"
+    elif [ -d "$ROOT_DIR/Falcor/media/Arcade" ]; then
         echo "[scenes] Copying Arcade from Falcor/media/..."
         cp -r "$ROOT_DIR/Falcor/media/Arcade" "$MEDIA_DIR/Arcade"
     else
-        echo "[scenes] Arcade already exists, skipping"
+        echo "[scenes] Arcade not found -- download release first or run setup"
     fi
 else
-    echo "[scenes] WARNING: Falcor/media/Arcade not found — run setup first"
+    echo "[scenes] Arcade already exists, skipping"
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Cornell Box — from Falcor test_scenes
+# 2. Cornell Box — bundled in release or Falcor test_scenes
 # ---------------------------------------------------------------------------
-if [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
-    if [ ! -d "$MEDIA_DIR/TestScenes" ]; then
+if [ ! -d "$MEDIA_DIR/TestScenes" ]; then
+    if [ -d "$ROOT_DIR/release/media/TestScenes" ]; then
+        echo "[scenes] Copying TestScenes from release bundle..."
+        cp -r "$ROOT_DIR/release/media/TestScenes" "$MEDIA_DIR/TestScenes"
+    elif [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
         echo "[scenes] Copying TestScenes from Falcor/media/..."
         cp -r "$ROOT_DIR/Falcor/media/TestScenes" "$MEDIA_DIR/TestScenes"
     else
-        echo "[scenes] TestScenes already exists, skipping"
+        echo "[scenes] TestScenes not found -- download release first or run setup"
     fi
-    # Copy CornellBox pyscene from repo if missing
-    if [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
-        cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
-        echo "[scenes] Copied CornellBox.pyscene from scenes/"
-    fi
+else
+    echo "[scenes] TestScenes already exists, skipping"
+fi
+# Copy CornellBox pyscene from repo if missing
+if [ -d "$MEDIA_DIR/TestScenes" ] && [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
+    cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
+    echo "[scenes] Copied CornellBox.pyscene from scenes/"
 fi
 
 # ---------------------------------------------------------------------------
