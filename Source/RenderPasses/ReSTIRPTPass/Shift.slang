@@ -502,7 +502,7 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
     float dstRcVertexScatterPdf = 1.f; 
     float srcRcVertexScatterPdf = 1.f;  
 
-    uint allowedSampledTypes2 = isRcVertexNEE ? -1 : getAllowedBSDFFlags(srcReservoir.pathFlags.decodeIsSpecularBounce(false));
+    uint allowedSampledTypes2 = isRcVertexNEE ? 0xff : getAllowedBSDFFlags(srcReservoir.pathFlags.decodeIsSpecularBounce(false)); // 0xff = LobeType::All, no filtering
 
     if (!isRcVertexEscapedVertex)
     {
