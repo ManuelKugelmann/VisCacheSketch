@@ -68,6 +68,26 @@ only changes sampling efficiency.
 This combination of VisCache with histogram stratification
 is a novel integration point.
 
+**Multilevel cache for ReSTIR path guiding.**
+The multilevel hash structure naturally extends beyond binary visibility
+to cache richer per-cell statistics —
+contribution means, variance, directional histograms —
+at multiple spatial resolutions.
+ReSTIR's path guiding decisions
+(which reconnection vertex to prefer, which shift strategy to use)
+currently rely on screen-space heuristics.
+A world-space multilevel cache could provide
+resolution-adaptive path guiding signals:
+coarse cells supply robust, well-sampled statistics
+for initial candidate generation,
+while fine cells refine decisions near geometric detail.
+The same variance-gated cascade (Sec. 5) applies:
+write guiding statistics to finer levels
+only where coarse-level variance justifies the cost.
+This generalizes the current binary visibility cache
+to a multilevel path guiding cache for ReSTIR,
+with the same self-regulating budget allocation.
+
 **Independent per-endpoint LOD.**
 The current design uses a shared level index —
 both endpoints are quantized at the same cell size,
