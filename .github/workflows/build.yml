@@ -15,6 +15,11 @@ on:
   # pull_request:
   #   branches: ["main", "master"]
   workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to build and release (default: HEAD of selected branch)'
+        required: false
+        type: string
 
 # Queue new runs behind in-progress ones (won't cancel running builds)
 concurrency:
@@ -28,6 +33,51 @@ env:
   FALCOR_DIR: Falcor
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve commit and generate version tag (used by all build + release jobs)
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      sha_short: ${{ steps.resolve.outputs.sha_short }}
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve commit and version
+        id: resolve
+        run: |
+          SHA="${{ inputs.commit_sha }}"
+          if [ -z "$SHA" ]; then
+            SHA="${GITHUB_SHA}"
+          fi
+          git cat-file -t "$SHA" >/dev/null 2>&1 || {
+            echo "::error::Commit $SHA not found in repository"
+            exit 1
+          }
+          SHA_FULL="$(git rev-parse "$SHA")"
+          SHA_SHORT="$(git rev-parse --short=8 "$SHA")"
+          TIMESTAMP="$(git show -s --format=%cd --date=format:%Y%m%d-%H%M%S "$SHA_FULL")"
+          VERSION="${TIMESTAMP}-${SHA_SHORT}"
+          TAG="dev-${VERSION}"
+
+          echo "sha=${SHA_FULL}" >> "$GITHUB_OUTPUT"
+          echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          echo "## Build Info" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${SHA_FULL}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version | \`${VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`${TAG}\` |" >> "$GITHUB_STEP_SUMMARY"
+
   # Fast check — always visible in PR, skips builds if no source changes
   changes:
     name: Detect Changes
@@ -54,6 +104,7 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
+    needs: [prepare]
     if: github.event_name != 'pull_request'
     runs-on: windows-2022
     continue-on-error: true
@@ -68,6 +119,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -296,8 +349,11 @@ jobs:
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    needs: [changes]
-    if: always() && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
+    needs: [prepare, changes]
+    if: >-
+      always()
+      && needs.prepare.result == 'success'
+      && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -310,6 +366,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -544,6 +602,7 @@ jobs:
   # ---------------------------------------------------------------------------
   linux-gcc:
     name: Linux/GCC
+    needs: [prepare]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     continue-on-error: true
@@ -556,6 +615,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Cache Falcor submodules
         uses: actions/cache@v5
@@ -689,12 +750,15 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       !cancelled()
+      && needs.prepare.result == 'success'
       && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && !startsWith(github.ref, 'refs/tags/')
-    needs: [windows-ninja]
+    needs: [prepare, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Download Ninja Release artifact
         uses: actions/download-artifact@v7
@@ -709,23 +773,25 @@ jobs:
           tar -czf "${ARCHIVE}" -C release-bin .
           ls -lh "${ARCHIVE}"
 
-      - name: Compute versioned tag
-        run: |
-          TIMESTAMP="$(date -u +'%Y%m%d-%H%M%S')"
-          VERSION_TAG="dev-${TIMESTAMP}-${GITHUB_SHA::8}"
-          echo "VERSION_TAG=${VERSION_TAG}" >> "$GITHUB_ENV"
-          echo "BUILD_TIMESTAMP=${TIMESTAMP}" >> "$GITHUB_ENV"
-
       - name: Create versioned prerelease
         run: |
-          gh release create "${{ env.VERSION_TAG }}" "${{ env.ARCHIVE }}" \
-            --title "Dev Build ${BUILD_TIMESTAMP} (${GITHUB_SHA::8})" \
-            --notes "Automated prerelease from \`${GITHUB_SHA::8}\` on \`${GITHUB_REF_NAME}\`.
-          Build timestamp: ${BUILD_TIMESTAMP}
+          TAG="${{ needs.prepare.outputs.tag }}"
+          SHA="${{ needs.prepare.outputs.sha }}"
+          SHA_SHORT="${{ needs.prepare.outputs.sha_short }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          gh release create "${TAG}" "${{ env.ARCHIVE }}" \
+            --title "Dev Build ${VERSION}" \
+            --notes "Automated prerelease from \`${SHA_SHORT}\` on \`${GITHUB_REF_NAME}\`.
+
+          | Field | Value |
+          |-------|-------|
+          | Commit | \`${SHA}\` |
+          | Version | \`${VERSION}\` |
 
           **Not a stable release.** Use tagged \`v*\` releases for production." \
             --prerelease \
-            --target "$GITHUB_SHA"
+            --target "${SHA}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -747,10 +813,12 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows-ninja]
+    needs: [prepare, windows-ninja]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v7
