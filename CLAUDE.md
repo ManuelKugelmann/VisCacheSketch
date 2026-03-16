@@ -55,7 +55,19 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
 - Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
 
+## Quickstart / Launch Scripts
+
+- Scripts support `--renderer`, `--variant`, `--scene`, and `--interactive` flags
+- Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT) — default: `restirpt`
+- Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to all renderers
+- Interactive mode (`-i`): numbered menus for renderer, variant, and scene selection
+- Graph scripts (vanilla): `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`
+- Graph scripts (VisCache): `MinimalPathTracer_VisCache_Graph.py`, `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`, `ReSTIRPT_VisCache_Graph.py` — thin wrappers that call vanilla with `viscache=True`
+- Each vanilla graph script accepts `viscache=True` to add the VisCache pass; no code duplication between vanilla and VisCache variants
+- There is no `renderer=viscache` — VisCache is always a variant, not a renderer
+
 ## Workflow
 
+- **No backwards compatibility** — move forward, don't maintain back-compat aliases or shims
 - Work step by step for large edits — small incremental Edit calls, not massive Write
 - **Fix all errors encountered**, even pre-existing ones

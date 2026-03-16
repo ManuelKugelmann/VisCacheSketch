@@ -7,7 +7,16 @@
      Falcor requires reflection data to be able to create a structured buffer,
      but the programs are not yet ready to be used when we create the buffers.
      Therefore we create this dummy program to make it easier.
+
+     Material type imports are required so that scene type conformances
+     (e.g. StandardMaterial : IMaterial) can be resolved when this program
+     is compiled with the base ProgramDesc that includes them.
  */
+#include "Scene/SceneDefines.slangh"
+
+import Rendering.Materials.StandardMaterial;
+import Rendering.Materials.ClothMaterial;
+import Rendering.Materials.HairMaterial;
 import RenderPasses.ReSTIRPTPass.PathReservoir;
 
 StructuredBuffer<PathReservoir> outputReservoirs;
