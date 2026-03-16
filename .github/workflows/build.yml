@@ -747,6 +747,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prune old versioned prereleases (keep latest 3)
+        run: |
+          gh release list --json tagName,isPrerelease \
+            --jq '[.[] | select(.isPrerelease and (.tagName | startswith("dev-2")))] | sort_by(.tagName) | reverse | .[3:][] | .tagName' \
+          | while read -r tag; do
+              echo "Deleting old prerelease: $tag"
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+            done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # ---------------------------------------------------------------------------
   # Tagged release — triggered on v* tags after successful builds
   # ---------------------------------------------------------------------------
