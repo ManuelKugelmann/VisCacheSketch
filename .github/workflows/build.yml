@@ -213,6 +213,20 @@ jobs:
         shell: pwsh
         run: scripts/integrate-plugins.ps1 -FalcorDir ${{ env.FALCOR_DIR }}
 
+      - name: Clean stale CMake cache
+        shell: cmd
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          set "BUILD_DIR=build\%CMAKE_BUILD_PRESET%"
+          if exist "%BUILD_DIR%\CMakeCache.txt" (
+            findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
+            if errorlevel 1 (
+              echo [build] Stale CMakeCache.txt detected (toolset mismatch), removing...
+              del /q "%BUILD_DIR%\CMakeCache.txt"
+              if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
+            )
+          )
+
       - name: CMake Configure
         shell: cmd
         run: |
@@ -366,6 +380,20 @@ jobs:
       - name: Integrate VisCache plugins into Falcor tree
         shell: pwsh
         run: scripts/integrate-plugins.ps1 -FalcorDir ${{ env.FALCOR_DIR }}
+
+      - name: Clean stale CMake cache
+        shell: cmd
+        run: |
+          cd ${{ env.FALCOR_DIR }}
+          set "BUILD_DIR=build\%CMAKE_BUILD_PRESET%"
+          if exist "%BUILD_DIR%\CMakeCache.txt" (
+            findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
+            if errorlevel 1 (
+              echo [build] Stale CMakeCache.txt detected (toolset mismatch), removing...
+              del /q "%BUILD_DIR%\CMakeCache.txt"
+              if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
+            )
+          )
 
       - name: CMake Configure
         shell: cmd
