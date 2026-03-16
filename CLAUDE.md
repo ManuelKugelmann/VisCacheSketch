@@ -12,7 +12,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - `Source/RenderPasses/VisCache/` — Visibility Cache pass
 - `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
 - `scripts/` — .bat + .sh for quickstart, download, run, test
-- `scenes/` — .pyscene camera configs (copied into release/media/ at runtime)
+- `scenes/` — .pyscene scene configs (camera, lights, env map); see [`docs/PYSCENE_API.md`](docs/PYSCENE_API.md) for Falcor 8 API reference
 - `release/` — extracted release bundle from GitHub Releases (replaces need for local build)
   - `release/shaders/RenderPasses/` — deployed .slang shaders (Falcor runtime looks here)
   - `release/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)

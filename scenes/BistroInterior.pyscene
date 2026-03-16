@@ -6,9 +6,27 @@
 
 sceneBuilder.importScene('BistroInterior.fbx')
 
+# Camera — counter view looking into the bistro interior
 camera = Camera('VisCacheDefault')
 camera.position = float3(-5.5, 2.0, -0.6)
 camera.target   = float3( 0.5, 1.5, -1.0)
 camera.up       = float3( 0.0, 1.0,  0.0)
 camera.focalLength = 24.0
 sceneBuilder.addCamera(camera)
+
+# Directional sunlight streaming through windows (warm afternoon)
+sun = DirectionalLight('Sun')
+sun.intensity = float3(2.0, 1.6, 1.1)
+sun.direction = float3(0.5, -0.7, -0.5)
+sceneBuilder.addLight(sun)
+
+# Soft fill to lift shadows in the interior
+fill = PointLight('InteriorFill')
+fill.intensity = float3(0.4, 0.5, 0.7)
+fill.position  = float3(0.0, 3.0, -1.0)
+sceneBuilder.addLight(fill)
+
+# Enable emissive geometry (bistro lamps, neon signs, etc.)
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True

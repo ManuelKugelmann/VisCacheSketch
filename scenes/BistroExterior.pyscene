@@ -6,9 +6,27 @@
 
 sceneBuilder.importScene('BistroExterior.fbx')
 
+# Camera — street-level view of the bistro facade
 camera = Camera('VisCacheDefault')
 camera.position = float3(-8.0, 2.5, -0.3)
 camera.target   = float3( 3.0, 1.5, -1.5)
 camera.up       = float3( 0.0, 1.0,  0.0)
 camera.focalLength = 24.0
 sceneBuilder.addCamera(camera)
+
+# Directional sunlight — warm late-afternoon sun from the side
+sun = DirectionalLight('Sun')
+sun.intensity = float3(3.0, 2.4, 1.7)
+sun.direction = float3(0.6, -0.7, -0.3)
+sceneBuilder.addLight(sun)
+
+# Sky fill — cool ambient from opposite direction
+skyFill = DirectionalLight('SkyFill')
+skyFill.intensity = float3(0.15, 0.2, 0.35)
+skyFill.direction = float3(-0.4, -0.5, 0.3)
+sceneBuilder.addLight(skyFill)
+
+# Enable emissive geometry (street lamps, signs, etc.)
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True

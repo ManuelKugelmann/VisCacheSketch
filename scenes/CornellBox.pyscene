@@ -3,6 +3,10 @@
 #
 # Expects: CornellBox.obj (or Falcor TestScenes) in FALCOR_MEDIA_FOLDERS.
 # Source:  Falcor test scenes (bundled with Falcor/media/TestScenes)
+#
+# The standard Cornell Box OBJ includes an emissive ceiling quad as the
+# primary light source. We enable emissive lights and add a subtle fill
+# so the scene is not pure single-bounce.
 
 sceneBuilder.importScene('CornellBox.obj')
 
@@ -12,3 +16,15 @@ camera.target   = float3(0.0, 1.0, 0.0)
 camera.up       = float3(0.0, 1.0, 0.0)
 camera.focalLength = 35.0
 sceneBuilder.addCamera(camera)
+
+# The ceiling emissive quad is the canonical light source
+# Add a very subtle point fill inside the box to help with convergence
+fill = PointLight('Fill')
+fill.intensity = float3(0.05, 0.05, 0.05)
+fill.position  = float3(0.0, 1.5, 0.0)
+sceneBuilder.addLight(fill)
+
+# Render settings — emissive ceiling is the primary illumination
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True
