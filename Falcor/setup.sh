@@ -17,7 +17,7 @@ if ! [ -x "$(command -v git)" ]; then
     echo "Cannot find git on PATH! Please initialize submodules manually and rerun."
     exit 1
 else
-    git -C "${BASE_DIR}/../.." submodule update --init --depth 1
+    git -C "${BASE_DIR}/.." submodule update --init --depth 1
 fi
 
 echo "Fetching dependencies ..."

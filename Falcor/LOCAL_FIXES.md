@@ -28,3 +28,22 @@ else if (key == kExposureValue)
 ```
 
 **Upstream status:** Not yet reported.
+
+---
+
+## 2. setup.bat/sh: wrong parent depth for git submodule update
+
+**Files:** `setup.bat`, `setup.sh`
+
+`git -C %~dp0\..\..` (bat) and `git -C "${BASE_DIR}/../.."` (sh) navigate two
+levels above the `Falcor/` directory. Since Falcor is a subtree inside the
+VisCacheSketch repo, this lands outside the git repository, causing:
+
+```
+fatal: not a git repository (or any of the parent directories): .git
+```
+
+**Fix:** Changed `\..\..` → `\..` (bat) and `/../..` → `/..` (sh) so the
+path resolves to the VisCacheSketch repo root where `.gitmodules` lives.
+
+**Upstream status:** N/A (subtree integration issue, not an upstream bug).
