@@ -19,12 +19,12 @@ on:
       platform:
         description: 'Platform to build'
         required: false
-        default: 'Windows Ninja'
+        default: 'Windows VS2022'
         type: choice
         options:
-          - Windows Ninja
-          - All
           - Windows VS2022
+          - All
+          - Windows Ninja
           - Linux GCC
       config:
         description: 'Build configuration'
@@ -125,20 +125,23 @@ jobs:
               - '.github/workflows/build.yml'
 
   # ---------------------------------------------------------------------------
-  # Windows/VS2022 — secondary build, validates VS solution generation
+  # Windows/VS2022 — primary build, gates PRs + feeds releases
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
-    needs: [prepare]
+    needs: [prepare, changes]
     if: >-
-      github.event_name == 'workflow_dispatch'
-      && (inputs.platform == 'All' || inputs.platform == 'Windows VS2022' || inputs.platform == '')
+      always()
+      && needs.prepare.result == 'success'
+      && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+      && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
+      && (inputs.platform == 'All' || inputs.platform == 'Windows VS2022' || inputs.platform == '' || github.event_name != 'workflow_dispatch')
     runs-on: windows-2022
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+        # PRs: Debug only; manual dispatch: respect input; pushes: both
+        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-vs2022-ci
       # Pin packman cache location for reproducible caching on Windows
@@ -313,6 +316,20 @@ jobs:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
+      - name: Bundle Falcor media scenes
+        if: matrix.config == 'Release'
+        shell: cmd
+        run: |
+          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
+          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
+            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
+            echo [CI] Bundled Arcade scene
+          )
+          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
+            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
+            echo [CI] Bundled TestScenes
+          )
+
       - name: Upload build artifacts
         if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6
@@ -323,23 +340,20 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Windows Ninja/MSVC — primary build (fastest), gates PRs + feeds releases
+  # Windows Ninja/MSVC — secondary build, optional
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    needs: [prepare, changes]
+    needs: [prepare]
     if: >-
-      always()
-      && needs.prepare.result == 'success'
-      && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
-      && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
-      && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja' || inputs.platform == '' || github.event_name != 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch'
+      && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja')
     runs-on: windows-2022
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        # PRs: Debug only; manual dispatch: respect input; pushes: both
-        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
       PM_PACKAGES_ROOT: C:\packman-cache
@@ -500,20 +514,6 @@ jobs:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
-      - name: Bundle Falcor media scenes
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
-            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
-            echo [CI] Bundled Arcade scene
-          )
-          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
-            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
-            echo [CI] Bundled TestScenes
-          )
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -630,10 +630,10 @@ jobs:
     if: >-
       !cancelled()
       && needs.prepare.result == 'success'
-      && needs.windows-ninja.result == 'success'
+      && needs.windows-vs2022.result == 'success'
       && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_prerelease))
       && !startsWith(github.ref, 'refs/tags/')
-    needs: [prepare, windows-ninja]
+    needs: [prepare, windows-vs2022]
     env:
       # Release if available, otherwise Debug
       RELEASE_CONFIG: ${{ inputs.config == 'Debug' && 'Debug' || 'Release' }}
@@ -643,10 +643,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
-      - name: Download Ninja build artifact
+      - name: Download VS2022 build artifact
         uses: actions/download-artifact@v7
         with:
-          name: falcor-windows-ninja-${{ env.RELEASE_CONFIG }}
+          name: falcor-windows-vs2022-${{ env.RELEASE_CONFIG }}
           path: release-bin/
 
       - name: Package release archive
@@ -697,7 +697,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [prepare, windows-ninja]
+    needs: [prepare, windows-vs2022]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
