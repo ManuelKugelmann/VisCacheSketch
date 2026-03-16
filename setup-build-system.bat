@@ -96,18 +96,18 @@ if not exist "%RP_CMAKE%" (
 
 findstr /c:"add_subdirectory(VisCache)" "%RP_CMAKE%" >nul 2>&1
 if errorlevel 1 (
-    echo add_subdirectory(VisCache)>> "%RP_CMAKE%"
-    echo [VisCache]   Added: add_subdirectory(VisCache)
+    echo add_subdirectory^(VisCache^)>> "%RP_CMAKE%"
+    echo [VisCache]   Added: add_subdirectory^(VisCache^)
 ) else (
-    echo [VisCache]   Already present: VisCache (skipped)
+    echo [VisCache]   Already present: VisCache ^(skipped^)
 )
 
 findstr /c:"add_subdirectory(ReSTIRPTPass)" "%RP_CMAKE%" >nul 2>&1
 if errorlevel 1 (
-    echo add_subdirectory(ReSTIRPTPass)>> "%RP_CMAKE%"
-    echo [VisCache]   Added: add_subdirectory(ReSTIRPTPass)
+    echo add_subdirectory^(ReSTIRPTPass^)>> "%RP_CMAKE%"
+    echo [VisCache]   Added: add_subdirectory^(ReSTIRPTPass^)
 ) else (
-    echo [VisCache]   Already present: ReSTIRPTPass (skipped)
+    echo [VisCache]   Already present: ReSTIRPTPass ^(skipped^)
 )
 
 : ---------------------------------------------------------------------------
