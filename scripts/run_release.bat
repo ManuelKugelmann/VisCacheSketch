@@ -2,7 +2,8 @@
 REM run_release.bat — Launch Mogwai with a VisCache scene.
 REM
 REM Usage:  scripts\run_release.bat [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
-REM                                 [--renderer viscache|minimal]
+REM                                 [--renderer viscache|restirpt|rtxdi|pathtracer|minimal]
+REM                                 [--interactive]
 REM
 REM Requires: release\Mogwai.exe (run download_release.bat first)
 REM           media\ scenes (run download_scenes.bat first)
@@ -17,6 +18,7 @@ set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=VeachAjar"
 set "RENDERER=viscache"
+set "INTERACTIVE=0"
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -25,18 +27,70 @@ REM ---------------------------------------------------------------------------
 if "%~1"=="" goto :args_done
 if /i "%~1"=="--scene" (set "SCENE=%~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--renderer" (set "RENDERER=%~2" & shift & shift & goto :parse_args)
+if /i "%~1"=="--interactive" (set "INTERACTIVE=1" & shift & goto :parse_args)
+if /i "%~1"=="-i" (set "INTERACTIVE=1" & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--scene VeachAjar^|Bistro^|Sponza^|Arcade^|CornellBox] [--renderer viscache^|minimal]
+echo Usage: %~nx0 [--scene ...] [--renderer viscache^|restirpt^|rtxdi^|pathtracer^|minimal] [--interactive]
 exit /b 1
 :args_done
 
+REM ---------------------------------------------------------------------------
+REM Interactive selection (if --interactive or -i)
+REM ---------------------------------------------------------------------------
+if "%INTERACTIVE%"=="0" goto :skip_interactive_launch
+
+echo.
+echo ========================================
+echo  VisCacheSketch — Interactive Launch
+echo ========================================
+echo.
+echo  Select renderer:
+echo    1. MinimalPathTracer  — lightweight, progressive accumulation
+echo    2. PathTracer         — full Falcor path tracer (NEE, MIS, volumes)
+echo    3. RTXDI              — ReSTIR DI direct lighting only
+echo    4. ReSTIR PT          — ReSTIR path tracing (indirect + direct)
+echo    5. VisCache           — full VisCache pipeline (ReSTIR PT + visibility cache)
+echo.
+set /p "RCHOICE=  Choice [1-5, default=5]: "
+if "%RCHOICE%"=="" set "RCHOICE=5"
+if "%RCHOICE%"=="1" set "RENDERER=minimal"
+if "%RCHOICE%"=="2" set "RENDERER=pathtracer"
+if "%RCHOICE%"=="3" set "RENDERER=rtxdi"
+if "%RCHOICE%"=="4" set "RENDERER=restirpt"
+if "%RCHOICE%"=="5" set "RENDERER=viscache"
+
+echo.
+echo  Select scene:
+echo    1. VeachAjar   — small test scene (no download needed)
+echo    2. Bistro      — restaurant interior (~3.2 GB download)
+echo    3. Sponza      — classic atrium (~70 MB download)
+echo    4. Arcade      — game arcade (bundled with release)
+echo    5. CornellBox  — simple box scene
+echo.
+set /p "SCHOICE=  Choice [1-5, default=1]: "
+if "%SCHOICE%"=="" set "SCHOICE=1"
+if "%SCHOICE%"=="1" set "SCENE=VeachAjar"
+if "%SCHOICE%"=="2" set "SCENE=Bistro"
+if "%SCHOICE%"=="3" set "SCENE=Sponza"
+if "%SCHOICE%"=="4" set "SCENE=Arcade"
+if "%SCHOICE%"=="5" set "SCENE=CornellBox"
+
+echo.
+echo  Selected: renderer=%RENDERER%, scene=%SCENE%
+echo.
+
+:skip_interactive_launch
+
 REM Select graph script based on renderer
 set "GRAPH_SCRIPT="
-if /i "%RENDERER%"=="viscache" set "GRAPH_SCRIPT=VisCache_Graph.py"
-if /i "%RENDERER%"=="minimal" set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
+if /i "%RENDERER%"=="viscache"    set "GRAPH_SCRIPT=VisCache_Graph.py"
+if /i "%RENDERER%"=="minimal"     set "GRAPH_SCRIPT=MinimalPathTracer_Graph.py"
+if /i "%RENDERER%"=="pathtracer"  set "GRAPH_SCRIPT=PathTracer_Graph.py"
+if /i "%RENDERER%"=="rtxdi"       set "GRAPH_SCRIPT=RTXDI_Graph.py"
+if /i "%RENDERER%"=="restirpt"    set "GRAPH_SCRIPT=ReSTIRPT_Graph.py"
 if "%GRAPH_SCRIPT%"=="" (
     echo [launch] Unknown renderer: %RENDERER%
-    echo [launch] Available: viscache, minimal
+    echo [launch] Available: viscache, restirpt, rtxdi, pathtracer, minimal
     exit /b 1
 )
 

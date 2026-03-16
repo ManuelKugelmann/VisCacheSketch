@@ -2,7 +2,8 @@
 # quickstart.sh — Run the full VisCacheSketch quickstart sequence.
 #
 # Usage:  ./scripts/quickstart.sh [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
-#                                 [--renderer viscache|minimal] [--skip-scenes]
+#                                 [--renderer viscache|restirpt|rtxdi|pathtracer|minimal]
+#                                 [--skip-scenes] [--interactive]
 #
 # Calls each step in order:
 #   1. download_release.sh  — download latest GitHub release
@@ -18,6 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENE="VeachAjar"
 RENDERER="viscache"
+INTERACTIVE=0
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "quickstart" 2>/dev/null || true
@@ -29,9 +31,57 @@ while [[ $# -gt 0 ]]; do
         --scene) SCENE="$2"; shift 2 ;;
         --renderer) RENDERER="$2"; shift 2 ;;
         --skip-scenes) SKIP_SCENES=1; shift ;;
-        *) echo "Usage: $0 [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox] [--renderer viscache|minimal] [--skip-scenes]"; exit 1 ;;
+        --interactive|-i) INTERACTIVE=1; shift ;;
+        *) echo "Usage: $0 [--scene ...] [--renderer viscache|restirpt|rtxdi|pathtracer|minimal] [--skip-scenes] [--interactive]"; exit 1 ;;
     esac
 done
+
+# Interactive selection
+if [ "$INTERACTIVE" -eq 1 ]; then
+    echo ""
+    echo "========================================"
+    echo " VisCacheSketch — Interactive Setup"
+    echo "========================================"
+    echo ""
+    echo "  Select renderer:"
+    echo "    1. MinimalPathTracer  — lightweight, progressive accumulation"
+    echo "    2. PathTracer         — full Falcor path tracer (NEE, MIS, volumes)"
+    echo "    3. RTXDI              — ReSTIR DI direct lighting only"
+    echo "    4. ReSTIR PT          — ReSTIR path tracing (indirect + direct)"
+    echo "    5. VisCache           — full VisCache pipeline (ReSTIR PT + visibility cache)"
+    echo ""
+    read -rp "  Choice [1-5, default=5]: " RCHOICE
+    RCHOICE="${RCHOICE:-5}"
+    case "$RCHOICE" in
+        1) RENDERER="minimal" ;;
+        2) RENDERER="pathtracer" ;;
+        3) RENDERER="rtxdi" ;;
+        4) RENDERER="restirpt" ;;
+        5) RENDERER="viscache" ;;
+    esac
+
+    echo ""
+    echo "  Select scene:"
+    echo "    1. VeachAjar   — small test scene (no download needed)"
+    echo "    2. Bistro      — restaurant interior (~3.2 GB download)"
+    echo "    3. Sponza      — classic atrium (~70 MB download)"
+    echo "    4. Arcade      — game arcade (bundled with release)"
+    echo "    5. CornellBox  — simple box scene"
+    echo ""
+    read -rp "  Choice [1-5, default=1]: " SCHOICE
+    SCHOICE="${SCHOICE:-1}"
+    case "$SCHOICE" in
+        1) SCENE="VeachAjar" ;;
+        2) SCENE="Bistro" ;;
+        3) SCENE="Sponza" ;;
+        4) SCENE="Arcade" ;;
+        5) SCENE="CornellBox" ;;
+    esac
+
+    echo ""
+    echo "  Selected: renderer=$RENDERER, scene=$SCENE"
+    echo ""
+fi
 
 # 1. Download release
 echo ""
