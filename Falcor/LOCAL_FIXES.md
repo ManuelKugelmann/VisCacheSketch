@@ -53,24 +53,20 @@ plain `git submodule update` (no `-C`) when run standalone.
 
 ---
 
-## 3. GLFW: PDB contention with sccache + Ninja (C1041)
+## 3. GLFW: sccache fails to cache PDB when /Zi and /Z7 conflict
 
 **File:** `external/CMakeLists.txt`
 
-When using `sccache` as a compiler launcher with Ninja on MSVC, parallel
-`cl.exe` invocations for the GLFW static library all write to the same
-`glfw.pdb`, causing `fatal error C1041: cannot open program database`.
-The `/FS` flag (serialize PDB writes) is already set but doesn't help when
-sccache wraps the compiler.
+When using `sccache` as a compiler launcher with Ninja on MSVC, GLFW
+compilation fails because sccache tries to zip up the PDB file specified
+by `/Fd`, but no PDB is actually created. This happens when `/Z7` is
+appended to flags that already contain `/Zi` — the compiler uses `/Z7`
+(last wins, embeds debug info in `.obj`), but sccache still expects the
+PDB that `/Fd` points to.
 
-**Fix:** After `add_subdirectory(glfw)`, force `/Z7` on the `glfw` target
-when a compiler launcher is configured. `/Z7` embeds debug info directly
-in `.obj` files, eliminating the shared `.pdb` entirely.
-
-```cmake
-if(MSVC AND (CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER))
-    target_compile_options(glfw PRIVATE /Z7)
-endif()
-```
+**Fix:** Before `add_subdirectory(glfw)`, replace `/Zi` with `/Z7` in
+`CMAKE_C_FLAGS_DEBUG`, `CMAKE_CXX_FLAGS_DEBUG`, and their RelWithDebInfo
+counterparts. The original flags are restored after `add_subdirectory()`
+so other targets are unaffected.
 
 **Upstream status:** Not yet reported (upstream GLFW doesn't use sccache).
