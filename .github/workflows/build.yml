@@ -210,8 +210,8 @@ jobs:
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
       - name: Integrate VisCache plugins into Falcor tree
-        shell: pwsh
-        run: scripts/integrate-plugins.ps1 -FalcorDir ${{ env.FALCOR_DIR }}
+        shell: cmd
+        run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
       - name: Clean stale CMake cache
         shell: cmd
@@ -385,8 +385,8 @@ jobs:
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
       - name: Integrate VisCache plugins into Falcor tree
-        shell: pwsh
-        run: scripts/integrate-plugins.ps1 -FalcorDir ${{ env.FALCOR_DIR }}
+        shell: cmd
+        run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
       - name: Clean stale CMake cache
         shell: cmd
