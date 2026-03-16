@@ -2,8 +2,7 @@
 REM download_scenes.bat — Download test scenes for VisCache paper experiments.
 REM
 REM Windows port of download_scenes.sh. Requires: curl, tar (both ship with
-REM Windows 10+). On older systems, or if you prefer, run via WSL:
-REM     wsl bash scripts/download_scenes.sh
+REM Windows 10+).
 REM
 REM Usage:
 REM     scripts\download_scenes.bat [--dir <path>] [--yes]
@@ -31,7 +30,7 @@ exit /b 1
 :args_done
 
 where curl >nul 2>&1 || (echo ERROR: curl not found in PATH & exit /b 1)
-where tar >nul 2>&1 || (echo ERROR: tar not found in PATH. Try: wsl bash scripts/download_scenes.sh & exit /b 1)
+where tar >nul 2>&1 || (echo ERROR: tar not found in PATH & exit /b 1)
 
 call "%~dp0version.bat" scenes 2>nul
 
@@ -252,6 +251,6 @@ echo.
 echo [scenes] Or pass --scene with full path:
 echo   Mogwai.exe --scene "%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 echo.
-echo [scenes] WSL alternative: wsl bash scripts/download_scenes.sh
+
 
 endlocal
