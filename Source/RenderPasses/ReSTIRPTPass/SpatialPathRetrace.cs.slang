@@ -61,7 +61,7 @@ struct PathRetracePass
         float3 camPos = gScene.camera.data.posW;
         float centralDist = distance(camPos, centralSd.posW);
         float neighborDist = distance(camPos, neighborSd.posW);
-        return dot(centralSd.N, neighborSd.N) >= 0.5f && abs(centralDist - neighborDist) < 0.1f * centralDist;
+        return dot(centralSd.frame.N, neighborSd.frame.N) >= 0.5f && abs(centralDist - neighborDist) < 0.1f * centralDist;
     }
 
     ShadingData getPixelShadingData(int2 pixel, out PackedHitInfo PrimaryHitPacked)
@@ -71,7 +71,7 @@ struct PathRetracePass
         PrimaryHitPacked = vbuffer[pixel];
         if (isValidPackedHitInfo(PrimaryHitPacked))
         {
-            HitInfo PrimaryHit; PrimaryHit.unpack(PrimaryHitPacked);
+            HitInfo PrimaryHit = HitInfo(PrimaryHitPacked);
 
             TriangleHit th = PrimaryHit.getTriangleHit();
             sd = loadShadingData(PrimaryHit, -ray.dir, true);

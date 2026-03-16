@@ -14,6 +14,7 @@ import Rendering.Utils.PixelStats;
 import Scene.RaytracingInline;
 import Scene.Scene;
 import PathTracer;
+import Falcor8Compat;
 import RenderPasses.Shared.Denoising.NRDData;
 
 #if USE_VISCACHE
@@ -101,8 +102,9 @@ float3 computeShiftedIntegrandRandomReplay(const RestirPathTracerParams params, 
     dstJacobian = 1.f;
     PathReservoir srcReservoir = tempPathReservoir;
 
-    HitInfo dstPrimaryHit; dstPrimaryHit.unpack(dstPrimaryHitPacked);
-    Ray ray = Ray(gScene.camera.getPosition(usePrev), -dstPrimarySd.V, 0, kRayTMax);
+    HitInfo dstPrimaryHit = HitInfo(dstPrimaryHitPacked);
+    float3 cameraPos = usePrev ? gScene.camera.data.prevPosW : gScene.camera.data.posW;
+    Ray ray = Ray(cameraPos, -dstPrimarySd.V, 0, kRayTMax);
 
     float3 L = gPathTracer.traceRandomReplayPath(dstPrimaryHit, dstPrimarySd, srcPrimarySd, ray, tempPathReservoir);
 
@@ -126,8 +128,9 @@ float3 computeShiftedIntegrandHybrid(const RestirPathTracerParams params, bool u
 
     dstJacobian = 1.f;
 
-    HitInfo dstPrimaryHit; dstPrimaryHit.unpack(dstPrimaryHitPacked);
-    Ray ray = Ray(gScene.camera.getPosition(usePrev), -dstPrimarySd.V, 0, kRayTMax);
+    HitInfo dstPrimaryHit = HitInfo(dstPrimaryHitPacked);
+    float3 cameraPos = usePrev ? gScene.camera.data.prevPosW : gScene.camera.data.posW;
+    Ray ray = Ray(cameraPos, -dstPrimarySd.V, 0, kRayTMax);
     bool isRcVertexEscapedVertex = tempPathReservoir.pathFlags.pathLength() + 1 == tempPathReservoir.pathFlags.rcVertexLength();
 
     PathReservoir srcReservoir = tempPathReservoir;
@@ -139,7 +142,11 @@ float3 computeShiftedIntegrandHybrid(const RestirPathTracerParams params, bool u
     if (srcReservoir.pathFlags.rcVertexLength() == 1)
     {
         Tp = 1.f;
-        dstRcPrevVertexHit.setValid();
+        // [Falcor 8] HitInfo.setValid() removed; construct a valid HitInfo
+        // via packHeader (only the type bits matter for isValid() check).
+        PackedHitInfo validPacked = {};
+        HitInfo.packHeader(validPacked, HitType::Triangle);
+        dstRcPrevVertexHit = HitInfo(validPacked);
         dstRcPrevVertexWo = 1.f; // this value doesn't matter, as long as it is not all 0
 
         if (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition)
@@ -208,8 +215,9 @@ float3 traceHybridShiftRays(const RestirPathTracerParams params, bool usePrev, c
     PathReservoir srcReservoir, inout HitInfo dstRcPrevVertexHit, inout float3 dstRcPrevVertexWo)
 {
     if (srcReservoir.weight == 0.f) return 0.f;
-    HitInfo dstPrimaryHit; dstPrimaryHit.unpack(dstPrimaryHitPacked);
-    Ray ray = Ray(gScene.camera.getPosition(usePrev), -dstPrimarySd.V, 0, kRayTMax); // this ray can be arbitrary, does not affect results
+    HitInfo dstPrimaryHit = HitInfo(dstPrimaryHitPacked);
+    float3 cameraPos = usePrev ? gScene.camera.data.prevPosW : gScene.camera.data.posW;
+    Ray ray = Ray(cameraPos, -dstPrimarySd.V, 0, kRayTMax); // this ray can be arbitrary, does not affect results
     float3 Tp = gPathTracer.traceRandomReplayPathHybridSimple(dstPrimaryHit, dstPrimarySd, ray, srcReservoir.pathFlags, srcReservoir.initRandomSeed, dstRcPrevVertexHit, dstRcPrevVertexWo);
     return Tp;
 }
@@ -218,7 +226,7 @@ float3 traceHybridShiftRays(const RestirPathTracerParams params, bool usePrev, c
 void traceDenoiserData(const RestirPathTracerParams params, const PackedHitInfo dstPrimaryHitPacked, const ShadingData dstPrimarySd,
     ReSTIRPathFlags pathFlags, uint initRandomSeed, inout float hitDist, inout NRDPathType pathType, inout float3 sampleReflectance)
 {
-    HitInfo dstPrimaryHit; dstPrimaryHit.unpack(dstPrimaryHitPacked);
+    HitInfo dstPrimaryHit = HitInfo(dstPrimaryHitPacked);
     Ray ray = Ray(gScene.camera.getPosition(), -dstPrimarySd.V, 0, kRayTMax); // this ray can be arbitrary, does not affect results
     gPathTracer.traceRandomReplayGetDenoiserData(dstPrimaryHit, dstPrimarySd, ray, pathFlags,
         initRandomSeed, hitDist, pathType, sampleReflectance);
