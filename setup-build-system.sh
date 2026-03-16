@@ -91,6 +91,9 @@ log "Step 3: Patching Source/RenderPasses/CMakeLists.txt..."
 RP_CMAKE="${FALCOR_ROOT}/Source/RenderPasses/CMakeLists.txt"
 [ -f "${RP_CMAKE}" ] || fail "Could not find ${RP_CMAKE}"
 
+# Restore from git to discard any corruption from prior runs
+git -C "${FALCOR_ROOT}" checkout -- Source/RenderPasses/CMakeLists.txt 2>/dev/null || true
+
 if ! grep -q "add_subdirectory(VisCache)" "${RP_CMAKE}"; then
     echo "add_subdirectory(VisCache)" >> "${RP_CMAKE}"
     log "  Added: add_subdirectory(VisCache)"
