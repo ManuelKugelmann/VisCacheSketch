@@ -5,6 +5,16 @@
  # provide call-compatible replacements for the Falcor 4.x BSDF helpers
  # that DQLin's ReSTIR PT code relied on.  Keeping shims in one place
  # minimises the diff in PathTracer.slang and Shift.slang.
+ #
+ # Known approximation: evalPdfBSDF with lobe filtering uses setActiveLobes
+ # which renormalizes lobe selection weights. The original DQLin/NVlabs code
+ # used unnormalized partial PDFs (sum of pLobe*lobePdf for selected lobes
+ # only, with original full-BSDF weights). NVlabs solved this by adding
+ # evalBsdfAndPdf() to FalcorBSDF with a lobeMask parameter. Our approach
+ # is self-consistent (sampleBSDF.pdfSingle and evalPdfBSDF use the same
+ # renormalization) but Jacobian ratios may differ slightly when source and
+ # destination vertices have very different lobe weight distributions.
+ # For exact parity, add evalBsdfAndPdf(lobeMask) to Falcor 8's StandardBSDF.
  **************************************************************************/
 
 import Scene.Shading;
