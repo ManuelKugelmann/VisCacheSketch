@@ -48,6 +48,119 @@ could further improve budget allocation
 by incorporating per-ray traversal cost,
 backing off RR when rays are cheap
 and being more aggressive when BVH traversal is expensive.
+**Histogram stratification × VisCache.**
+Histogram stratification [Salaün et al. 2025]
+sorts light candidates by estimated contribution
+into histogram bins and applies QMC within each stratum,
+reducing variance from O(1/N) to O(1/N²) for smooth integrands.
+The visibility cache's per-light μ estimates are composable
+with this at the same pipeline stage.
+VisCache serves as a cheap visibility oracle
+that enables large-K candidate evaluation:
+generate K candidate lights,
+sort by visibility-weighted contribution f̂ = fs × Le × G × μ (histogram sort),
+apply QMC pick on the sorted distribution,
+then trace one accurate shadow ray for the winner.
+The benefit is multiplicative —
+cheaper K evaluations (cache lookup vs. shadow ray)
+*and* better distribution (histogram sort over the visibility-informed proposal).
+Crucially, the histogram sort operates on the proposal f̂,
+while exact evaluation (the traced shadow ray) is applied only to the winner —
+so approximate visibility in f̂ does not introduce bias,
+only changes sampling efficiency.
+This combination of VisCache with histogram stratification
+is a novel integration point.
+
+**Multilevel cache for ReSTIR path guiding.**
+ReSTIR PG [Zeng et al. 2025] combines ReSTIR with path guiding,
+using world-space guiding structures
+to inform reservoir candidate generation.
+The multilevel hash structure naturally extends beyond binary visibility
+to cache richer per-cell statistics —
+contribution means, variance, directional histograms —
+at multiple spatial resolutions,
+providing the world-space guiding signals
+that ReSTIR PG requires.
+Coarse cells supply robust, well-sampled statistics
+for initial candidate generation,
+while fine cells refine decisions near geometric detail.
+The same variance-gated cascade (Sec. 5) applies:
+write guiding statistics to finer levels
+only where coarse-level variance justifies the cost.
+This generalizes the current binary visibility cache
+to a multilevel path guiding cache for ReSTIR PG,
+with the same self-regulating budget allocation.
+
+
+**ReSTIR BDPT.**
+Lin et al. [2025] extend GRIS to bidirectional path tracing,
+enabling caustics via technique-aware extended path space
+and caustic reservoirs.
+The reconnection vertex data structures from ReSTIR PT
+port directly into BDPT's hybrid shift —
+and the visibility cache sits on the same shadow ray step.
+Caustics specifically require accurate visibility
+at specular-diffuse-diffuse paths,
+exactly where spatial hash visibility caching has the highest leverage:
+these paths concentrate on narrow geometric regions
+that align well with fine-level cache cells,
+and their high contribution variance
+makes the shadow ray cost dominant.
+The cache's variance-gated write depth
+would naturally allocate fine resolution
+to caustic shadow boundaries
+while leaving diffuse-dominated regions at coarse levels.
+
+**MegaLights pipeline integration.**
+MegaLights [Conner et al. 2025] (Epic/UE5)
+is a stochastic tile-based direct lighting system
+enabling many dynamic shadowed area lights
+through a scalable, hardware-conscious pipeline.
+Its architectural pattern — tile-based candidate pools
+with stochastic selection — is composable
+with histogram stratification [Salaün et al. 2025]:
+MegaLights generates the candidate pool,
+histogram stratification improves which candidates get selected,
+and the visibility cache provides the μ oracle
+for visibility-weighted sorting.
+The three components operate at different pipeline stages
+and compose without modification to each other.
+
+**Path space filtering with multilevel hash and correction.**
+Path space filtering [Binder and Keller 2019]
+uses a spatial hash over path space
+to cache and filter full path contributions —
+a predecessor to SHaRC and closely related
+to the spatial hash lineage of this work.
+The visibility cache is path space filtering
+restricted to the visibility factor.
+Three additions from this work apply directly
+to general path space filtering:
+(1) a multilevel hash map with LOD in the key (Sec. 4),
+giving resolution-adaptive filtering in one flat table;
+(2) variance-gated write depth (Sec. 5),
+so the cache self-regulates which levels receive updates
+based on local filter quality;
+(3) prediction-with-correction (Sec. 8),
+using cached path contributions as control variate
+with RR on the residual to maintain unbiasedness —
+the filtered estimate is returned on RR termination
+instead of zero, and only traced paths update the cache.
+This would turn path space filtering
+from a biased filter into an unbiased estimator
+with variance-optimal spatial resolution.
+
+**Real-time Markov chain path guiding.**
+Alber et al. [2025] propose lightweight unbiased path guiding
+for real-time applications using MCMC,
+avoiding costly fitting procedures
+and hierarchical spatial data structures
+that are inefficient on GPU architectures.
+The visibility cache is orthogonal:
+it operates on pairwise (point, point) → {0,1} queries
+regardless of how those points were generated —
+whether by MCMC path guiding, ReSTIR, or any other sampler.
+
 **Independent per-endpoint LOD.**
 The current design uses a shared level index —
 both endpoints are quantized at the same cell size,
@@ -70,3 +183,30 @@ so the extension is backward-compatible.
 Canonicalization would require restriction
 to the diagonal (lvlA = lvlB) or
 symmetric level assignment.
+
+**Multi-lookup smoothing and inter-level interpolation.**
+Currently each query performs a single coarse-to-fine cascade
+and returns the best matching entry.
+An alternative is to evaluate multiple lookups —
+either at jittered positions within the cell neighborhood
+or by interpolating between adjacent levels —
+and average the resulting μ values.
+This is analogous to the Nc > 1 cheap-sample strategy
+in Neural Two-Level MC [Dereviannykh et al. 2024],
+where multiple neural cache evaluations (2–25× cheaper than a trace)
+are averaged to reduce residual variance
+before a single expensive correction sample.
+Hash lookups are even cheaper than neural evaluations,
+so the cost of multi-lookup averaging is near zero.
+Inter-level interpolation (blending μ from adjacent LOD levels
+weighted by their sample counts)
+would smooth the discrete LOD transitions
+that the current cascade produces,
+similar to trilinear interpolation
+in neural hash encodings [Müller et al. 2022]
+and roughness-gated blending in SHaRC [Benyoub et al. 2024].
+The position jitter (Sec. 4) already provides stochastic smoothing
+across cell boundaries within a single level;
+multi-lookup and inter-level interpolation
+would extend this smoothing across levels
+and across multiple cells per query.
