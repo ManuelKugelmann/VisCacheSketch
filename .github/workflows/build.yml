@@ -22,8 +22,13 @@ on:
           - Debug
           - Release
           - Both
+      create_prerelease:
+        description: 'Create a dev prerelease on GitHub Releases'
+        required: false
+        default: false
+        type: boolean
       commit_sha:
-        description: 'Commit SHA to build and release (default: HEAD of selected branch)'
+        description: 'Commit SHA to build (default: HEAD of selected branch)'
         required: false
         type: string
 
@@ -463,7 +468,8 @@ jobs:
     name: Dev Prerelease
     runs-on: ubuntu-latest
     if: >-
-      !cancelled()
+      inputs.create_prerelease
+      && !cancelled()
       && needs.prepare.result == 'success'
       && needs.windows-vs2022.result == 'success'
     needs: [prepare, windows-vs2022]
