@@ -176,7 +176,7 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Build + verify + deploy
+      - name: Build + deploy
         shell: cmd
         continue-on-error: false
         run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }} --sccache
@@ -186,12 +186,9 @@ jobs:
         shell: cmd
         run: sccache --show-stats
 
-      - name: Save CMake build cache
-        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
-          key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
+      - name: Verify build output
+        shell: cmd
+        run: call scripts\verify-build-output.bat ${{ env.FALCOR_DIR }}\build\${{ env.CMAKE_BUILD_PRESET }}\bin\${{ matrix.config }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -200,6 +197,33 @@ jobs:
           path: |
             ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ matrix.config }}/
           retention-days: 14
+
+      - name: Slim build cache
+        if: always()
+        shell: cmd
+        run: |
+          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\${{ env.CMAKE_BUILD_PRESET }}"
+          echo [cache] Before cleanup:
+          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
+          for /d %%D in ("%BUILD_DIR%\Source" "%BUILD_DIR%\Falcor" "%BUILD_DIR%\CMakeFiles") do (
+              if exist "%%D" (
+                  del /s /q "%%D\*.pdb" >nul 2>&1
+                  del /s /q "%%D\*.ilk" >nul 2>&1
+                  del /s /q "%%D\*.exp" >nul 2>&1
+                  del /s /q "%%D\*.ipdb" >nul 2>&1
+                  del /s /q "%%D\*.iobj" >nul 2>&1
+              )
+          )
+          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
+          echo [cache] After cleanup:
+          powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
+
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
   # ---------------------------------------------------------------------------
   # Windows Ninja/MSVC — secondary build, optional
@@ -285,17 +309,14 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Build + verify + deploy
+      - name: Build + deploy
         shell: cmd
         continue-on-error: false
         run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }}
 
-      - name: Save CMake build cache
-        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
-          key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
+      - name: Verify build output
+        shell: cmd
+        run: call scripts\verify-build-output.bat ${{ env.FALCOR_DIR }}\build\${{ env.CMAKE_BUILD_PRESET }}\bin\${{ matrix.config }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -304,6 +325,29 @@ jobs:
           path: |
             ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/${{ matrix.config }}/
           retention-days: 14
+
+      - name: Slim build cache
+        if: always()
+        shell: cmd
+        run: |
+          set "BUILD_DIR=${{ env.FALCOR_DIR }}\build\${{ env.CMAKE_BUILD_PRESET }}"
+          for /d %%D in ("%BUILD_DIR%\Source" "%BUILD_DIR%\Falcor" "%BUILD_DIR%\CMakeFiles") do (
+              if exist "%%D" (
+                  del /s /q "%%D\*.pdb" >nul 2>&1
+                  del /s /q "%%D\*.ilk" >nul 2>&1
+                  del /s /q "%%D\*.exp" >nul 2>&1
+                  del /s /q "%%D\*.ipdb" >nul 2>&1
+                  del /s /q "%%D\*.iobj" >nul 2>&1
+              )
+          )
+          if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
+
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
   # ---------------------------------------------------------------------------
   # Linux/GCC — optional, does not block PRs or releases (non-PR only)
@@ -433,7 +477,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Download VS2022 build artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v6
         with:
           name: falcor-windows-vs2022-${{ env.RELEASE_CONFIG }}
           path: release-bin/
@@ -494,7 +538,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v6
         with:
           path: release-artifacts/
 

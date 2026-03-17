@@ -3,8 +3,8 @@ REM ci-windows-build.bat — Shared CI build pipeline for Windows (VS2022 + Ninj
 REM
 REM Usage:  ci-windows-build.bat <FALCOR_DIR> <PRESET> <CONFIG> [--sccache]
 REM
-REM Steps:  clean stale cache, configure, check NRD, build, verify,
-REM         deploy scripts, smoke test, slim cache, bundle scenes.
+REM Steps:  clean stale cache, configure, check NRD, build,
+REM         deploy scripts, smoke test, bundle scenes.
 REM
 REM Called by build.yml after checkout/MSVC/submodules/packman/plugins are done.
 
@@ -105,16 +105,9 @@ if "%USE_SCCACHE%"=="1" (
 )
 
 REM ---------------------------------------------------------------------------
-REM 6. Verify build output
+REM 6. Deploy scripts to build output
 REM ---------------------------------------------------------------------------
 set "SCRIPT_DIR=%~dp0"
-if exist "%SCRIPT_DIR%verify-build-output.bat" (
-    call "%SCRIPT_DIR%verify-build-output.bat" "%OUTDIR%"
-)
-
-REM ---------------------------------------------------------------------------
-REM 7. Deploy scripts to build output
-REM ---------------------------------------------------------------------------
 if /i not "%CONFIG%"=="Release" goto :skip_deploy
 if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
 xcopy "%SCRIPT_DIR%*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
@@ -122,7 +115,7 @@ echo [build] Deployed scripts to %OUTDIR%\scripts\VisCache\
 :skip_deploy
 
 REM ---------------------------------------------------------------------------
-REM 8. Headless smoke test (Release only, expected to fail without GPU)
+REM 7. Headless smoke test (Release only, expected to fail without GPU)
 REM ---------------------------------------------------------------------------
 if /i not "%CONFIG%"=="Release" goto :skip_smoke
 echo [build] Attempting headless smoke test (no GPU expected)...
@@ -132,22 +125,7 @@ echo [build] Attempting headless smoke test (no GPU expected)...
 :skip_smoke
 
 REM ---------------------------------------------------------------------------
-REM 9. Slim CMake build cache (strip PDB/ILK to cut ~60-80% size)
-REM ---------------------------------------------------------------------------
-echo [build] Slimming build cache...
-echo [cache] Before cleanup:
-powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
-del /s /q "%BUILD_DIR%\*.pdb" >nul 2>&1
-del /s /q "%BUILD_DIR%\*.ilk" >nul 2>&1
-del /s /q "%BUILD_DIR%\*.exp" >nul 2>&1
-del /s /q "%BUILD_DIR%\*.ipdb" >nul 2>&1
-del /s /q "%BUILD_DIR%\*.iobj" >nul 2>&1
-if exist "%BUILD_DIR%\bin" rmdir /s /q "%BUILD_DIR%\bin"
-echo [cache] After cleanup:
-powershell -NoProfile -Command "$s=(Get-ChildItem '%BUILD_DIR%' -Recurse -File -ErrorAction SilentlyContinue|Measure-Object -Property Length -Sum).Sum; '{0:N0} MB' -f ($s/1MB)"
-
-REM ---------------------------------------------------------------------------
-REM 10. Bundle Falcor media scenes (Release only)
+REM 8. Bundle Falcor media scenes (Release only)
 REM ---------------------------------------------------------------------------
 if /i not "%CONFIG%"=="Release" goto :done
 if exist "%FALCOR_DIR%\media\Arcade" (
