@@ -11,6 +11,7 @@ on:
       - 'scripts/run_release.*'
       - 'scripts/run-tests.*'
       - 'scripts/integrate-plugins.*'
+      - 'scripts/*.py'
       - '.github/workflows/quickstart.yml'
   pull_request:
     branches: ["main", "master"]
@@ -22,6 +23,7 @@ on:
       - 'scripts/run_release.*'
       - 'scripts/run-tests.*'
       - 'scripts/integrate-plugins.*'
+      - 'scripts/*.py'
       - '.github/workflows/quickstart.yml'
   workflow_dispatch:
 
@@ -180,6 +182,20 @@ jobs:
         run: |
           bash scripts/integrate-plugins.sh Falcor
           echo "Idempotent re-run OK"
+
+  # ---------------------------------------------------------------------------
+  # Validate Python graph/capture scripts (syntax + mock-import, no GPU needed)
+  # ---------------------------------------------------------------------------
+  validate-scripts:
+    name: Validate Python Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Syntax check + mock-import
+        run: python scripts/validate_scripts.py
 
   # ---------------------------------------------------------------------------
   # Validate scene download URLs are reachable (HEAD request, no full download)
