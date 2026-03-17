@@ -12,7 +12,15 @@
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
-static constexpr uint32_t kStatCount = 3u; // inserts, evictions, misses
+/// Five atomic GPU counters, indexed by VisCache.slang's kStat* constants:
+///   [0] inserts       — successful vhfInsert() calls (new samples accepted)
+///   [1] evictions     — fingerprint overwrites (slot reuse under pressure)
+///   [2] misses        — vhfLookup() calls that found no valid entry
+///   [3] decayTriggers — decay passes that actually modified an entry (not yet wired)
+///   [4] probeSumHi    — high-watermark of linear probe distance (not yet wired)
+/// Counters 3-4 are reserved for upcoming diagnostics — buffer is pre-allocated
+/// at the full size so adding them doesn't require a buffer resize.
+static constexpr uint32_t kStatCount = 5u;
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
@@ -99,9 +107,15 @@ void VisCache::compile(RenderContext*, const CompileData&)
 }
 
 // ---------------------------------------------------------------------------
+// allocateBuffers: create/recreate all GPU resources.
+//
+// Called from compile() (initial setup) and setScene() (scene change).
+// The hash table capacity is rounded up to the next power-of-two because
+// the GPU addressing uses bitwise AND (capacity-1) for slot indexing.
+// ---------------------------------------------------------------------------
 void VisCache::allocateBuffers()
 {
-    // Ensure capacity is power-of-two
+    // Ensure capacity is power-of-two (required for fast modulo via bitmask).
     uint32_t cap = 1u;
     while (cap < mParams.tableCapacity) cap <<= 1;
     mParams.tableCapacity = cap;
@@ -254,6 +268,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 }
 
 // ---------------------------------------------------------------------------
+// runDecayPass: dispatch the VisCacheDecay.cs.slang compute shader.
+//
+// Each frame processes one slice of the hash table (stride = capacity/decayPeriod).
+// The offset advances by stride each frame, so the full table is swept once
+// every decayPeriod frames. See VisCacheDecay.cs.slang for the per-entry logic.
+// ---------------------------------------------------------------------------
 void VisCache::runDecayPass(RenderContext* pCtx)
 {
     uint32_t stride = std::max(1u, mParams.tableCapacity / mParams.decayPeriod);
@@ -268,6 +288,12 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
 
+// ---------------------------------------------------------------------------
+// readbackStats: copy GPU atomic counters to CPU for UI display and PI controller.
+//
+// Uses a staging buffer with readback memory type. The ~4 frame latency from
+// GPU→CPU copy is acceptable for UI display and the slow PI controller loop.
+// After reading, counters are cleared to zero for the next accumulation period.
 // ---------------------------------------------------------------------------
 void VisCache::readbackStats(RenderContext* pCtx)
 {
@@ -294,6 +320,18 @@ void VisCache::readbackStats(RenderContext* pCtx)
     pCtx->clearUAV(mpStatsBuffer->getUAV().get(), uint4(0u));
 }
 
+// ---------------------------------------------------------------------------
+// autoTuneDecayPeriod: PI controller adjusts decay speed based on load pressure.
+//
+// When eviction rate exceeds the target (table is under pressure), decay speeds
+// up to free stale entries. When pressure is low, decay slows down to preserve
+// cache history (better visibility estimates from more samples).
+//
+// The controller is one-sided: it never slows decay past decayPeriodMax, and
+// never goes below 15 frames (hard lower bound for aggressive decay scenes).
+//
+// Quality parameters (varThreshold, pMin) are NEVER auto-tuned — this ensures
+// the user retains full control over the quality/performance tradeoff.
 // ---------------------------------------------------------------------------
 void VisCache::autoTuneDecayPeriod()
 {

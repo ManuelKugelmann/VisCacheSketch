@@ -1016,6 +1016,17 @@ bool ReSTIRPTPass::renderDebugUI(Gui::Widgets& widget)
         mpPixelDebug->renderUI(group);
     }
 
+    // -----------------------------------------------------------------
+    // Local revalidation ablation UI (USE_LOCAL_REVALIDATION).
+    //
+    // This is the "no hash table" ablation baseline: reservoir-local
+    // CV+RRR using mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1).
+    // Toggling triggers recompile because it's a compile-time define.
+    //
+    // Contrib threshold: luminance above which pMin is raised (firefly
+    //   suppression — same concept as gFireflyBudget in VisCache).
+    // pMin: minimum RR survival probability (same as gPMin in VisCache).
+    // -----------------------------------------------------------------
     if (auto g = widget.group("Ablation: Local Revalidation"))
     {
         if (g.checkbox("Enable local revalidation (no hash table)", mLocalRevalidation))
@@ -1487,7 +1498,24 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mRecompile = true;
     }
 
-    // Read VisCache resources and per-feature toggles from upstream VisCache pass.
+    // -----------------------------------------------------------------
+    // VisCache integration: read GPU resources and per-feature toggles
+    // from the upstream VisCache pass via InternalDictionary.
+    //
+    // The VisCache pass exports two GPU resources:
+    //   "vhfTable"    — RWStructuredBuffer<VHFEntry>, the hash table itself
+    //   "vhfParamsCB" — cbuffer VisCacheParams (32 bytes of tuning knobs)
+    //
+    // And per-feature boolean toggles (matching the ablation table in the paper):
+    //   "vhfEnableRevalidation"   — §12: CV+RRR in reconnection shift
+    //   "vhfEnableLightSelection" — §11.1: cached mu in NEE shadow rays
+    //
+    // Any toggle change triggers a shader recompile because the flags are
+    // compile-time defines (USE_VISCACHE_REVALIDATION, etc.), not runtime
+    // branches. This is intentional: compile-time gating lets the compiler
+    // eliminate dead code entirely, avoiding register pressure from unused
+    // VisCache cbuffer bindings when the feature is off.
+    // -----------------------------------------------------------------
     {
         bool wasAvailable = mVisCacheAvailable;
         bool wasReval = mVisCacheRevalidation;
@@ -1502,6 +1530,8 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mVisCacheLightSelection = mVisCacheAvailable &&
             dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
 
+        // Recompile only when a flag actually changes — avoids unnecessary
+        // shader recompilation on frames where the dict values are stable.
         if (mVisCacheAvailable != wasAvailable ||
             mVisCacheRevalidation != wasReval ||
             mVisCacheLightSelection != wasLightSel)
@@ -1725,14 +1755,31 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
-    // Bind VisCache: hash table + params buffer (uploaded by VisCache pass).
+    // -----------------------------------------------------------------
+    // Bind VisCache GPU resources to the PathReusePass shader root.
+    //
+    // gVHFTable: the hash table UAV — shared across all VisCache consumers.
+    //   Bound as RWStructuredBuffer<VHFEntry> for both reads and atomic writes.
+    //
+    // VisCacheParams: the params cbuffer — tuning knobs (pMin, varThreshold,
+    //   cellCoarse/cellFine, etc.). Uploaded by the VisCache pass each frame.
+    //
+    // Both resources are only bound when VisCache is available (the upstream
+    // VisCache pass exists in the render graph and exported its resources).
+    // When USE_VISCACHE=0 the Slang compiler eliminates these bindings entirely.
+    // -----------------------------------------------------------------
     if (mVisCacheAvailable)
     {
         auto rootVar = pass->getRootVar();
         rootVar["gVHFTable"]      = mpVHFTable;
         rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
-    // Local revalidation ablation baseline — bind cbuffer with matching params.
+    // -----------------------------------------------------------------
+    // Local revalidation ablation baseline (USE_LOCAL_REVALIDATION=1).
+    // Binds the LocalRevalCB cbuffer defined in RevalidationCommon.slang.
+    // This path uses reservoir-local mu instead of the hash table — useful
+    // for measuring how much value the hash table adds over simple RR.
+    // -----------------------------------------------------------------
     if (mLocalRevalidation)
     {
         auto rootVar = pass->getRootVar();
@@ -1808,14 +1855,14 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
-    // Bind VisCache: hash table + params buffer (uploaded by VisCache pass).
+    // Bind VisCache resources to PathRetracePass (same pattern as PathReusePass).
     if (mVisCacheAvailable)
     {
         auto rootVar = pass->getRootVar();
         rootVar["gVHFTable"]      = mpVHFTable;
         rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
-    // Local revalidation ablation baseline — bind cbuffer with matching params.
+    // Local revalidation ablation (same pattern as PathReusePass).
     if (mLocalRevalidation)
     {
         auto rootVar = pass->getRootVar();
@@ -1878,7 +1925,21 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
 
-    // VisCache integration — per-feature compile flags for ablation.
+    // -----------------------------------------------------------------
+    // VisCache integration — per-feature compile-time flags.
+    //
+    // Each flag maps to one ablation column in the paper's Table 1:
+    //   USE_VISCACHE              — base: hash table buffer is available
+    //   USE_VISCACHE_REVALIDATION — §12: CV+RRR in reconnection shifts
+    //                               (Shift.slang: evalSegmentVisibilityWeight)
+    //   USE_VISCACHE_LIGHTSELECTION — §11.1: cached mu gates NEE shadow rays
+    //                                 (PathTracer.slang: two NEE sites)
+    //   USE_LOCAL_REVALIDATION    — ablation: reservoir-local CV+RRR
+    //                               (RevalidationCommon.slang, no hash table)
+    //
+    // These are compile-time defines (not runtime branches) so the Slang
+    // compiler can eliminate dead code and avoid binding unused resources.
+    // -----------------------------------------------------------------
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_REVALIDATION", owner.mVisCacheRevalidation ? "1" : "0");
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");

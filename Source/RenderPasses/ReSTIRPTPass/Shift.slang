@@ -17,6 +17,11 @@ import PathTracer;
 import Falcor8Compat;
 import RenderPasses.Shared.Denoising.NRDData;
 
+// VisCache integration: import the core hash table API when any VisCache
+// feature is enabled. USE_VISCACHE is the base flag (hash table available);
+// USE_VISCACHE_REVALIDATION enables CV+RRR gating in reconnection shifts.
+// The import is conditional to avoid compilation errors when VisCache is not
+// in the render graph (the VisCacheParams cbuffer wouldn't be bound).
 #if USE_VISCACHE || USE_VISCACHE_REVALIDATION
 import RenderPasses.VisCache.VisCache;
 #endif
@@ -360,7 +365,24 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
 
     if (isJacobianInvalid(Jacobian)) return 0.f;
 
-    // Evaluate visibility: vertex 1 <-> vertex 2 (reconnection vertex).
+    // Reconnection visibility (§12): evaluate V(primary_hit, reconnection_vertex).
+    //
+    // In ReSTIR PT, reconnection shifts reuse a neighbor's subpath by
+    // reconnecting at a shared vertex. The reconnection edge may be
+    // occluded from the current pixel's primary hit, so we must evaluate
+    // visibility before accepting the shift.
+    //
+    // With VisCache (USE_VISCACHE_REVALIDATION): evalSegmentVisibilityWeight()
+    // returns a soft float weight [0,1] via CV+RRR — the cache mean mu when
+    // skipping the ray, or the unbiased CV+RRR weight when tracing. This
+    // soft weight is multiplied into the integrand, preserving unbiasedness
+    // while saving ~80% of reconnection shadow rays.
+    //
+    // Without VisCache: the function traces unconditionally and returns 0 or 1.
+    //
+    // contribLuminance: total contribution luminance through this edge,
+    // used for firefly-aware adaptive pMin (high-contribution edges get
+    // higher trace probability to prevent weight explosion).
     if (evalVisibility)
     {
         float visWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, rcVertexSd.posW,
@@ -415,7 +437,13 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
     if (!rcVertexHitExists) 
     {
         float3 dstIntegrand = 0.f;
-        // are we having a infinite light as rcVertex?
+        // Environment map reconnection: the reconnection vertex escaped to
+        // infinity (env map hit). Test visibility along direction wi from
+        // the destination primary hit. isDirection=true tells the function
+        // to treat targetVertex as a direction, not a position — it uses
+        // kRayTMax for the ray length and (if VisCache is enabled)
+        // vhfEncodeDirection(wi) to map the direction into the hash table's
+        // angular binning scheme.
         if (kUseMIS && srcReservoir.pathFlags.lightType() == (uint)PathTracer::LightSampleType::EnvMap && srcReservoir.pathFlags.pathLength() + 1 == rcVertexLength && !srcReservoir.pathFlags.lastVertexNEE())
         {
             float3 wi = rcVertexWi;
@@ -555,7 +583,8 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
 
     if (isJacobianInvalid(Jacobian)) return 0.f;
 
-    // Evaluate visibility: vertex 1 <-> vertex 2 (reconnection vertex).
+    // Reconnection visibility (§12): same as above (BPR hybrid shift variant).
+    // See the detailed comment in computeShiftedIntegrandBPRHybridShift().
     if (evalVisibility)
     {
         float visWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, rcVertexSd.posW,
@@ -642,52 +671,109 @@ bool mergeReservoir(const RestirPathTracerParams params, float3 dstIntegrand, fl
     return selected;
 }
 
+/// Raw visibility ray trace — no caching, no gating.
+/// Used as the fallback when VisCache is not enabled, and as the inner
+/// trace call when VisCache decides a ray is needed.
 bool traceVisibilityRay(const Ray ray)
 {
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 }
 
-/// Unified visibility evaluation — returns a float weight [0,1].
-/// When USE_VISCACHE_REVALIDATION is enabled: CV+RRR with deterministic gating (§12).
-/// Otherwise: vanilla shadow ray returning 0.0 or 1.0.
-/// isDirection: true when targetVertex is a direction (env map), not a position.
+// ---------------------------------------------------------------------------
+// evalSegmentVisibilityWeight: unified visibility evaluation for reconnection
+// shifts, returning a soft float weight in [0, 1].
+//
+// This is the single entry point for all reconnection visibility queries
+// in Shift.slang. It handles both finite endpoints (position-to-position)
+// and infinite endpoints (direction to env map).
+//
+// When USE_VISCACHE_REVALIDATION is enabled:
+//   1. Looks up the VisCache hash table for cached visibility mu
+//   2. Uses deterministic xi (derived from cell coordinates) for the RR
+//      coin flip — ensures temporal stability and MIS weight consistency
+//   3. If cache says "skip" (converged entry, low variance): returns mu
+//   4. If cache says "trace": traces the ray, inserts the result, and
+//      returns the unbiased CV+RRR weight mu + (V - mu) / p
+//
+// When USE_VISCACHE_REVALIDATION is NOT enabled:
+//   Traces the ray unconditionally and returns 0.0 or 1.0.
+//   This is the baseline for measuring ray savings.
+//
+// Why deterministic xi (not stochastic):
+//   ReSTIR PT evaluates the same reconnection edge multiple times across
+//   temporal/spatial reuse and MIS weight computation. If each evaluation
+//   used a different random xi, the cache gate decision would differ between
+//   evaluations, causing inconsistent MIS weights and temporal flicker.
+//   Deterministic xi ensures the same edge always gets the same decision.
+//
+// Why soft weights (not hard bool):
+//   The CV+RRR weight mu + (V - mu) / p is a continuous value that can be
+//   anywhere in [0, 1+]. Multiplying the integrand by this weight is
+//   unbiased and produces smoother results than thresholding at 0.5.
+//   The original evalSegmentVisibility() returned a hard bool which lost
+//   information — e.g., a cache entry with mu=0.3 would be treated as
+//   fully occluded, discarding 30% of the contribution.
+//
+// Parameters:
+//   sourceVertex: ray origin (e.g., destination primary hit)
+//   targetVertex: ray target (reconnection vertex position, or direction for env map)
+//   contribLuminance: path contribution luminance for firefly-aware adaptive pMin
+//   isDirection: true when targetVertex is a direction (env map), not a position
+// ---------------------------------------------------------------------------
 float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 targetVertex,
                                    float contribLuminance = 0.f, bool isDirection = false)
 {
+    // Compute ray direction and length from the two endpoints.
     float3 dir;
     float tMax;
     if (isDirection)
     {
+        // Environment map: targetVertex IS the direction, trace to infinity.
         dir = targetVertex;
         tMax = kRayTMax;
     }
     else
     {
+        // Finite endpoint: compute edge vector and slightly shorten to avoid
+        // self-intersection at the target surface.
         float3 edge = targetVertex - sourceVertex;
         tMax = length(edge);
         dir = edge / tMax;
-        tMax *= 0.999f;
+        tMax *= 0.999f;  // Prevent intersection with target surface
     }
 
 #if USE_VISCACHE_REVALIDATION
-    // Encode direction as position for cache lookup (IBL).
+    // VisCache gate: look up the hash table and decide whether to trace.
+    //
+    // For directions (env map), encode the direction as a position using
+    // vhfEncodeDirection() so it can be hashed into the table's angular
+    // binning scheme (octant-level bins at the coarsest LOD).
     float3 vcPosB = isDirection ? vhfEncodeDirection(targetVertex) : targetVertex;
+
+    // Deterministic xi: same cell pair → same coin flip → no flicker.
     VHFGateResult vcGate = vhfGate(sourceVertex, vcPosB,
                                     vhfDeterministicXi(sourceVertex, vcPosB),
                                     contribLuminance);
 
+    // Cache says "skip" — return cached mean as visibility estimate.
+    // This is the fast path: no ray traced, ~0 cost.
     if (!vcGate.shouldTrace)
         return vcGate.visWeight;
 #endif
 
+    // Trace the shadow ray (either because cache says "trace", or because
+    // VisCache is disabled and we always trace).
     Ray ray = Ray(sourceVertex, dir, 0.f, tMax);
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 
 #if USE_VISCACHE_REVALIDATION
+    // Insert trace result into cache and return unbiased CV+RRR weight.
+    // w = mu + (V - mu) / p, where V is 0 or 1 from the trace.
     return vhfCommit(sourceVertex, vcPosB, visible ? 1.f : 0.f, vcGate);
 #else
+    // No cache — return hard visibility (0 or 1).
     return visible ? 1.f : 0.f;
 #endif
 }

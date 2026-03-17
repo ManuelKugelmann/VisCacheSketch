@@ -57,25 +57,35 @@ public:
     };
     static_assert(sizeof(GPUParams) == 32, "GPUParams must match VisCacheParams cbuffer (32 bytes)");
 
+    /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
+    /// ablation toggles). Feature and ablation toggles are exported via InternalDictionary
+    /// so downstream passes (ReSTIRPTPass) can read them and set compile-time defines.
     struct Params
     {
-        uint32_t tableCapacity   = 1u << 22u;  ///< 4M entries = 32 MB
-        uint32_t bootThreshold   = 32u;         ///< Min samples before trusting entry
-        float    varThreshold    = 0.10f;       ///< Variance gate for write depth
-        float    pMin            = 0.05f;       ///< Min RR survival probability
-        float    fireflyBudget   = 0.05f;       ///< Adaptive pMin scale
-        uint32_t numLevels       = 3u;          ///< Arbitrary N LOD levels
+        // --- Hash table sizing ---
+        uint32_t tableCapacity   = 1u << 22u;  ///< 4M entries = 32 MB (must be power-of-two)
+        uint32_t bootThreshold   = 32u;         ///< Min samples before trusting entry (maturity gate)
+        float    varThreshold    = 0.10f;       ///< Bernoulli variance gate for cascaded write depth
+        float    pMin            = 0.05f;       ///< Min RR survival probability (floor for CV+RRR)
+        float    fireflyBudget   = 0.05f;       ///< Contribution luminance scale for adaptive pMin
+        uint32_t numLevels       = 3u;          ///< Number of LOD levels in the cascade (1..16)
         float    cellCoarse      = 10.0f;       ///< Coarsest level cell size (world units, or auto-derived)
         float    cellFine        = 0.16f;       ///< Finest level cell size (world units, or auto-derived)
-        bool     autoTuneCells   = true;        ///< Auto-derive cellCoarse/cellFine from scene
-        uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=off)
-        uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling
-        bool     enableVisCacheRevalidation    = true;  ///< CV+RRR shadow ray gating (§11.3)
-        bool     enableVisCacheLightSelection = true;  ///< Cached mu in target function (§11.1)
-        bool     enableVisCacheWarpReduction  = true;  ///< SM 6.5 WaveMatch (ablation C)
-        bool     enableVisCacheVarianceGate   = true;  ///< Ablation B
-        bool     enableVisCacheDecay          = true;  ///< Ablation D
-        bool     enableVisCachePressureEvict  = true;  ///< Ablation E
+        bool     autoTuneCells   = true;        ///< Auto-derive cellCoarse/cellFine from scene bounds
+
+        // --- Decay (host-only, not uploaded to GPU params cbuffer) ---
+        uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=disabled)
+        uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling for auto-tuned decay
+
+        // --- Feature toggles (exported to downstream passes via dict) ---
+        bool     enableVisCacheRevalidation    = true;  ///< §12: CV+RRR in reconnection shifts
+        bool     enableVisCacheLightSelection = true;   ///< §11.1: cached mu in NEE target function
+
+        // --- Ablation toggles (Table 1 in paper) ---
+        bool     enableVisCacheWarpReduction  = true;  ///< C: SM 6.5 WaveMatch coalescing
+        bool     enableVisCacheVarianceGate   = true;  ///< B: Bernoulli variance-gated write depth
+        bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
+        bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
     };
 
     const Params& getParams() const { return mParams; }
@@ -108,15 +118,19 @@ private:
     bool     mAutoTuneCells = true;  ///< Auto-derive cellCoarse/cellFine from scene
     uint32_t mFrameCount = 0u;
 
-    // Stats (readback with 4-frame delay)
+    /// Readback stats (GPU → staging → CPU, ~4 frame latency).
+    /// These are displayed in the UI and fed to the PI controller.
     struct Stats
     {
-        float hitRate     = 0.f;
-        float raySavings  = 0.f;
-        float evictRate   = 0.f;
+        float hitRate     = 0.f;  ///< (queries - misses) / queries — cache effectiveness
+        float raySavings  = 0.f;  ///< (queries - inserts) / queries — fraction of rays skipped
+        float evictRate   = 0.f;  ///< evictions / inserts — load pressure indicator
     } mStats;
 
-    // PI controller state for decayPeriod auto-tuning
-    float mPIIntegral      = 0.f;
-    float mTargetLoadPressure = 0.1f;  ///< Target eviction/insert ratio
+    /// PI controller state for decayPeriod auto-tuning.
+    /// The controller targets a stable eviction/insert ratio (mTargetLoadPressure).
+    /// When load pressure exceeds the target, decay speeds up to free stale entries.
+    /// Quality parameters (varThreshold, pMin) are NEVER auto-tuned — only decay speed.
+    float mPIIntegral      = 0.f;       ///< Accumulated integral term
+    float mTargetLoadPressure = 0.1f;   ///< Target eviction/insert ratio (setpoint)
 };

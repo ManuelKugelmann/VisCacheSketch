@@ -29,6 +29,12 @@ import LoadShadingData;
 import Falcor8Compat;
 import PathBuilder;
 
+// ---------------------------------------------------------------------------
+// VisCache integration: import the hash table API when any VisCache feature
+// is enabled. USE_VISCACHE is the base flag (hash table buffer available);
+// USE_VISCACHE_LIGHTSELECTION enables cached-mu gating in NEE shadow rays.
+// The import brings vhfGateDeterministic(), vhfCommit(), vhfEncodeDirection().
+// ---------------------------------------------------------------------------
 #if USE_VISCACHE || USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;
 #endif
@@ -1341,9 +1347,27 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
+                        // -----------------------------------------------------------------
+                        // NEE shadow ray: evaluate V(shading point, light).
+                        //
+                        // With USE_VISCACHE_LIGHTSELECTION (§11.1):
+                        //   Use the deterministic gate (stable xi from cell coords) to
+                        //   decide whether to trace. For finite lights, posB = light pos;
+                        //   for env map / directional lights, encode direction into the
+                        //   far-field hemisphere representation (see vhfEncodeDirection).
+                        //
+                        //   The gate returns shouldTrace=false when the cache has high
+                        //   confidence (low variance). In that case, threshold the cached
+                        //   mu at 0.5 to produce a hard bool — NEE uses binary V because
+                        //   the path contribution C = BRDF * Le * G is computed separately.
+                        //
+                        //   contribLuminance = luminance(Lr) enables firefly-aware pMin:
+                        //   bright contributions get higher trace probability to prevent
+                        //   weight explosion on high-contribution shadow edges.
+                        //
+                        // Without: unconditional shadow ray (baseline).
+                        // -----------------------------------------------------------------
 #if USE_VISCACHE_LIGHTSELECTION
-                        // §11.1: VisCache-gated NEE shadow ray.
-                        // For finite lights use light position; for env map encode direction.
                         bool visible;
                         float3 vcPosB = (ray.tMax < 1e10f)
                             ? (ray.origin + ray.dir * ray.tMax)
@@ -1815,8 +1839,18 @@ struct PathTracer
             if (validSample)
             {
                 const Ray ray = ls.getVisibilityRay();
+                // -----------------------------------------------------------------
+                // Temporal update shadow ray: same VisCache gating logic as the
+                // main NEE path above. This runs during the temporal reservoir
+                // update for dynamic scenes — the reconnection vertex's light
+                // sample is re-tested for visibility. Using the same deterministic
+                // gate ensures temporal coherence between initial and update paths.
+                //
+                // The cache population here is critical: temporal updates observe
+                // the same (P, light) pairs across frames, seeding the cache with
+                // stable visibility data that benefits the main NEE pass.
+                // -----------------------------------------------------------------
 #if USE_VISCACHE_LIGHTSELECTION
-                // §11.1: VisCache-gated temporal update shadow ray.
                 float3 vcPosB = (ray.tMax < 1e10f)
                     ? (ray.origin + ray.dir * ray.tMax)
                     : vhfEncodeDirection(ray.dir);

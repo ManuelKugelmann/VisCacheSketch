@@ -162,14 +162,26 @@ private:
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mEnableRayStats = false;      ///< Set to true when the stats tab in the UI is open. This may negatively affect performance.
 
-    // VisCache integration — hash table + params buffer from InternalDictionary.
-    ref<Buffer> mpVHFTable;
-    ref<Buffer> mpVHFParamsCB;
-    bool mVisCacheAvailable = false;
-    bool mVisCacheRevalidation = false;    ///< CV+RRR revalidation in reconnection shifts (§12)
-    bool mVisCacheLightSelection = false;  ///< Cached mu in NEE target function (§11.1)
-    bool mLocalRevalidation = false;       ///< Reservoir-local CV+RRR ablation baseline (no hash table)
-    float mLocalRevalContribThreshold = 0.05f; ///< Contribution threshold for local reval RR
+    // -----------------------------------------------------------------
+    // VisCache integration state.
+    //
+    // GPU resources are obtained from the upstream VisCache pass via
+    // InternalDictionary each frame in beginFrame(). They are bound to
+    // every compute pass that may evaluate visibility (PathReusePass,
+    // PathRetracePass) in their respective binding functions.
+    //
+    // Per-feature flags are compile-time defines that trigger shader
+    // recompilation when toggled. This is intentional: compile-time
+    // gating lets the Slang compiler eliminate dead code and avoid
+    // register pressure from unused VisCache cbuffer bindings.
+    // -----------------------------------------------------------------
+    ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
+    ref<Buffer> mpVHFParamsCB;             ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
+    bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
+    bool mVisCacheRevalidation = false;    ///< §12: CV+RRR gating in reconnection shift (Shift.slang)
+    bool mVisCacheLightSelection = false;  ///< §11.1: cached mu gates NEE shadow rays (PathTracer.slang)
+    bool mLocalRevalidation = false;       ///< Ablation: reservoir-local CV+RRR (no hash table, RevalidationCommon.slang)
+    float mLocalRevalContribThreshold = 0.05f; ///< Firefly budget for local reval RR (luminance scale)
     float mLocalRevalPMin = 0.05f;             ///< Min RR survival probability for local reval
 
     uint64_t                        mAccumulatedRayCount = 0;
