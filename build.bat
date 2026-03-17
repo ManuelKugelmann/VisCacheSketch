@@ -50,6 +50,18 @@ exit /b 1
 :args_done
 
 REM ---------------------------------------------------------------------------
+REM Clean stale CMake cache (before setup, since setup_vs2022.bat also configures)
+REM ---------------------------------------------------------------------------
+set "BUILD_DIR=%FALCOR_ROOT%\build\%PRESET%"
+if "%CLEAN_CACHE%"=="1" (
+    if exist "!BUILD_DIR!\CMakeCache.txt" (
+        echo [build] --clean: removing CMakeCache.txt and CMakeFiles...
+        del /q "!BUILD_DIR!\CMakeCache.txt"
+        if exist "!BUILD_DIR!\CMakeFiles" rmdir /s /q "!BUILD_DIR!\CMakeFiles"
+    )
+)
+
+REM ---------------------------------------------------------------------------
 REM Step 1: Setup (submodules, packman deps, copy sources, patch CMake)
 REM ---------------------------------------------------------------------------
 if "%SKIP_SETUP%"=="1" (
@@ -83,20 +95,15 @@ if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
     set "CMAKE=%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe"
 )
 
-set "BUILD_DIR=%FALCOR_ROOT%\build\%PRESET%"
-if "%CLEAN_CACHE%"=="1" (
-    if exist "!BUILD_DIR!\CMakeCache.txt" (
-        echo [build] --clean: removing CMakeCache.txt and CMakeFiles...
-        del /q "!BUILD_DIR!\CMakeCache.txt"
-        if exist "!BUILD_DIR!\CMakeFiles" rmdir /s /q "!BUILD_DIR!\CMakeFiles"
+if exist "!BUILD_DIR!\CMakeCache.txt" (
+    echo [build] CMake cache exists, skipping configure
+) else (
+    echo [build] Configuring: %CMAKE% --preset %PRESET%
+    "%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%"
+    if errorlevel 1 (
+        echo [build] ERROR: CMake configure failed!
+        exit /b 1
     )
-)
-
-echo [build] Configuring: %CMAKE% --preset %PRESET%
-"%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%"
-if errorlevel 1 (
-    echo [build] ERROR: CMake configure failed!
-    exit /b 1
 )
 
 REM VS2022 presets use MSBuild (/m for parallel); Ninja presets use native parallel

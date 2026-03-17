@@ -103,3 +103,18 @@ target_link_options(CudaInterop PRIVATE /NODEFAULTLIB:LIBCMT)
 ```
 
 **Upstream status:** Not yet reported.
+
+---
+
+## 7. setup_vs2022.bat: add --host parameter for toolset architecture
+
+**File:** `setup_vs2022.bat`
+
+The original script hardcodes `host=x86` toolset. When a CMake cache exists
+from a previous configure with `host=x64` (e.g. from CI or a VS x64 developer
+prompt), reconfiguring fails with "generator toolset does not match".
+
+**Fix:** Added `--host` parameter (default: `x86` for backward compatibility).
+Usage: `setup_vs2022.bat --host x64` or `setup_vs2022.bat ci --host x64`.
+
+**Upstream status:** Not yet reported.
