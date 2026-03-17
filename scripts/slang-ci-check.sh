@@ -166,7 +166,9 @@ check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" \
 
 # Falcor-dependent (VC_STUBS provide consumer functions: traceShadowRay, evalBRDF).
 # USE_VISCACHE=1 needed for RevalidationCommon (uses gPMin, gFireflyBudget from cbuffer).
-VC_COMMON="${COMMON} -DUSE_VISCACHE=1"
+# Strip -DUSE_VISCACHE=0 from DFLAGS to avoid conflict with the override.
+VC_DFLAGS=$(echo "$DFLAGS" | sed 's/-DUSE_VISCACHE=[0-9]*//')
+VC_COMMON="-target dxil ${CODEGEN} ${COMPILER_FLAGS} ${WARN_FLAGS} ${SEARCH_PATHS} ${PLATFORM_DEFS} ${VC_DFLAGS} -DUSE_VISCACHE=1"
 
 check "${VISCACHE_DIR}/VisCacheTracing.slang" \
   ${VC_COMMON} "${VC_STUBS}"

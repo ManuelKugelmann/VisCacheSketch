@@ -6,6 +6,7 @@
 
 import PathReservoir;
 import Utils.Sampling.SampleGenerator;
+import Utils.Color.ColorHelpers;
 import LoadShadingData;
 import Params;
 import Utils.Debug.PixelDebug;
