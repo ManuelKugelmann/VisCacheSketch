@@ -1022,10 +1022,7 @@ bool ReSTIRPTPass::renderDebugUI(Gui::Widgets& widget)
     // This is the "no hash table" ablation baseline: reservoir-local
     // CV+RRR using mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1).
     // Toggling triggers recompile because it's a compile-time define.
-    //
-    // Contrib threshold: luminance above which pMin is raised (firefly
-    //   suppression — same concept as gFireflyBudget in VisCache).
-    // pMin: minimum RR survival probability (same as gPMin in VisCache).
+    // Reuses gPMin/gFireflyBudget from VisCacheParams for fair comparison.
     // -----------------------------------------------------------------
     if (auto g = widget.group("Ablation: Local CV+RRR"))
     {
@@ -1033,11 +1030,6 @@ bool ReSTIRPTPass::renderDebugUI(Gui::Widgets& widget)
         {
             mRecompile = true;
             dirty = true;
-        }
-        if (mLocalCVRRR)
-        {
-            dirty |= g.var("Contrib threshold", mLocalRevalContribThreshold, 0.001f, 1.0f, 0.005f);
-            dirty |= g.var("pMin", mLocalRevalPMin, 0.01f, 0.5f, 0.005f);
         }
     }
 
@@ -1774,18 +1766,9 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["gVHFTable"]      = mpVHFTable;
         rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
-    // -----------------------------------------------------------------
-    // Local CV+RRR ablation baseline (USE_LOCAL_CVRRR=1).
-    // Binds the LocalRevalCB cbuffer defined in RevalidationCommon.slang.
-    // This path uses reservoir-local mu instead of the hash table — useful
-    // for measuring how much value the hash table adds over simple RR.
-    // -----------------------------------------------------------------
-    if (mLocalCVRRR)
-    {
-        auto rootVar = pass->getRootVar();
-        rootVar["LocalRevalCB"]["gLocalRevalContribThreshold"] = mLocalRevalContribThreshold;
-        rootVar["LocalRevalCB"]["gLocalRevalPMin"] = mLocalRevalPMin;
-    }
+    // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
+    // separate cbuffer needed. VisCacheParams is already bound above
+    // when mVisCacheAvailable is true.
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1862,13 +1845,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["gVHFTable"]      = mpVHFTable;
         rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
-    // Local CV+RRR ablation (same pattern as PathReusePass).
-    if (mLocalCVRRR)
-    {
-        auto rootVar = pass->getRootVar();
-        rootVar["LocalRevalCB"]["gLocalRevalContribThreshold"] = mLocalRevalContribThreshold;
-        rootVar["LocalRevalCB"]["gLocalRevalPMin"] = mLocalRevalPMin;
-    }
+    // Local CV+RRR reuses VisCacheParams — no separate cbuffer binding.
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());

@@ -37,24 +37,7 @@ import RenderPasses.VisCache.ShadingCV;
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// LocalRevalCB: parameters for the local revalidation ablation path.
-// Bound by the host (ReSTIRPTPass.cpp) when USE_LOCAL_CVRRR=1.
-//
-// gLocalRevalContribThreshold: contribution luminance above which pMin is
-//   raised (firefly suppression). Same concept as gFireflyBudget in VisCache.
-//
-// gLocalRevalPMin: minimum RR survival probability. Same as gPMin.
-// ---------------------------------------------------------------------------
-#if USE_LOCAL_CVRRR
-cbuffer LocalRevalCB
-{
-    float gLocalRevalContribThreshold;  ///< Firefly budget for local reval
-    float gLocalRevalPMin;              ///< Min RR survival probability
-};
-#endif
-
-// ---------------------------------------------------------------------------
-// evalLocalRevalidation: CV+RRR using reservoir-local visibility estimate.
+// evalLocalCVRRR: CV+RRR using reservoir-local visibility estimate.
 //
 // Instead of looking up a hash table, we derive the visibility estimate mu
 // from information already available in the reservoir:
@@ -70,13 +53,15 @@ cbuffer LocalRevalCB
 // reservoir, not all nearby rays), but it requires zero additional memory
 // and provides a useful ablation baseline to measure the hash table's value.
 //
+// Reuses VisCacheParams (gPMin, gFireflyBudget) for a fair A/B comparison
+// against the hash table path — same RR floor and firefly suppression.
+//
 // The CV+RRR estimator is the same as VisCache:
 //   E[mu + (V - mu) / p] = E[V], unbiased for any p in (0,1].
 // ---------------------------------------------------------------------------
-float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
-                             float G, float neighborTargetPdf, float pHatNoVis,
-                             float contribThreshold, float pMin,
-                             inout SampleGenerator sg)
+float evalLocalCVRRR(float3 P, float3 Q, float3 bsdf, float3 Lo,
+                      float G, float neighborTargetPdf, float pHatNoVis,
+                      inout SampleGenerator sg)
 {
     // Derive visibility estimate from reservoir data.
     static const float kLumEps = 1e-7f;
@@ -85,9 +70,10 @@ float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
 
     // Contribution-weighted residual bound: same as VisCache's firefly logic.
     // High-contribution edges get higher p to prevent weight explosion.
+    // Uses gFireflyBudget and gPMin from VisCacheParams for fair comparison.
     float3 C   = bsdf * Lo * G;
     float  res = luminance(C) * max(mu, 1.0f - mu);
-    float  p   = clamp(res / contribThreshold, pMin, 1.0f);
+    float  p   = clamp(res / gFireflyBudget, gPMin, 1.0f);
 
     // RR coin flip: trace with probability p, skip with probability 1-p.
     if (sampleNext1D(sg) < p)
@@ -129,8 +115,8 @@ float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
     return evalRevalidationCV(P, Q, bsdf, Lo, G, sg);
 #elif USE_LOCAL_CVRRR
     // Reservoir-local CV+RRR — no hash table, ablation baseline.
-    return evalLocalRevalidation(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis,
-                                  gLocalRevalContribThreshold, gLocalRevalPMin, sg);
+    // Uses gPMin/gFireflyBudget from VisCacheParams for fair comparison.
+    return evalLocalCVRRR(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis, sg);
 #else
     // Vanilla: unconditional shadow ray for each neighbor.
     // Baseline for measuring ray savings.
