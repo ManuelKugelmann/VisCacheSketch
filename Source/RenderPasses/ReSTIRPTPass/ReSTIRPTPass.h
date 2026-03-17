@@ -168,6 +168,9 @@ private:
     bool mVisCacheAvailable = false;
     bool mVisCacheRevalidation = false;    ///< CV+RRR revalidation in reconnection shifts (§12)
     bool mVisCacheLightSelection = false;  ///< Cached mu in NEE target function (§11.1)
+    bool mLocalRevalidation = false;       ///< Reservoir-local CV+RRR ablation baseline (no hash table)
+    float mLocalRevalContribThreshold = 0.05f; ///< Contribution threshold for local reval RR
+    float mLocalRevalPMin = 0.05f;             ///< Min RR survival probability for local reval
 
     uint64_t                        mAccumulatedRayCount = 0;
     uint64_t                        mAccumulatedClosestHitRayCount = 0;

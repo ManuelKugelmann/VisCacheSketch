@@ -1016,6 +1016,20 @@ bool ReSTIRPTPass::renderDebugUI(Gui::Widgets& widget)
         mpPixelDebug->renderUI(group);
     }
 
+    if (auto g = widget.group("Ablation: Local Revalidation"))
+    {
+        if (g.checkbox("Enable local revalidation (no hash table)", mLocalRevalidation))
+        {
+            mRecompile = true;
+            dirty = true;
+        }
+        if (mLocalRevalidation)
+        {
+            dirty |= g.var("Contrib threshold", mLocalRevalContribThreshold, 0.001f, 1.0f, 0.005f);
+            dirty |= g.var("pMin", mLocalRevalPMin, 0.01f, 0.5f, 0.005f);
+        }
+    }
+
     return dirty;
 }
 
@@ -1718,6 +1732,13 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["gVHFTable"]      = mpVHFTable;
         rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
+    // Local revalidation ablation baseline — bind cbuffer with matching params.
+    if (mLocalRevalidation)
+    {
+        auto rootVar = pass->getRootVar();
+        rootVar["LocalRevalCB"]["gLocalRevalContribThreshold"] = mLocalRevalContribThreshold;
+        rootVar["LocalRevalCB"]["gLocalRevalPMin"] = mLocalRevalPMin;
+    }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1794,6 +1815,13 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["gVHFTable"]      = mpVHFTable;
         rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
+    // Local revalidation ablation baseline — bind cbuffer with matching params.
+    if (mLocalRevalidation)
+    {
+        auto rootVar = pass->getRootVar();
+        rootVar["LocalRevalCB"]["gLocalRevalContribThreshold"] = mLocalRevalContribThreshold;
+        rootVar["LocalRevalCB"]["gLocalRevalPMin"] = mLocalRevalPMin;
+    }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1854,6 +1882,7 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_REVALIDATION", owner.mVisCacheRevalidation ? "1" : "0");
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
+    defines.add("USE_LOCAL_REVALIDATION", owner.mLocalRevalidation ? "1" : "0");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).
     // Scene defines include material system config, geometry types, hit info, etc.

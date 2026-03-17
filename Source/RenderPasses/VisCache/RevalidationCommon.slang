@@ -13,7 +13,7 @@
  *
  * Compile defines:
  *   USE_VISCACHE_REVALIDATION=1: VisCache hash table CV+RRR (§12)
- *   USE_LOCAL_REVAL=1:           reservoir-local CV+RRR (ablation baseline)
+ *   USE_LOCAL_REVALIDATION=1:           reservoir-local CV+RRR (ablation baseline)
  *   Neither:                     vanilla unconditional shadow ray
  ***************************************************************************/
 
@@ -26,9 +26,9 @@ import RenderPasses.VisCache.ShadingCV;
 #endif
 
 // ---------------------------------------------------------------------------
-// Local CV+RRR parameters (bound by host when USE_LOCAL_REVAL=1)
+// Local CV+RRR parameters (bound by host when USE_LOCAL_REVALIDATION=1)
 // ---------------------------------------------------------------------------
-#if USE_LOCAL_REVAL
+#if USE_LOCAL_REVALIDATION
 cbuffer LocalRevalCB
 {
     float gLocalRevalContribThreshold;
@@ -73,7 +73,7 @@ float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
 // ---------------------------------------------------------------------------
 // Visibility evaluation — three paths:
 //   USE_VISCACHE_REVALIDATION: CV+RRR via VisCache hash table (§12)
-//   USE_LOCAL_REVAL:           CV+RRR via reservoir-local mu (no hash table)
+//   USE_LOCAL_REVALIDATION:           CV+RRR via reservoir-local mu (no hash table)
 //   Neither:                   Vanilla — unconditional shadow ray
 // ---------------------------------------------------------------------------
 float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
@@ -83,7 +83,7 @@ float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
 #if USE_VISCACHE_REVALIDATION
     // VisCache hash table CV+RRR (§12) — uses VisCacheParams cbuffer.
     return evalRevalidationCV(P, Q, bsdf, Lo, G, sg);
-#elif USE_LOCAL_REVAL
+#elif USE_LOCAL_REVALIDATION
     // Reservoir-local CV+RRR (no hash table — ablation baseline)
     return evalLocalRevalidation(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis,
                                   gLocalRevalContribThreshold, gLocalRevalPMin, sg);
