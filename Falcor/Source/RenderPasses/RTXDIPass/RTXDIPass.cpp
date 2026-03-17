@@ -141,6 +141,29 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
     if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck) recreatePrograms();
 
+    // Propagate VisCache defines and resource bindings to RTXDI's internal passes
+    // (testCandidateVisibility, spatial/temporal resampling) so the bridge callbacks
+    // (RAB_GetConservativeVisibility) can use VisCache CV+RRR.
+    {
+        DefineList visCacheDefines;
+        visCacheDefines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
+        visCacheDefines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
+        mpRTXDI->setExtraDefines(visCacheDefines);
+    }
+    if (mVisCacheAvailable)
+    {
+        auto vhfTable = mpVHFTable;
+        auto vhfParams = mpVHFParamsCB;
+        mpRTXDI->setExtraBindings([vhfTable, vhfParams](const ShaderVar& rootVar) {
+            rootVar["gVHFTable"]      = vhfTable;
+            rootVar["VisCacheParams"] = vhfParams;
+        });
+    }
+    else
+    {
+        mpRTXDI->setExtraBindings(nullptr);
+    }
+
     mpRTXDI->beginFrame(pRenderContext, mFrameDim);
 
     prepareSurfaceData(pRenderContext, pVBuffer);
