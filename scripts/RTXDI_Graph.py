@@ -13,6 +13,11 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
+try:
+    from falcor import *
+except ImportError:
+    pass
+
 
 def render_graph_RTXDI(viscache=False):
     """Build an RTXDI (ReSTIR DI) render graph.
@@ -67,6 +72,7 @@ def render_graph_RTXDI(viscache=False):
 
 
 # ---------------------------------------------------------------------------
-# Load graph
+# Load graph (only when run directly by Mogwai, not when imported as module)
 # ---------------------------------------------------------------------------
-m.addGraph(render_graph_RTXDI())
+if 'm' in globals():
+    m.addGraph(render_graph_RTXDI())

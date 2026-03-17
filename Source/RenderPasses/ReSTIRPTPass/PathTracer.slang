@@ -8,10 +8,7 @@ import Rendering.Lights.EnvMapSampler;
 import Rendering.Lights.EmissiveLightSampler;
 import Rendering.Lights.EmissiveLightSamplerHelpers;
 import Rendering.Lights.LightHelpers;
-import Rendering.Materials.StandardMaterial;
-import Rendering.Materials.ClothMaterial;
-import Rendering.Materials.HairMaterial;
-// [Falcor 8] MaterialShading merged into Scene.Material.MaterialFactory (imported via Scene.Scene)
+// [Falcor 8] Material types resolved through scene type conformances — no explicit imports needed.
 import Rendering.Materials.Microfacet;
 import Rendering.Materials.InteriorListHelpers;
 import Rendering.Volumes.HomogeneousVolumeSampler;

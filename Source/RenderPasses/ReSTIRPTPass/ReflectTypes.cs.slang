@@ -14,9 +14,6 @@
  */
 #include "Scene/SceneDefines.slangh"
 
-import Rendering.Materials.StandardMaterial;
-import Rendering.Materials.ClothMaterial;
-import Rendering.Materials.HairMaterial;
 import RenderPasses.ReSTIRPTPass.PathReservoir;
 
 StructuredBuffer<PathReservoir> outputReservoirs;

@@ -157,7 +157,7 @@ void VisCache::allocateBuffers()
     // GPU params constant buffer — exported via dict for downstream passes.
     mpParamsBuffer = mpDevice->createBuffer(
         sizeof(GPUParams),
-        ResourceBindFlags::ConstantBuffer,
+        ResourceBindFlags::Constant,
         MemoryType::Upload
     );
     mpParamsBuffer->setName("VHF_Params");

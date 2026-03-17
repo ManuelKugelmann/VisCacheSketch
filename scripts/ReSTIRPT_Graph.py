@@ -17,6 +17,11 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
+try:
+    from falcor import *
+except ImportError:
+    pass
+
 ABLATIONS = {
     "full":         {},                                          # All features on — paper result
     "minus_var":    {"enableVisCacheVarianceGate": False},       # -B: no variance-gated write depth
@@ -190,6 +195,7 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
 
 
 # ---------------------------------------------------------------------------
-# Load graph
+# Load graph (only when run directly by Mogwai, not when imported as module)
 # ---------------------------------------------------------------------------
-m.addGraph(render_graph_ReSTIRPT())
+if 'm' in globals():
+    m.addGraph(render_graph_ReSTIRPT())

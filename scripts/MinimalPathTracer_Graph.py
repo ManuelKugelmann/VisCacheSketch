@@ -14,6 +14,13 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
+# Import Falcor builtins so this module works both when exec'd by Mogwai
+# (where globals already has them) and when imported by VisCache wrappers.
+try:
+    from falcor import *
+except ImportError:
+    pass
+
 
 def render_graph_MinimalPathTracer(viscache=False):
     """Build a MinimalPathTracer render graph.
@@ -69,6 +76,7 @@ def render_graph_MinimalPathTracer(viscache=False):
 
 
 # ---------------------------------------------------------------------------
-# Load graph
+# Load graph (only when run directly by Mogwai, not when imported as module)
 # ---------------------------------------------------------------------------
-m.addGraph(render_graph_MinimalPathTracer())
+if 'm' in globals():
+    m.addGraph(render_graph_MinimalPathTracer())
