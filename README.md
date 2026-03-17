@@ -65,7 +65,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **Good and Fast Hash** - based on PCG3D [Jarzynski & Olano 2020][r-jarzynski]
 - **Hash Collision Handling** - fingerprint like [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
 - **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
-- **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko]; variance-gated write depth parallels Balanced Termination Heuristic in [Sanzharov et al. 2025][r-sanzharov] (Neural Two-Level MC)
+- **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko]
 - **GPU implementation** — built on NVIDIA Falcor 8.0 [Kallweit et al. 2022][r-falcor]
 - **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection (independently by [Bokšanský & Meister 2025][r-boksansky] with neural cache)
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
@@ -74,13 +74,13 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 
 | Concept (2006) | Independent work | Notes |
 |---|---|---|
-| CV+VRRR — control variate + variance-driven RR | [Szécsi et al. 2003][r-szecsi] (CV, fixed RR), [Szirmay-Kalos et al. 2005][r-szirmay] (variance-driven RR, scene-global estimate), [Sanzharov et al. 2025][r-sanzharov] (Neural Two-Level MC — MLMC residual estimator is structurally CV+VRRR) | CV+RR was known ([Szécsi 2003][r-szecsi]). Variance-driven RR was known ([Szirmay-Kalos 2005][r-szirmay]). Overlap found late in 2006 writing. Pure MC variance reduction technique — independent of data structure |
+| CV+VRRR — control variate + variance-driven RR | [Szécsi et al. 2003][r-szecsi] (CV, fixed RR), [Szirmay-Kalos et al. 2005][r-szirmay] (variance-driven RR, scene-global estimate), [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC — MLMC residual estimator is structurally CV+VRRR) | CV+RR was known ([Szécsi 2003][r-szecsi]). Variance-driven RR was known ([Szirmay-Kalos 2005][r-szirmay]). Overlap found late in 2006 writing. Pure MC variance reduction technique — independent of data structure |
 | Localized per-point cache as CV estimation source | [Guo et al. 2020][r-guo] (NEE++, per-voxel-pair visibility) | What makes CV+VRRR *effective*: per-point spatial predictions vs. Szirmay-Kalos's scene-global constant. Skipping predictable shadow rays predates 2006 ([Ward 1991][r-ward] — heuristic ordering, not a spatial cache) |
 | Visibility caching (cache visibility to skip shadow rays) | [SHaRC (Benyoub et al. 2024)][r-sharc] (radiance cache, roughness-gated LoD, RTX SDK), [Guo et al. 2020][r-guo] (NEE++, per-voxel-pair, dense matrix), [Bokšanský & Meister 2025][r-boksansky] (neural visibility cache), [Popov et al. 2013][r-popov] (adaptive octree, offline, <2% rays) | Concept predates 2006 ([Ward 1991][r-ward] — heuristic ordering). Different data structures: hash (SHaRC), dense matrix (NEE++), neural (Bokšanský), octree (Popov) |
-| Spatial hash map against curse of dimensionality | [Binder et al. 2018][r-binder] (path-space filtering), [Gautron 2020][r-gautron20]/[2021][r-gautron21] (AO), [Bokšanský & Meister 2025][r-boksansky] (Instant-NGP backbone), [SHaRC (Benyoub et al. 2024)][r-sharc] (world-space spatial hash, RTX SDK), [Sanzharov et al. 2025][r-sanzharov] (world-space multi-level hash encodings) | 2006 used spatial hashing from [ODE][r-ode] for compact pairwise storage but did not describe it as a contribution; NEE++ used dense D³×D³ matrix instead and hit the dimensionality wall |
+| Spatial hash map against curse of dimensionality | [Binder et al. 2018][r-binder] (path-space filtering), [Gautron 2020][r-gautron20]/[2021][r-gautron21] (AO), [Bokšanský & Meister 2025][r-boksansky] (Instant-NGP backbone), [SHaRC (Benyoub et al. 2024)][r-sharc] (world-space spatial hash, RTX SDK), [Dereviannykh et al. 2024][r-n2lmc] (world-space multi-level hash encodings) | 2006 used spatial hashing from [ODE][r-ode] for compact pairwise storage but did not describe it as a contribution; NEE++ used dense D³×D³ matrix instead and hit the dimensionality wall |
 | Variance-driven adaptive sampling (trace rate from cache quality) | [Stotko et al. 2025][r-stotko] (variance-driven resolution, TSDF), [Rath et al. 2022][r-rath] (EARS, efficiency-aware RR/splitting) | 2006 coupled variance to trace rate; Stotko to spatial resolution; EARS to path continuation |
 
-[r-sanzharov]: https://arxiv.org/abs/2507.02389
+[r-n2lmc]: https://arxiv.org/abs/2412.04634
 [r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
 [r-sharc]: https://github.com/NVIDIAGameWorks/RTXGI
 [r-rath]: https://doi.org/10.1145/3528223.3530168
@@ -113,7 +113,7 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
 | [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
 | [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
-| [Sanzharov et al. 2025 (Neural Two-Level MC)][r-sanzharov] | Parallels — MLMC residual ↔ CV+VRRR, BTH ↔ variance-gated write depth, multi-level hash encodings |
+| [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | Parallels — MLMC residual ↔ CV+VRRR, BTH read-gating ↔ lookup cascade, multi-level hash encodings |
 | [Kallweit et al. 2022 (Falcor)][r-falcor] | GPU rendering framework used as implementation base |
 
 [r-kugelmann]: docs/references/Kugelmann2006_ThesisMK.pdf
