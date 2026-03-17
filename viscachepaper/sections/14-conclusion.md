@@ -183,3 +183,30 @@ so the extension is backward-compatible.
 Canonicalization would require restriction
 to the diagonal (lvlA = lvlB) or
 symmetric level assignment.
+
+**Multi-lookup smoothing and inter-level interpolation.**
+Currently each query performs a single coarse-to-fine cascade
+and returns the best matching entry.
+An alternative is to evaluate multiple lookups —
+either at jittered positions within the cell neighborhood
+or by interpolating between adjacent levels —
+and average the resulting μ values.
+This is analogous to the Nc > 1 cheap-sample strategy
+in Neural Two-Level MC [Dereviannykh et al. 2024],
+where multiple neural cache evaluations (2–25× cheaper than a trace)
+are averaged to reduce residual variance
+before a single expensive correction sample.
+Hash lookups are even cheaper than neural evaluations,
+so the cost of multi-lookup averaging is near zero.
+Inter-level interpolation (blending μ from adjacent LOD levels
+weighted by their sample counts)
+would smooth the discrete LOD transitions
+that the current cascade produces,
+similar to trilinear interpolation
+in neural hash encodings [Müller et al. 2022]
+and roughness-gated blending in SHaRC [Benyoub et al. 2024].
+The position jitter (Sec. 4) already provides stochastic smoothing
+across cell boundaries within a single level;
+multi-lookup and inter-level interpolation
+would extend this smoothing across levels
+and across multiple cells per query.
