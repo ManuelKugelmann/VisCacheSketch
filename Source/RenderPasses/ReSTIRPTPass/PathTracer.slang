@@ -1125,7 +1125,7 @@ struct PathTracer
 #endif
 
                 // daqi: if current escaped vertex has path.length >= 2, then it can be used as a rcVertex
-                if (selectedCurrentPath&& path.useHybridShift&& path.length >= 2 && path.length < path.pathBuilder.rcVertexLength)
+                if (selectedCurrentPath && path.useHybridShift && path.length >= 2 && path.length < path.pathBuilder.rcVertexLength)
                 {
                     // insert path flags
 
