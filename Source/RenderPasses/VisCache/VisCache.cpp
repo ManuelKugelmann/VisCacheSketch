@@ -126,7 +126,9 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
         ProgramDesc desc;
         desc.addShaderLibrary("RenderPasses/VisCache/VisCacheDecay.cs.slang")
             .csEntry("csDecay");
-        mpDecayPass = ComputePass::create(mpDevice, desc);
+        DefineList defines;
+        defines.add("USE_VISCACHE", "1");
+        mpDecayPass = ComputePass::create(mpDevice, desc, defines);
     }
 }
 

@@ -74,6 +74,23 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
   - `run_release` defaults to interactive mode when called with no arguments
 - When adding new deploy/validation steps, add them to the helper script, not inline
 
+## Testing with Mogwai
+
+- **Headless test** (no GPU window, good for CI/scripting):
+  ```
+  cd release
+  ./Mogwai.exe --headless --script scripts/VisCache/<Graph>.py --scene data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene --frames 2
+  ```
+- **Headed test** (GPU window, interactive):
+  ```
+  cd release
+  ./Mogwai.exe --script scripts/VisCache/<Graph>.py --scene data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene
+  ```
+- Graph scripts live in `release/scripts/VisCache/` (deployed from `scripts/`)
+- Test matrix: 4 renderers × 2 variants (vanilla/viscache) × scenes (VeachAjar default)
+- Exit code 0 = success; check Mogwai.exe.*.log in release/ for errors
+- Shaders must be deployed to `release/shaders/` before testing (use `scripts/deploy_to_release.bat`)
+
 ## Workflow
 
 - **No backwards compatibility** — move forward, don't maintain back-compat aliases or shims
