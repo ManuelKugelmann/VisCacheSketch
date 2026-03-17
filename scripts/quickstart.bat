@@ -2,7 +2,7 @@
 REM quickstart.bat — Run the full VisCacheSketch quickstart sequence (steps 0-6).
 REM
 REM Usage:  scripts\quickstart.bat [--scene VeachAjar|Bistro|Sponza|Arcade|CornellBox]
-REM                                [--renderer viscache|restirpt|rtxdi|pathtracer|minimal]
+REM                                [--renderer restirpt|rtxdi|pathtracer|minimal]
 REM                                [--variant vanilla|viscache]
 REM                                [--skip-scenes] [--skip-pull] [--skip-launch] [--interactive]
 REM
@@ -52,67 +52,6 @@ echo Unknown argument: %~1
 echo Usage: %~nx0 [--scene ...] [--renderer ...] [--variant vanilla^|viscache] [--skip-scenes] [--skip-pull] [--skip-launch] [--interactive]
 exit /b 1
 :args_done
-
-REM ---------------------------------------------------------------------------
-REM Interactive selection (if --interactive or -i)
-REM ---------------------------------------------------------------------------
-if "%INTERACTIVE%"=="0" goto :skip_interactive
-
-echo.
-echo ========================================
-echo  VisCacheSketch — Interactive Setup
-echo ========================================
-echo.
-echo  Select renderer:
-echo    1. MinimalPathTracer  — lightweight, progressive accumulation
-echo    2. PathTracer         — full Falcor path tracer (NEE, MIS, volumes)
-echo    3. RTXDI              — ReSTIR DI direct lighting only
-echo    4. ReSTIR PT          — ReSTIR path tracing (indirect + direct)
-echo.
-set /p "RCHOICE=  Choice [1-4, default=4]: "
-if "%RCHOICE%"=="" set "RCHOICE=4"
-if "%RCHOICE%"=="1" set "RENDERER=minimal"
-if "%RCHOICE%"=="2" set "RENDERER=pathtracer"
-if "%RCHOICE%"=="3" set "RENDERER=rtxdi"
-if "%RCHOICE%"=="4" set "RENDERER=restirpt"
-
-:ask_variant
-echo.
-echo  Select variant:
-echo    1. Vanilla   — no visibility cache
-echo    2. VisCache  — with visibility cache
-echo.
-set /p "VCHOICE=  Choice [1-2, default=1]: "
-if "%VCHOICE%"=="" set "VCHOICE=1"
-if "%VCHOICE%"=="1" set "VARIANT=vanilla"
-if "%VCHOICE%"=="2" (
-    set "RENDERER=restirpt"
-    set "VARIANT="
-)
-
-:ask_scene
-echo.
-echo  Select scene:
-echo    1. VeachAjar   — small test scene (no download needed)
-echo    2. Bistro      — restaurant interior (~3.2 GB download)
-echo    3. Sponza      — classic atrium (~70 MB download)
-echo    4. Arcade      — game arcade (bundled with release)
-echo    5. CornellBox  — simple box scene
-echo.
-set /p "SCHOICE=  Choice [1-5, default=1]: "
-if "%SCHOICE%"=="" set "SCHOICE=1"
-if "%SCHOICE%"=="1" set "SCENE=VeachAjar"
-if "%SCHOICE%"=="2" set "SCENE=Bistro"
-if "%SCHOICE%"=="3" set "SCENE=Sponza"
-if "%SCHOICE%"=="4" set "SCENE=Arcade"
-if "%SCHOICE%"=="5" set "SCENE=CornellBox"
-
-echo.
-echo  Selected: renderer=%RENDERER%, scene=%SCENE%
-if defined VARIANT echo  Variant: %VARIANT%
-echo.
-
-:skip_interactive
 
 REM ---------------------------------------------------------------------------
 REM Step 0: Pull latest
@@ -251,10 +190,11 @@ if not "!CHECKOUT_SHA!"=="unknown" if not "!RELEASE_SHA!"=="unknown" (
     )
 )
 
-REM Delegate to run_release.bat
-echo [quickstart] step 6 launch ^(%SCENE%, renderer: %RENDERER%^)
+REM Delegate to run_release.bat (interactive menus live there, not here)
 set "_LAUNCH_ARGS=--scene %SCENE% --renderer %RENDERER%"
 if defined VARIANT set "_LAUNCH_ARGS=!_LAUNCH_ARGS! --variant !VARIANT!"
+if "%INTERACTIVE%"=="1" set "_LAUNCH_ARGS=--interactive"
+echo [quickstart] step 6 launch
 call "%SCRIPT_DIR%run_release.bat" !_LAUNCH_ARGS!
 
 :done
