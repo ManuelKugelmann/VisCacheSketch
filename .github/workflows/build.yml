@@ -35,11 +35,6 @@ on:
           - Debug
           - Release
           - Both
-      create_prerelease:
-        description: 'Create a dev prerelease after build (stable releases use v* tags instead)'
-        required: false
-        default: true
-        type: boolean
       commit_sha:
         description: 'Commit SHA to build and release (default: HEAD of selected branch)'
         required: false
@@ -456,7 +451,7 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Dev prerelease — rolling "latest build" on every push to main/master
+  # Dev prerelease — every successful build creates a release
   # ---------------------------------------------------------------------------
   dev-release:
     name: Dev Prerelease
@@ -465,7 +460,6 @@ jobs:
       !cancelled()
       && needs.prepare.result == 'success'
       && needs.windows-vs2022.result == 'success'
-      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_prerelease))
       && !startsWith(github.ref, 'refs/tags/')
     needs: [prepare, windows-vs2022]
     env:
