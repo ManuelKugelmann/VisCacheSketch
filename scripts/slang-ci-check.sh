@@ -147,25 +147,35 @@ SKIP_FILES["BSDFOptimizer.cs.slang"]="differentiable programming (error 41020)"
 # ===========================================================================
 echo "--- VisCache ---"
 
-# Self-contained (no Falcor imports)
+# Self-contained (no Falcor imports).
+# VisCache.slang wraps everything in #if USE_VISCACHE — test both paths:
+#   USE_VISCACHE=0: compiles to nothing (guards work correctly)
+#   USE_VISCACHE=1: full module (types, resources, functions)
 check "${VISCACHE_DIR}/VisCache.slang" \
   -target dxil ${CODEGEN}
 
+check "${VISCACHE_DIR}/VisCache.slang" \
+  -target dxil ${CODEGEN} -DUSE_VISCACHE=1
+
+# Internal compute shaders: always part of the VisCache pass, need USE_VISCACHE=1
 check "${VISCACHE_DIR}/VisCacheInsert.cs.slang" \
-  -target dxil ${CODEGEN} -I "${VISCACHE_DIR}" -entry csInsert -stage compute
+  -target dxil ${CODEGEN} -I "${VISCACHE_DIR}" -DUSE_VISCACHE=1 -entry csInsert -stage compute
 
 check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" \
-  -target dxil ${CODEGEN} -I "${VISCACHE_DIR}" -entry csDecay -stage compute
+  -target dxil ${CODEGEN} -I "${VISCACHE_DIR}" -DUSE_VISCACHE=1 -entry csDecay -stage compute
 
-# Falcor-dependent (VC_STUBS provide consumer functions: traceShadowRay, evalBRDF)
+# Falcor-dependent (VC_STUBS provide consumer functions: traceShadowRay, evalBRDF).
+# USE_VISCACHE=1 needed for RevalidationCommon (uses gPMin, gFireflyBudget from cbuffer).
+VC_COMMON="${COMMON} -DUSE_VISCACHE=1"
+
 check "${VISCACHE_DIR}/VisCacheTracing.slang" \
-  ${COMMON} "${VC_STUBS}"
+  ${VC_COMMON} "${VC_STUBS}"
 
 check "${VISCACHE_DIR}/ShadingCV.slang" \
-  ${COMMON} "${VC_STUBS}"
+  ${VC_COMMON} "${VC_STUBS}"
 
 check "${VISCACHE_DIR}/RevalidationCommon.slang" \
-  ${COMMON} "${VC_STUBS}"
+  ${VC_COMMON} "${VC_STUBS}"
 
 echo ""
 

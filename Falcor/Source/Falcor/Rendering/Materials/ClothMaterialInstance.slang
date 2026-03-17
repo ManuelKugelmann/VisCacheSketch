@@ -92,6 +92,12 @@ struct ClothMaterialInstance : MaterialInstanceBase, IMaterialInstance
         return (uint)LobeType::DiffuseReflection;
     }
 
+    float3 evalBsdfAndPdf<S : ISampleGenerator>(const ShadingData sd, const float3 wo, inout S sg, uint lobeMask, out float pdf, out float pdfAllLobes)
+    {
+        pdf = 0.f;
+        pdfAllLobes = 0.f;
+        return float3(0.f);
+    }
 
     // Additional functions
 

@@ -106,6 +106,9 @@ PDF, using the original (pre-renormalization) lobe selection weights.
 - `StandardMaterialInstance::evalBsdfAndPdf()` — world-to-local coordinate wrapper
 - `IMaterialInstance::evalBsdfAndPdf()` — interface method (new)
 - `MaterialInstanceBase::evalBsdfAndPdf()` — default stub returning zeros
+- `ClothMaterialInstance::evalBsdfAndPdf()` — explicit stub (Slang doesn't
+  inherit `[open]` base methods to satisfy interface requirements)
+- `HairMaterialInstance::evalBsdfAndPdf()` — same
 
 **Upstream status:** Enhancement, not a bug fix. Useful for any algorithm
 needing per-lobe PDF decomposition without weight renormalization.
