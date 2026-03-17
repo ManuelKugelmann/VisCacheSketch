@@ -323,6 +323,68 @@ Vanilla graph scripts accept `viscache=True` to add the VisCache pass (no code d
 
 Shared defaults in `viscache_defaults.py`. Ablation presets in `ReSTIRPT_Graph.py`.
 
+## Ablation Switches
+
+### Feature Toggles (downstream renderers)
+
+These are **compile-time shader defines** set by downstream renderers. Toggling any
+of these triggers shader recompilation. They control which VisCache features are active
+in the rendering shaders.
+
+| Define | Property Key (dict) | Default | Scope | Paper Section |
+|--------|-------------------|---------|-------|---------------|
+| `USE_VISCACHE` | (derived from buffer presence) | auto | All renderers | -- |
+| `USE_VISCACHE_VISIBILITYCHECK` | `vhfEnableVisibilityCheck` | true | All renderers | S12 |
+| `USE_VISCACHE_LIGHTSELECTION` | `vhfEnableLightSelection` | true | ReSTIR PT only | S11.1 |
+| `USE_LOCAL_CVRRR` | (ReSTIRPTPass member) | false | ReSTIR PT only | Ablation A |
+
+`USE_LOCAL_CVRRR` is the "no hash table" ablation baseline — uses reservoir-local
+visibility estimate (`mu = clamp(targetPdf / pHatNoVis, 0, 1)`) instead of the hash
+table. Reuses `gPMin` / `gFireflyBudget` from `VisCacheParams` for fair A/B comparison.
+
+### Internal Ablation Toggles (VisCache pass)
+
+These are **runtime host-side** toggles on the VisCache pass itself. They do NOT
+trigger shader recompilation — the host skips dispatches or changes parameters.
+All are set via `createPass("VisCachePass", {...})` properties and exposed in the GUI
+under the "Ablations" group.
+
+| Toggle | Property Key | Default | Paper | Effect When Disabled |
+|--------|-------------|---------|-------|---------------------|
+| B: Variance gate | `enableVisCacheVarianceGate` | true | -B | All inserts go to finest level only (no variance-gated depth selection) |
+| C: Warp reduction | `enableVisCacheWarpReduction` | true | -C | Per-lane atomics instead of SM 6.5 WaveMatch coalescing |
+| D: Decay sweep | `enableVisCacheDecay` | true | -D | No background decay — stale entries persist indefinitely |
+| E: Pressure eviction | `enableVisCachePressureEvict` | true | -E | No pressure-scaled eviction during probe — cold entries never evicted |
+
+### Ablation Presets (Graph Scripts)
+
+`scripts/ReSTIRPT_Graph.py` defines named presets:
+
+```python
+ABLATIONS = {
+    "minus_var":    {"enableVisCacheVarianceGate": False},    # -B
+    "minus_warp":   {"enableVisCacheWarpReduction": False},   # -C
+    "minus_decay":  {"enableVisCacheDecay": False},           # -D
+    "minus_evict":  {"enableVisCachePressureEvict": False},   # -E
+}
+
+# Usage:
+render_graph_ReSTIRPT(viscache=True, ablation="minus_decay")
+```
+
+`scripts/VisCache_Ablation.py` runs all ablation configs automatically for paper figures.
+`scripts/VisCache_Heatmaps.py` captures diagnostic heatmaps crossed with ablation configs.
+
+### Test Coverage
+
+`tests/test_paper_ablations.py` (17 tests, no GPU required) validates:
+- Toggle consistency across DI/GI/PT property keys
+- All toggle combinations are valid
+- Light-selection-only ablation (S11.1 without S11.3)
+- Property round-trip for all 4 internal toggles (B-E)
+- Decay-off semantics
+- LOCAL_CVRRR ablation design
+
 ## CV+RRR Estimator
 
 All paths use the same unbiased control variate + Russian roulette estimator:
