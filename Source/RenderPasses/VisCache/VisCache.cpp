@@ -7,6 +7,8 @@
  ***************************************************************************/
 
 #include "VisCache.h"
+#include <algorithm>
+#include <cstring>
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
@@ -28,8 +30,9 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("pMin"))           mParams.pMin           = props["pMin"];
     if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
     if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
-    if (props.has("cellCoarse"))     mParams.cellCoarse     = props["cellCoarse"];
-    if (props.has("cellFine"))       mParams.cellFine       = props["cellFine"];
+    if (props.has("cellCoarse"))   { mParams.cellCoarse     = props["cellCoarse"];   mParams.autoTuneCells = false; }
+    if (props.has("cellFine"))     { mParams.cellFine       = props["cellFine"];     mParams.autoTuneCells = false; }
+    if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
 
     // VisCache feature + ablation toggles
@@ -59,6 +62,7 @@ Properties VisCache::getProperties() const
     p["numLevels"]     = mParams.numLevels;
     p["cellCoarse"]    = mParams.cellCoarse;
     p["cellFine"]      = mParams.cellFine;
+    p["autoTuneCells"] = mParams.autoTuneCells;
     p["decayPeriod"]   = mParams.decayPeriod;
 
     // VisCache feature + ablation toggles
@@ -136,10 +140,46 @@ void VisCache::allocateBuffers()
 }
 
 // ---------------------------------------------------------------------------
+// Auto-derive cellCoarse / cellFine from scene bounds + camera.
+//
+// Heuristic:
+//   viewDist   = min(camera.farPlane, sceneDiameter)
+//   cellCoarse = viewDist / 10      → ~10 coarse cells across the view
+//   cellFine   = cellCoarse / 64    → sharp shadow edges at typical distance
+//
+// Clamps: cellCoarse ∈ [0.5, 1000], cellFine ∈ [0.01, cellCoarse/4]
+// ---------------------------------------------------------------------------
+void VisCache::autoTuneCellSizes()
+{
+    if (!mpScene) return;
+
+    const auto& bounds = mpScene->getSceneBounds();
+    float3 extent = bounds.extent();
+    float sceneDiameter = std::max({extent.x, extent.y, extent.z});
+    if (sceneDiameter <= 0.f) return;
+
+    float farPlane = 1000.f;
+    if (mpScene->getCamera())
+        farPlane = mpScene->getCamera()->getFarPlane();
+
+    float viewDist = std::min(farPlane, sceneDiameter);
+    float coarse = viewDist / 10.f;
+    float fine   = coarse / 64.f;
+
+    // Clamp to sane range
+    coarse = std::clamp(coarse, 0.5f, 1000.f);
+    fine   = std::clamp(fine, 0.01f, coarse / 4.f);
+
+    mParams.cellCoarse = coarse;
+    mParams.cellFine   = fine;
+}
+
+// ---------------------------------------------------------------------------
 void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 {
-    // Nothing scene-specific needed — hash table is world-space.
-    // Trigger a re-allocation if scene changes require table resize.
+    mpScene = pScene;
+    if (mParams.autoTuneCells && mpScene)
+        autoTuneCellSizes();
     allocateBuffers();
 }
 

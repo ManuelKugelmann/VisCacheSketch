@@ -65,8 +65,9 @@ public:
         float    pMin            = 0.05f;       ///< Min RR survival probability
         float    fireflyBudget   = 0.05f;       ///< Adaptive pMin scale
         uint32_t numLevels       = 3u;          ///< Arbitrary N LOD levels
-        float    cellCoarse      = 10.0f;       ///< L0 cell size (world units)
-        float    cellFine        = 0.16f;       ///< L_{N-1} cell size (world units)
+        float    cellCoarse      = 10.0f;       ///< L0 cell size (world units, or auto-derived)
+        float    cellFine        = 0.16f;       ///< L_{N-1} cell size (world units, or auto-derived)
+        bool     autoTuneCells   = true;        ///< Auto-derive cellCoarse/cellFine from scene
         uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=off)
         uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling
         bool     enableVisCacheRevalidation    = true;  ///< CV+RRR shadow ray gating (§11.3)
@@ -84,6 +85,7 @@ public:
 private:
 
     void allocateBuffers();
+    void autoTuneCellSizes();    ///< Derive cellCoarse/cellFine from scene bounds + camera
     void runDecayPass(RenderContext* pCtx);
     void readbackStats(RenderContext* pCtx);
     void autoTuneDecayPeriod();
@@ -102,6 +104,8 @@ private:
     // State
     // ------------------------------------------------------------------
     Params   mParams;
+    ref<Scene> mpScene;          ///< Current scene (for bounds + camera)
+    bool     mAutoTuneCells = true;  ///< Auto-derive cellCoarse/cellFine from scene
     uint32_t mFrameCount = 0u;
 
     // Stats (readback with 4-frame delay)

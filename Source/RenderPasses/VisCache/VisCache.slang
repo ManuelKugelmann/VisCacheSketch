@@ -98,18 +98,25 @@ uint3 pcg3d(uint3 v)
 
 // ---------------------------------------------------------------------------
 // IBL direction encoding — encodes a direction as a "position at infinity"
-// for env map / directional light lookups. The large-magnitude marker ensures
-// the quantized cell differs from any real-world position, while the
-// direction bits are preserved in the lower quantization grid.
+// for env map / directional light lookups.
+//
+// The marker magnitude is derived from gCellCoarse so that at L0 (the
+// coarsest level) the angular quantization is ~5° (kIBLAngularCell rad):
+//
+//   floor(dir * marker / cellCoarse) = floor(dir / kIBLAngularCell)
+//
+// Finer levels get proportionally finer angular bins:
+//   L2 with cellFine = cellCoarse/64 → angular bin ≈ 5°/64 ≈ 0.08°
 // ---------------------------------------------------------------------------
-static const float kIBLMarker = 1e6f;
+static const float kIBLAngularCell = 0.087f;  ///< ~5 degrees in radians
 
 /// Encode a normalized direction as a position for VisCache lookups.
 /// Use this as posB when querying visibility toward an env map or
 /// directional light (no finite endpoint).
 float3 vhfEncodeDirection(float3 dir)
 {
-    return dir * kIBLMarker;
+    float marker = gCellCoarse / kIBLAngularCell;
+    return dir * marker;
 }
 
 // ---------------------------------------------------------------------------
