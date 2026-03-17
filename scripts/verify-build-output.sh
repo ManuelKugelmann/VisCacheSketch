@@ -25,7 +25,7 @@ fi
 
 # ---- NRD denoiser DLLs (warn loudly, do not fail) ----
 NRD_WARN=0
-if [ ! -f "$OUTDIR/NRDPass.dll" ]; then
+if [ ! -f "$OUTDIR/plugins/NRDPass.dll" ]; then
     NRD_WARN=1
     echo ""
     echo "========================================================"
