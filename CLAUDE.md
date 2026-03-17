@@ -82,3 +82,4 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - **Fix all errors encountered**, even pre-existing ones
 - **Never prefix git/shell commands with `cd`** — manage working directory separately via the Bash tool's cwd, not by chaining `cd &&` before commands
 - **No Co-Authored-By or similar tags in commit messages** — do not add AI attribution lines
+- **Display calls to action and salient info with color in CLI output** — e.g. highlight "Should I fix that?" or important findings so they stand out
