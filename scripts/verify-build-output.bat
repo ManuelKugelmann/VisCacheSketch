@@ -34,7 +34,7 @@ if not exist "%OUTDIR%\Mogwai.exe" (
 
 REM ---- NRD denoiser DLLs (warn loudly, do not fail) ----
 set NRD_WARN=0
-if not exist "%OUTDIR%\NRDPass.dll" (
+if not exist "%OUTDIR%\plugins\NRDPass.dll" (
     set NRD_WARN=1
     echo.
     echo ========================================================

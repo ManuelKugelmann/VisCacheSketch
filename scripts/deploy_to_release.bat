@@ -78,7 +78,7 @@ REM ---------------------------------------------------------------------------
 REM Validate NRD (denoiser) availability
 REM ---------------------------------------------------------------------------
 set "NRD_OK=1"
-if not exist "%RELEASE_DIR%\NRDPass.dll" (
+if not exist "%RELEASE_DIR%\plugins\NRDPass.dll" (
     echo [deploy]   NRDPass.dll: MISSING
     set "NRD_OK=0"
 ) else (

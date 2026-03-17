@@ -10,10 +10,11 @@ REM           media\ scenes (run download_scenes.bat first)
 
 setlocal enabledelayedexpansion
 
-set "REPO=ManuelKugelmann/VisCacheSketch"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
+set "SCRIPT_DIR=%~dp0"
+set "REPO=ManuelKugelmann/VisCache"
+for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 
-call "%~dp0version.bat" launch 2>nul
+call "%SCRIPT_DIR%version.bat" launch 2>nul
 set "RELEASE_DIR=%ROOT%\release"
 set "MEDIA_DIR=%ROOT%\release\media"
 set "SCENE=VeachAjar"
@@ -123,7 +124,7 @@ if "%GRAPH_SCRIPT%"=="" (
 REM ---------------------------------------------------------------------------
 REM Deploy shaders, scripts, data, validate NRD & shaders
 REM ---------------------------------------------------------------------------
-call "%~dp0deploy_to_release.bat"
+call "%SCRIPT_DIR%deploy_to_release.bat"
 if errorlevel 1 exit /b 1
 
 REM ---------------------------------------------------------------------------
