@@ -34,6 +34,7 @@ struct VHFResult
     float mu;       ///< Cached visibility mean
     float var;      ///< Variance = mu*(1-mu)
     int   level;    ///< LOD level that returned this result (-1 = miss)
+    uint  N;        ///< Total sample count at matched level (0 = miss)
     bool  valid;    ///< false = cold miss, always trace
 };
 
@@ -219,6 +220,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
     best.mu    = 0.5f;
     best.var   = 1.0f;
     best.level = -1;
+    best.N     = 0u;
     best.valid = false;
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
@@ -244,6 +246,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
         best.mu    = mu;
         best.var   = var;
         best.level = lvl;
+        best.N     = total;
         best.valid = true;
 
         if (var <= gVarThreshold) break;  // converged — no need to go finer
@@ -270,6 +273,9 @@ struct VHFGateResult
     float visWeight;    ///< final answer when !shouldTrace (= cached mu)
     float mu;           ///< cached mean (needed by vhfCommit)
     float invP;         ///< 1/p (needed by vhfCommit)
+    float var;          ///< cached variance mu*(1-mu) (diagnostics)
+    int   level;        ///< LOD level used, -1 = miss (diagnostics)
+    uint  N;            ///< total sample count at matched level (diagnostics)
 };
 
 /// Phase 1: lookup + RR decision.
@@ -287,6 +293,9 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.visWeight   = 0.f;
         g.mu          = 0.f;
         g.invP        = 1.f;
+        g.var         = 1.f;
+        g.level       = -1;
+        g.N           = 0u;
         return g;
     }
 
@@ -297,6 +306,10 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         pFloor = clamp(contrib / gFireflyBudget, gPMin, 1.f);
     }
     float p = clamp(r.var / gVarThreshold, pFloor, 1.f);
+
+    g.var   = r.var;
+    g.level = r.level;
+    g.N     = r.N;
 
     if (xi < p)
     {
