@@ -12,7 +12,7 @@
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
-static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum (last two accumulated but not read back yet)
+static constexpr uint32_t kStatCount = 3u; // inserts, evictions, misses
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
@@ -200,6 +200,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     //   rootVar["gVHFTable"]      = dict["vhfTable"];
     //   rootVar["VisCacheParams"] = dict["vhfParamsCB"];
     // ----------------------------------------------------------------
+    // Parameter validation — clamp to safe ranges before GPU upload.
+    mParams.numLevels     = std::max(1u, mParams.numLevels);
+    mParams.bootThreshold = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
+    if (mParams.varThreshold  <= 0.f) mParams.varThreshold  = 0.01f;
+    if (mParams.cellCoarse    <= 0.f) mParams.cellCoarse    = 1.0f;
+    if (mParams.cellFine      <= 0.f) mParams.cellFine      = 0.01f;
+    if (mParams.pMin          <= 0.f) mParams.pMin          = 0.01f;
+
     GPUParams gpu;
     gpu.tableCapacity = mParams.tableCapacity;
     gpu.bootThreshold = mParams.bootThreshold;

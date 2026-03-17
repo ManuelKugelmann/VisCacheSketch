@@ -17,7 +17,7 @@ import PathTracer;
 import Falcor8Compat;
 import RenderPasses.Shared.Denoising.NRDData;
 
-#if USE_VISCACHE
+#if USE_VISCACHE || USE_VISCACHE_REVALIDATION
 import RenderPasses.VisCache.VisCache;
 #endif
 
@@ -363,20 +363,11 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
     // Evaluate visibility: vertex 1 <-> vertex 2 (reconnection vertex).
     if (evalVisibility)
     {
-#if USE_VISCACHE_REVAL
-        // Contribution-aware CV+RRR: soft visibility weight (§12).
         float visWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, rcVertexSd.posW,
                             luminance(dstIntegrand * (dstIntegrandBSDFSampling + dstIntegrandNEE)));
         if (visWeight <= 0.f) return 0.f;
         dstIntegrandBSDFSampling *= visWeight;
         dstIntegrandNEE *= visWeight;
-#else
-        bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW);
-        if (!isVisible)
-        {
-            return 0.f;
-        }
-#endif
     }
 
     // non-invertible case
@@ -428,8 +419,8 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
         if (kUseMIS && srcReservoir.pathFlags.lightType() == (uint)PathTracer::LightSampleType::EnvMap && srcReservoir.pathFlags.pathLength() + 1 == rcVertexLength && !srcReservoir.pathFlags.lastVertexNEE())
         {
             float3 wi = rcVertexWi;
-            bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, wi, true); // test along a direction
-            if (isVisible)
+            float envVisWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, wi, 0.f, /*isDirection=*/true);
+            if (envVisWeight > 0.f)
             {
                 float srcPDF1 = useCachedJacobian ? srcReservoir.cachedJacobian.x : evalPdfBSDF(srcPrimarySd, wi);
                 float dstPDF1All;
@@ -437,7 +428,7 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
                 dstCachedJacobian.x = dstPDF1;
                 float3 dstF1 = evalBSDFCosine(dstPrimarySd, wi, allowedSampledTypes1);
                 float misWeight = PathTracer::evalMIS(1, dstPDF1All, 1, srcReservoir.lightPdf);//   dstPDF1 / (dstPDF1 + srcReservoir.lightPdf);
-                dstIntegrand = dstF1 / dstPDF1 * misWeight * rcVertexIrradiance;
+                dstIntegrand = dstF1 / dstPDF1 * misWeight * rcVertexIrradiance * envVisWeight;
                 dstJacobian = dstPDF1 / srcPDF1;
             }
         }
@@ -567,17 +558,10 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
     // Evaluate visibility: vertex 1 <-> vertex 2 (reconnection vertex).
     if (evalVisibility)
     {
-#if USE_VISCACHE_REVAL
-        // Contribution-aware CV+RRR: soft visibility weight (§12).
         float visWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, rcVertexSd.posW,
                             luminance(dstIntegrand));
         if (visWeight <= 0.f) return 0.f;
         dstIntegrand *= visWeight;
-#else
-        bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW);
-        if (!isVisible)
-            return 0.f;
-#endif
     }
 
     if (any(isnan(dstIntegrand) || isinf(dstIntegrand))) return 0.f;
@@ -658,11 +642,18 @@ bool mergeReservoir(const RestirPathTracerParams params, float3 dstIntegrand, fl
     return selected;
 }
 
-/// Evaluates the visibility term to the reconnection vertex from the source vertex.
-/// When USE_VISCACHE is enabled: deterministic cache-only early reject for known-
-/// occluded reconnections (mu < kRejectThreshold). No stochastic RR — shift mapping
-/// requires determinism for MIS weight reproducibility. Cache inserts on trace.
-bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex, bool isDirection = false)
+bool traceVisibilityRay(const Ray ray)
+{
+    SceneRayQuery<kUseAlphaTest> sceneRayQuery;
+    return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+}
+
+/// Unified visibility evaluation — returns a float weight [0,1].
+/// When USE_VISCACHE_REVALIDATION is enabled: CV+RRR with deterministic gating (§12).
+/// Otherwise: vanilla shadow ray returning 0.0 or 1.0.
+/// isDirection: true when targetVertex is a direction (env map), not a position.
+float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 targetVertex,
+                                   float contribLuminance = 0.f, bool isDirection = false)
 {
     float3 dir;
     float tMax;
@@ -676,67 +667,28 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
         float3 edge = targetVertex - sourceVertex;
         tMax = length(edge);
         dir = edge / tMax;
-        tMax *= 0.999f; // prevent intersection with another surface
+        tMax *= 0.999f;
     }
 
-#if USE_VISCACHE
-    // Deterministic RR gate: same cell pair → same coin flip → no flicker.
-    // When cache says "skip", we return the cached mean as a soft visibility;
-    // but reconnection shift needs a hard bool, so we threshold at 0.5.
-    VHFGateResult vcGate;
-    if (!isDirection)
-    {
-        vcGate = vhfGateDeterministic(sourceVertex, targetVertex);
-        if (!vcGate.shouldTrace)
-            return vcGate.visWeight >= 0.5f;
-    }
-#endif
-
-    Ray ray = Ray(sourceVertex, dir, 0.f, tMax); // TODO: use offset position instead
-
-    SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-    bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
-
-#if USE_VISCACHE
-    // Commit trace result into cache — reuse gate result from above.
-    if (!isDirection)
-        vhfCommit(sourceVertex, targetVertex, visible ? 1.f : 0.f, vcGate);
-#endif
-
-    return visible;
-}
-
-bool traceVisibilityRay(const Ray ray)
-{
-    SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-    return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
-}
-
-#if USE_VISCACHE_REVAL
-/// Soft visibility evaluation using CV+RRR with contribution-aware RR (§12).
-/// Returns a float weight (unbiased visibility estimate) instead of hard bool.
-/// contribLuminance: luminance of path contribution through this edge,
-///   used for firefly-aware adaptive pMin.
-float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 targetVertex,
-                                   float contribLuminance = 0.f)
-{
-    VHFGateResult vcGate = vhfGate(sourceVertex, targetVertex,
-                                    vhfDeterministicXi(sourceVertex, targetVertex),
+#if USE_VISCACHE_REVALIDATION
+    // Encode direction as position for cache lookup (IBL).
+    float3 vcPosB = isDirection ? vhfEncodeDirection(targetVertex) : targetVertex;
+    VHFGateResult vcGate = vhfGate(sourceVertex, vcPosB,
+                                    vhfDeterministicXi(sourceVertex, vcPosB),
                                     contribLuminance);
 
     if (!vcGate.shouldTrace)
         return vcGate.visWeight;
-
-    float3 edge = targetVertex - sourceVertex;
-    float tMax = length(edge);
-    float3 dir = edge / tMax;
-    tMax *= 0.999f;
+#endif
 
     Ray ray = Ray(sourceVertex, dir, 0.f, tMax);
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 
-    return vhfCommit(sourceVertex, targetVertex, visible ? 1.f : 0.f, vcGate);
-}
+#if USE_VISCACHE_REVALIDATION
+    return vhfCommit(sourceVertex, vcPosB, visible ? 1.f : 0.f, vcGate);
+#else
+    return visible ? 1.f : 0.f;
 #endif
+}
 

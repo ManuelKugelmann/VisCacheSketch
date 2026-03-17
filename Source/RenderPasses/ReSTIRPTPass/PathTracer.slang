@@ -1341,7 +1341,7 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
-#if USE_VISCACHE
+#if USE_VISCACHE_LIGHTSELECTION
                         // §11.1: VisCache-gated NEE shadow ray.
                         // For finite lights use light position; for env map encode direction.
                         bool visible;

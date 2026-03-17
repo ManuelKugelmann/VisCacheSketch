@@ -1473,13 +1473,25 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mRecompile = true;
     }
 
-    // Read VisCache resources from upstream VisCache pass (if connected).
+    // Read VisCache resources and per-feature toggles from upstream VisCache pass.
     {
         bool wasAvailable = mVisCacheAvailable;
+        bool wasReval = mVisCacheRevalidation;
+        bool wasLightSel = mVisCacheLightSelection;
+
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
-        if (mVisCacheAvailable != wasAvailable) mRecompile = true;
+
+        mVisCacheRevalidation  = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableRevalidation") && dict.getValue<bool>("vhfEnableRevalidation");
+        mVisCacheLightSelection = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
+
+        if (mVisCacheAvailable != wasAvailable ||
+            mVisCacheRevalidation != wasReval ||
+            mVisCacheLightSelection != wasLightSel)
+            mRecompile = true;
     }
 
     // Check if NRD data should be generated.
@@ -1838,9 +1850,10 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
 
-    // VisCache integration.
+    // VisCache integration — per-feature compile flags for ablation.
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
-    defines.add("USE_VISCACHE_REVAL", owner.mVisCacheAvailable ? "1" : "0");
+    defines.add("USE_VISCACHE_REVALIDATION", owner.mVisCacheRevalidation ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).
     // Scene defines include material system config, geometry types, hit info, etc.

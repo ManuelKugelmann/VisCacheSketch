@@ -12,15 +12,15 @@
  *   - traceShadowRay(float3 origin, float3 target) -> float
  *
  * Compile defines:
- *   USE_VISCACHE_REVAL=1: VisCache hash table CV+RRR (S11.3)
- *   USE_LOCAL_REVAL=1:    reservoir-local CV+RRR (ablation baseline)
- *   Neither:              vanilla unconditional shadow ray
+ *   USE_VISCACHE_REVALIDATION=1: VisCache hash table CV+RRR (§12)
+ *   USE_LOCAL_REVAL=1:           reservoir-local CV+RRR (ablation baseline)
+ *   Neither:                     vanilla unconditional shadow ray
  ***************************************************************************/
 
 import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 
-#if USE_VISCACHE
+#if USE_VISCACHE || USE_VISCACHE_REVALIDATION
 import RenderPasses.VisCache.VisCache;
 import RenderPasses.VisCache.ShadingCV;
 #endif
@@ -72,16 +72,16 @@ float evalLocalRevalidation(float3 P, float3 Q, float3 bsdf, float3 Lo,
 
 // ---------------------------------------------------------------------------
 // Visibility evaluation — three paths:
-//   USE_VISCACHE_REVAL: CV+RRR via VisCache hash table (S11.3)
-//   USE_LOCAL_REVAL:    CV+RRR via reservoir-local mu (no hash table)
-//   Neither:            Vanilla — unconditional shadow ray
+//   USE_VISCACHE_REVALIDATION: CV+RRR via VisCache hash table (§12)
+//   USE_LOCAL_REVAL:           CV+RRR via reservoir-local mu (no hash table)
+//   Neither:                   Vanilla — unconditional shadow ray
 // ---------------------------------------------------------------------------
 float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
                           float G, float neighborTargetPdf, float pHatNoVis,
                           float3 camPos, inout SampleGenerator sg)
 {
-#if USE_VISCACHE_REVAL
-    // VisCache hash table CV+RRR (S11.3) — camPos now in VisCacheParams cbuffer.
+#if USE_VISCACHE_REVALIDATION
+    // VisCache hash table CV+RRR (§12) — uses VisCacheParams cbuffer.
     return evalRevalidationCV(P, Q, bsdf, Lo, G, sg);
 #elif USE_LOCAL_REVAL
     // Reservoir-local CV+RRR (no hash table — ablation baseline)

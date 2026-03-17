@@ -258,7 +258,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
 
         VHFEntry e  = gVHFTable[slot];
         uint total  = e.packed & 0xFFFFu;
-        if (total < gBootThreshold) break;
+        if (total < gBootThreshold || total == 0u) break;
 
         uint  vis = e.packed >> 16u;
         float mu  = float(vis) / float(total);
@@ -353,7 +353,7 @@ float vhfDeterministicXi(float3 posA, float3 posB)
         (uint(qa.y) ^ uint(qb.y)) + 0xCCu,
         (uint(qa.z) ^ uint(qb.z)) + uint(hiLvl) * 0x13371337u
     ));
-    return float(h.x) / 4294967295.0f;
+    return float(h.x >> 1u) / float(0x7FFFFFFFu);
 }
 
 /// Phase 1 with deterministic xi — no external random number needed.
@@ -392,6 +392,7 @@ bool vhfIsMature(uint addr, uint fp)
     int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
     if (slot < 0) return false;
 
+    // Single atomic read — avoids double-fetch race with concurrent writers.
     uint packed = gVHFTable[slot].packed;
     uint total  = packed & 0xFFFFu;
     if (total < 2u) return false;
@@ -399,6 +400,9 @@ bool vhfIsMature(uint addr, uint fp)
     uint  vis = packed >> 16u;
     float mu  = float(vis) / float(total);
     float var = mu * (1.0f - mu);
+
+    // Guard against gVarThreshold == 0 (would cause division by zero).
+    if (gVarThreshold <= 0.f) return total >= gBootThreshold;
 
     float required = var * float(gBootThreshold) / gVarThreshold;
     return float(total) >= required;
@@ -412,8 +416,9 @@ uint vhfOverflowDecay(int slot, uint cur)
         uint visDecay   = (cur >> 16u) >> kDecayShift;
         uint totalDecay = (cur & 0xFFFFu) >> kDecayShift;
         uint sub        = (visDecay << 16u) | totalDecay;
-        InterlockedAdd(gVHFTable[slot].packed, -sub);
-        cur -= sub;
+        uint prev;
+        InterlockedAdd(gVHFTable[slot].packed, -sub, prev);
+        cur = prev - sub;  // Use atomic return value, not stale pre-decay cur
     }
     return cur;
 }
@@ -446,8 +451,11 @@ void vhfInsert(float3 posA, float3 posB, float V)
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
         if (slot < 0) continue;
 
-        if (gVHFTable[slot].fingerprint == 0u)
-            gVHFTable[slot].fingerprint = fp;
+        // Atomic CAS: only write fingerprint if slot is still empty.
+        // Losers of the race harmlessly fail — their fp mismatches but
+        // the InterlockedAdd below still lands on the winner's entry.
+        uint origFp;
+        InterlockedCompareExchange(gVHFTable[slot].fingerprint, 0u, fp, origFp);
 
         uint delta = (visVal << 16u) | 1u;
         uint prev;

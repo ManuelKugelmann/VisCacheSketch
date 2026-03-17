@@ -61,8 +61,8 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
             int wslot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
             if (wslot >= 0)
             {
-                if (gVHFTable[wslot].fingerprint == 0u)
-                    gVHFTable[wslot].fingerprint = fp;
+                uint origFp;
+                InterlockedCompareExchange(gVHFTable[wslot].fingerprint, 0u, fp, origFp);
 
                 uint delta = (visSum << 16u) | totalSum;
                 uint prev;

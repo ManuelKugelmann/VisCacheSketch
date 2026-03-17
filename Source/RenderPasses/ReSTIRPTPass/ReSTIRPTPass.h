@@ -166,6 +166,8 @@ private:
     ref<Buffer> mpVHFTable;
     ref<Buffer> mpVHFParamsCB;
     bool mVisCacheAvailable = false;
+    bool mVisCacheRevalidation = false;    ///< CV+RRR revalidation in reconnection shifts (§12)
+    bool mVisCacheLightSelection = false;  ///< Cached mu in NEE target function (§11.1)
 
     uint64_t                        mAccumulatedRayCount = 0;
     uint64_t                        mAccumulatedClosestHitRayCount = 0;
