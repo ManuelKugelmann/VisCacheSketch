@@ -85,7 +85,9 @@ private:
     bool mOptionsChanged = false;
     bool mGBufferAdjustShadingNormals = false;
 
-    // VisCache integration — hash table + params read from InternalDictionary.
-    ref<Buffer> mpVHFTable;
+    // VisCache integration — hash table + params buffer from InternalDictionary.
+    ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
+    ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
     bool mVisCacheAvailable = false;
+    bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
 };

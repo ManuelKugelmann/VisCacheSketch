@@ -7,8 +7,8 @@ def render_graph_ReSTIRPT_Vanilla():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -30,8 +30,8 @@ def render_graph_ReSTIRPT_CVRRRRevalidation():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation': True,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck': True,
         'enableVisCacheLightSelection': False,
         'visCacheContribThreshold': 0.01,
         'visCachePMin': 0.05,
@@ -57,8 +57,8 @@ def render_graph_ReSTIRPT_VisCacheRevalidation():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': True,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': True,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -83,8 +83,8 @@ def render_graph_ReSTIRPT_VisCacheLightSelection():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -109,8 +109,8 @@ def render_graph_ReSTIRPT_VisCacheFull():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': True,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': True,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -140,8 +140,8 @@ def render_graph_ReSTIRPT1_Vanilla():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -163,8 +163,8 @@ def render_graph_ReSTIRPT1_CVRRRRevalidation():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation': True,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck': True,
         'enableVisCacheLightSelection': False,
         'visCacheContribThreshold': 0.01,
         'visCachePMin': 0.05,
@@ -190,8 +190,8 @@ def render_graph_ReSTIRPT1_VisCacheRevalidation():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': True,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': True,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -216,8 +216,8 @@ def render_graph_ReSTIRPT1_VisCacheLightSelection():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
@@ -242,8 +242,8 @@ def render_graph_ReSTIRPT1_VisCacheFull():
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': True,
-        'enableCVRRRRevalidation': False,
+        'enableVisCacheVisibilityCheck': True,
+        'enableCVRRRVisibilityCheck': False,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")

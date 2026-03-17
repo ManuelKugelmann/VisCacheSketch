@@ -166,6 +166,22 @@ namespace Falcor
 #endif
     }
 
+    void RTXDI::setExtraDefines(const DefineList& defines)
+    {
+        if (mExtraDefines != defines)
+        {
+            mExtraDefines = defines;
+#if FALCOR_HAS_RTXDI
+            mFlags.recompileShaders = true;
+#endif
+        }
+    }
+
+    void RTXDI::setExtraBindings(std::function<void(const ShaderVar&)> fn)
+    {
+        mExtraBindingsFn = std::move(fn);
+    }
+
     void RTXDI::beginFrame(RenderContext* pRenderContext, const uint2& frameDim)
     {
 #if FALCOR_HAS_RTXDI
@@ -357,6 +373,10 @@ namespace Falcor
         // Bind the scene.
         if (bindScene)
             mpScene->bindShaderData(rootVar["gScene"]);
+
+        // Bind extra resources injected by the host pass (e.g. VisCache).
+        if (mExtraBindingsFn)
+            mExtraBindingsFn(rootVar);
     }
 
     void RTXDI::updateLights(RenderContext* pRenderContext)
@@ -674,6 +694,7 @@ namespace Falcor
             DefineList defines;
             mpScene->getShaderDefines(defines);
             defines.add("RTXDI_INSTALLED", "1");
+            defines.add(mExtraDefines);
 
             ProgramDesc desc;
             mpScene->getShaderModules(desc.shaderModules);

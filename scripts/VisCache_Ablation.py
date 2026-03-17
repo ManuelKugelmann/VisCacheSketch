@@ -23,7 +23,7 @@ ABLATION_CONFIGS = [
     ("minus_D",      {"enableVisCacheDecay":         False}),
     ("minus_E",      {"enableVisCachePressureEvict": False}),
     ("single_level", {"numLevels": 1}),
-    ("no_cache",     {"enableVisCacheRevalidation": False, "enableVisCacheLightSelection": False}),
+    ("no_cache",     {"enableVisCacheVisibilityCheck": False, "enableVisCacheLightSelection": False}),
 ]
 
 
@@ -45,7 +45,7 @@ def apply_ablation(graph, config_dict):
     # Reset to full config first
     for attr in ["enableVisCacheVarianceGate",
                  "enableVisCacheWarpReduction", "enableVisCacheDecay",
-                 "enableVisCachePressureEvict", "enableVisCacheRevalidation",
+                 "enableVisCachePressureEvict", "enableVisCacheVisibilityCheck",
                  "enableVisCacheLightSelection"]:
         setattr(visCache, attr, True)
     visCache.numLevels = 3

@@ -19,7 +19,7 @@ kCaptureDir    = "captures/baselines"
 # VisCache defaults (all features on)
 # ---------------------------------------------------------------------------
 _VC_DEFAULTS = {
-    'enableVisCacheRevalidation':    True,
+    'enableVisCacheVisibilityCheck':    True,
     'enableVisCacheLightSelection':  True,
     'enableVisCacheVarianceGate':    True,
     'enableVisCacheWarpReduction':   True,
@@ -35,37 +35,37 @@ BASELINE_CONFIGS = [
     # --- ReSTIR PT maxSurfaceBounces=1 (subsumes ReSTIR GI) ---
     ("GI_Vanilla", "ReSTIRPTPass", False, {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation':    False,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck':    False,
         'enableVisCacheLightSelection': False,
     }, {}),
     ("GI_CVRRRRevalidation", "ReSTIRPTPass", False, {
         'maxSurfaceBounces': 1,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation':    True,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck':    True,
         'enableVisCacheLightSelection': False,
         'visCacheContribThreshold':   0.01,
         'visCachePMin':               0.05,
     }, {}),
     ("GI_VisCacheRevalidation", "ReSTIRPTPass", True, {
         'maxSurfaceBounces': 1,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     }, {
-        'enableVisCacheRevalidation':   True,
+        'enableVisCacheVisibilityCheck':   True,
         'enableVisCacheLightSelection': False,
     }),
     ("GI_VisCacheLightSelection", "ReSTIRPTPass", True, {
         'maxSurfaceBounces': 1,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     }, {
-        'enableVisCacheRevalidation':   False,
+        'enableVisCacheVisibilityCheck':   False,
         'enableVisCacheLightSelection': True,
     }),
     ("GI_VisCacheFull", "ReSTIRPTPass", True, {
         'maxSurfaceBounces': 1,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     }, {
-        'enableVisCacheRevalidation':   True,
+        'enableVisCacheVisibilityCheck':   True,
         'enableVisCacheLightSelection': True,
     }),
 
@@ -74,52 +74,52 @@ BASELINE_CONFIGS = [
     # is automatic via InternalDictionary when VisCachePass is in the graph.
     ("DI_Vanilla", "RTXDIPass", False, {}, {}),
     ("DI_VisCacheRevalidation", "RTXDIPass", True, {}, {
-        'enableVisCacheRevalidation':   True,
+        'enableVisCacheVisibilityCheck':   True,
         'enableVisCacheLightSelection': False,
     }),
     ("DI_VisCacheLightSelection", "RTXDIPass", True, {}, {
-        'enableVisCacheRevalidation':   False,
+        'enableVisCacheVisibilityCheck':   False,
         'enableVisCacheLightSelection': True,
     }),
     ("DI_VisCacheFull", "RTXDIPass", True, {}, {
-        'enableVisCacheRevalidation':   True,
+        'enableVisCacheVisibilityCheck':   True,
         'enableVisCacheLightSelection': True,
     }),
 
     # --- ReSTIR PT ---
     ("PT_Vanilla", "ReSTIRPTPass", False, {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation':    False,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck':    False,
         'enableVisCacheLightSelection': False,
     }, {}),
     ("PT_CVRRRRevalidation", "ReSTIRPTPass", False, {
         'maxSurfaceBounces': 4,
-        'enableVisCacheRevalidation': False,
-        'enableCVRRRRevalidation':    True,
+        'enableVisCacheVisibilityCheck': False,
+        'enableCVRRRVisibilityCheck':    True,
         'enableVisCacheLightSelection': False,
         'visCacheContribThreshold':   0.01,
         'visCachePMin':               0.05,
     }, {}),
     ("PT_VisCacheRevalidation", "ReSTIRPTPass", True, {
         'maxSurfaceBounces': 4,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     }, {
-        'enableVisCacheRevalidation':   True,
+        'enableVisCacheVisibilityCheck':   True,
         'enableVisCacheLightSelection': False,
     }),
     ("PT_VisCacheLightSelection", "ReSTIRPTPass", True, {
         'maxSurfaceBounces': 4,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     }, {
-        'enableVisCacheRevalidation':   False,
+        'enableVisCacheVisibilityCheck':   False,
         'enableVisCacheLightSelection': True,
     }),
     ("PT_VisCacheFull", "ReSTIRPTPass", True, {
         'maxSurfaceBounces': 4,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     }, {
-        'enableVisCacheRevalidation':   True,
+        'enableVisCacheVisibilityCheck':   True,
         'enableVisCacheLightSelection': True,
     }),
 ]

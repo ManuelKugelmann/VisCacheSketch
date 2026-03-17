@@ -31,6 +31,7 @@
 #include "Utils/Properties.h"
 #include "Utils/Debug/PixelDebug.h"
 #include "Scene/Scene.h"
+#include <functional>
 #include <memory>
 #include <type_traits>
 #include <vector>
@@ -247,6 +248,16 @@ namespace Falcor
         */
         void bindShaderData(const ShaderVar& rootVar);
 
+        /** Set extra shader defines propagated to all internal RTXDI passes.
+            Call before beginFrame() when defines change. Triggers shader reload.
+        */
+        void setExtraDefines(const DefineList& defines);
+
+        /** Set a callback for binding extra resources to internal RTXDI passes.
+            The callback receives the root shader var and is invoked during bindShaderDataInternal().
+        */
+        void setExtraBindings(std::function<void(const ShaderVar&)> fn);
+
         /** Begin a frame.
             Must be called once at the beginning of each frame.
             \param[in] pRenderContext Render context.
@@ -276,6 +287,9 @@ namespace Falcor
         ref<IScene>                         mpScene;                ///< Scene (set on initialization).
         ref<Device>                         mpDevice;               ///< GPU device.
         Options                             mOptions;               ///< Configuration options.
+
+        DefineList                          mExtraDefines;          ///< Extra defines injected by the host pass (e.g. VisCache).
+        std::function<void(const ShaderVar&)> mExtraBindingsFn;     ///< Callback for binding extra resources (e.g. VisCache buffers).
 
         std::unique_ptr<PixelDebug>         mpPixelDebug;           ///< Pixel debug component.
 

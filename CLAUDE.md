@@ -9,7 +9,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 ## Directory Layout & Paths
 
 - `Falcor/` — git subtree (not submodule), keep close to NVIDIA original; local bug fixes listed in `Falcor/LOCAL_FIXES.md`
-- `Source/RenderPasses/VisCache/` — Visibility Cache pass
+- `Source/RenderPasses/VisCache/` — Visibility Cache pass; see [`INTEGRATION.md`](Source/RenderPasses/VisCache/INTEGRATION.md) for per-renderer integration details and ablation switches
 - `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
 - `scripts/` — .bat + .sh for quickstart, download, run, test
 - `scenes/` — .pyscene scene configs (camera, lights, env map); see [`docs/PYSCENE_API.md`](docs/PYSCENE_API.md) for Falcor 8 API reference

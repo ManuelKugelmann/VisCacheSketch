@@ -128,10 +128,10 @@
 #define is_valid_gSpecularReflectance 1
 
 // ---- VisCache integration --------------------------------------------------
-// VisCache is compiled as standalone modules (Tier 1/2).  In the host passes,
-// USE_VISCACHE guards extensions that live in entry-point files (e.g.
-// traceVisibilityRayCV in TracePass.rt.slang) and cannot be resolved when
-// library modules are compiled individually.  Keep disabled here.
+// Default USE_VISCACHE=0 for host pass shaders (PathTracer, ReSTIRPTPass, etc.)
+// where VisCache extensions are guarded by this define.  VisCache-internal
+// shaders (Insert, Decay, RevalidationCommon) override to 1 via -D flag in
+// slang-ci-check.sh.
 #define USE_VISCACHE 0
 #define USE_VISCACHE_REVAL 0
 #define USE_LOCAL_REVAL 0

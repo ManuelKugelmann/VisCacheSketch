@@ -28,6 +28,13 @@ import Utils.Debug.PixelDebug;
 import LoadShadingData;
 import Falcor8Compat;
 import PathBuilder;
+
+// ---------------------------------------------------------------------------
+// VisCache integration: VisCache.slang self-guards with #if USE_VISCACHE,
+// so this import is unconditional — it compiles to nothing when VisCache
+// is not in the render graph.
+// ---------------------------------------------------------------------------
+import RenderPasses.VisCache.VisCache;
 import PathReservoir;
 
 #include "Utils/Math/MathConstants.slangh"
@@ -37,8 +44,12 @@ __exported import Params;
 
 uint getAllowedBSDFFlags(bool isSpecularBounce)
 {
-    if (kSeparatePathBSDF) return isSpecularBounce ? 0xc : 0x3;
-    else return -1;
+    // DQLin original used SampledBSDFFlags {DiffuseRefl=1, DiffuseTrans=2, SpecRefl=4, SpecTrans=8}.
+    // Falcor 8 LobeType uses different bit layout; map accordingly.
+    // Specular class: SpecularReflection(0x02)|DeltaReflection(0x04)|SpecularTransmission(0x20)|DeltaTransmission(0x40) = 0x66
+    // Diffuse class:  DiffuseReflection(0x01)|DiffuseTransmission(0x10) = 0x11
+    if (kSeparatePathBSDF) return isSpecularBounce ? 0x66 : 0x11;
+    else return 0xff; // LobeType::All
 }
 
 /// Porting shim: DQLin's getBSDFLobes(sd) -> Falcor 8.0 IMaterialInstance.getLobeTypes(sd).
@@ -312,7 +323,11 @@ struct PathTracer
         bool valid;
         BSDFSample_ result;
 
-        if (kUseBSDFSampling) valid = sampleBSDF(sd, path.sg, result, !kSeparatePathBSDF); // daqi: indicate using deterministic BSDF
+        // Always importance-sample. The original DQLin code's 4th parameter was
+        // "useDeterministicBSDF" (extra lobe-filtered re-evaluation), NOT
+        // "useImportanceSampling". Falcor 8's mi.sample() handles hemisphere
+        // consistency internally, so the deterministic re-eval is not needed.
+        if (kUseBSDFSampling) valid = sampleBSDF(sd, path.sg, result, true);
         else valid = sampleBSDF_Reference(sd, path.sg, result);
 
         float pdfAll = result.pdf;
@@ -818,7 +833,7 @@ struct PathTracer
         if (kUseEmissiveLights && lightType == (uint)LightSampleType::Emissive)
         {
             if (!kUseEmissiveLights) valid = false;
-            else { sampleNext1D(sg); sampleNext2D(sg); } // Skip same random numbers as emissive sampler consumes.
+            else emissiveSampler.skipRandomNumber(sg);
         }
         if (kUseAnalyticLights && lightType == (uint)LightSampleType::Analytic)
         {
@@ -1107,7 +1122,7 @@ struct PathTracer
 #endif
 
                 // daqi: if current escaped vertex has path.length >= 2, then it can be used as a rcVertex
-                if (selectedCurrentPath&& path.useHybridShift&& path.length >= 2 && path.length < path.pathBuilder.rcVertexLength)
+                if (selectedCurrentPath && path.useHybridShift && path.length >= 2 && path.length < path.pathBuilder.rcVertexLength)
                 {
                     // insert path flags
 
@@ -1329,7 +1344,44 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
+                        // -----------------------------------------------------------------
+                        // NEE shadow ray: evaluate V(shading point, light).
+                        //
+                        // With USE_VISCACHE_LIGHTSELECTION (§11.1):
+                        //   Use the deterministic gate (stable xi from cell coords) to
+                        //   decide whether to trace. For finite lights, posB = light pos;
+                        //   for env map / directional lights, encode direction into the
+                        //   far-field hemisphere representation (see vhfEncodeDirection).
+                        //
+                        //   The gate returns shouldTrace=false when the cache has high
+                        //   confidence (low variance). In that case, threshold the cached
+                        //   mu at 0.5 to produce a hard bool — NEE uses binary V because
+                        //   the path contribution C = BRDF * Le * G is computed separately.
+                        //
+                        //   contribLuminance = luminance(Lr) enables firefly-aware pMin:
+                        //   bright contributions get higher trace probability to prevent
+                        //   weight explosion on high-contribution shadow edges.
+                        //
+                        // Without: unconditional shadow ray (baseline).
+                        // -----------------------------------------------------------------
+#if USE_VISCACHE_LIGHTSELECTION
+                        bool visible;
+                        float3 vcPosB = (ray.tMax < 1e10f)
+                            ? (ray.origin + ray.dir * ray.tMax)
+                            : vhfEncodeDirection(ray.dir);
+                        VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, luminance(Lr));
+                        if (!vcGate.shouldTrace)
+                        {
+                            visible = vcGate.visWeight >= 0.5f;
+                        }
+                        else
+                        {
+                            visible = traceVisibilityRay(ray);
+                            vhfCommit(ray.origin, vcPosB, visible ? 1.f : 0.f, vcGate);
+                        }
+#else
                         bool visible = traceVisibilityRay(ray);
+#endif
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -1784,8 +1836,39 @@ struct PathTracer
             if (validSample)
             {
                 const Ray ray = ls.getVisibilityRay();
+                // -----------------------------------------------------------------
+                // Temporal update shadow ray: same VisCache gating logic as the
+                // main NEE path above. This runs during the temporal reservoir
+                // update for dynamic scenes — the reconnection vertex's light
+                // sample is re-tested for visibility. Using the same deterministic
+                // gate ensures temporal coherence between initial and update paths.
+                //
+                // The cache population here is critical: temporal updates observe
+                // the same (P, light) pairs across frames, seeding the cache with
+                // stable visibility data that benefits the main NEE pass.
+                //
+                // contribLuminance = 0: in this context we don't have the full
+                // path contribution (no BRDF eval / throughput). Passing 0 uses
+                // the base pMin without firefly suppression — conservative but
+                // correct, since temporal updates are a small fraction of rays.
+                // -----------------------------------------------------------------
+#if USE_VISCACHE_LIGHTSELECTION
+                float3 vcPosB = (ray.tMax < 1e10f)
+                    ? (ray.origin + ray.dir * ray.tMax)
+                    : vhfEncodeDirection(ray.dir);
+                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, 0.f);
+                if (!vcGate.shouldTrace)
+                {
+                    visible = vcGate.visWeight >= 0.5f;
+                }
+                else
+                {
+                    visible = traceVisibilityRay(ray);
+                    vhfCommit(ray.origin, vcPosB, visible ? 1.f : 0.f, vcGate);
+                }
+#else
                 visible = traceVisibilityRay(ray);
-
+#endif
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {

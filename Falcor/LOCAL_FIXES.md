@@ -85,7 +85,60 @@ plain `git submodule update` (no `-C`) when run standalone.
 
 ---
 
-## 4. CudaInterop: suppress C4100 and LNK4098 warnings on MSVC
+## 3. IMaterialInstance / StandardBSDF: add evalBsdfAndPdf(lobeMask)
+
+**Files:**
+- `Source/Falcor/Rendering/Materials/IMaterialInstance.slang`
+- `Source/Falcor/Rendering/Materials/BSDFs/StandardBSDF.slang`
+- `Source/Falcor/Rendering/Materials/StandardMaterialInstance.slang`
+
+ReSTIR PT shift mapping requires per-lobe-class PDF evaluation (e.g., "PDF
+from diffuse lobes only") using the original lobe selection weights. Falcor 8's
+`setActiveLobes()` zeroes disabled lobes and renormalizes the remaining weights,
+which changes the PDF values and produces incorrect shift mapping Jacobians.
+
+Ported `evalBsdfAndPdf(lobeMask)` from the NVlabs Conditional ReSTIR prototype
+(Lin et al., SIGGRAPH 2023). The method evaluates BSDF and PDF simultaneously,
+returning filtered results for lobes matching `lobeMask` alongside the all-lobe
+PDF, using the original (pre-renormalization) lobe selection weights.
+
+- `StandardBSDF::evalBsdfAndPdf()` — core implementation with per-lobe filtering
+- `StandardMaterialInstance::evalBsdfAndPdf()` — world-to-local coordinate wrapper
+- `IMaterialInstance::evalBsdfAndPdf()` — interface method (new)
+- `MaterialInstanceBase::evalBsdfAndPdf()` — default stub returning zeros
+- `ClothMaterialInstance::evalBsdfAndPdf()` — explicit stub (Slang doesn't
+  inherit `[open]` base methods to satisfy interface requirements)
+- `HairMaterialInstance::evalBsdfAndPdf()` — same
+
+**Upstream status:** Enhancement, not a bug fix. Useful for any algorithm
+needing per-lobe PDF decomposition without weight renormalization.
+
+---
+
+## 4. Emissive light samplers: restore skipRandomNumber()
+
+**Files:**
+- `Source/Falcor/Rendering/Lights/EmissivePowerSampler.slang`
+- `Source/Falcor/Rendering/Lights/LightBVHSampler.slang`
+- `Source/Falcor/Rendering/Lights/EmissiveUniformSampler.slang`
+- `Source/Falcor/Rendering/Lights/EmissiveLightSampler.slang` (NullEmissiveSampler)
+
+Falcor 4.x had `skipRandomNumber()` on the `IEmissiveLightSampler` interface.
+Falcor 8 removed it. ReSTIR PT path replay needs to advance the random sequence
+by the exact number of random numbers that `sampleLight()` consumes when
+skipping an emissive light sampling step. Each sampler consumes a different
+count: EmissivePower uses 1D+1D+2D=4, LightBVH uses 1D+2D=3, Uniform uses
+1D+2D=3. Hardcoding a fixed skip causes random sequence misalignment.
+
+Restored `skipRandomNumber()` as a non-interface method on each sampler struct.
+Not added back to `IEmissiveLightSampler` (not needed — called via concrete
+type `EmissiveLightSampler` which is a compile-time typedef).
+
+**Upstream status:** Enhancement for path replay algorithms.
+
+---
+
+## 5. CudaInterop: suppress C4100 and LNK4098 warnings on MSVC
 
 **File:** `Source/Samples/CudaInterop/CMakeLists.txt`
 

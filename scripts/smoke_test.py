@@ -181,7 +181,7 @@ try:
     VBuffer = createPass("VBufferRT")
     g.addPass(VBuffer, "VBuffer")
     VisCache = createPass("VisCachePass", {
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheVisibilityCheck': True,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(VisCache, "VisCache")

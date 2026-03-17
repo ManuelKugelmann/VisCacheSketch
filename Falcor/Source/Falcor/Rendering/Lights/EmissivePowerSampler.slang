@@ -90,6 +90,18 @@ struct EmissivePowerSampler : IEmissiveLightSampler
         return true;
     }
 
+    /** Advance the sample generator by the same number of random numbers
+        that sampleLight() would consume, without actually sampling.
+        Used by ReSTIR PT path replay to keep the random sequence aligned.
+    */
+    void skipRandomNumber<S : ISampleGenerator>(inout S sg)
+    {
+        if (gScene.lightCollection.isEmpty()) return;
+        sampleNext1D(sg);   // alias table uniform pick
+        sampleNext1D(sg);   // alias table threshold test
+        sampleNext2D(sg);   // triangle barycentric coords
+    }
+
     /** Evaluate the PDF associated with selecting an emissive triangle.
         \param[in] posW Shading point in world space.
         \param[in] normalW Normal at the shading point in world space.

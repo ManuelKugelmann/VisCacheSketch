@@ -162,9 +162,25 @@ private:
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mEnableRayStats = false;      ///< Set to true when the stats tab in the UI is open. This may negatively affect performance.
 
-    // VisCache integration — hash table + params read from InternalDictionary.
-    ref<Buffer> mpVHFTable;
-    bool mVisCacheAvailable = false;
+    // -----------------------------------------------------------------
+    // VisCache integration state.
+    //
+    // GPU resources are obtained from the upstream VisCache pass via
+    // InternalDictionary each frame in beginFrame(). They are bound to
+    // every compute pass that may evaluate visibility (PathReusePass,
+    // PathRetracePass) in their respective binding functions.
+    //
+    // Per-feature flags are compile-time defines that trigger shader
+    // recompilation when toggled. This is intentional: compile-time
+    // gating lets the Slang compiler eliminate dead code and avoid
+    // register pressure from unused VisCache cbuffer bindings.
+    // -----------------------------------------------------------------
+    ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
+    ref<Buffer> mpVHFParamsCB;             ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
+    bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
+    bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)
+    bool mVisCacheLightSelection = false;  ///< §11.1: cached mu gates NEE shadow rays (PathTracer.slang)
+    bool mLocalCVRRR = false;       ///< Ablation: reservoir-local CV+RRR (reuses VisCacheParams)
 
     uint64_t                        mAccumulatedRayCount = 0;
     uint64_t                        mAccumulatedClosestHitRayCount = 0;

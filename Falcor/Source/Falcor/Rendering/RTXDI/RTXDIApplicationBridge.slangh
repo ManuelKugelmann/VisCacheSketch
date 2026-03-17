@@ -37,6 +37,7 @@ import Utils.Sampling.TinyUniformSampleGenerator;
 import Rendering.Materials.IsotropicGGX;
 import Rendering.Materials.Fresnel;
 import SurfaceData;
+import RenderPasses.VisCache.VisCache;
 
 // Only sample specular lobe when BRDF sampling is enabled.
 static const bool kSampleSpecularOnly = false;
@@ -411,11 +412,35 @@ RAB_LightSample RAB_SamplePolymorphicLight(RAB_LightInfo lightInfo, RAB_Surface 
 */
 bool RAB_GetConservativeVisibility(RAB_Surface surface, RAB_LightSample lightSample)
 {
-    Ray ray = Ray(surface.position, lightSample.direction, 0.f, lightSample.distance - gRTXDI.rayEpsilon);
+    float3 posA = surface.position;
+    float3 posB = posA + lightSample.direction * lightSample.distance;
 
-    // Trace our ray (with SceneRayQuery<0> meaning no alpha testing) and cull non-opaque geometry.
+#if USE_VISCACHE_VISIBILITYCHECK
+    // VisCache CV+RRR: deterministic gate (no rng needed — xi derived from
+    // cell coordinates for temporal stability across resampling passes).
+    float xi = vhfDeterministicXi(posA, posB);
+    VHFGateResult g = vhfGate(posA, posB, xi);
+
+    if (!g.shouldTrace)
+    {
+        // Cache confident — stochastic resolution of soft weight to bool.
+        // Uses a second deterministic random derived from the same cell pair
+        // (offset by 0.5 to decorrelate from the gate xi).
+        float resolveXi = frac(xi + 0.5f);
+        return resolveXi < g.visWeight;
+    }
+
+    // Cache says trace — trace, commit, return actual result.
+    Ray ray = Ray(posA, lightSample.direction, 0.f, lightSample.distance - gRTXDI.rayEpsilon);
+    SceneRayQuery<0> rayQuery;
+    bool visible = rayQuery.traceVisibilityRay(ray, RAY_FLAG_CULL_NON_OPAQUE);
+    vhfCommit(posA, posB, visible ? 1.f : 0.f, g);
+    return visible;
+#else
+    Ray ray = Ray(posA, lightSample.direction, 0.f, lightSample.distance - gRTXDI.rayEpsilon);
     SceneRayQuery<0> rayQuery;
     return rayQuery.traceVisibilityRay(ray, RAY_FLAG_CULL_NON_OPAQUE);
+#endif
 }
 
 /** Same visibility ray tracing as RAB_GetConservativeVisibility but for surfaces and light samples

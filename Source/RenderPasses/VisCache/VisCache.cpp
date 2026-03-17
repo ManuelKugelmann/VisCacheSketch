@@ -7,10 +7,20 @@
  ***************************************************************************/
 
 #include "VisCache.h"
+#include <algorithm>
+#include <cstring>
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
-static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum (last two accumulated but not read back yet)
+/// Five atomic GPU counters, indexed by VisCache.slang's kStat* constants:
+///   [0] inserts       — successful vhfInsert() calls (new samples accepted)
+///   [1] evictions     — fingerprint overwrites (slot reuse under pressure)
+///   [2] misses        — vhfLookup() calls that found no valid entry
+///   [3] decayTriggers — decay passes that actually modified an entry (not yet wired)
+///   [4] probeSumHi    — high-watermark of linear probe distance (not yet wired)
+/// Counters 3-4 are reserved for upcoming diagnostics — buffer is pre-allocated
+/// at the full size so adding them doesn't require a buffer resize.
+static constexpr uint32_t kStatCount = 5u;
 
 // Diagnostic heatmap output channel names
 static const std::string kOutputDiag           = "vcDiag";
@@ -45,12 +55,13 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("pMin"))           mParams.pMin           = props["pMin"];
     if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
     if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
-    if (props.has("cellCoarse"))     mParams.cellCoarse     = props["cellCoarse"];
-    if (props.has("cellFine"))       mParams.cellFine       = props["cellFine"];
+    if (props.has("cellCoarse"))   { mParams.cellCoarse     = props["cellCoarse"];   mParams.autoTuneCells = false; }
+    if (props.has("cellFine"))     { mParams.cellFine       = props["cellFine"];     mParams.autoTuneCells = false; }
+    if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
 
     // VisCache feature + ablation toggles
-    if (props.has("enableVisCacheRevalidation"))    mParams.enableVisCacheRevalidation    = props["enableVisCacheRevalidation"];
+    if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
     if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
     if (props.has("enableVisCacheVarianceGate"))    mParams.enableVisCacheVarianceGate    = props["enableVisCacheVarianceGate"];
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
@@ -79,10 +90,11 @@ Properties VisCache::getProperties() const
     p["numLevels"]     = mParams.numLevels;
     p["cellCoarse"]    = mParams.cellCoarse;
     p["cellFine"]      = mParams.cellFine;
+    p["autoTuneCells"] = mParams.autoTuneCells;
     p["decayPeriod"]   = mParams.decayPeriod;
 
     // VisCache feature + ablation toggles
-    p["enableVisCacheRevalidation"]    = mParams.enableVisCacheRevalidation;
+    p["enableVisCacheVisibilityCheck"]    = mParams.enableVisCacheVisibilityCheck;
     p["enableVisCacheLightSelection"]  = mParams.enableVisCacheLightSelection;
     p["enableVisCacheVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
@@ -119,9 +131,15 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
 }
 
 // ---------------------------------------------------------------------------
+// allocateBuffers: create/recreate all GPU resources.
+//
+// Called from compile() (initial setup) and setScene() (scene change).
+// The hash table capacity is rounded up to the next power-of-two because
+// the GPU addressing uses bitwise AND (capacity-1) for slot indexing.
+// ---------------------------------------------------------------------------
 void VisCache::allocateBuffers()
 {
-    // Ensure capacity is power-of-two
+    // Ensure capacity is power-of-two (required for fast modulo via bitmask).
     uint32_t cap = 1u;
     while (cap < mParams.tableCapacity) cap <<= 1;
     mParams.tableCapacity = cap;
@@ -135,6 +153,14 @@ void VisCache::allocateBuffers()
         /*createCounter=*/true
     );
     mpHashTable->setName("VHF_HashTable");
+
+    // GPU params constant buffer — exported via dict for downstream passes.
+    mpParamsBuffer = mpDevice->createBuffer(
+        sizeof(GPUParams),
+        ResourceBindFlags::ConstantBuffer,
+        MemoryType::Upload
+    );
+    mpParamsBuffer->setName("VHF_Params");
 
     // 5 atomic counters: inserts, evictions, misses, decayTriggers, probeSumHi
     mpStatsBuffer = mpDevice->createBuffer(
@@ -152,10 +178,54 @@ void VisCache::allocateBuffers()
 }
 
 // ---------------------------------------------------------------------------
+// Auto-derive cellCoarse / cellFine from scene bounds + camera.
+//
+// Heuristic:
+//   viewDist   = min(camera.farPlane, sceneDiameter)
+//   cellCoarse = viewDist / 10
+//   cellFine   = cellCoarse / R^sqrt(N-1)
+//
+// The sqrt exponent means adding levels primarily improves smoothness
+// of the cascade (smaller per-level ratio) rather than pushing the
+// finest cell to extremes:
+//
+//   R=4: N=2 → /4     N=3 → /6.3   N=5 → /8    N=8 → /11
+//
+// Compare naive R^(N-1):
+//   R=4: N=2 → /4     N=3 → /16    N=5 → /256  N=8 → /16384
+//
+// The total coarse-to-fine range grows with more levels, but gently.
+// Additional levels fill in the intermediate resolution gaps.
+// ---------------------------------------------------------------------------
+void VisCache::autoTuneCellSizes()
+{
+    static constexpr float kMaxRatio = 4.f;  // base refinement factor
+
+    if (!mpScene) return;
+
+    const auto& bounds = mpScene->getSceneBounds();
+    float3 extent = bounds.extent();
+    float sceneDiameter = std::max({extent.x, extent.y, extent.z});
+    if (sceneDiameter <= 0.f) return;
+
+    float farPlane = 1000.f;
+    if (mpScene->getCamera())
+        farPlane = mpScene->getCamera()->getFarPlane();
+
+    float viewDist = std::min(farPlane, sceneDiameter);
+    float coarse = viewDist / 10.f;
+    float fine   = coarse / std::pow(kMaxRatio, std::sqrt(float(mParams.numLevels - 1)));
+
+    mParams.cellCoarse = coarse;
+    mParams.cellFine   = fine;
+}
+
+// ---------------------------------------------------------------------------
 void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 {
-    // Nothing scene-specific needed — hash table is world-space.
-    // Trigger a re-allocation if scene changes require table resize.
+    mpScene = pScene;
+    if (mParams.autoTuneCells && mpScene)
+        autoTuneCellSizes();
     allocateBuffers();
 }
 
@@ -163,22 +233,37 @@ void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 {
     // ----------------------------------------------------------------
-    // Expose hash table to downstream passes via InternalDictionary.
-    // PathTracer, RTXDIPass, and ReSTIRPTPass retrieve these.
+    // Upload GPU params and expose to downstream passes via dictionary.
+    // Consumer binding is just two lines:
+    //   rootVar["gVHFTable"]      = dict["vhfTable"];
+    //   rootVar["VisCacheParams"] = dict["vhfParamsCB"];
     // ----------------------------------------------------------------
+    // Parameter validation — clamp to safe ranges before GPU upload.
+    mParams.numLevels     = std::max(1u, mParams.numLevels);
+    mParams.bootThreshold = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
+    if (mParams.varThreshold  <= 0.f) mParams.varThreshold  = 0.01f;
+    if (mParams.cellCoarse    <= 0.f) mParams.cellCoarse    = 1.0f;
+    if (mParams.cellFine      <= 0.f) mParams.cellFine      = 0.01f;
+    if (mParams.pMin          <= 0.f) mParams.pMin          = 0.01f;
+
+    GPUParams gpu;
+    gpu.tableCapacity = mParams.tableCapacity;
+    gpu.bootThreshold = mParams.bootThreshold;
+    gpu.varThreshold  = mParams.varThreshold;
+    gpu.pMin          = mParams.pMin;
+    gpu.fireflyBudget = mParams.fireflyBudget;
+    gpu.numLevels     = mParams.numLevels;
+    gpu.cellCoarse    = mParams.cellCoarse;
+    gpu.cellFine      = mParams.cellFine;
+    std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
+    mpParamsBuffer->unmap();
+
     auto& dict = renderData.getDictionary();
-    dict["vhfTable"]        = mpHashTable;
-    dict["vhfCapacity"]     = mParams.tableCapacity;
-    dict["vhfVarThreshold"] = mParams.varThreshold;
-    dict["vhfPMin"]         = mParams.pMin;
-    dict["vhfBootThreshold"]= mParams.bootThreshold;
-    dict["vhfFireflyBudget"]= mParams.fireflyBudget;
-    dict["vhfNumLevels"]    = mParams.numLevels;
-    dict["vhfCellCoarse"]   = mParams.cellCoarse;
-    dict["vhfCellFine"]     = mParams.cellFine;
+    dict["vhfTable"]    = mpHashTable;
+    dict["vhfParamsCB"] = mpParamsBuffer;
 
     // Feature + ablation toggles — downstream passes read these
-    dict["vhfEnableRevalidation"]    = mParams.enableVisCacheRevalidation;
+    dict["vhfEnableVisibilityCheck"] = mParams.enableVisCacheVisibilityCheck;
     dict["vhfEnableLightSelection"]  = mParams.enableVisCacheLightSelection;
     dict["vhfEnableWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
@@ -316,6 +401,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 }
 
 // ---------------------------------------------------------------------------
+// runDecayPass: dispatch the VisCacheDecay.cs.slang compute shader.
+//
+// Each frame processes one slice of the hash table (stride = capacity/decayPeriod).
+// The offset advances by stride each frame, so the full table is swept once
+// every decayPeriod frames. See VisCacheDecay.cs.slang for the per-entry logic.
+// ---------------------------------------------------------------------------
 void VisCache::runDecayPass(RenderContext* pCtx)
 {
     uint32_t stride = std::max(1u, mParams.tableCapacity / mParams.decayPeriod);
@@ -330,6 +421,12 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
 
+// ---------------------------------------------------------------------------
+// readbackStats: copy GPU atomic counters to CPU for UI display and PI controller.
+//
+// Uses a staging buffer with readback memory type. The ~4 frame latency from
+// GPU→CPU copy is acceptable for UI display and the slow PI controller loop.
+// After reading, counters are cleared to zero for the next accumulation period.
 // ---------------------------------------------------------------------------
 void VisCache::readbackStats(RenderContext* pCtx)
 {
@@ -356,6 +453,18 @@ void VisCache::readbackStats(RenderContext* pCtx)
     pCtx->clearUAV(mpStatsBuffer->getUAV().get(), uint4(0u));
 }
 
+// ---------------------------------------------------------------------------
+// autoTuneDecayPeriod: PI controller adjusts decay speed based on load pressure.
+//
+// When eviction rate exceeds the target (table is under pressure), decay speeds
+// up to free stale entries. When pressure is low, decay slows down to preserve
+// cache history (better visibility estimates from more samples).
+//
+// The controller is one-sided: it never slows decay past decayPeriodMax, and
+// never goes below 15 frames (hard lower bound for aggressive decay scenes).
+//
+// Quality parameters (varThreshold, pMin) are NEVER auto-tuned — this ensures
+// the user retains full control over the quality/performance tradeoff.
 // ---------------------------------------------------------------------------
 void VisCache::autoTuneDecayPeriod()
 {
@@ -390,7 +499,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
     widget.var("Decay period max", mParams.decayPeriodMax, 15u, 2000u);
     widget.separator();
 
-    widget.checkbox("VisCache revalidation (S11.3)",   mParams.enableVisCacheRevalidation);
+    widget.checkbox("VisCache visibility check",       mParams.enableVisCacheVisibilityCheck);
     widget.checkbox("VisCache light selection (S11.1)", mParams.enableVisCacheLightSelection);
     widget.checkbox("VisCache warp reduction",         mParams.enableVisCacheWarpReduction);
     widget.separator();

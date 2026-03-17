@@ -6,8 +6,8 @@
  * a fractional visWeight in [0, 1].  All route to the same core
  * vhfGate() + vhfCommit() in VisCache.slang.
  *
- * USAGE: import this file (guarded by #if USE_VISCACHE) instead of
- * writing inline CV+RRR blocks.  The consumer pass diff shrinks to
+ * USAGE: import this file unconditionally — it self-guards with
+ * #if USE_VISCACHE internally. The consumer pass diff shrinks to
  * a single function call replacing the original trace call.
  *
  * Wrappers provided:
@@ -20,6 +20,8 @@
  ***************************************************************************/
 
 #pragma once
+
+#if USE_VISCACHE
 
 import RenderPasses.VisCache.VisCache;
 #ifdef VISCACHE_DIAGNOSTICS
@@ -157,3 +159,5 @@ float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
 }
 
 #endif // VISCACHE_DIAGNOSTICS
+
+#endif // USE_VISCACHE

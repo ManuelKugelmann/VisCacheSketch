@@ -6,7 +6,7 @@ from falcor import *
 # downstream passes — no need to duplicate on each ReSTIR pass.
 # ---------------------------------------------------------------------------
 _VC_DEFAULTS = {
-    'enableVisCacheRevalidation':    True,
+    'enableVisCacheVisibilityCheck':    True,
     'enableVisCacheLightSelection':  True,
     'enableVisCacheVarianceGate':    True,
     'enableVisCacheWarpReduction':   True,
@@ -30,7 +30,7 @@ def _make_gi_graph(name, vc_overrides={}):
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 1,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
@@ -75,7 +75,7 @@ def _make_pt_graph(name, vc_overrides={}):
     g.addPass(VBuffer, "VBuffer")
     ReSTIRPT = createPass("ReSTIRPTPass", {
         'maxSurfaceBounces': 4,
-        'enableCVRRRRevalidation': False,
+        'enableCVRRRVisibilityCheck': False,
     })
     g.addPass(ReSTIRPT, "ReSTIRPT")
     ToneMapper = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})

@@ -149,12 +149,21 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         logWarning("Depth-of-field requires the '{}' input. Expect incorrect shading.", kInputViewDir);
     }
 
-    // Read VisCache hash table from upstream VisCache pass (if connected).
+    // -----------------------------------------------------------------
+    // Read VisCache resources from upstream VisCache pass (if connected).
+    // Both the hash table buffer and params cbuffer must be present for
+    // VisCache to be considered available. A change in availability
+    // triggers shader recompilation (USE_VISCACHE define changes).
+    // -----------------------------------------------------------------
     {
         bool wasAvailable = mVisCacheAvailable;
-        mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr);
-        if (mVisCacheAvailable != wasAvailable)
+        bool wasVisCheck = mVisCacheVisibilityCheck;
+        mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
+        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
+        mVisCacheVisibilityCheck = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
+        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck)
             mTracer.pVars = nullptr;  // force recompile on toggle
     }
 
@@ -168,6 +177,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
+    mTracer.pProgram->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
@@ -198,18 +208,18 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     for (auto channel : kOutputChannels)
         bind(channel);
 
-    // Bind VisCache resources when available.
-    if (mVisCacheAvailable && mpVHFTable)
+    // -----------------------------------------------------------------
+    // Bind VisCache GPU resources when available.
+    //
+    // gVHFTable: the hash table UAV (RWStructuredBuffer<VHFEntry>).
+    // VisCacheParams: the params cbuffer — uploaded as a whole buffer by
+    //   the VisCache pass, bound here as a constant buffer resource.
+    //   This is the same binding pattern used by ReSTIRPTPass.
+    // -----------------------------------------------------------------
+    if (mVisCacheAvailable)
     {
-        var["gVHFTable"] = mpVHFTable;
-
-        auto vcVar = var["VisCacheParams"];
-        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
-        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
-        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
-        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
-        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+        var["gVHFTable"]      = mpVHFTable;
+        var["VisCacheParams"] = mpVHFParamsCB;
     }
 
     // Get dimensions of ray dispatch.

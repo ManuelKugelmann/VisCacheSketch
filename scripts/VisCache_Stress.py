@@ -77,7 +77,7 @@ m.addGraph(g)
 # ---------------------------------------------------------------------------
 CONFIGS = [
     ("full_viscache", {}),
-    ("no_cache",      {"enableVisCacheRevalidation": False, "enableVisCacheLightSelection": False}),
+    ("no_cache",      {"enableVisCacheVisibilityCheck": False, "enableVisCacheLightSelection": False}),
 ]
 
 for (name, overrides) in CONFIGS:
@@ -88,7 +88,7 @@ for (name, overrides) in CONFIGS:
     # Reset to full
     for attr in ["enableVisCacheVarianceGate",
                  "enableVisCacheWarpReduction", "enableVisCacheDecay",
-                 "enableVisCachePressureEvict", "enableVisCacheRevalidation",
+                 "enableVisCachePressureEvict", "enableVisCacheVisibilityCheck",
                  "enableVisCacheLightSelection"]:
         setattr(visCache, attr, True)
     visCache.numLevels = 3
