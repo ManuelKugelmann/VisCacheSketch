@@ -417,8 +417,15 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     auto vars = mpDecayPass->getRootVar();
     vars["DecayCB"]["gDecayOffset"] = offset;
     vars["DecayCB"]["gDecayStride"] = stride;
-    vars["gVHFTable"]    = mpHashTable;
-    vars["gTableCapacity"] = mParams.tableCapacity;
+    vars["gVHFTable"] = mpHashTable;
+    vars["VisCacheParams"]["gTableCapacity"] = mParams.tableCapacity;
+    vars["VisCacheParams"]["gBootThreshold"] = mParams.bootThreshold;
+    vars["VisCacheParams"]["gVarThreshold"]  = mParams.varThreshold;
+    vars["VisCacheParams"]["gPMin"]          = mParams.pMin;
+    vars["VisCacheParams"]["gFireflyBudget"] = mParams.fireflyBudget;
+    vars["VisCacheParams"]["gNumLevels"]     = mParams.numLevels;
+    vars["VisCacheParams"]["gCellCoarse"]    = mParams.cellCoarse;
+    vars["VisCacheParams"]["gCellFine"]      = mParams.cellFine;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
