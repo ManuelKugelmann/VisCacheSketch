@@ -25,7 +25,7 @@ on:
       create_prerelease:
         description: 'Create a dev prerelease on GitHub Releases'
         required: false
-        default: false
+        default: true
         type: boolean
       commit_sha:
         description: 'Commit SHA to build (default: HEAD of selected branch)'
