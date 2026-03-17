@@ -4,17 +4,22 @@
 setlocal
 
 set PRESET_SUFFIX=""
+set HOST_ARCH=x86
 
-if "%~1"=="ci" (
-    set PRESET_SUFFIX="-ci"
-)
+:parse_setup_args
+if "%~1"=="" goto :setup_args_done
+if "%~1"=="ci" (set PRESET_SUFFIX="-ci" & shift & goto :parse_setup_args)
+if /i "%~1"=="--host" (set "HOST_ARCH=%~2" & shift & shift & goto :parse_setup_args)
+shift
+goto :parse_setup_args
+:setup_args_done
 
 : Fetch dependencies.
 call %~dp0\setup.bat
 
 : Configuration.
 set PRESET=windows-vs2022%PRESET_SUFFIX%
-set TOOLSET=host=x86
+set TOOLSET=host=%HOST_ARCH%
 set CMAKE_EXE=%~dp0\tools\.packman\cmake\bin\cmake.exe
 set CUSTOM_CUDA_DIR=%~dp0\external\packman\cuda
 

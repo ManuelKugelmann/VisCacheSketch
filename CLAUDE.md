@@ -81,3 +81,4 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Work step by step for large edits — small incremental Edit calls, not massive Write
 - **Fix all errors encountered**, even pre-existing ones
 - **Never prefix git/shell commands with `cd`** — manage working directory separately via the Bash tool's cwd, not by chaining `cd &&` before commands
+- **No Co-Authored-By or similar tags in commit messages** — do not add AI attribution lines

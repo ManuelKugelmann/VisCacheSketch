@@ -69,7 +69,7 @@ echo "[deploy] Shaders deployed from source tree"
 # Validate NRD (denoiser) availability
 # ---------------------------------------------------------------------------
 NRD_OK=1
-if [ ! -f "$RELEASE_DIR/NRDPass.dll" ]; then
+if [ ! -f "$RELEASE_DIR/plugins/NRDPass.dll" ]; then
     echo "[deploy]   NRDPass.dll: MISSING"
     NRD_OK=0
 else

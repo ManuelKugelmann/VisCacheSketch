@@ -24,7 +24,9 @@ if "%VISCACHE_ROOT:~-1%"=="\" set VISCACHE_ROOT=%VISCACHE_ROOT:~0,-1%
 : ---------------------------------------------------------------------------
 : Step 1: Verify Falcor root
 : ---------------------------------------------------------------------------
-echo [VisCache] Step 1: Using Falcor at: %FALCOR_ROOT%
+echo [VisCache] Step 1: SCRIPT_DIR=%SCRIPT_DIR%
+echo [VisCache] Step 1: FALCOR_ROOT=%FALCOR_ROOT%
+echo [VisCache] Step 1: VISCACHE_ROOT=%VISCACHE_ROOT%
 
 : ---------------------------------------------------------------------------
 : Step 1b: Enable git hooks
@@ -64,22 +66,22 @@ if errorlevel 1 (
 : ---------------------------------------------------------------------------
 echo [VisCache] Step 4: Running Falcor setup (submodules + packman + VS2022)...
 
-if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
-    : setup_vs2022.bat runs cmake --preset which needs CWD inside Falcor
-    : where CMakePresets.json lives.
-    pushd "%FALCOR_ROOT%"
-    call setup_vs2022.bat
-    set SETUP_ERR=!errorlevel!
-    popd
-    if !SETUP_ERR! neq 0 (
-        echo [VisCache] ERROR: Falcor setup failed!
-        exit /b 1
-    )
-    echo [VisCache]   Falcor setup complete.
-) else (
+if not exist "%FALCOR_ROOT%\setup_vs2022.bat" (
     echo [VisCache]   WARNING: setup_vs2022.bat not found, skipping Falcor setup.
     echo [VisCache]   You may need to init submodules and fetch packman deps manually.
+    goto :skip_falcor_setup
 )
+REM setup_vs2022.bat runs cmake --preset which needs CWD inside Falcor
+pushd "%FALCOR_ROOT%"
+call "%FALCOR_ROOT%\setup_vs2022.bat" --host x64
+set SETUP_ERR=!errorlevel!
+popd
+if !SETUP_ERR! neq 0 (
+    echo [VisCache] ERROR: Falcor setup failed!
+    exit /b 1
+)
+echo [VisCache]   Falcor setup complete.
+:skip_falcor_setup
 
 : ---------------------------------------------------------------------------
 : Step 5: Run Python unit tests
