@@ -2,8 +2,8 @@
  * VisCacheInsert.cs.slang
  *
  * Batched insert pass — called once per frame to flush deferred inserts.
- * SM 6.5: WaveMatch coalesces threads targeting the same L0 cell into
- * a single InterlockedAdd (~16x reduction in atomics at L0).
+ * SM 6.5: WaveMatch coalesces threads targeting the same cell into
+ * a single InterlockedAdd (~16x reduction in atomics at the coarsest level).
  *
  * Also used as a standalone insert from within the path tracer shading
  * pass via the vhfInsertImmediate() inline function below.
@@ -31,7 +31,7 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
 
     PendingInsert ins = gPendingInserts[tid.x];
 
-    // Full cascade L0..N-1 with maturity gate + WaveMatch coalescing.
+    // Full N-level cascade with maturity gate + WaveMatch coalescing.
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfCellSize(lvl);

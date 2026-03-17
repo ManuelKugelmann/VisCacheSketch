@@ -10,7 +10,7 @@
  *
  * Addressing: jitter-before-quantize [Binder et al. 2018]
  * Hash:       PCG3D [Jarzynski & Olano 2020]
- * LOD:        full cascade L0..N-1, variance-gated (no distance heuristic)
+ * LOD:        full N-level cascade, variance-gated (no distance heuristic)
  * Contention: maturity gate skips entries with enough samples
  * Estimator:  CV+RRR [Szirmay-Kalos et al. 2005 / Kugelmann 2006]
  ***************************************************************************/
@@ -55,9 +55,8 @@ struct VHFResult
 //                    weight.  0.05 is conservative; raise for brighter caustics.
 //   gNumLevels:      LOD count.  3 is typical (coarse/mid/fine).  More levels
 //                    give finer spatial adaptation but use more table capacity.
-//   gCellCoarse/Fine: World-space cell sizes for L0 and L_{N-1}.  Coarse ~10
-//                    covers room-scale; Fine ~0.16 resolves sharp shadow edges.
-//                    Geometric interpolation fills levels in between.
+//   gCellCoarse/Fine: World-space cell sizes for the coarsest and finest
+//                    levels.  Geometric interpolation fills levels in between.
 // ---------------------------------------------------------------------------
 cbuffer VisCacheParams
 {
@@ -67,8 +66,8 @@ cbuffer VisCacheParams
     float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
-    float  gCellCoarse;      ///< L0 cell size (world units)
-    float  gCellFine;        ///< L_{N-1} cell size (world units)
+    float  gCellCoarse;      ///< Coarsest level cell size (world units)
+    float  gCellFine;        ///< Finest level cell size (world units)
 };
 
 /// Cell size for level `lvl` — geometric interpolation, coarse to fine.
@@ -100,15 +99,14 @@ uint3 pcg3d(uint3 v)
 // IBL direction encoding — encodes a direction as a "position at infinity"
 // for env map / directional light lookups.
 //
-// The marker magnitude is derived from gCellCoarse so that at L0 (the
-// coarsest level) the angular quantization matches kIBLAngularCell:
+// The marker magnitude is derived from gCellCoarse so that the coarsest
+// level's angular quantization matches kIBLAngularCell (~45°, octant):
 //
 //   floor(dir * marker / cellCoarse) = floor(dir / kIBLAngularCell)
 //
-// At ~45° (octant-level) L0 bins are already meaningful — "is this
-// hemisphere of directions occluded from this region?"  Finer levels
-// refine proportionally via the LOD cascade:
-//   N=3, ratio=4×: L0 ≈ 45°, L1 ≈ 11°, L2 ≈ 2.8°
+// Octant-level bins are already meaningful — "is this hemisphere of
+// directions occluded from this region?"  Finer levels refine
+// proportionally via the geometric LOD cascade.
 // ---------------------------------------------------------------------------
 static const float kIBLAngularCell = 0.785f;  ///< ~45 degrees in radians (octant)
 
@@ -234,7 +232,7 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 }
 
 // ===========================================================================
-// LOOKUP — coarse-to-fine cascade L0..N-1.
+// LOOKUP — coarse-to-fine cascade across all N levels.
 // Returns the finest mature result. Stops on: no entry, too few samples,
 // or low variance (converged region — finer levels would agree).
 // ===========================================================================
@@ -367,7 +365,7 @@ VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
 }
 
 // ===========================================================================
-// INSERT — coarse-to-fine cascade L0..N-1 with two gates.
+// INSERT — coarse-to-fine cascade across all N levels with two gates.
 // ===========================================================================
 
 // ---------------------------------------------------------------------------

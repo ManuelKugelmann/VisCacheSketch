@@ -57,7 +57,7 @@ float vhfLightSelectionWeight(float3 posA, float3 posB)
     VHFResult r = vhfLookup(posA, posB);
     float mu    = r.valid ? max(r.mu, kMuMin) : 1.0f;  // MISS -> assume visible
 
-    // L0 visibility estimate suffices for candidate weighting (§11.1)
+    // Coarsest-level visibility estimate suffices for candidate weighting (§11.1)
     return mu;
 }
 
