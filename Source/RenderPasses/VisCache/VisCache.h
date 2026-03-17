@@ -17,6 +17,15 @@
 
 using namespace Falcor;
 
+// ---------------------------------------------------------------------------
+// Diagnostic heatmap output channels.
+// Downstream passes write to these via dictionary-exposed textures.
+// Connect to ColorMapPass for visualization (channel R/G/B/A selects metric).
+// ---------------------------------------------------------------------------
+// vcDiag (RGBA32Float): R=cachedMu, G=variance, B=level+1(0=miss), A=raySaved
+// vcDiagError (R32Float): |mu - V| prediction error
+// ---------------------------------------------------------------------------
+
 class VisCache : public RenderPass
 {
 public:
@@ -97,4 +106,35 @@ private:
     // PI controller state for decayPeriod auto-tuning
     float mPIIntegral      = 0.f;
     float mTargetLoadPressure = 0.1f;  ///< Target eviction/insert ratio
+
+    // ------------------------------------------------------------------
+    // Diagnostic heatmap textures (written by downstream passes)
+    // ------------------------------------------------------------------
+    enum class DiagMode : uint32_t
+    {
+        Off             = 0,
+        CachedMu        = 1,  ///< R channel — visibility prediction [0,1]
+        Variance        = 2,  ///< G channel — cache uncertainty [0,0.25]
+        LODLevel        = 3,  ///< B channel — LOD level+1 (0=miss)
+        RaySaved        = 4,  ///< A channel — 1=skipped, 0=traced
+        PredictionError = 5,  ///< |mu - V| from vcDiagError
+    };
+
+    bool            mEnableDiagnostics = false; ///< Master enable (auto-set by dropdown)
+    DiagMode        mDiagMode = DiagMode::Off;  ///< Selected heatmap mode
+
+    // Per-frame diag textures (cleared each frame)
+    ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
+    ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
+    ref<Texture>    mpDiagCompositeTex; ///< RGBA32F: composite (R=var, G=maturity, B=level)
+    ref<Texture>    mpDiagComposite2Tex;///< RGBA32F: composite (R=var, G=maturity, B=mu)
+
+    // Accumulated textures (persistent across frames, cleared on reset)
+    ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count
+    ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count
+    ref<Texture>    mpRaySavedRatioTex; ///< R32Float: saved/total ratio
+    ref<Texture>    mpNoiseTex;         ///< R32Float: noise estimate (variance EMA)
+    bool            mResetAccum = true; ///< Clear accum textures next frame
+
+    uint2           mFrameDims = {0, 0};
 };

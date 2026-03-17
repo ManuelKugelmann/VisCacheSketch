@@ -140,6 +140,52 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     g.markOutput("ReSTIRPTPass.color")   # raw noisy radiance (linear HDR) for MSE/FLIP
     g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
 
+    # -------------------------------------------------------------------
+    # VisCache diagnostic heatmaps (only when viscache=True)
+    #
+    # vcRaySavedRatio (R32F): per-pixel accumulated ray savings [0,1]
+    # vcNoise (R32F): per-pixel noise estimate (cache variance EMA)
+    # vcDiagError (R32F): |mu - V| prediction error
+    # vcDiagComposite  (RGBA32F): R=var, G=maturity, B=level
+    # vcDiagComposite2 (RGBA32F): R=var, G=maturity, B=mu
+    # -------------------------------------------------------------------
+    if viscache:
+        # Prediction error |mu - V|
+        heatErr = createPass("ColorMapPass", {
+            "colorMap": "Inferno",
+            "channel":  0,
+            "autoRange": True,
+        })
+        g.addPass(heatErr, "HeatmapError")
+        g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
+        g.markOutput("HeatmapError.output")
+
+        # Accumulated ray savings ratio → false-color
+        heatRayPct = createPass("ColorMapPass", {
+            "colorMap": "Viridis",
+            "channel":  0,
+            "autoRange": False,
+            "minValue":  0.0,
+            "maxValue":  1.0,
+        })
+        g.addPass(heatRayPct, "HeatmapRaySavedPct")
+        g.addEdge("VisCache.vcRaySavedRatio", "HeatmapRaySavedPct.input")
+        g.markOutput("HeatmapRaySavedPct.output")
+
+        # Noise estimate (cache variance EMA) → false-color
+        heatNoise = createPass("ColorMapPass", {
+            "colorMap": "Inferno",
+            "channel":  0,
+            "autoRange": True,
+        })
+        g.addPass(heatNoise, "HeatmapNoise")
+        g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
+        g.markOutput("HeatmapNoise.output")
+
+        # Composite heatmaps — pre-normalized RGB
+        g.markOutput("VisCache.vcDiagComposite")
+        g.markOutput("VisCache.vcDiagComposite2")
+
     return g
 
 

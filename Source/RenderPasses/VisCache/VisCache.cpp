@@ -12,6 +12,23 @@
 static constexpr size_t kEntrySize = 8u;
 static constexpr uint32_t kStatCount = 5u; // inserts, evictions, misses, decay, probeSum (last two accumulated but not read back yet)
 
+// Diagnostic heatmap output channel names
+static const std::string kOutputDiag           = "vcDiag";
+static const std::string kOutputDiagError      = "vcDiagError";
+static const std::string kOutputDiagComposite  = "vcDiagComposite";
+static const std::string kOutputDiagComposite2 = "vcDiagComposite2";
+static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
+static const std::string kOutputNoise          = "vcNoise";
+
+static const ChannelList kDiagOutputChannels = {
+    { kOutputDiag,           "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)",  true, ResourceFormat::RGBA32Float },
+    { kOutputDiagError,      "", "VisCache prediction error |mu - V|",                       true, ResourceFormat::R32Float },
+    { kOutputDiagComposite,  "", "VisCache composite heatmap (R=var, G=maturity, B=level)",  true, ResourceFormat::RGBA32Float },
+    { kOutputDiagComposite2, "", "VisCache composite heatmap (R=var, G=maturity, B=mu)",     true, ResourceFormat::RGBA32Float },
+    { kOutputRaySavedRatio,  "", "Per-pixel ray savings ratio [0,1] (accumulated)",          true, ResourceFormat::R32Float },
+    { kOutputNoise,          "", "Per-pixel noise estimate (variance EMA)",                   true, ResourceFormat::R32Float },
+};
+
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
 {
     registry.registerClass<RenderPass, VisCache>();
@@ -39,6 +56,9 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
+    if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
+    if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
+    if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
 }
 
 ref<VisCache> VisCache::create(ref<Device> pDevice,
@@ -68,21 +88,25 @@ Properties VisCache::getProperties() const
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
+    p["enableDiagnostics"]             = mEnableDiagnostics;
+    p["diagMode"]                      = uint32_t(mDiagMode);
+    p["resetAccum"]                    = mResetAccum;
     return p;
 }
 
 // ---------------------------------------------------------------------------
 RenderPassReflection VisCache::reflect(const CompileData&)
 {
-    // No texture inputs or outputs — the hash table is passed via
-    // InternalDictionary, not through the render graph edge system.
     RenderPassReflection r;
+    // Diagnostic heatmap outputs (optional — connect to ColorMapPass).
+    addRenderPassOutputs(r, kDiagOutputChannels);
     return r;
 }
 
 // ---------------------------------------------------------------------------
-void VisCache::compile(RenderContext*, const CompileData&)
+void VisCache::compile(RenderContext*, const CompileData& compileData)
 {
+    mFrameDims = compileData.defaultTexDims;
     allocateBuffers();
 
     // Decay pass
@@ -160,6 +184,115 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
+
+    // Stats (readback with ~4-frame delay, updated every 16 frames)
+    dict["vhfHitRate"]      = mStats.hitRate;
+    dict["vhfRaySavings"]   = mStats.raySavings;
+    dict["vhfEvictRate"]    = mStats.evictRate;
+
+    // ----------------------------------------------------------------
+    // Diagnostic heatmap textures — allocate/expose, then clear.
+    // VisCache runs BEFORE downstream passes, so we expose textures
+    // via dictionary and downstream passes write directly to them.
+    // ----------------------------------------------------------------
+    {
+        // Helper to create textures
+        auto makeRGBA = [&](const char* name) {
+            auto t = mpDevice->createTexture2D(
+                mFrameDims.x, mFrameDims.y, ResourceFormat::RGBA32Float, 1, 1,
+                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            t->setName(name);
+            return t;
+        };
+        auto makeR32F = [&](const char* name) {
+            auto t = mpDevice->createTexture2D(
+                mFrameDims.x, mFrameDims.y, ResourceFormat::R32Float, 1, 1,
+                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            t->setName(name);
+            return t;
+        };
+        auto makeR32U = [&](const char* name) {
+            auto t = mpDevice->createTexture2D(
+                mFrameDims.x, mFrameDims.y, ResourceFormat::R32Uint, 1, 1,
+                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            t->setName(name);
+            return t;
+        };
+
+        // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
+        ref<Texture> diagTex, diagErrorTex, diagCompositeTex, diagComposite2Tex;
+        ref<Texture> raySavedRatioTex, noiseTex;
+
+        if (auto p = renderData[kOutputDiag])           diagTex           = p->asTexture();
+        if (auto p = renderData[kOutputDiagError])      diagErrorTex      = p->asTexture();
+        if (auto p = renderData[kOutputDiagComposite])  diagCompositeTex  = p->asTexture();
+        if (auto p = renderData[kOutputDiagComposite2]) diagComposite2Tex = p->asTexture();
+        if (auto p = renderData[kOutputRaySavedRatio])  raySavedRatioTex  = p->asTexture();
+        if (auto p = renderData[kOutputNoise])          noiseTex          = p->asTexture();
+
+        bool needInternal = mEnableDiagnostics && mFrameDims.x > 0 && mFrameDims.y > 0;
+        if (needInternal)
+        {
+            bool needRealloc = !mpDiagTex || mpDiagTex->getWidth() != mFrameDims.x
+                                          || mpDiagTex->getHeight() != mFrameDims.y;
+            if (needRealloc)
+            {
+                mpDiagTex           = makeRGBA("VHF_Diag");
+                mpDiagCompositeTex  = makeRGBA("VHF_DiagComposite");
+                mpDiagComposite2Tex = makeRGBA("VHF_DiagComposite2");
+                mpDiagErrorTex      = makeR32F("VHF_DiagError");
+                mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
+                mpNoiseTex          = makeR32F("VHF_Noise");
+                mResetAccum = true;  // accum textures need realloc too
+            }
+            if (!diagTex)           diagTex           = mpDiagTex;
+            if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
+            if (!diagCompositeTex)  diagCompositeTex  = mpDiagCompositeTex;
+            if (!diagComposite2Tex) diagComposite2Tex = mpDiagComposite2Tex;
+            if (!raySavedRatioTex)  raySavedRatioTex  = mpRaySavedRatioTex;
+            if (!noiseTex)          noiseTex          = mpNoiseTex;
+        }
+
+        // --- Accumulated textures (persistent, only cleared on reset) ---
+        if (mFrameDims.x > 0 && mFrameDims.y > 0)
+        {
+            bool needAccumRealloc = !mpAccumSaved
+                || mpAccumSaved->getWidth() != mFrameDims.x
+                || mpAccumSaved->getHeight() != mFrameDims.y;
+            if (needAccumRealloc)
+            {
+                mpAccumSaved = makeR32U("VHF_AccumSaved");
+                mpAccumTotal = makeR32U("VHF_AccumTotal");
+                mResetAccum = true;
+            }
+            if (mResetAccum)
+            {
+                pCtx->clearUAV(mpAccumSaved->getUAV().get(), uint4(0u));
+                pCtx->clearUAV(mpAccumTotal->getUAV().get(), uint4(0u));
+                if (noiseTex)
+                    pCtx->clearUAV(noiseTex->getUAV().get(), float4(0.f));
+                mResetAccum = false;
+            }
+            dict["vhfAccumSaved"] = mpAccumSaved;
+            dict["vhfAccumTotal"] = mpAccumTotal;
+        }
+
+        // Clear per-frame textures and expose via dictionary
+        auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
+            if (tex) { pCtx->clearUAV(tex->getUAV().get(), float4(0.f)); dict[key] = tex; }
+        };
+        clearAndExpose(diagTex,           "vhfDiag");
+        clearAndExpose(diagErrorTex,      "vhfDiagError");
+        clearAndExpose(diagCompositeTex,  "vhfDiagComposite");
+        clearAndExpose(diagComposite2Tex, "vhfDiagComposite2");
+
+        // Ratio + noise: cleared per frame (downstream passes write updated values)
+        clearAndExpose(raySavedRatioTex,  "vhfRaySavedRatio");
+        clearAndExpose(noiseTex,          "vhfNoise");
+
+        dict["vhfDiagEnabled"] = (diagTex != nullptr);
+        dict["vhfDiagMode"]    = uint32_t(mDiagMode);
+    }
 
     // ----------------------------------------------------------------
     // Background decay sweep (1/decayPeriod of table per frame)
@@ -270,4 +403,17 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
     }
+
+    widget.separator();
+
+    static const Gui::DropdownList kHeatmapModes = {
+        {uint32_t(DiagMode::Off),             "Off"},
+        {uint32_t(DiagMode::CachedMu),        "Cached Mu (visibility)"},
+        {uint32_t(DiagMode::Variance),        "Variance (uncertainty)"},
+        {uint32_t(DiagMode::LODLevel),        "LOD Level"},
+        {uint32_t(DiagMode::RaySaved),        "Ray Saved"},
+        {uint32_t(DiagMode::PredictionError), "Prediction Error |mu-V|"},
+    };
+    widget.dropdown("Heatmap", kHeatmapModes, reinterpret_cast<uint32_t&>(mDiagMode));
+    mEnableDiagnostics = (mDiagMode != DiagMode::Off);
 }
