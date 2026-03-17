@@ -101,14 +101,16 @@ uint3 pcg3d(uint3 v)
 // for env map / directional light lookups.
 //
 // The marker magnitude is derived from gCellCoarse so that at L0 (the
-// coarsest level) the angular quantization is ~5° (kIBLAngularCell rad):
+// coarsest level) the angular quantization matches kIBLAngularCell:
 //
 //   floor(dir * marker / cellCoarse) = floor(dir / kIBLAngularCell)
 //
-// Finer levels get proportionally finer angular bins:
-//   L2 with cellFine = cellCoarse/64 → angular bin ≈ 5°/64 ≈ 0.08°
+// At ~45° (octant-level) L0 bins are already meaningful — "is this
+// hemisphere of directions occluded from this region?"  Finer levels
+// refine proportionally via the LOD cascade:
+//   N=3, ratio=4×: L0 ≈ 45°, L1 ≈ 11°, L2 ≈ 2.8°
 // ---------------------------------------------------------------------------
-static const float kIBLAngularCell = 0.087f;  ///< ~5 degrees in radians
+static const float kIBLAngularCell = 0.785f;  ///< ~45 degrees in radians (octant)
 
 /// Encode a normalized direction as a position for VisCache lookups.
 /// Use this as posB when querying visibility toward an env map or
