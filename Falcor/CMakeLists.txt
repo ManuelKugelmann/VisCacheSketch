@@ -395,7 +395,7 @@ function(validate_headers target)
     add_library(${validate_target} OBJECT)
 
     # Copy properties from original target.
-    foreach(property INCLUDE_DIRECTORIES LINK_LIBRARIES COMPILE_DEFINITIONS COMPILE_FEATURES)
+    foreach(property INCLUDE_DIRECTORIES LINK_LIBRARIES COMPILE_DEFINITIONS COMPILE_FEATURES COMPILE_OPTIONS)
         get_target_property(value ${target} ${property})
         if(value)
             set_property(TARGET ${validate_target} PROPERTY ${property} ${value})

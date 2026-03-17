@@ -1,21 +1,45 @@
 name: Build
 
 on:
-  # Auto-triggers disabled — manual releases only for now
-  # push:
-  #   branches: ["main", "master"]
-  #   tags: ["v*"]
-  #   paths:
-  #     - 'Source/**'
-  #     - 'Falcor/**'
-  #     - 'scripts/**'
-  #     - 'CMakeLists.txt'
-  #     - 'setup.*'
-  #     - '.github/workflows/build.yml'
-  # pull_request:
-  #   branches: ["main", "master"]
+  # Change detection on push/PR; full builds only on workflow_dispatch
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'scripts/**'
+      - 'Source/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - 'scripts/**'
+      - 'Source/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Platform to build'
+        required: false
+        default: 'Windows VS2022'
+        type: choice
+        options:
+          - Windows VS2022
+          - All
+          - Windows Ninja
+          - Linux GCC
+      config:
+        description: 'Build configuration'
+        required: false
+        default: 'Debug'
+        type: choice
+        options:
+          - Debug
+          - Release
+          - Both
+      create_prerelease:
+        description: 'Create a dev prerelease after build (stable releases use v* tags instead)'
+        required: false
+        default: true
+        type: boolean
       commit_sha:
         description: 'Commit SHA to build and release (default: HEAD of selected branch)'
         required: false
@@ -38,6 +62,7 @@ jobs:
   # ---------------------------------------------------------------------------
   prepare:
     name: Prepare
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
@@ -100,18 +125,23 @@ jobs:
               - '.github/workflows/build.yml'
 
   # ---------------------------------------------------------------------------
-  # Windows/VS2022 — secondary build, validates VS solution generation
+  # Windows/VS2022 — primary build, gates PRs + feeds releases
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
-    needs: [prepare]
-    if: github.event_name != 'pull_request'
+    needs: [prepare, changes]
+    if: >-
+      always()
+      && needs.prepare.result == 'success'
+      && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+      && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
+      && (inputs.platform == 'All' || inputs.platform == 'Windows VS2022' || inputs.platform == '' || github.event_name != 'workflow_dispatch')
     runs-on: windows-2022
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ fromJSON('["Release", "Debug"]') }}
+        # PRs: Debug only; manual dispatch: respect input; pushes: both
+        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-vs2022-ci
       # Pin packman cache location for reproducible caching on Windows
@@ -135,8 +165,10 @@ jobs:
           SCCACHE_CACHE_SIZE: 2G
 
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -184,156 +216,25 @@ jobs:
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
       - name: Integrate VisCache plugins into Falcor tree
-        shell: pwsh
-        run: |
-          $Falcor = "${{ env.FALCOR_DIR }}"
-
-          # Copy VisCache plugin
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
-
-          # Copy ReSTIRPTPass plugin
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRPTPass" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/ReSTIRPTPass/*" "$Falcor/Source/RenderPasses/ReSTIRPTPass/" -Recurse -Force
-
-          # Copy scripts
-          New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
-          Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
-
-          # Patch RenderPasses CMakeLists.txt
-          $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
-          $content = Get-Content $rpCmake -Raw
-          if ($content -notmatch "add_subdirectory\(VisCache\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
-          }
-          if ($content -notmatch "add_subdirectory\(ReSTIRPTPass\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRPTPass)"
-          }
-
-          # ------------------------------------------------------------------
-          # Patch external/CMakeLists.txt to silence upstream build warnings.
-          # These are Falcor-internal issues (not VisCache code) that we fix
-          # at CI time to keep the Falcor subtree vanilla.
-          # ------------------------------------------------------------------
-          $extCmake = "$Falcor/external/CMakeLists.txt"
-          $extContent = Get-Content $extCmake -Raw
-
-          # C4996: fmt uses deprecated stdext::checked_array_iterator (MSVC 14.44+)
-          if ($extContent -notmatch "_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING") {
-            Add-Content $extCmake "`ntarget_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)"
-          }
-
-          # TBB deprecation: OpenVDB pulls in tbb/task.h which TBB marks deprecated.
-          # TBB_SUPPRESS_DEPRECATED_MESSAGES silences the runtime/compile-time banner.
-          if ($extContent -notmatch "TBB_SUPPRESS_DEPRECATED_MESSAGES") {
-            Add-Content $extCmake "`ntarget_compile_definitions(tbb INTERFACE TBB_SUPPRESS_DEPRECATED_MESSAGES=1)"
-          }
-
-          # ------------------------------------------------------------------
-          # Patch Falcor linker flags for Debug builds.
-          # ------------------------------------------------------------------
-          $falcorCmake = "$Falcor/Source/Falcor/CMakeLists.txt"
-          $falcorContent = Get-Content $falcorCmake -Raw
-
-          # LNK4098: Falcor intentionally uses release-built libs (assimp, lz4, zlib)
-          # in Debug for performance, which links MSVCRT (release CRT) alongside
-          # MSVCRTd (debug CRT). Tell the linker to ignore the release CRT in Debug.
-          if ($falcorContent -notmatch "NODEFAULTLIB:MSVCRT") {
-            $falcorContent = $falcorContent -replace `
-              '(target_link_options\(Falcor\s+PUBLIC\s+# MSVC flags\.)', `
-              "`$1`n        `$<`$<AND:`$<CXX_COMPILER_ID:MSVC>,`$<CONFIG:Debug>>:/NODEFAULTLIB:MSVCRT>"
-            Set-Content $falcorCmake $falcorContent -NoNewline
-          }
-
-          # ------------------------------------------------------------------
-          # Strip CI path prefix from diagnostics and PDB source paths.
-          # Uses add_compile_options() to preserve CMake's default /EHsc etc.
-          # ------------------------------------------------------------------
-          $rootCmake = "$Falcor/CMakeLists.txt"
-          $rootContent = Get-Content $rootCmake -Raw
-          $trimPath = (Resolve-Path $Falcor).Path -replace '\\','/'
-          if ($rootContent -notmatch "d1trimfile") {
-            $rootContent = $rootContent -replace `
-              '(project\(Falcor[^)]*\))', `
-              "`$1`nadd_compile_options(/d1trimfile:$trimPath/)"
-            Set-Content $rootCmake $rootContent -NoNewline
-          }
-
-          Write-Host "--- Patched RenderPasses CMakeLists.txt ---"
-          Get-Content $rpCmake
-
-      - name: CMake Configure
         shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+        run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Check NRD availability
+      - name: Build + verify + deploy
         shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
-            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
-          ) else (
-            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
-          )
-
-      - name: Build
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }} -- /m
+        continue-on-error: false
+        run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }} --sccache
 
       - name: Print sccache stats
         if: always()
         shell: cmd
         run: sccache --show-stats
 
-      - name: Verify data file deployment
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Checking data files in %OUTDIR%...
-          set FAIL=0
-          if not exist "%OUTDIR%\data\ReSTIRPTPass\16RooksPattern256.txt" (
-            echo [CI] FAIL: data\ReSTIRPTPass\16RooksPattern256.txt missing from build output
-            set FAIL=1
-          ) else (
-            echo [CI] OK: 16RooksPattern256.txt deployed
-          )
-          if not exist "%OUTDIR%\Mogwai.exe" (
-            echo [CI] FAIL: Mogwai.exe missing from build output
-            set FAIL=1
-          ) else (
-            echo [CI] OK: Mogwai.exe present
-          )
-          if %FAIL%==1 (
-            echo [CI] Data file deployment check failed!
-            dir /s /b "%OUTDIR%\data" 2>nul || echo [CI] No data directory found
-            exit /b 1
-          )
-
-      - name: Deploy scripts to build output
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
-          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
-          echo [CI] Deployed scripts to build output
-
-      - name: Headless smoke test
-        if: matrix.config == 'Release'
-        shell: cmd
-        continue-on-error: true   # no GPU on CI — device creation will fail
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
-            echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
-          )
-          exit /b 0
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
       - name: Upload build artifacts
         if: matrix.config == 'Release'
@@ -345,21 +246,20 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Windows Ninja/MSVC — primary build (fastest), gates PRs + feeds releases
+  # Windows Ninja/MSVC — secondary build, optional
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    needs: [prepare, changes]
+    needs: [prepare]
     if: >-
-      always()
-      && needs.prepare.result == 'success'
-      && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
+      github.event_name == 'workflow_dispatch'
+      && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja')
     runs-on: windows-2022
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        # PRs: Debug only; pushes to main/tags: Debug + Release
-        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
       PM_PACKAGES_ROOT: C:\packman-cache
@@ -375,15 +275,11 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
-      # -- Caching: sccache for compiled objects --------------------------------
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-        env:
-          SCCACHE_CACHE_SIZE: 2G
-
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -430,166 +326,22 @@ jobs:
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
       - name: Integrate VisCache plugins into Falcor tree
-        shell: pwsh
-        run: |
-          $Falcor = "${{ env.FALCOR_DIR }}"
-
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/VisCache" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/VisCache/*" "$Falcor/Source/RenderPasses/VisCache/" -Recurse -Force
-
-          New-Item -ItemType Directory -Path "$Falcor/Source/RenderPasses/ReSTIRPTPass" -Force | Out-Null
-          Copy-Item "Source/RenderPasses/ReSTIRPTPass/*" "$Falcor/Source/RenderPasses/ReSTIRPTPass/" -Recurse -Force
-
-          New-Item -ItemType Directory -Path "$Falcor/scripts/VisCache" -Force | Out-Null
-          Copy-Item "scripts/*" "$Falcor/scripts/VisCache/" -Recurse -Force
-
-          $rpCmake = "$Falcor/Source/RenderPasses/CMakeLists.txt"
-          $content = Get-Content $rpCmake -Raw
-          if ($content -notmatch "add_subdirectory\(VisCache\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(VisCache)"
-          }
-          if ($content -notmatch "add_subdirectory\(ReSTIRPTPass\)") {
-            Add-Content $rpCmake "`nadd_subdirectory(ReSTIRPTPass)"
-          }
-
-          # ------------------------------------------------------------------
-          # Patch external/CMakeLists.txt to silence upstream build warnings.
-          # These are Falcor-internal issues (not VisCache code) that we fix
-          # at CI time to keep the Falcor subtree vanilla.
-          # ------------------------------------------------------------------
-          $extCmake = "$Falcor/external/CMakeLists.txt"
-          $extContent = Get-Content $extCmake -Raw
-
-          # C4996: fmt uses deprecated stdext::checked_array_iterator (MSVC 14.44+)
-          if ($extContent -notmatch "_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING") {
-            Add-Content $extCmake "`ntarget_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)"
-          }
-
-          # TBB deprecation: OpenVDB pulls in tbb/task.h which TBB marks deprecated.
-          # TBB_SUPPRESS_DEPRECATED_MESSAGES silences the runtime/compile-time banner.
-          if ($extContent -notmatch "TBB_SUPPRESS_DEPRECATED_MESSAGES") {
-            Add-Content $extCmake "`ntarget_compile_definitions(tbb INTERFACE TBB_SUPPRESS_DEPRECATED_MESSAGES=1)"
-          }
-
-          # ------------------------------------------------------------------
-          # Patch Falcor linker flags for Debug builds.
-          # ------------------------------------------------------------------
-          $falcorCmake = "$Falcor/Source/Falcor/CMakeLists.txt"
-          $falcorContent = Get-Content $falcorCmake -Raw
-
-          # LNK4098: Falcor intentionally uses release-built libs (assimp, lz4, zlib)
-          # in Debug for performance, which links MSVCRT (release CRT) alongside
-          # MSVCRTd (debug CRT). Tell the linker to ignore the release CRT in Debug.
-          if ($falcorContent -notmatch "NODEFAULTLIB:MSVCRT") {
-            $falcorContent = $falcorContent -replace `
-              '(target_link_options\(Falcor\s+PUBLIC\s+# MSVC flags\.)', `
-              "`$1`n        `$<`$<AND:`$<CXX_COMPILER_ID:MSVC>,`$<CONFIG:Debug>>:/NODEFAULTLIB:MSVCRT>"
-            Set-Content $falcorCmake $falcorContent -NoNewline
-          }
-
-          # ------------------------------------------------------------------
-          # Strip CI path prefix from diagnostics and PDB source paths.
-          # Uses add_compile_options() to preserve CMake's default /EHsc etc.
-          # ------------------------------------------------------------------
-          $rootCmake = "$Falcor/CMakeLists.txt"
-          $rootContent = Get-Content $rootCmake -Raw
-          $trimPath = (Resolve-Path $Falcor).Path -replace '\\','/'
-          if ($rootContent -notmatch "d1trimfile") {
-            $rootContent = $rootContent -replace `
-              '(project\(Falcor[^)]*\))', `
-              "`$1`nadd_compile_options(/d1trimfile:$trimPath/)"
-            Set-Content $rootCmake $rootContent -NoNewline
-          }
-
-      - name: CMake Configure
         shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+        run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Check NRD availability
+      - name: Build + verify + deploy
         shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
-            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
-          ) else (
-            echo [build] NRDPass: DISABLED (missing NRD package or D3D12)
-          )
+        continue-on-error: false
+        run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }}
 
-      - name: Build
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
-
-      - name: Print sccache stats
-        if: always()
-        shell: cmd
-        run: sccache --show-stats
-
-      - name: Verify data file deployment
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Checking data files in %OUTDIR%...
-          set FAIL=0
-          if not exist "%OUTDIR%\data\ReSTIRPTPass\16RooksPattern256.txt" (
-            echo [CI] FAIL: data\ReSTIRPTPass\16RooksPattern256.txt missing from build output
-            set FAIL=1
-          ) else (
-            echo [CI] OK: 16RooksPattern256.txt deployed
-          )
-          if not exist "%OUTDIR%\Mogwai.exe" (
-            echo [CI] FAIL: Mogwai.exe missing from build output
-            set FAIL=1
-          ) else (
-            echo [CI] OK: Mogwai.exe present
-          )
-          if %FAIL%==1 (
-            echo [CI] Data file deployment check failed!
-            dir /s /b "%OUTDIR%\data" 2>nul || echo [CI] No data directory found
-            exit /b 1
-          )
-
-      - name: Deploy scripts to build output
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
-          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
-          echo [CI] Deployed scripts to build output
-
-      - name: Headless smoke test
-        if: matrix.config == 'Release'
-        shell: cmd
-        continue-on-error: true   # no GPU on CI — device creation will fail
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
-            echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
-          )
-          exit /b 0
-
-      - name: Bundle Falcor media scenes
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
-            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
-            echo [CI] Bundled Arcade scene
-          )
-          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
-            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
-            echo [CI] Bundled TestScenes
-          )
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
       - name: Upload build artifacts
-        if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6
         with:
           name: falcor-windows-ninja-${{ matrix.config }}
@@ -603,13 +355,15 @@ jobs:
   linux-gcc:
     name: Linux/GCC
     needs: [prepare]
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && (inputs.platform == 'All' || inputs.platform == 'Linux GCC' || inputs.platform == '')
     runs-on: ubuntu-22.04
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        config: [Release, Debug]
+        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: linux-gcc-ci
     steps:
@@ -617,6 +371,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: shellcheck
+        run: |
+          sudo apt-get -qq install -y shellcheck
+          shellcheck scripts/integrate-plugins.sh scripts/verify-build-output.sh
 
       - name: Cache Falcor submodules
         uses: actions/cache@v5
@@ -642,39 +401,7 @@ jobs:
           git submodule update --init --depth 1
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
-
-      - name: Cache ccache
-        uses: actions/cache@v5
-        with:
-          path: ~/.ccache
-          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
-            ccache-${{ runner.os }}-gcc-
-
-      - name: Configure ccache
-        run: |
-          ccache --set-config=max_size=2G
-          ccache --set-config=compression=true
-          ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime
-          ccache -z
-
-      # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
-        with:
-          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
-          key: cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
-          restore-keys: |
-            cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-
-
-      - name: Cache packman packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/packman
-          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
-          restore-keys: packman-
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev
 
       - name: Fetch Falcor packman dependencies
         run: |
@@ -688,21 +415,7 @@ jobs:
           cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
 
       - name: Integrate VisCache plugins into Falcor tree
-        run: |
-          FALCOR="${{ env.FALCOR_DIR }}"
-          mkdir -p "${FALCOR}/Source/RenderPasses/VisCache"
-          cp -r Source/RenderPasses/VisCache/* "${FALCOR}/Source/RenderPasses/VisCache/"
-          mkdir -p "${FALCOR}/Source/RenderPasses/ReSTIRPTPass"
-          cp -r Source/RenderPasses/ReSTIRPTPass/* "${FALCOR}/Source/RenderPasses/ReSTIRPTPass/"
-          mkdir -p "${FALCOR}/scripts/VisCache"
-          cp -r scripts/* "${FALCOR}/scripts/VisCache/"
-          RP_CMAKE="${FALCOR}/Source/RenderPasses/CMakeLists.txt"
-          if ! grep -q "add_subdirectory(VisCache)" "$RP_CMAKE"; then
-            echo "add_subdirectory(VisCache)" >> "$RP_CMAKE"
-          fi
-          if ! grep -q "add_subdirectory(ReSTIRPTPass)" "$RP_CMAKE"; then
-            echo "add_subdirectory(ReSTIRPTPass)" >> "$RP_CMAKE"
-          fi
+        run: bash scripts/integrate-plugins.sh ${{ env.FALCOR_DIR }}
 
       - name: CMake Configure
         run: |
@@ -710,8 +423,6 @@ jobs:
           SRCDIR="$(pwd)"
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
             -DFALCOR_VALIDATE_HEADERS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="
 
@@ -720,7 +431,13 @@ jobs:
           if [ -d "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/Source/RenderPasses/NRDPass" ]; then
             echo "[build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)"
           else
-            echo "[build] NRDPass: DISABLED (missing NRD package or D3D12 — expected on Linux)"
+            echo ""
+            echo "========================================================"
+            echo " WARNING: NRDPass DISABLED - missing NRD package or D3D12"
+            echo " (Expected on Linux — NRD requires D3D12)"
+            echo "========================================================"
+            echo ""
+            echo "::warning::NRDPass DISABLED on Linux (expected — NRD requires D3D12)"
           fi
 
       - name: Build
@@ -728,19 +445,8 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
 
-      - name: Print ccache stats
-        if: always()
-        run: ccache -s
-
-      - name: Verify data file deployment
-        run: |
-          OUTDIR="${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin"
-          if [ ! -f "$OUTDIR/data/ReSTIRPTPass/16RooksPattern256.txt" ]; then
-            echo "[CI] FAIL: 16RooksPattern256.txt missing from build output"
-            ls -R "$OUTDIR/data" 2>/dev/null || echo "[CI] No data directory found"
-            exit 1
-          fi
-          echo "[CI] OK: data files deployed"
+      # Linux build validates compilation only — no data/DLL verification
+      # (NRD requires D3D12, data deployment is Windows-specific)
 
   # ---------------------------------------------------------------------------
   # Dev prerelease — rolling "latest build" on every push to main/master
@@ -751,24 +457,28 @@ jobs:
     if: >-
       !cancelled()
       && needs.prepare.result == 'success'
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.windows-vs2022.result == 'success'
+      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_prerelease))
       && !startsWith(github.ref, 'refs/tags/')
-    needs: [prepare, windows-ninja]
+    needs: [prepare, windows-vs2022]
+    env:
+      # Release if available, otherwise Debug
+      RELEASE_CONFIG: ${{ inputs.config == 'Debug' && 'Debug' || 'Release' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
-      - name: Download Ninja Release artifact
+      - name: Download VS2022 build artifact
         uses: actions/download-artifact@v7
         with:
-          name: falcor-windows-ninja-Release
+          name: falcor-windows-vs2022-${{ env.RELEASE_CONFIG }}
           path: release-bin/
 
       - name: Package release archive
         run: |
-          ARCHIVE="viscache-windows-Release.tar.gz"
+          ARCHIVE="viscache-windows-${{ env.RELEASE_CONFIG }}.tar.gz"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
           tar -czf "${ARCHIVE}" -C release-bin .
           ls -lh "${ARCHIVE}"
@@ -788,6 +498,7 @@ jobs:
           |-------|-------|
           | Commit | \`${SHA}\` |
           | Version | \`${VERSION}\` |
+          | Config | ${{ env.RELEASE_CONFIG }} |
 
           **Not a stable release.** Use tagged \`v*\` releases for production." \
             --prerelease \
@@ -813,7 +524,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [prepare, windows-ninja]
+    needs: [prepare, windows-vs2022]
     steps:
       - name: Checkout
         uses: actions/checkout@v6

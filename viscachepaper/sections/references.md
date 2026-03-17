@@ -2,6 +2,12 @@
 
 - [Aldous and Vazirani 1994] D. Aldous and U. Vazirani. "'Go with the Winners' Algorithms." *Proc. 35th IEEE FOCS*, pp. 492–501, 1994.
 
+- [Alber et al. 2025] M. Alber et al. "Real-Time Markov Chain Path Guiding." *Proc. High-Performance Graphics (HPG)*, 2025.
+
+- [Benyoub et al. 2024] A. Benyoub, K. Marteaux, and P. Boudier. "SHaRC: Spatial Hash Radiance Cache." NVIDIA RTX SDK, GDC 2024. [https://github.com/NVIDIAGameWorks/RTXGI](https://github.com/NVIDIAGameWorks/RTXGI)
+
+- [Binder and Keller 2019] N. Binder and A. Keller. "Massively Parallel Path Space Filtering." *arXiv:1902.05942*, 2019.
+
 - [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Fast Path Space Filtering by Jittered Spatial Hashing." *ACM SIGGRAPH Talks*, 2018. Extended version: "Massively Parallel Path Space Filtering." *arXiv:1902.05942*, 2019.
 
 - [Bolin and Meyer 1997] M. R. Bolin and G. W. Meyer. "An Error Metric for Monte Carlo Ray Tracing." *Rendering Techniques '97* (Proc. Eurographics Workshop on Rendering), pp. 57–68, Springer, 1997.
@@ -9,6 +15,8 @@
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
 - [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
+
+- [Conner et al. 2025] M. Conner et al. "MegaLights." *SIGGRAPH 2025 Advances in Real-Time Rendering*, Epic Games, 2025.
 
 - [Grassberger 2002] P. Grassberger. "Go with the Winners: A General Monte Carlo Strategy." *Computer Physics Communications*, 147:64–70, 2002.
 
@@ -46,6 +54,12 @@
 
 - [Rath et al. 2022] A. Rath, P. Grittmann, S. Herholz, P. Slusallek, and K. Myszkowski. "EARS: Efficiency-Aware Russian Roulette and Splitting." *ACM Trans. Graph.*, 41(4):81, 2022.
 
+- [Lin et al. 2025] D. Lin et al. "ReSTIR Bidirectional Path Tracing." *ACM Trans. Graph.* (SIGGRAPH), 2025.
+
+- [Salaün et al. 2025] C. Salaün, I. Graux, K. Georgiev, and T. Hašan. "Histogram Stratification for Real-Time Importance Sampling." *ACM SIGGRAPH*, 2025.
+
+- [Sanzharov et al. 2025] V. Sanzharov et al. "Neural Two-Level Monte Carlo Real-Time Rendering." *arXiv*, 2025.
+
 - [Stotko et al. 2025] P. Stotko et al. "MrHash: Resolution Where It Counts." *arXiv:2511.21459*, 2025.
 
 - [Szécsi et al. 2003] L. Szécsi, L. Szirmay-Kalos, and C. Kelemen. "Variance Reduction for Russian Roulette." *Journal of WSCG*, 11(1), 2003.
@@ -61,5 +75,7 @@
 - [Vorba and Křivánek 2016] J. Vorba and J. Křivánek. "Adjoint-Driven Russian Roulette and Splitting in Light Transport Simulation." *ACM Trans. Graph.* (SIGGRAPH), 35(4):42, 2016.
 
 - [Ward 1991] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *2nd Eurographics Workshop on Rendering*, Barcelona, 1991. Published in *Photorealistic Rendering in Computer Graphics*, pp. 11–20, Springer-Verlag, 1994.
+
+- [Zeng et al. 2025] Z. Zeng et al. "ReSTIR Path Guiding." *ACM SIGGRAPH*, 2025.
 
 - [Zhang et al. 2024] Y. Zhang et al. "Area ReSTIR: Re-Sampling for Real-Time Defocus and Antialiasing." *ACM SIGGRAPH*, 2024.

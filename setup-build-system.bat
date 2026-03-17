@@ -2,10 +2,11 @@
 : Run from the VisCache package root: .\setup-build-system.bat
 :
 : What this script does:
-:   1. Calls Falcor\setup_vs2022.bat (submodule init, packman deps, VS2022 solution)
+:   1. Verifies Falcor root, enables git hooks
 :   2. Copies VisCache source files into the Falcor tree
 :   3. Patches CMakeLists.txt to register the plugins
-:   4. Runs the Python unit tests
+:   4. Calls Falcor\setup_vs2022.bat (submodule init, packman deps, VS2022 solution)
+:   5. Runs the Python unit tests
 
 @echo off
 setlocal enabledelayedexpansion
@@ -39,13 +40,38 @@ if not exist "%FALCOR_ROOT%\CMakeLists.txt" (
 )
 
 : ---------------------------------------------------------------------------
-: Step 2: Run Falcor's own setup (submodules, packman deps, VS2022 solution)
+: Steps 2-3: Integrate plugins (copy sources + data + tests, patch CMake)
 : ---------------------------------------------------------------------------
-echo [VisCache] Step 2: Running Falcor setup (submodules + packman + VS2022)...
+: NOTE: Sources must be copied BEFORE Falcor setup because setup_vs2022.bat
+: runs cmake --preset which configures the project. If CMakeLists.txt already
+: has add_subdirectory(ReSTIRPTPass) from a prior run, cmake will fail unless
+: the source directories exist.
+echo [VisCache] Steps 2-3: Integrating plugins into Falcor tree...
+
+: Restore CMakeLists.txt from git to discard any corruption from prior runs
+: (e.g. truncated lines from unescaped batch parentheses).
+git -C "%FALCOR_ROOT%" checkout -- Source\RenderPasses\CMakeLists.txt >nul 2>&1
+
+: Delegate to the shared integrate-plugins script (same script used by CI).
+call "%SCRIPT_DIR%scripts\integrate-plugins.bat" "%FALCOR_ROOT%"
+if errorlevel 1 (
+    echo [VisCache] ERROR: integrate-plugins.bat failed!
+    exit /b 1
+)
+
+: ---------------------------------------------------------------------------
+: Step 4: Run Falcor's own setup (submodules, packman deps, VS2022 solution)
+: ---------------------------------------------------------------------------
+echo [VisCache] Step 4: Running Falcor setup (submodules + packman + VS2022)...
 
 if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
-    call "%FALCOR_ROOT%\setup_vs2022.bat"
-    if errorlevel 1 (
+    : setup_vs2022.bat runs cmake --preset which needs CWD inside Falcor
+    : where CMakePresets.json lives.
+    pushd "%FALCOR_ROOT%"
+    call setup_vs2022.bat
+    set SETUP_ERR=!errorlevel!
+    popd
+    if !SETUP_ERR! neq 0 (
         echo [VisCache] ERROR: Falcor setup failed!
         exit /b 1
     )
@@ -53,73 +79,6 @@ if exist "%FALCOR_ROOT%\setup_vs2022.bat" (
 ) else (
     echo [VisCache]   WARNING: setup_vs2022.bat not found, skipping Falcor setup.
     echo [VisCache]   You may need to init submodules and fetch packman deps manually.
-)
-
-: ---------------------------------------------------------------------------
-: Step 3: Copy VisCache sources into Falcor tree
-: ---------------------------------------------------------------------------
-echo [VisCache] Step 3: Copying VisCache RenderPass sources...
-
-: VisCache
-set VISCACHE_DST=%FALCOR_ROOT%\Source\RenderPasses\VisCache
-if not exist "%VISCACHE_DST%" mkdir "%VISCACHE_DST%"
-xcopy "%SCRIPT_DIR%Source\RenderPasses\VisCache\*" "%VISCACHE_DST%\" /s /y /q
-echo [VisCache]   Copied: VisCache
-
-: ReSTIRPTPass
-set GI_DST=%FALCOR_ROOT%\Source\RenderPasses\ReSTIRPTPass
-if not exist "%GI_DST%" mkdir "%GI_DST%"
-xcopy "%SCRIPT_DIR%Source\RenderPasses\ReSTIRPTPass\*" "%GI_DST%\" /s /y /q
-echo [VisCache]   Copied: ReSTIRPTPass
-
-: ReSTIRPTPass data files (16RooksPattern256.txt, VeachAjar pyscenes)
-: Quickfix: also copy into Falcor/data/ so AssetResolver finds them at runtime
-: without waiting for a CMake POST_BUILD step.
-set DATA_SRC=%SCRIPT_DIR%Source\RenderPasses\ReSTIRPTPass\Data
-set DATA_DST=%FALCOR_ROOT%\data\ReSTIRPTPass
-if exist "%DATA_SRC%" (
-    if not exist "%DATA_DST%" mkdir "%DATA_DST%"
-    xcopy "%DATA_SRC%\*" "%DATA_DST%\" /s /y /q >nul
-    echo [VisCache]   Copied: ReSTIRPTPass data files to Falcor\data\
-)
-
-: Scripts
-set SCRIPT_DST=%FALCOR_ROOT%\scripts\VisCache
-if not exist "%SCRIPT_DST%" mkdir "%SCRIPT_DST%"
-xcopy "%SCRIPT_DIR%scripts\*" "%SCRIPT_DST%\" /s /y /q
-echo [VisCache]   Copied: scripts
-
-: Tests
-set TEST_DST=%FALCOR_ROOT%\scripts\VisCache\tests
-if not exist "%TEST_DST%" mkdir "%TEST_DST%"
-xcopy "%SCRIPT_DIR%tests\*" "%TEST_DST%\" /s /y /q
-echo [VisCache]   Copied: tests
-
-: ---------------------------------------------------------------------------
-: Step 4: Patch CMakeLists.txt to register plugins
-: ---------------------------------------------------------------------------
-echo [VisCache] Step 4: Patching Source\RenderPasses\CMakeLists.txt...
-
-set RP_CMAKE=%FALCOR_ROOT%\Source\RenderPasses\CMakeLists.txt
-if not exist "%RP_CMAKE%" (
-    echo [VisCache] ERROR: Could not find %RP_CMAKE%
-    exit /b 1
-)
-
-findstr /c:"add_subdirectory(VisCache)" "%RP_CMAKE%" >nul 2>&1
-if errorlevel 1 (
-    echo add_subdirectory(VisCache)>> "%RP_CMAKE%"
-    echo [VisCache]   Added: add_subdirectory(VisCache)
-) else (
-    echo [VisCache]   Already present: VisCache (skipped)
-)
-
-findstr /c:"add_subdirectory(ReSTIRPTPass)" "%RP_CMAKE%" >nul 2>&1
-if errorlevel 1 (
-    echo add_subdirectory(ReSTIRPTPass)>> "%RP_CMAKE%"
-    echo [VisCache]   Added: add_subdirectory(ReSTIRPTPass)
-) else (
-    echo [VisCache]   Already present: ReSTIRPTPass (skipped)
 )
 
 : ---------------------------------------------------------------------------

@@ -4,9 +4,9 @@
 #
 # What this script does:
 #   1. Locates Falcor (Falcor subtree or FALCOR_ROOT override)
-#   2. Calls Falcor's setup.sh (submodule init, packman deps, git hooks)
-#   3. Copies VisCache source files into the Falcor tree
-#   4. Patches CMakeLists.txt to register the plugins
+#   2. Copies VisCache source files into the Falcor tree
+#   3. Patches CMakeLists.txt to register the plugins
+#   4. Calls Falcor's setup.sh (submodule init, packman deps, git hooks)
 #   5. Runs the Python unit tests
 #
 # Usage:
@@ -41,9 +41,23 @@ if [ -d "${SCRIPT_DIR}/.githooks" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: Run Falcor's own setup (submodules + packman deps)
+# Steps 2-3: Integrate plugins (copy sources + data + tests, patch CMake)
 # ---------------------------------------------------------------------------
-log "Step 2: Running Falcor setup (submodules + packman)..."
+# NOTE: Sources must be copied BEFORE Falcor setup because setup may run
+# cmake configure. If CMakeLists.txt already has add_subdirectory(ReSTIRPTPass)
+# from a prior run, cmake will fail unless the source directories exist.
+log "Steps 2-3: Integrating plugins into Falcor tree..."
+
+# Restore from git to discard any corruption from prior runs
+git -C "${FALCOR_ROOT}" checkout -- Source/RenderPasses/CMakeLists.txt 2>/dev/null || true
+
+# Delegate to the shared integrate-plugins script (same script used by CI).
+bash "${SCRIPT_DIR}/scripts/integrate-plugins.sh" "${FALCOR_ROOT}"
+
+# ---------------------------------------------------------------------------
+# Step 4: Run Falcor's own setup (submodules + packman deps)
+# ---------------------------------------------------------------------------
+log "Step 4: Running Falcor setup (submodules + packman)..."
 
 FALCOR_SETUP="${FALCOR_ROOT}/setup.sh"
 if [ -x "${FALCOR_SETUP}" ] || [ -f "${FALCOR_SETUP}" ]; then
@@ -52,68 +66,6 @@ if [ -x "${FALCOR_SETUP}" ] || [ -f "${FALCOR_SETUP}" ]; then
 else
     log "  WARNING: ${FALCOR_SETUP} not found, skipping Falcor setup."
     log "  You may need to init submodules and fetch packman deps manually."
-fi
-
-# ---------------------------------------------------------------------------
-# Step 3: Copy VisCache sources into Falcor tree
-# ---------------------------------------------------------------------------
-log "Step 3: Copying VisCache RenderPass sources..."
-
-# VisCache
-VISCACHE_DST="${FALCOR_ROOT}/Source/RenderPasses/VisCache"
-mkdir -p "${VISCACHE_DST}"
-cp -r "${SCRIPT_DIR}/Source/RenderPasses/VisCache/"* "${VISCACHE_DST}/"
-log "  Copied: VisCache"
-
-# ReSTIRPTPass (DQLin ReSTIR PT ported to Falcor 8)
-PT_DST="${FALCOR_ROOT}/Source/RenderPasses/ReSTIRPTPass"
-mkdir -p "${PT_DST}"
-cp -r "${SCRIPT_DIR}/Source/RenderPasses/ReSTIRPTPass/"* "${PT_DST}/"
-log "  Copied: ReSTIRPTPass"
-
-# ReSTIRPTPass data files (16RooksPattern256.txt, VeachAjar pyscenes)
-# Quickfix: also copy into Falcor/data/ so AssetResolver finds them at runtime
-# without waiting for a CMake POST_BUILD step.
-DATA_SRC="${SCRIPT_DIR}/Source/RenderPasses/ReSTIRPTPass/Data"
-DATA_DST="${FALCOR_ROOT}/data/ReSTIRPTPass"
-if [ -d "${DATA_SRC}" ]; then
-    mkdir -p "${DATA_DST}"
-    cp -r "${DATA_SRC}/"* "${DATA_DST}/"
-    log "  Copied: ReSTIRPTPass data files to Falcor/data/"
-fi
-
-# Scripts
-SCRIPT_DST="${FALCOR_ROOT}/scripts/VisCache"
-mkdir -p "${SCRIPT_DST}"
-cp -r "${SCRIPT_DIR}/scripts/"* "${SCRIPT_DST}/"
-log "  Copied: scripts"
-
-# Tests
-TEST_DST="${FALCOR_ROOT}/scripts/VisCache/tests"
-mkdir -p "${TEST_DST}"
-cp -r "${SCRIPT_DIR}/tests/"* "${TEST_DST}/"
-log "  Copied: tests"
-
-# ---------------------------------------------------------------------------
-# Step 4: Patch CMakeLists.txt to register plugins
-# ---------------------------------------------------------------------------
-log "Step 4: Patching Source/RenderPasses/CMakeLists.txt..."
-
-RP_CMAKE="${FALCOR_ROOT}/Source/RenderPasses/CMakeLists.txt"
-[ -f "${RP_CMAKE}" ] || fail "Could not find ${RP_CMAKE}"
-
-if ! grep -q "add_subdirectory(VisCache)" "${RP_CMAKE}"; then
-    echo "add_subdirectory(VisCache)" >> "${RP_CMAKE}"
-    log "  Added: add_subdirectory(VisCache)"
-else
-    log "  Already present: VisCache (skipped)"
-fi
-
-if ! grep -q "add_subdirectory(ReSTIRPTPass)" "${RP_CMAKE}"; then
-    echo "add_subdirectory(ReSTIRPTPass)" >> "${RP_CMAKE}"
-    log "  Added: add_subdirectory(ReSTIRPTPass)"
-else
-    log "  Already present: ReSTIRPTPass (skipped)"
 fi
 
 # ---------------------------------------------------------------------------

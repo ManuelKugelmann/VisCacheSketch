@@ -1,0 +1,64 @@
+name: Clean Caches
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Which caches to delete'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - cmake-build
+          - sccache
+          - packman
+          - submodules
+
+permissions:
+  actions: write
+
+jobs:
+  clean:
+    name: Clean Caches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete matching caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SCOPE: ${{ inputs.scope }}
+        run: |
+          echo "Scope: $SCOPE"
+          echo ""
+
+          # Build key prefix filter
+          case "$SCOPE" in
+            cmake-build) FILTER="cmake-build-" ;;
+            sccache)     FILTER="sccache-" ;;
+            packman)     FILTER="packman-" ;;
+            submodules)  FILTER="falcor-submodules-" ;;
+            all)         FILTER="" ;;
+          esac
+
+          # List caches, optionally filtered by key prefix
+          if [ -n "$FILTER" ]; then
+            CACHES=$(gh cache list --json id,key --jq ".[] | select(.key | startswith(\"$FILTER\")) | .id")
+          else
+            CACHES=$(gh cache list --json id --jq '.[].id')
+          fi
+
+          if [ -z "$CACHES" ]; then
+            echo "No caches matched scope '$SCOPE'."
+            exit 0
+          fi
+
+          COUNT=0
+          for id in $CACHES; do
+            echo "Deleting cache $id..."
+            gh cache delete "$id" || true
+            COUNT=$((COUNT + 1))
+          done
+
+          echo ""
+          echo "Deleted $COUNT cache(s)."

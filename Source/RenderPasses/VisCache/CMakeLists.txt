@@ -22,6 +22,8 @@ target_source_group(VisCachePass "RenderPasses")
 # inherited automatically.  Here we escalate hiding/shadowing and missing-
 # return-value warnings to errors (not covered by Falcor's /we list) and
 # keep the rest of Falcor's noise suppressions.
+# GCC: -Werror=shadow=local (not =shadow) avoids false positives from
+# Falcor headers where constructor params shadow members (standard C++).
 # ---------------------------------------------------------------------------
 target_compile_options(VisCachePass PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:
@@ -31,7 +33,7 @@ target_compile_options(VisCachePass PRIVATE
         /we4715  # not all control paths return a value
     >
     $<$<CXX_COMPILER_ID:GNU>:
-        -Werror=shadow
+        -Werror=shadow=local
         -Werror=return-type
     >
     $<$<CXX_COMPILER_ID:Clang>:

@@ -107,6 +107,18 @@ variance-driven resolution adaptation in a flat hash for TSDF reconstruction —
 the same principle as our variance-gated write depth,
 applied to a different domain.
 
+SHaRC [Benyoub et al. 2024] (Spatial Hash Radiance Cache),
+shipped in NVIDIA's RTX SDK,
+uses world-space spatial hashing with two-pass update (sparse update + query)
+and roughness-gated LOD selection.
+Their LOD gating by surface roughness —
+coarse cells for glossy surfaces, fine cells for sharp reflections —
+is complementary to our variance-gated write depth:
+roughness gates the *query* resolution,
+variance gates the *write* resolution.
+SHaRC does not use a variance-coupled write gate,
+which is the mechanism that makes our cache self-regulating (Sec. 5).
+
 For hash noise we use pcg3d [Jarzynski and Olano 2020],
 a GPU hash function that passes all but one BigCrush test
 at ~12 ALU with no lookup table.
@@ -167,6 +179,25 @@ is formally analogous to our contribution-weighted pfloor (Sec. 8.1),
 and ADRRS's coupling of one signal to one decision (path continuation)
 maps onto our coupling of one signal to two decisions —
 correction rate and write depth — as detailed in Sec. 8.
+
+Sanzharov et al. [2025] (Neural Two-Level Monte Carlo)
+use a neural incident radiance cache
+in a Two-Level Monte Carlo scheme
+to compensate for cache bias,
+introducing a Balanced Termination Heuristic (BTH)
+that decides when to trust the cache vs. trace further.
+Their BTH is structurally a stochastic version
+of our variance-gated write depth (Sec. 5):
+both decide at which level to stop and trust the cache.
+Our variance-coupled correction rate (Sec. 8)
+maps directly onto the MLMC residual estimator structure —
+the control variate returns the cached prediction,
+the residual corrects it stochastically.
+Their use of world-space multi-level hash encodings
+further parallels our LOD-in-key design (Sec. 4).
+The key difference is the domain:
+they cache radiance (continuous, high-dimensional),
+we cache binary visibility (Bernoulli, variance-free from mean).
 
 ## 2.5 Integration Targets (Orthogonal)
 

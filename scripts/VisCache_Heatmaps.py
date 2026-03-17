@@ -42,15 +42,15 @@ ABLATION_CONFIGS = [
 
 
 def build_base_graph():
-    """Construct the base render graph via VisCache_Graph."""
+    """Construct the base render graph via ReSTIRPT_Graph(viscache=True)."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
-        "VisCache_Graph",
-        os.path.join(os.path.dirname(__file__), "VisCache_Graph.py")
+        "ReSTIRPT_Graph",
+        os.path.join(os.path.dirname(__file__), "ReSTIRPT_Graph.py")
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.render_graph_VisCache()
+    return mod.render_graph_ReSTIRPT(viscache=True)
 
 
 def reset_viscache(graph):

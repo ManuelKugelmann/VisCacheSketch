@@ -59,17 +59,17 @@ def get_camera_at_frame(frame, total_frames):
 
 
 # ---------------------------------------------------------------------------
-# Build graph: full VisCache + ReSTIR PT (same as VisCache_Graph baseline)
+# Build graph: full ReSTIR PT + VisCache pipeline
 # ---------------------------------------------------------------------------
 import importlib.util, sys
 
 spec = importlib.util.spec_from_file_location(
-    "VisCache_Graph",
-    os.path.join(os.path.dirname(__file__), "VisCache_Graph.py")
+    "ReSTIRPT_Graph",
+    os.path.join(os.path.dirname(__file__), "ReSTIRPT_Graph.py")
 )
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-g = mod.render_graph_VisCache()
+g = mod.render_graph_ReSTIRPT(viscache=True)
 m.addGraph(g)
 
 # ---------------------------------------------------------------------------
