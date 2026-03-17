@@ -89,23 +89,24 @@ REM -------------------------------------------------------------------
 REM 4. Algorithm validation tests (CPU-only, skip with "quick")
 REM -------------------------------------------------------------------
 if /i "%~1"=="quick" (
-    echo [4/4] Algorithm tests skipped (quick mode).
+    echo [4/4] Algorithm tests skipped ^(quick mode^).
     echo.
-) else (
-    echo [4/4] Running algorithm validation tests...
-    set /a TOTAL+=1
-    call "%ROOT_DIR%\scripts\run-tests.bat"
-    if errorlevel 1 (
-        set /a FAIL+=1
-    ) else (
-        set /a PASS+=1
-    )
-    echo.
+    goto :summary
 )
+echo [4/4] Running algorithm validation tests...
+set /a TOTAL+=1
+call "%ROOT_DIR%\scripts\run-tests.bat"
+if errorlevel 1 (
+    set /a FAIL+=1
+) else (
+    set /a PASS+=1
+)
+echo.
 
 REM -------------------------------------------------------------------
 REM Summary
 REM -------------------------------------------------------------------
+:summary
 echo ========================================
 echo  CI dry-run: %PASS%/%TOTAL% passed, %FAIL% failed
 echo ========================================
