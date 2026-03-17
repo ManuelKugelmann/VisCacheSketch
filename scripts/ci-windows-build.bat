@@ -34,8 +34,19 @@ REM ---------------------------------------------------------------------------
 REM 1. Clean stale CMake cache
 REM ---------------------------------------------------------------------------
 if not exist "%BUILD_DIR%\CMakeCache.txt" goto :configure
+
+REM Check for source directory mismatch (repo rename, different runner path).
+REM CMake stores paths with forward slashes — convert for comparison.
+for %%I in ("%FALCOR_DIR%") do set "FALCOR_ABS=%%~fI"
+set "FALCOR_FWD=!FALCOR_ABS:\=/!"
+findstr /C:"!FALCOR_FWD!" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
+if errorlevel 1 goto :clean_cache
+
+REM Check for toolchain mismatch
 findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
 if not errorlevel 1 goto :configure
+
+:clean_cache
 echo [build] Stale CMakeCache.txt detected, removing...
 del /q "%BUILD_DIR%\CMakeCache.txt"
 if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
