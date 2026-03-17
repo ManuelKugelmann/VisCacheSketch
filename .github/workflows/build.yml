@@ -176,7 +176,7 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Build + deploy
+      - name: Build
         shell: cmd
         continue-on-error: false
         run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }} --sccache
@@ -309,7 +309,7 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Build + deploy
+      - name: Build
         shell: cmd
         continue-on-error: false
         run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }}
