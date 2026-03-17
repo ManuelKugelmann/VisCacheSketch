@@ -49,6 +49,7 @@ float3 evalDirectLightingCV(ShadingData sd,
 // preserving support coverage required for unbiased RIS.
 // See: Boksansky & Meister 2025 for concurrent neural approach.
 // ---------------------------------------------------------------------------
+/// posB: world-space light position, or vhfEncodeDirection(dir) for env map.
 float vhfLightSelectionWeight(float3 posA, float3 posB)
 {
     static const float kMuMin = 0.05f;  // epsilon-greedy floor, prevents feedback death

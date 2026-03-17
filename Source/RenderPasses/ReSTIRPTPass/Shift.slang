@@ -363,11 +363,20 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
     // Evaluate visibility: vertex 1 <-> vertex 2 (reconnection vertex).
     if (evalVisibility)
     {
+#if USE_VISCACHE_REVAL
+        // Contribution-aware CV+RRR: soft visibility weight (§12).
+        float visWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, rcVertexSd.posW,
+                            luminance(dstIntegrand * (dstIntegrandBSDFSampling + dstIntegrandNEE)));
+        if (visWeight <= 0.f) return 0.f;
+        dstIntegrandBSDFSampling *= visWeight;
+        dstIntegrandNEE *= visWeight;
+#else
         bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW);
         if (!isVisible)
         {
             return 0.f;
         }
+#endif
     }
 
     // non-invertible case
@@ -558,9 +567,17 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
     // Evaluate visibility: vertex 1 <-> vertex 2 (reconnection vertex).
     if (evalVisibility)
     {
+#if USE_VISCACHE_REVAL
+        // Contribution-aware CV+RRR: soft visibility weight (§12).
+        float visWeight = evalSegmentVisibilityWeight(dstPrimarySd.posW, rcVertexSd.posW,
+                            luminance(dstIntegrand));
+        if (visWeight <= 0.f) return 0.f;
+        dstIntegrand *= visWeight;
+#else
         bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW);
         if (!isVisible)
             return 0.f;
+#endif
     }
 
     if (any(isnan(dstIntegrand) || isinf(dstIntegrand))) return 0.f;
@@ -694,4 +711,32 @@ bool traceVisibilityRay(const Ray ray)
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 }
+
+#if USE_VISCACHE_REVAL
+/// Soft visibility evaluation using CV+RRR with contribution-aware RR (§12).
+/// Returns a float weight (unbiased visibility estimate) instead of hard bool.
+/// contribLuminance: luminance of path contribution through this edge,
+///   used for firefly-aware adaptive pMin.
+float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 targetVertex,
+                                   float contribLuminance = 0.f)
+{
+    VHFGateResult vcGate = vhfGate(sourceVertex, targetVertex,
+                                    vhfDeterministicXi(sourceVertex, targetVertex),
+                                    contribLuminance);
+
+    if (!vcGate.shouldTrace)
+        return vcGate.visWeight;
+
+    float3 edge = targetVertex - sourceVertex;
+    float tMax = length(edge);
+    float3 dir = edge / tMax;
+    tMax *= 0.999f;
+
+    Ray ray = Ray(sourceVertex, dir, 0.f, tMax);
+    SceneRayQuery<kUseAlphaTest> sceneRayQuery;
+    bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+
+    return vhfCommit(sourceVertex, targetVertex, visible ? 1.f : 0.f, vcGate);
+}
+#endif
 

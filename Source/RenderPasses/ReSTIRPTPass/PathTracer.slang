@@ -28,6 +28,10 @@ import Utils.Debug.PixelDebug;
 import LoadShadingData;
 import Falcor8Compat;
 import PathBuilder;
+
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCache;
+#endif
 import PathReservoir;
 
 #include "Utils/Math/MathConstants.slangh"
@@ -1337,7 +1341,26 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
+#if USE_VISCACHE
+                        // §11.1: VisCache-gated NEE shadow ray.
+                        // For finite lights use light position; for env map encode direction.
+                        bool visible;
+                        float3 vcPosB = (ray.tMax < 1e10f)
+                            ? (ray.origin + ray.dir * ray.tMax)
+                            : vhfEncodeDirection(ray.dir);
+                        VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, luminance(Lr));
+                        if (!vcGate.shouldTrace)
+                        {
+                            visible = vcGate.visWeight >= 0.5f;
+                        }
+                        else
+                        {
+                            visible = traceVisibilityRay(ray);
+                            vhfCommit(ray.origin, vcPosB, visible ? 1.f : 0.f, vcGate);
+                        }
+#else
                         bool visible = traceVisibilityRay(ray);
+#endif
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -1792,8 +1815,24 @@ struct PathTracer
             if (validSample)
             {
                 const Ray ray = ls.getVisibilityRay();
+#if USE_VISCACHE
+                // §11.1: VisCache-gated temporal update shadow ray.
+                float3 vcPosB = (ray.tMax < 1e10f)
+                    ? (ray.origin + ray.dir * ray.tMax)
+                    : vhfEncodeDirection(ray.dir);
+                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB);
+                if (!vcGate.shouldTrace)
+                {
+                    visible = vcGate.visWeight >= 0.5f;
+                }
+                else
+                {
+                    visible = traceVisibilityRay(ray);
+                    vhfCommit(ray.origin, vcPosB, visible ? 1.f : 0.f, vcGate);
+                }
+#else
                 visible = traceVisibilityRay(ray);
-
+#endif
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {

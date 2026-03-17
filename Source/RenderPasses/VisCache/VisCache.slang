@@ -97,6 +97,22 @@ uint3 pcg3d(uint3 v)
 }
 
 // ---------------------------------------------------------------------------
+// IBL direction encoding — encodes a direction as a "position at infinity"
+// for env map / directional light lookups. The large-magnitude marker ensures
+// the quantized cell differs from any real-world position, while the
+// direction bits are preserved in the lower quantization grid.
+// ---------------------------------------------------------------------------
+static const float kIBLMarker = 1e6f;
+
+/// Encode a normalized direction as a position for VisCache lookups.
+/// Use this as posB when querying visibility toward an env map or
+/// directional light (no finite endpoint).
+float3 vhfEncodeDirection(float3 dir)
+{
+    return dir * kIBLMarker;
+}
+
+// ---------------------------------------------------------------------------
 // Jitter-before-quantize [Binder et al. 2018]
 // Position-only — no frame number, so a fixed position always maps to the
 // same cell regardless of when it is queried.

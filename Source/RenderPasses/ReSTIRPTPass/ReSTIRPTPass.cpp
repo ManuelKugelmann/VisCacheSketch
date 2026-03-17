@@ -1711,6 +1711,9 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
         vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
         vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+        vcVar["gNumLevels"]      = dict.getValue<uint32_t>("vhfNumLevels", 3u);
+        vcVar["gCellCoarse"]     = dict.getValue<float>("vhfCellCoarse", 10.0f);
+        vcVar["gCellFine"]       = dict.getValue<float>("vhfCellFine", 0.16f);
         vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
     }
 
@@ -1795,6 +1798,9 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
         vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
         vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
+        vcVar["gNumLevels"]      = dict.getValue<uint32_t>("vhfNumLevels", 3u);
+        vcVar["gCellCoarse"]     = dict.getValue<float>("vhfCellCoarse", 10.0f);
+        vcVar["gCellFine"]       = dict.getValue<float>("vhfCellFine", 0.16f);
         vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
     }
 
