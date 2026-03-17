@@ -144,15 +144,24 @@ void VisCache::allocateBuffers()
 //
 // Heuristic:
 //   viewDist   = min(camera.farPlane, sceneDiameter)
-//   cellCoarse = viewDist / 10        → ~10 coarse cells across the view
-//   cellFine   = cellCoarse / R^(N-1) → R = per-level refinement ratio
+//   cellCoarse = viewDist / 10
+//   cellFine   = cellCoarse / R^sqrt(N-1)
 //
-// R = 4 means each LOD level is 4× finer than the previous:
-//   N=2: coarse/4      N=3: coarse/16     N=5: coarse/256
+// The sqrt exponent means adding levels primarily improves smoothness
+// of the cascade (smaller per-level ratio) rather than pushing the
+// finest cell to extremes:
+//
+//   R=4: N=2 → /4     N=3 → /6.3   N=5 → /8    N=8 → /11
+//
+// Compare naive R^(N-1):
+//   R=4: N=2 → /4     N=3 → /16    N=5 → /256  N=8 → /16384
+//
+// The total coarse-to-fine range grows with more levels, but gently.
+// Additional levels fill in the intermediate resolution gaps.
 // ---------------------------------------------------------------------------
 void VisCache::autoTuneCellSizes()
 {
-    static constexpr float kLevelRatio = 4.f;  // per-level refinement factor
+    static constexpr float kMaxRatio = 4.f;  // base refinement factor
 
     if (!mpScene) return;
 
@@ -167,7 +176,7 @@ void VisCache::autoTuneCellSizes()
 
     float viewDist = std::min(farPlane, sceneDiameter);
     float coarse = viewDist / 10.f;
-    float fine   = coarse / std::pow(kLevelRatio, float(mParams.numLevels - 1));
+    float fine   = coarse / std::pow(kMaxRatio, std::sqrt(float(mParams.numLevels - 1)));
 
     mParams.cellCoarse = coarse;
     mParams.cellFine   = fine;
