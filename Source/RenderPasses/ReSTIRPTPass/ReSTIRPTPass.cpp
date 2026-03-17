@@ -1473,11 +1473,12 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mRecompile = true;
     }
 
-    // Read VisCache hash table from upstream VisCache pass (if connected).
+    // Read VisCache resources from upstream VisCache pass (if connected).
     {
         bool wasAvailable = mVisCacheAvailable;
-        mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr);
+        mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
+        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
         if (mVisCacheAvailable != wasAvailable) mRecompile = true;
     }
 
@@ -1698,23 +1699,12 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
-    // Bind VisCache resources at root var level when available.
-    if (mVisCacheAvailable && mpVHFTable)
+    // Bind VisCache: hash table + params buffer (uploaded by VisCache pass).
+    if (mVisCacheAvailable)
     {
         auto rootVar = pass->getRootVar();
-        auto& dict = renderData.getDictionary();
-        rootVar["gVHFTable"] = mpVHFTable;
-
-        auto vcVar = rootVar["VisCacheParams"];
-        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
-        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
-        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
-        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
-        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-        vcVar["gNumLevels"]      = dict.getValue<uint32_t>("vhfNumLevels", 3u);
-        vcVar["gCellCoarse"]     = dict.getValue<float>("vhfCellCoarse", 10.0f);
-        vcVar["gCellFine"]       = dict.getValue<float>("vhfCellFine", 0.16f);
-        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+        rootVar["gVHFTable"]      = mpVHFTable;
+        rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1785,23 +1775,12 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
-    // Bind VisCache resources at root var level when available.
-    if (mVisCacheAvailable && mpVHFTable)
+    // Bind VisCache: hash table + params buffer (uploaded by VisCache pass).
+    if (mVisCacheAvailable)
     {
         auto rootVar = pass->getRootVar();
-        auto& dict = renderData.getDictionary();
-        rootVar["gVHFTable"] = mpVHFTable;
-
-        auto vcVar = rootVar["VisCacheParams"];
-        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
-        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
-        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
-        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
-        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-        vcVar["gNumLevels"]      = dict.getValue<uint32_t>("vhfNumLevels", 3u);
-        vcVar["gCellCoarse"]     = dict.getValue<float>("vhfCellCoarse", 10.0f);
-        vcVar["gCellFine"]       = dict.getValue<float>("vhfCellFine", 0.16f);
-        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+        rootVar["gVHFTable"]      = mpVHFTable;
+        rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());

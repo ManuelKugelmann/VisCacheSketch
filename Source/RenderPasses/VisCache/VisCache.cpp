@@ -112,6 +112,14 @@ void VisCache::allocateBuffers()
     );
     mpHashTable->setName("VHF_HashTable");
 
+    // GPU params constant buffer — exported via dict for downstream passes.
+    mpParamsBuffer = mpDevice->createBuffer(
+        sizeof(GPUParams),
+        ResourceBindFlags::ConstantBuffer,
+        MemoryType::Upload
+    );
+    mpParamsBuffer->setName("VHF_Params");
+
     // 5 atomic counters: inserts, evictions, misses, decayTriggers, probeSumHi
     mpStatsBuffer = mpDevice->createBuffer(
         kStatCount * sizeof(uint32_t),
@@ -139,19 +147,26 @@ void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 {
     // ----------------------------------------------------------------
-    // Expose hash table to downstream passes via InternalDictionary.
-    // PathTracer, RTXDIPass, and ReSTIRPTPass retrieve these.
+    // Upload GPU params and expose to downstream passes via dictionary.
+    // Consumer binding is just two lines:
+    //   rootVar["gVHFTable"]      = dict["vhfTable"];
+    //   rootVar["VisCacheParams"] = dict["vhfParamsCB"];
     // ----------------------------------------------------------------
+    GPUParams gpu;
+    gpu.tableCapacity = mParams.tableCapacity;
+    gpu.bootThreshold = mParams.bootThreshold;
+    gpu.varThreshold  = mParams.varThreshold;
+    gpu.pMin          = mParams.pMin;
+    gpu.fireflyBudget = mParams.fireflyBudget;
+    gpu.numLevels     = mParams.numLevels;
+    gpu.cellCoarse    = mParams.cellCoarse;
+    gpu.cellFine      = mParams.cellFine;
+    std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
+    mpParamsBuffer->unmap();
+
     auto& dict = renderData.getDictionary();
-    dict["vhfTable"]        = mpHashTable;
-    dict["vhfCapacity"]     = mParams.tableCapacity;
-    dict["vhfVarThreshold"] = mParams.varThreshold;
-    dict["vhfPMin"]         = mParams.pMin;
-    dict["vhfBootThreshold"]= mParams.bootThreshold;
-    dict["vhfFireflyBudget"]= mParams.fireflyBudget;
-    dict["vhfNumLevels"]    = mParams.numLevels;
-    dict["vhfCellCoarse"]   = mParams.cellCoarse;
-    dict["vhfCellFine"]     = mParams.cellFine;
+    dict["vhfTable"]    = mpHashTable;
+    dict["vhfParamsCB"] = mpParamsBuffer;
 
     // Feature + ablation toggles — downstream passes read these
     dict["vhfEnableRevalidation"]    = mParams.enableVisCacheRevalidation;

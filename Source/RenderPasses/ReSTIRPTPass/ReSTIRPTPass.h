@@ -162,8 +162,9 @@ private:
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mEnableRayStats = false;      ///< Set to true when the stats tab in the UI is open. This may negatively affect performance.
 
-    // VisCache integration — hash table + params read from InternalDictionary.
+    // VisCache integration — hash table + params buffer from InternalDictionary.
     ref<Buffer> mpVHFTable;
+    ref<Buffer> mpVHFParamsCB;
     bool mVisCacheAvailable = false;
 
     uint64_t                        mAccumulatedRayCount = 0;

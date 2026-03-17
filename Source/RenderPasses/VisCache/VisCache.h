@@ -40,6 +40,23 @@ public:
     // ------------------------------------------------------------------
     // Parameters (exposed to UI and Python scripting)
     // ------------------------------------------------------------------
+
+    /// GPU constant buffer layout — must match VisCacheParams in VisCache.slang exactly.
+    /// Exported via InternalDictionary as "vhfParamsCB" so downstream passes
+    /// bind it with a single line: rootVar["VisCacheParams"] = dict["vhfParamsCB"].
+    struct GPUParams
+    {
+        uint32_t tableCapacity;
+        uint32_t bootThreshold;
+        float    varThreshold;
+        float    pMin;
+        float    fireflyBudget;
+        uint32_t numLevels;
+        float    cellCoarse;
+        float    cellFine;
+    };
+    static_assert(sizeof(GPUParams) == 32, "GPUParams must match VisCacheParams cbuffer (32 bytes)");
+
     struct Params
     {
         uint32_t tableCapacity   = 1u << 22u;  ///< 4M entries = 32 MB
@@ -75,6 +92,7 @@ private:
     // GPU resources
     // ------------------------------------------------------------------
     ref<Buffer>         mpHashTable;     ///< RWStructuredBuffer<VHFEntry>
+    ref<Buffer>         mpParamsBuffer;  ///< VisCacheParams cbuffer (32 bytes, exported via dict)
     ref<Buffer>         mpStatsBuffer;   ///< 5x uint32 atomic counters
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
 
