@@ -144,13 +144,16 @@ void VisCache::allocateBuffers()
 //
 // Heuristic:
 //   viewDist   = min(camera.farPlane, sceneDiameter)
-//   cellCoarse = viewDist / 10      → ~10 coarse cells across the view
-//   cellFine   = cellCoarse / 64    → sharp shadow edges at typical distance
+//   cellCoarse = viewDist / 10        → ~10 coarse cells across the view
+//   cellFine   = cellCoarse / R^(N-1) → R = per-level refinement ratio
 //
-// Clamps: cellCoarse ∈ [0.5, 1000], cellFine ∈ [0.01, cellCoarse/4]
+// R = 4 means each LOD level is 4× finer than the previous:
+//   N=2: coarse/4      N=3: coarse/16     N=5: coarse/256
 // ---------------------------------------------------------------------------
 void VisCache::autoTuneCellSizes()
 {
+    static constexpr float kLevelRatio = 4.f;  // per-level refinement factor
+
     if (!mpScene) return;
 
     const auto& bounds = mpScene->getSceneBounds();
@@ -164,11 +167,7 @@ void VisCache::autoTuneCellSizes()
 
     float viewDist = std::min(farPlane, sceneDiameter);
     float coarse = viewDist / 10.f;
-    float fine   = coarse / 64.f;
-
-    // Clamp to sane range
-    coarse = std::clamp(coarse, 0.5f, 1000.f);
-    fine   = std::clamp(fine, 0.01f, coarse / 4.f);
+    float fine   = coarse / std::pow(kLevelRatio, float(mParams.numLevels - 1));
 
     mParams.cellCoarse = coarse;
     mParams.cellFine   = fine;
