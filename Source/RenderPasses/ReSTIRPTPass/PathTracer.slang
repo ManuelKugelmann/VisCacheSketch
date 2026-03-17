@@ -1849,12 +1849,17 @@ struct PathTracer
                 // The cache population here is critical: temporal updates observe
                 // the same (P, light) pairs across frames, seeding the cache with
                 // stable visibility data that benefits the main NEE pass.
+                //
+                // contribLuminance = 0: in this context we don't have the full
+                // path contribution (no BRDF eval / throughput). Passing 0 uses
+                // the base pMin without firefly suppression — conservative but
+                // correct, since temporal updates are a small fraction of rays.
                 // -----------------------------------------------------------------
 #if USE_VISCACHE_LIGHTSELECTION
                 float3 vcPosB = (ray.tMax < 1e10f)
                     ? (ray.origin + ray.dir * ray.tMax)
                     : vhfEncodeDirection(ray.dir);
-                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, luminance(Lr));
+                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, 0.f);
                 if (!vcGate.shouldTrace)
                 {
                     visible = vcGate.visWeight >= 0.5f;

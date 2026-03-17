@@ -1202,11 +1202,15 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         mRecompile = true;
     }
 
-    // Read VisCache hash table from upstream VisCache pass (if connected).
+    // -----------------------------------------------------------------
+    // Read VisCache resources from upstream VisCache pass (if connected).
+    // Both the hash table buffer and params cbuffer must be present.
+    // -----------------------------------------------------------------
     {
         bool wasAvailable = mVisCacheAvailable;
-        mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr);
+        mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
+        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
         if (mVisCacheAvailable != wasAvailable) mRecompile = true;
     }
 
@@ -1346,21 +1350,15 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
 
-    // Bind VisCache resources when available.
-    if (mVisCacheAvailable && mpVHFTable)
+    // -----------------------------------------------------------------
+    // Bind VisCache GPU resources when available.
+    // Uses the whole params cbuffer exported by the VisCache pass,
+    // matching the binding pattern in ReSTIRPTPass and MinimalPathTracer.
+    // -----------------------------------------------------------------
+    if (mVisCacheAvailable)
     {
-        auto& dict = renderData.getDictionary();
-        var["gVHFTable"] = mpVHFTable;
-
-        auto vcVar = var["VisCacheParams"];
-        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
-        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
-        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
-        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
-        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-
-        if (auto scene = dynamic_ref_cast<Scene>(mpScene))
-            vcVar["gCamPos"] = scene->getCamera()->getPosition();
+        var["gVHFTable"]      = mpVHFTable;
+        var["VisCacheParams"] = mpVHFParamsCB;
     }
 
     // Full screen dispatch.

@@ -205,7 +205,8 @@ private:
     ref<Buffer>                     mpSampleNRDEmission;        ///< Compact per-sample NRD emission data.
     ref<Buffer>                     mpSampleNRDReflectance;     ///< Compact per-sample NRD reflectance data.
 
-    // VisCache integration — hash table + params read from InternalDictionary.
-    ref<Buffer> mpVHFTable;
+    // VisCache integration — hash table + params buffer from InternalDictionary.
+    ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
+    ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
     bool mVisCacheAvailable = false;
 };
