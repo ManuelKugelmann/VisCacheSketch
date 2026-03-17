@@ -30,14 +30,11 @@ import Falcor8Compat;
 import PathBuilder;
 
 // ---------------------------------------------------------------------------
-// VisCache integration: import the hash table API when any VisCache feature
-// is enabled. USE_VISCACHE is the base flag (hash table buffer available);
-// USE_VISCACHE_LIGHTSELECTION enables cached-mu gating in NEE shadow rays.
-// The import brings vhfGateDeterministic(), vhfCommit(), vhfEncodeDirection().
+// VisCache integration: VisCache.slang self-guards with #if USE_VISCACHE,
+// so this import is unconditional — it compiles to nothing when VisCache
+// is not in the render graph.
 // ---------------------------------------------------------------------------
-#if USE_VISCACHE || USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;
-#endif
 import PathReservoir;
 
 #include "Utils/Math/MathConstants.slangh"

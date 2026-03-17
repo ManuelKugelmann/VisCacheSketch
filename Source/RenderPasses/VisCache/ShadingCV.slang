@@ -34,6 +34,9 @@
  ***************************************************************************/
 
 #pragma once
+
+#if USE_VISCACHE
+
 import VisCache;
 #ifdef VISCACHE_DIAGNOSTICS
 import RenderPasses.VisCache.VisCacheDiagnostics;
@@ -221,3 +224,5 @@ float evalRevalidationCV(float3 P, float3 Q,
 }
 
 #endif // VISCACHE_DIAGNOSTICS
+
+#endif // USE_VISCACHE

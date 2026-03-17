@@ -157,10 +157,13 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     // -----------------------------------------------------------------
     {
         bool wasAvailable = mVisCacheAvailable;
+        bool wasVisCheck = mVisCacheVisibilityCheck;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
-        if (mVisCacheAvailable != wasAvailable)
+        mVisCacheVisibilityCheck = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
+        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck)
             mTracer.pVars = nullptr;  // force recompile on toggle
     }
 
@@ -174,6 +177,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     mTracer.pProgram->addDefine("USE_ENV_LIGHT", mpScene->useEnvLight() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
+    mTracer.pProgram->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.

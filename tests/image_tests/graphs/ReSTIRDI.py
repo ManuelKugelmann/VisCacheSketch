@@ -23,7 +23,7 @@ def render_graph_ReSTIRDI_VisCacheRevalidation():
     """ReSTIR DI — VisCache CV+RRR shadow ray gating (S11.3)."""
     g = RenderGraph("ReSTIRDI_VisCacheRevalidation")
     VisCache = createPass("VisCachePass", {
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheVisibilityCheck': True,
         'enableVisCacheLightSelection': False,
     })
     g.addPass(VisCache, "VisCache")
@@ -46,7 +46,7 @@ def render_graph_ReSTIRDI_VisCacheLightSelection():
     """ReSTIR DI — VisCache light pre-selection only (S11.1, no S11.3)."""
     g = RenderGraph("ReSTIRDI_VisCacheLightSelection")
     VisCache = createPass("VisCachePass", {
-        'enableVisCacheRevalidation': False,
+        'enableVisCacheVisibilityCheck': False,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(VisCache, "VisCache")
@@ -69,7 +69,7 @@ def render_graph_ReSTIRDI_VisCacheFull():
     """ReSTIR DI — VisCache revalidation + light selection (S11.1 + S11.3)."""
     g = RenderGraph("ReSTIRDI_VisCacheFull")
     VisCache = createPass("VisCachePass", {
-        'enableVisCacheRevalidation': True,
+        'enableVisCacheVisibilityCheck': True,
         'enableVisCacheLightSelection': True,
     })
     g.addPass(VisCache, "VisCache")

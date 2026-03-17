@@ -64,9 +64,7 @@ import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Rendering.Lights.LightHelpers;
 
-#if USE_VISCACHE
 import RenderPasses.VisCache.VisCacheTracing;
-#endif
 
 cbuffer CB
 {
@@ -281,7 +279,7 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
     const float3 origin = computeRayOrigin(sd.posW, dot(sd.faceN, ls.dir) >= 0.f ? sd.faceN : -sd.faceN);
 
     // Test visibility by tracing a shadow ray.
-#if USE_VISCACHE
+#if USE_VISCACHE_VISIBILITYCHECK
     float visWeight = vcVisibility_DirDist(origin, ls.dir, ls.distance, sg);
     if (visWeight <= 0.f)
         return float3(0.f);

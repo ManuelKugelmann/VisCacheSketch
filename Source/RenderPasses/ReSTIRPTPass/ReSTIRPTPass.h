@@ -178,9 +178,9 @@ private:
     ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
     ref<Buffer> mpVHFParamsCB;             ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
     bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
-    bool mVisCacheRevalidation = false;    ///< §12: CV+RRR gating in reconnection shift (Shift.slang)
+    bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)
     bool mVisCacheLightSelection = false;  ///< §11.1: cached mu gates NEE shadow rays (PathTracer.slang)
-    bool mLocalRevalidation = false;       ///< Ablation: reservoir-local CV+RRR (no hash table, RevalidationCommon.slang)
+    bool mLocalCVRRR = false;       ///< Ablation: reservoir-local CV+RRR (no hash table, RevalidationCommon.slang)
     float mLocalRevalContribThreshold = 0.05f; ///< Firefly budget for local reval RR (luminance scale)
     float mLocalRevalPMin = 0.05f;             ///< Min RR survival probability for local reval
 

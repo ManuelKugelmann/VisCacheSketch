@@ -52,6 +52,12 @@
 
 #pragma once
 
+// When USE_VISCACHE=0, this module compiles to nothing — all types,
+// resources, and functions are excluded. Consumer passes can import
+// unconditionally without #if guards; the Slang compiler eliminates
+// the empty module at compile time.
+#if USE_VISCACHE
+
 // ===========================================================================
 // DATA STRUCTURES
 // ===========================================================================
@@ -823,3 +829,5 @@ float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
     vhfInsert(posA, posB, V);
     return g.mu + (V - g.mu) * g.invP;
 }
+
+#endif // USE_VISCACHE

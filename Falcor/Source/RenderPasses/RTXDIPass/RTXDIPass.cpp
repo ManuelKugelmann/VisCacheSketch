@@ -133,10 +133,13 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
     // Read VisCache resources from upstream VisCache pass (if connected).
     // Both hash table buffer and params cbuffer must be present.
     bool wasAvailable = mVisCacheAvailable;
+    bool wasVisCheck = mVisCacheVisibilityCheck;
     mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
     mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
     mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
-    if (mVisCacheAvailable != wasAvailable) recreatePrograms();  // recompile on toggle
+    mVisCacheVisibilityCheck = mVisCacheAvailable &&
+        dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
+    if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck) recreatePrograms();
 
     mpRTXDI->beginFrame(pRenderContext, mFrameDim);
 
@@ -254,6 +257,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         defines.add("GBUFFER_ADJUST_SHADING_NORMALS", mGBufferAdjustShadingNormals ? "1" : "0");
         defines.add("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
         defines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
+        defines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         defines.add(getValidResourceDefines(kOutputChannels, renderData));
 
         mpFinalShadingPass = ComputePass::create(mpDevice, desc, defines, true);
@@ -262,6 +266,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     mpFinalShadingPass->addDefine("GBUFFER_ADJUST_SHADING_NORMALS", mGBufferAdjustShadingNormals ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
+    mpFinalShadingPass->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.

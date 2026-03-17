@@ -11,7 +11,7 @@ VISCACHE_DEFAULTS = {
     "numLevels":       3,
     "cellCoarse":      10.0,
     "cellFine":        0.16,
-    "enableVisCacheRevalidation":   True,
+    "enableVisCacheVisibilityCheck":   True,
     "enableVisCacheLightSelection": True,
     "enableVisCacheWarpReduction":  True,
     "enableVisCacheVarianceGate":   True,

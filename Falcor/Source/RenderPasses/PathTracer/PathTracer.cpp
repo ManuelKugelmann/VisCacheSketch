@@ -1208,10 +1208,13 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     // -----------------------------------------------------------------
     {
         bool wasAvailable = mVisCacheAvailable;
+        bool wasVisCheck = mVisCacheVisibilityCheck;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
-        if (mVisCacheAvailable != wasAvailable) mRecompile = true;
+        mVisCacheVisibilityCheck = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
+        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck) mRecompile = true;
     }
 
     // Check if fixed sample count should be used. When the sample count input is connected we load the count from there instead.
@@ -1454,6 +1457,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
 
     // VisCache integration.
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
+    defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults

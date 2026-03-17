@@ -41,19 +41,19 @@ def check(name, cond, detail=""):
 # Test 1: Toggle consistency — property keys match across DI/GI/PT
 # ---------------------------------------------------------------------------
 # These are the canonical property keys that must exist in all three passes
-common_viscache_keys = {"enableVisCacheRevalidation", "enableVisCacheLightSelection"}
-gi_pt_extra_keys = {"enableCVRRRRevalidation"}
+common_viscache_keys = {"enableVisCacheVisibilityCheck", "enableVisCacheLightSelection"}
+gi_pt_extra_keys = {"enableCVRRRVisibilityCheck"}
 
 di_keys = common_viscache_keys
 gi_keys = common_viscache_keys | gi_pt_extra_keys
 pt_keys = common_viscache_keys | gi_pt_extra_keys
 
 check("Toggle keys: DI has VisCache toggles",
-      di_keys == {"enableVisCacheRevalidation", "enableVisCacheLightSelection"},
+      di_keys == {"enableVisCacheVisibilityCheck", "enableVisCacheLightSelection"},
       f"keys={di_keys}")
 
 check("Toggle keys: GI has VisCache + CVRRR toggles",
-      gi_keys == {"enableVisCacheRevalidation", "enableVisCacheLightSelection", "enableCVRRRRevalidation"},
+      gi_keys == {"enableVisCacheVisibilityCheck", "enableVisCacheLightSelection", "enableCVRRRVisibilityCheck"},
       f"keys={gi_keys}")
 
 check("Toggle keys: PT matches GI toggles",
@@ -83,11 +83,11 @@ check("Ablation matrix: all 8 toggle combos valid",
 # (vanilla), so this isolates the benefit of better initial candidates.
 # ---------------------------------------------------------------------------
 lightsel_only_flags = {
-    'enableVisCacheRevalidation': False,
+    'enableVisCacheVisibilityCheck': False,
     'enableVisCacheLightSelection': True,
 }
 # Light-sel-only must still activate VisCache (hash table needed for mu lookup)
-lightsel_viscache_active = (lightsel_only_flags['enableVisCacheRevalidation']
+lightsel_viscache_active = (lightsel_only_flags['enableVisCacheVisibilityCheck']
                             or lightsel_only_flags['enableVisCacheLightSelection'])
 check("Light-sel-only: VisCache active (hash table needed for mu)",
       lightsel_viscache_active,
@@ -95,14 +95,14 @@ check("Light-sel-only: VisCache active (hash table needed for mu)",
 
 # Light-sel-only must NOT gate shadow rays (revalidation off)
 check("Light-sel-only: revalidation disabled (vanilla shadow rays)",
-      not lightsel_only_flags['enableVisCacheRevalidation'],
-      "enableVisCacheRevalidation=False -> unconditional V(P,Q)")
+      not lightsel_only_flags['enableVisCacheVisibilityCheck'],
+      "enableVisCacheVisibilityCheck=False -> unconditional V(P,Q)")
 
 # All three passes (DI/GI/PT) support this combination
 for pass_name in ["DI", "GI", "PT"]:
     check(f"Light-sel-only: {pass_name} supports independent toggles",
           True,  # verified by grep: all three passes read both flags independently
-          f"enableVisCacheLightSelection independent of enableVisCacheRevalidation")
+          f"enableVisCacheLightSelection independent of enableVisCacheVisibilityCheck")
 
 # ---------------------------------------------------------------------------
 # Test 4: VisCache internal ablation toggles — property round-trip
@@ -131,7 +131,7 @@ for key in sorted(viscache_ablation_keys):
 # VisCache is authoritative — downstream passes read from dictionary.
 # ---------------------------------------------------------------------------
 viscache_all_keys = viscache_ablation_keys | {
-    "enableVisCacheRevalidation", "enableVisCacheLightSelection"
+    "enableVisCacheVisibilityCheck", "enableVisCacheLightSelection"
 }
 check("VisCache: 6 enableVisCache* flags (4 ablation + 2 feature)",
       len(viscache_all_keys) == 6,

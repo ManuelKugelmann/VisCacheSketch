@@ -7,12 +7,12 @@
  * spatial/temporal reuse. The three paths allow clean A/B comparison
  * between VisCache, reservoir-local, and vanilla (unconditional) approaches:
  *
- *   USE_VISCACHE_REVALIDATION:  VisCache hash table CV+RRR (§12)
+ *   USE_VISCACHE_VISIBILITYCHECK:  VisCache hash table CV+RRR (§12)
  *     - Uses the global spatial hash table for visibility estimates
  *     - Best ray savings: leverages cached visibility across all pixels
  *     - Requires VisCache pass upstream in the render graph
  *
- *   USE_LOCAL_REVALIDATION:  Reservoir-local CV+RRR (ablation baseline)
+ *   USE_LOCAL_CVRRR:  Reservoir-local CV+RRR (ablation baseline)
  *     - No hash table — derives mu from reservoir-local information only
  *     - mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1)
  *     - Less effective than VisCache (no spatial sharing), but zero memory cost
@@ -29,10 +29,8 @@
 import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 
-#if USE_VISCACHE || USE_VISCACHE_REVALIDATION
 import RenderPasses.VisCache.VisCache;
 import RenderPasses.VisCache.ShadingCV;
-#endif
 
 // ===========================================================================
 // LOCAL CV+RRR (ABLATION BASELINE — NO HASH TABLE)
@@ -40,14 +38,14 @@ import RenderPasses.VisCache.ShadingCV;
 
 // ---------------------------------------------------------------------------
 // LocalRevalCB: parameters for the local revalidation ablation path.
-// Bound by the host (ReSTIRPTPass.cpp) when USE_LOCAL_REVALIDATION=1.
+// Bound by the host (ReSTIRPTPass.cpp) when USE_LOCAL_CVRRR=1.
 //
 // gLocalRevalContribThreshold: contribution luminance above which pMin is
 //   raised (firefly suppression). Same concept as gFireflyBudget in VisCache.
 //
 // gLocalRevalPMin: minimum RR survival probability. Same as gPMin.
 // ---------------------------------------------------------------------------
-#if USE_LOCAL_REVALIDATION
+#if USE_LOCAL_CVRRR
 cbuffer LocalRevalCB
 {
     float gLocalRevalContribThreshold;  ///< Firefly budget for local reval
@@ -125,11 +123,11 @@ float evaluateVisibility(float3 P, float3 Q, float3 bsdf, float3 Lo,
                           float G, float neighborTargetPdf, float pHatNoVis,
                           float3 camPos, inout SampleGenerator sg)
 {
-#if USE_VISCACHE_REVALIDATION
+#if USE_VISCACHE_VISIBILITYCHECK
     // VisCache hash table CV+RRR (§12).
     // Best ray savings — leverages spatial sharing across all pixels.
     return evalRevalidationCV(P, Q, bsdf, Lo, G, sg);
-#elif USE_LOCAL_REVALIDATION
+#elif USE_LOCAL_CVRRR
     // Reservoir-local CV+RRR — no hash table, ablation baseline.
     return evalLocalRevalidation(P, Q, bsdf, Lo, G, neighborTargetPdf, pHatNoVis,
                                   gLocalRevalContribThreshold, gLocalRevalPMin, sg);

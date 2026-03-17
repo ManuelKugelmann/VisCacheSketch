@@ -37,7 +37,7 @@ HEATMAP_MODES = [
 # Set to [("full", {})] for just the default config.
 ABLATION_CONFIGS = [
     ("full",     {}),
-    ("no_cache", {"enableVisCacheRevalidation": False, "enableVisCacheLightSelection": False}),
+    ("no_cache", {"enableVisCacheVisibilityCheck": False, "enableVisCacheLightSelection": False}),
 ]
 
 
@@ -58,7 +58,7 @@ def reset_viscache(graph):
     vc = graph.getPass("VisCache")
     for attr in ["enableVisCacheVarianceGate", "enableVisCacheWarpReduction",
                  "enableVisCacheDecay", "enableVisCachePressureEvict",
-                 "enableVisCacheRevalidation", "enableVisCacheLightSelection"]:
+                 "enableVisCacheVisibilityCheck", "enableVisCacheLightSelection"]:
         setattr(vc, attr, True)
     vc.numLevels = 3
 

@@ -17,14 +17,10 @@ import PathTracer;
 import Falcor8Compat;
 import RenderPasses.Shared.Denoising.NRDData;
 
-// VisCache integration: import the core hash table API when any VisCache
-// feature is enabled. USE_VISCACHE is the base flag (hash table available);
-// USE_VISCACHE_REVALIDATION enables CV+RRR gating in reconnection shifts.
-// The import is conditional to avoid compilation errors when VisCache is not
-// in the render graph (the VisCacheParams cbuffer wouldn't be bound).
-#if USE_VISCACHE || USE_VISCACHE_REVALIDATION
+// VisCache integration: VisCache.slang self-guards with #if USE_VISCACHE,
+// so this import is unconditional — it compiles to nothing when VisCache
+// is not in the render graph.
 import RenderPasses.VisCache.VisCache;
-#endif
 
 ParameterBlock<PathTracer> gPathTracer;
 
@@ -372,7 +368,7 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
     // occluded from the current pixel's primary hit, so we must evaluate
     // visibility before accepting the shift.
     //
-    // With VisCache (USE_VISCACHE_REVALIDATION): evalSegmentVisibilityWeight()
+    // With VisCache (USE_VISCACHE_VISIBILITYCHECK): evalSegmentVisibilityWeight()
     // returns a soft float weight [0,1] via CV+RRR — the cache mean mu when
     // skipping the ray, or the unbiased CV+RRR weight when tracing. This
     // soft weight is multiplied into the integrand, preserving unbiasedness
@@ -688,7 +684,7 @@ bool traceVisibilityRay(const Ray ray)
 // in Shift.slang. It handles both finite endpoints (position-to-position)
 // and infinite endpoints (direction to env map).
 //
-// When USE_VISCACHE_REVALIDATION is enabled:
+// When USE_VISCACHE_VISIBILITYCHECK is enabled:
 //   1. Looks up the VisCache hash table for cached visibility mu
 //   2. Uses deterministic xi (derived from cell coordinates) for the RR
 //      coin flip — ensures temporal stability and MIS weight consistency
@@ -696,7 +692,7 @@ bool traceVisibilityRay(const Ray ray)
 //   4. If cache says "trace": traces the ray, inserts the result, and
 //      returns the unbiased CV+RRR weight mu + (V - mu) / p
 //
-// When USE_VISCACHE_REVALIDATION is NOT enabled:
+// When USE_VISCACHE_VISIBILITYCHECK is NOT enabled:
 //   Traces the ray unconditionally and returns 0.0 or 1.0.
 //   This is the baseline for measuring ray savings.
 //
@@ -743,7 +739,7 @@ float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 target
         tMax *= 0.999f;  // Prevent intersection with target surface
     }
 
-#if USE_VISCACHE_REVALIDATION
+#if USE_VISCACHE_VISIBILITYCHECK
     // VisCache gate: look up the hash table and decide whether to trace.
     //
     // For directions (env map), encode the direction as a position using
@@ -768,7 +764,7 @@ float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 target
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 
-#if USE_VISCACHE_REVALIDATION
+#if USE_VISCACHE_VISIBILITYCHECK
     // Insert trace result into cache and return unbiased CV+RRR weight.
     // w = mu + (V - mu) / p, where V is 0 or 1 from the trace.
     return vhfCommit(sourceVertex, vcPosB, visible ? 1.f : 0.f, vcGate);

@@ -61,7 +61,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
 
     // VisCache feature + ablation toggles
-    if (props.has("enableVisCacheRevalidation"))    mParams.enableVisCacheRevalidation    = props["enableVisCacheRevalidation"];
+    if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
     if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
     if (props.has("enableVisCacheVarianceGate"))    mParams.enableVisCacheVarianceGate    = props["enableVisCacheVarianceGate"];
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
@@ -94,7 +94,7 @@ Properties VisCache::getProperties() const
     p["decayPeriod"]   = mParams.decayPeriod;
 
     // VisCache feature + ablation toggles
-    p["enableVisCacheRevalidation"]    = mParams.enableVisCacheRevalidation;
+    p["enableVisCacheVisibilityCheck"]    = mParams.enableVisCacheVisibilityCheck;
     p["enableVisCacheLightSelection"]  = mParams.enableVisCacheLightSelection;
     p["enableVisCacheVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
@@ -263,7 +263,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParamsCB"] = mpParamsBuffer;
 
     // Feature + ablation toggles — downstream passes read these
-    dict["vhfEnableRevalidation"]    = mParams.enableVisCacheRevalidation;
+    dict["vhfEnableVisibilityCheck"] = mParams.enableVisCacheVisibilityCheck;
     dict["vhfEnableLightSelection"]  = mParams.enableVisCacheLightSelection;
     dict["vhfEnableWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
@@ -499,7 +499,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
     widget.var("Decay period max", mParams.decayPeriodMax, 15u, 2000u);
     widget.separator();
 
-    widget.checkbox("VisCache revalidation (S11.3)",   mParams.enableVisCacheRevalidation);
+    widget.checkbox("VisCache visibility check",       mParams.enableVisCacheVisibilityCheck);
     widget.checkbox("VisCache light selection (S11.1)", mParams.enableVisCacheLightSelection);
     widget.checkbox("VisCache warp reduction",         mParams.enableVisCacheWarpReduction);
     widget.separator();

@@ -87,7 +87,7 @@ public:
         uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling for auto-tuned decay
 
         // --- Feature toggles (exported to downstream passes via dict) ---
-        bool     enableVisCacheRevalidation    = true;  ///< §12: CV+RRR in reconnection shifts
+        bool     enableVisCacheVisibilityCheck    = true;  ///< §12: CV+RRR in reconnection shifts
         bool     enableVisCacheLightSelection = true;   ///< §11.1: cached mu in NEE target function
 
         // --- Ablation toggles (Table 1 in paper) ---

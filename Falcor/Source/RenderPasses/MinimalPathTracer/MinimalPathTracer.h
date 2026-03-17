@@ -100,4 +100,5 @@ private:
     ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
     ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
     bool mVisCacheAvailable = false;
+    bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
 };
