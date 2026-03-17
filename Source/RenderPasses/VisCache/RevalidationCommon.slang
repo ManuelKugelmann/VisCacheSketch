@@ -35,6 +35,9 @@ import RenderPasses.VisCache.ShadingCV;
 // ===========================================================================
 // LOCAL CV+RRR (ABLATION BASELINE — NO HASH TABLE)
 // ===========================================================================
+// Guarded by USE_VISCACHE: uses gPMin/gFireflyBudget from VisCacheParams
+// cbuffer and luminance() from ShadingCV's transitive imports.
+#if USE_VISCACHE
 
 // ---------------------------------------------------------------------------
 // evalLocalCVRRR: CV+RRR using reservoir-local visibility estimate.
@@ -83,6 +86,7 @@ float evalLocalCVRRR(float3 P, float3 Q, float3 bsdf, float3 Lo,
     }
     return mu;  // No trace — use reservoir-local estimate
 }
+#endif // USE_VISCACHE
 
 // ===========================================================================
 // 3-WAY DISPATCHER

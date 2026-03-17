@@ -176,8 +176,11 @@ check "${VISCACHE_DIR}/VisCacheTracing.slang" \
 check "${VISCACHE_DIR}/ShadingCV.slang" \
   ${VC_COMMON} "${VC_STUBS}"
 
+# RevalidationCommon uses COMMON (USE_VISCACHE=0): its VisCache-dependent code
+# (evalLocalCVRRR) is guarded by #if USE_VISCACHE; the dispatcher compiles
+# cleanly in all three modes since unused branches are excluded.
 check "${VISCACHE_DIR}/RevalidationCommon.slang" \
-  ${VC_COMMON} "${VC_STUBS}"
+  ${COMMON} "${VC_STUBS}"
 
 echo ""
 
