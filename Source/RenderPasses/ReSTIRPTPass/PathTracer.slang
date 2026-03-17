@@ -29,7 +29,7 @@ import LoadShadingData;
 import Falcor8Compat;
 import PathBuilder;
 
-#if USE_VISCACHE
+#if USE_VISCACHE || USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;
 #endif
 import PathReservoir;
@@ -1815,12 +1815,12 @@ struct PathTracer
             if (validSample)
             {
                 const Ray ray = ls.getVisibilityRay();
-#if USE_VISCACHE
+#if USE_VISCACHE_LIGHTSELECTION
                 // §11.1: VisCache-gated temporal update shadow ray.
                 float3 vcPosB = (ray.tMax < 1e10f)
                     ? (ray.origin + ray.dir * ray.tMax)
                     : vhfEncodeDirection(ray.dir);
-                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB);
+                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, luminance(Lr));
                 if (!vcGate.shouldTrace)
                 {
                     visible = vcGate.visWeight >= 0.5f;

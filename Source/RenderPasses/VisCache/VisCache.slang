@@ -452,10 +452,11 @@ void vhfInsert(float3 posA, float3 posB, float V)
         if (slot < 0) continue;
 
         // Atomic CAS: only write fingerprint if slot is still empty.
-        // Losers of the race harmlessly fail — their fp mismatches but
-        // the InterlockedAdd below still lands on the winner's entry.
+        // If another thread claimed this slot with a different fingerprint,
+        // skip — adding samples to a mismatched entry would corrupt it.
         uint origFp;
         InterlockedCompareExchange(gVHFTable[slot].fingerprint, 0u, fp, origFp);
+        if (origFp != 0u && origFp != fp) continue;
 
         uint delta = (visVal << 16u) | 1u;
         uint prev;

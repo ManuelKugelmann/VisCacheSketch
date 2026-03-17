@@ -63,6 +63,7 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
             {
                 uint origFp;
                 InterlockedCompareExchange(gVHFTable[wslot].fingerprint, 0u, fp, origFp);
+                if (origFp != 0u && origFp != fp) continue;
 
                 uint delta = (visSum << 16u) | totalSum;
                 uint prev;
