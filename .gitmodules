@@ -19,6 +19,6 @@
 [submodule "refs/DQLin_ReSTIR_PT"]
 	path = refs/DQLin_ReSTIR_PT
 	url = https://github.com/DQLin/ReSTIR_PT.git
-[submodule "refs/NVlabs_conditional_restir"]
-	path = refs/NVlabs_conditional_restir
-	url = https://github.com/NVlabs/conditional-restir-prototype.git
+[submodule "refs/NVlabs_conditional_ReSTIR"]
+	path = refs/NVlabs_conditional_ReSTIR
+	url = https://github.com/NVlabs/conditional-restir-prototype

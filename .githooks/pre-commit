@@ -49,12 +49,15 @@ while IFS=$'\t' read -r path url; do
 done < "$falcor_map"
 
 # Every Falcor/ entry in root must exist in Falcor's .gitmodules
-while IFS=$'\t' read -r path url; do
-    falcor_url=$(grep "^${path}"$'\t' "$falcor_map" | cut -f2) || true
+# (skip root-level submodules that aren't under Falcor/)
+parse_gitmodules "$ROOT_GITMODULES" "" | while IFS=$'\t' read -r path url; do
+    case "$path" in Falcor/*) ;; *) continue ;; esac
+    subpath="${path#Falcor/}"
+    falcor_url=$(grep "^${subpath}"$'\t' "$falcor_map" | cut -f2) || true
     if [ -z "$falcor_url" ]; then
-        echo "  STALE in .gitmodules: 'Falcor/${path}' not in Falcor/.gitmodules" >> "$errfile"
+        echo "  STALE in .gitmodules: '${path}' not in Falcor/.gitmodules" >> "$errfile"
     fi
-done < "$root_map"
+done
 
 if [ -s "$errfile" ]; then
     echo "=== .gitmodules sync check FAILED ==="

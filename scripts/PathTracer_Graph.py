@@ -1,13 +1,12 @@
 """
-MinimalPathTracer_Graph.py  —  Simple Mogwai render graph using Falcor's MinimalPathTracer.
+PathTracer_Graph.py  —  Vanilla Falcor PathTracer render graph.
 
-VBuffer → MinimalPathTracer → AccumulatePass → ToneMapper.
+Full-featured path tracer with accumulation and tone mapping.
+VBuffer → PathTracer → AccumulatePass → ToneMapper.
 Optionally adds VisCache for shadow gating (§11.2) when viscache=True.
 
-Good for quick visual checks, scene validation, and learning Falcor basics.
-
 Usage:
-    Mogwai.exe --script scripts/MinimalPathTracer_Graph.py --scene CornellBox.pyscene
+    Mogwai.exe --script scripts/PathTracer_Graph.py --scene VeachAjar.pyscene
 """
 
 import sys, os
@@ -15,13 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 
 
-def render_graph_MinimalPathTracer(viscache=False):
-    """Build a MinimalPathTracer render graph.
+def render_graph_PathTracer(viscache=False):
+    """Build a PathTracer render graph.
 
     Args:
         viscache: If True, add VisCache pass for shadow gating (§11.2).
     """
-    name = "MinimalPathTracer_VisCache" if viscache else "MinimalPathTracer"
+    name = "PathTracer_VisCache" if viscache else "PathTracer"
     g = RenderGraph(name)
 
     # V-Buffer (visibility buffer — primary ray hits)
@@ -36,11 +35,13 @@ def render_graph_MinimalPathTracer(viscache=False):
         vc = createPass("VisCachePass", VISCACHE_DEFAULTS)
         g.addPass(vc, "VisCache")
 
-    # Minimal path tracer (Falcor built-in)
-    pt = createPass("MinimalPathTracer", {
-        "maxBounces": 3,
+    # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
+    pt = createPass("PathTracer", {
+        "samplesPerPixel":    1,
+        "maxSurfaceBounces":  3,
+        "colorFormat":        "LogLuvHDR",
     })
-    g.addPass(pt, "MinimalPathTracer")
+    g.addPass(pt, "PathTracer")
 
     # Accumulate samples over frames for progressive rendering
     accum = createPass("AccumulatePass", {
@@ -58,10 +59,10 @@ def render_graph_MinimalPathTracer(viscache=False):
     g.addPass(tone, "ToneMapper")
 
     # Edges
-    g.addEdge("VBufferRT.vbuffer",        "MinimalPathTracer.vbuffer")
-    g.addEdge("VBufferRT.viewW",          "MinimalPathTracer.viewW")
-    g.addEdge("MinimalPathTracer.color",  "AccumulatePass.input")
-    g.addEdge("AccumulatePass.output",    "ToneMapper.src")
+    g.addEdge("VBufferRT.vbuffer",   "PathTracer.vbuffer")
+    g.addEdge("VBufferRT.viewW",     "PathTracer.viewW")
+    g.addEdge("PathTracer.color",    "AccumulatePass.input")
+    g.addEdge("AccumulatePass.output", "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
 
@@ -71,4 +72,4 @@ def render_graph_MinimalPathTracer(viscache=False):
 # ---------------------------------------------------------------------------
 # Load graph
 # ---------------------------------------------------------------------------
-m.addGraph(render_graph_MinimalPathTracer())
+m.addGraph(render_graph_PathTracer())

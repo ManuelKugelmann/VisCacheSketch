@@ -31,6 +31,38 @@ else if (key == kExposureValue)
 
 ---
 
+## 5. Falcor: add /EHsc for MSVC exception handling
+
+**File:** `Source/Falcor/CMakeLists.txt`
+
+MSVC 14.44+ (VS 2022) `ppltasks.h` and `<vector>` use C++ exception
+handlers internally. Without `/EHsc`, the compiler emits warning C4530
+("C++ exception handler used, but unwind semantics are not enabled").
+Combined with `/WX` (warnings as errors), this breaks the build.
+
+**Fix:** Added `/EHsc` to the PUBLIC MSVC compile options for the Falcor
+target, enabling standard C++ exception handling with stack unwinding.
+
+**Upstream status:** Not yet reported.
+
+---
+
+## 6. validate_headers: propagate COMPILE_OPTIONS to VH targets
+
+**File:** `CMakeLists.txt` (root)
+
+The `validate_headers()` function copies `INCLUDE_DIRECTORIES`,
+`LINK_LIBRARIES`, `COMPILE_DEFINITIONS`, and `COMPILE_FEATURES` from the
+original target to the VH validation target, but not `COMPILE_OPTIONS`.
+This means `/EHsc`, `/WX`, `/W4` etc. set via `target_compile_options()`
+do not propagate, causing C4530 warnings on the VH targets.
+
+**Fix:** Added `COMPILE_OPTIONS` to the property copy loop.
+
+**Upstream status:** Not yet reported.
+
+---
+
 ## 2. setup.bat/sh: use VISCACHE_ROOT env var for git submodule update
 
 **Files:** `setup.bat`, `setup.sh`
@@ -100,3 +132,24 @@ Not added back to `IEmissiveLightSampler` (not needed — called via concrete
 type `EmissiveLightSampler` which is a compile-time typedef).
 
 **Upstream status:** Enhancement for path replay algorithms.
+
+---
+
+## 5. CudaInterop: suppress C4100 and LNK4098 warnings on MSVC
+
+**File:** `Source/Samples/CudaInterop/CMakeLists.txt`
+
+CUDA separable compilation generates device-link registration files
+(`tmpxft_*_CudaInterop.device-link.reg.c`) with an unused
+`prelinked_fatbinc` parameter, triggering MSVC warning C4100. The CUDA
+runtime also statically links LIBCMT, conflicting with Falcor's dynamic
+CRT (MSVCRT), producing linker warning LNK4098.
+
+**Fix:** Added MSVC-only compile/link options:
+
+```cmake
+target_compile_options(CudaInterop PRIVATE /wd4100)
+target_link_options(CudaInterop PRIVATE /NODEFAULTLIB:LIBCMT)
+```
+
+**Upstream status:** Not yet reported.

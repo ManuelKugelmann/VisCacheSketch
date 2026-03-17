@@ -67,7 +67,25 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
 - **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko]
 - **GPU implementation** — built on NVIDIA Falcor 8.0 [Kallweit et al. 2022][r-falcor]
+- **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection (independently by [Bokšanský & Meister 2025][r-boksansky] with neural cache)
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
+
+### What was in [Kugelmann 2006][r-kugelmann] and was independently developed
+
+| Concept (2006) | Independent work | Notes |
+|---|---|---|
+| CV+VRRR — control variate + variance-driven RR | [Szécsi et al. 2003][r-szecsi] (CV, fixed RR), [Szirmay-Kalos et al. 2005][r-szirmay] (variance-driven RR, scene-global estimate), [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC — MLMC residual estimator is structurally CV+VRRR) | CV+RR was known ([Szécsi 2003][r-szecsi]). Variance-driven RR was known ([Szirmay-Kalos 2005][r-szirmay]). Overlap found late in 2006 writing. Pure MC variance reduction technique — independent of data structure |
+| Localized per-point cache as CV estimation source | [Guo et al. 2020][r-guo] (NEE++, per-voxel-pair visibility) | What makes CV+VRRR *effective*: per-point spatial predictions vs. Szirmay-Kalos's scene-global constant. Skipping predictable shadow rays predates 2006 ([Ward 1991][r-ward] — heuristic ordering, not a spatial cache) |
+| Visibility caching (cache visibility to skip shadow rays) | [SHaRC (Benyoub et al. 2024)][r-sharc] (radiance cache, roughness-gated LoD, RTX SDK), [Guo et al. 2020][r-guo] (NEE++, per-voxel-pair, dense matrix), [Bokšanský & Meister 2025][r-boksansky] (neural visibility cache), [Popov et al. 2013][r-popov] (adaptive octree, offline, <2% rays) | Concept predates 2006 ([Ward 1991][r-ward] — heuristic ordering). Different data structures: hash (SHaRC), dense matrix (NEE++), neural (Bokšanský), octree (Popov) |
+| Spatial hash map against curse of dimensionality | [Binder et al. 2018][r-binder] (path-space filtering), [Gautron 2020][r-gautron20]/[2021][r-gautron21] (AO), [Bokšanský & Meister 2025][r-boksansky] (Instant-NGP backbone), [SHaRC (Benyoub et al. 2024)][r-sharc] (world-space spatial hash, RTX SDK), [Dereviannykh et al. 2024][r-n2lmc] (world-space multi-level hash encodings) | 2006 used spatial hashing from [ODE][r-ode] for compact pairwise storage but did not describe it as a contribution; NEE++ used dense D³×D³ matrix instead and hit the dimensionality wall |
+| Variance-driven adaptive sampling (trace rate from cache quality) | [Stotko et al. 2025][r-stotko] (variance-driven resolution, TSDF), [Rath et al. 2022][r-rath] (EARS, efficiency-aware RR/splitting) | 2006 coupled variance to trace rate; Stotko to spatial resolution; EARS to path continuation |
+
+[r-n2lmc]: https://arxiv.org/abs/2412.04634
+[r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
+[r-sharc]: https://github.com/NVIDIAGameWorks/RTXGI
+[r-rath]: https://doi.org/10.1145/3528223.3530168
+[r-guo]: https://doi.org/10.1111/cgf.14142
+[r-popov]: https://doi.org/10.1111/cgf.12166
 
 #### ReSTIR integration
 
@@ -87,10 +105,15 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 | [Binder et al. 2018][r-binder] | Spatial hashing, jitter-quantize, fingerprint collision detection |
 | [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
-| [Stotko et al. 2025 (MrHash)][r-stotko] | Parallels - variance-driven resolution in flat hash (TSDF domain) |
+| [Stotko et al. 2025 (MrHash)][r-stotko] | Parallels — variance-driven resolution in flat hash (TSDF domain) |
+| [Rath et al. 2022 (EARS)][r-rath] | Efficiency-aware RR/splitting for path continuation |
+| [Guo et al. 2020 (NEE++)][r-guo] | Voxel-to-voxel visibility probability caching |
+| [Popov et al. 2013][r-popov] | Adaptive quantization visibility caching (offline) |
+| [Benyoub et al. 2024 (SHaRC)][r-sharc] | Spatial Hash Radiance Cache — world-space hash, roughness-gated LoD (RTX SDK) |
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
 | [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
 | [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
+| [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | Parallels — MLMC residual ↔ CV+VRRR, BTH read-gating ↔ lookup cascade, multi-level hash encodings |
 | [Kallweit et al. 2022 (Falcor)][r-falcor] | GPU rendering framework used as implementation base |
 
 [r-kugelmann]: docs/references/Kugelmann2006_ThesisMK.pdf

@@ -20,10 +20,25 @@ for %%P in (VisCache ReSTIRPTPass) do (
     echo [integrate] Copied %%P -^> !DEST!
 )
 
+REM Copy data files (16RooksPattern256.txt, VeachAjar pyscenes) into Falcor/data/
+REM so AssetResolver finds them at runtime without waiting for CMake POST_BUILD.
+if exist "Source\RenderPasses\ReSTIRPTPass\Data" (
+    if not exist "%FALCOR%\data\ReSTIRPTPass" mkdir "%FALCOR%\data\ReSTIRPTPass"
+    xcopy /E /Y /Q "Source\RenderPasses\ReSTIRPTPass\Data\*" "%FALCOR%\data\ReSTIRPTPass\" >nul
+    echo [integrate] Copied ReSTIRPTPass data -^> %FALCOR%\data\ReSTIRPTPass\
+)
+
 REM Copy scripts
 if not exist "%FALCOR%\scripts\VisCache" mkdir "%FALCOR%\scripts\VisCache"
 xcopy /E /Y /Q "scripts\*" "%FALCOR%\scripts\VisCache\" >nul
 echo [integrate] Copied scripts -^> %FALCOR%\scripts\VisCache\
+
+REM Copy tests
+if exist "tests" (
+    if not exist "%FALCOR%\scripts\VisCache\tests" mkdir "%FALCOR%\scripts\VisCache\tests"
+    xcopy /E /Y /Q "tests\*" "%FALCOR%\scripts\VisCache\tests\" >nul
+    echo [integrate] Copied tests -^> %FALCOR%\scripts\VisCache\tests\
+)
 
 REM ------------------------------------------------------------------
 REM 2. Patch RenderPasses/CMakeLists.txt to add our subdirectories
@@ -43,20 +58,16 @@ REM 3. Patch external/CMakeLists.txt to silence upstream build warnings
 REM ------------------------------------------------------------------
 set "EXT_CMAKE=%FALCOR%\external\CMakeLists.txt"
 
-REM C4996: fmt uses deprecated stdext::checked_array_iterator (MSVC 14.44+)
-findstr /C:"_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING" "%EXT_CMAKE%" >nul 2>&1
-if errorlevel 1 (
-    echo.>> "%EXT_CMAKE%"
-    echo target_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)>> "%EXT_CMAKE%"
-    echo [integrate] Patched fmt deprecation warning
-)
+if exist "%EXT_CMAKE%" (
+    REM C4996: fmt uses deprecated stdext::checked_array_iterator (MSVC 14.44+)
+    findstr /C:"_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING" "%EXT_CMAKE%" >nul 2>&1
+    if errorlevel 1 call :patch_fmt
 
-REM TBB deprecation: OpenVDB pulls in tbb/task.h which TBB marks deprecated.
-findstr /C:"TBB_SUPPRESS_DEPRECATED_MESSAGES" "%EXT_CMAKE%" >nul 2>&1
-if errorlevel 1 (
-    echo.>> "%EXT_CMAKE%"
-    echo target_compile_definitions(tbb INTERFACE TBB_SUPPRESS_DEPRECATED_MESSAGES=1)>> "%EXT_CMAKE%"
-    echo [integrate] Patched TBB deprecation warning
+    REM TBB deprecation: OpenVDB pulls in tbb/task.h which TBB marks deprecated.
+    findstr /C:"TBB_SUPPRESS_DEPRECATED_MESSAGES" "%EXT_CMAKE%" >nul 2>&1
+    if errorlevel 1 call :patch_tbb
+) else (
+    echo [integrate] WARNING: %EXT_CMAKE% not found, skipping deprecation patches
 )
 
 REM ------------------------------------------------------------------
@@ -65,11 +76,11 @@ REM ------------------------------------------------------------------
 set "FALCOR_CMAKE=%FALCOR%\Source\Falcor\CMakeLists.txt"
 
 REM LNK4098: release CRT vs debug CRT mismatch — append NODEFAULTLIB if missing
-findstr /C:"NODEFAULTLIB:MSVCRT" "%FALCOR_CMAKE%" >nul 2>&1
-if errorlevel 1 (
-    REM Use PowerShell one-liner for regex insertion (no .ps1 execution policy needed)
-    powershell -NoProfile -Command "$c = Get-Content '%FALCOR_CMAKE%' -Raw; $c = $c -replace '(target_link_options\(Falcor\s+PUBLIC\s+# MSVC flags\.)', \"`$1`n        `$<`$<AND:`$<CXX_COMPILER_ID:MSVC>,`$<CONFIG:Debug>>:/NODEFAULTLIB:MSVCRT>\"; Set-Content '%FALCOR_CMAKE%' $c -NoNewline"
-    echo [integrate] Patched Falcor linker flags (NODEFAULTLIB:MSVCRT^)
+if exist "%FALCOR_CMAKE%" (
+    findstr /C:"NODEFAULTLIB:MSVCRT" "%FALCOR_CMAKE%" >nul 2>&1
+    if errorlevel 1 call :patch_linker
+) else (
+    echo [integrate] WARNING: %FALCOR_CMAKE% not found, skipping linker patch
 )
 
 REM ------------------------------------------------------------------
@@ -77,15 +88,51 @@ REM 5. Strip CI path prefix from diagnostics and PDB source paths
 REM ------------------------------------------------------------------
 set "ROOT_CMAKE=%FALCOR%\CMakeLists.txt"
 
-findstr /C:"d1trimfile" "%ROOT_CMAKE%" >nul 2>&1
-if errorlevel 1 (
-    REM Resolve absolute path with forward slashes for /d1trimfile
-    for %%I in ("%FALCOR%") do set "TRIM_PATH=%%~fI"
-    set "TRIM_PATH=!TRIM_PATH:\=/!"
-    REM Use PowerShell one-liner for regex insertion
-    powershell -NoProfile -Command "$c = Get-Content '%ROOT_CMAKE%' -Raw; $c = $c -replace '(project\(Falcor[^)]*\))', \"`$1`nadd_compile_options(/d1trimfile:!TRIM_PATH!/)\"; Set-Content '%ROOT_CMAKE%' $c -NoNewline"
-    echo [integrate] Patched d1trimfile path stripping
+if exist "%ROOT_CMAKE%" (
+    findstr /C:"d1trimfile" "%ROOT_CMAKE%" >nul 2>&1
+    if errorlevel 1 call :patch_trimfile
+) else (
+    echo [integrate] WARNING: %ROOT_CMAKE% not found, skipping d1trimfile patch
 )
 
 echo [integrate] Done.
 type "%RP_CMAKE%"
+goto :eof
+
+REM === Subroutines (outside block nesting, so <> and () are safe in echo) ===
+
+:patch_fmt
+copy /Y "%EXT_CMAKE%" "%EXT_CMAKE%.tmp" >nul
+>> "%EXT_CMAKE%.tmp" echo.
+>> "%EXT_CMAKE%.tmp" echo target_compile_definitions(fmt PRIVATE _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+move /Y "%EXT_CMAKE%.tmp" "%EXT_CMAKE%" >nul
+echo [integrate] Patched fmt deprecation warning
+goto :eof
+
+:patch_tbb
+copy /Y "%EXT_CMAKE%" "%EXT_CMAKE%.tmp" >nul
+>> "%EXT_CMAKE%.tmp" echo.
+>> "%EXT_CMAKE%.tmp" echo target_compile_definitions(tbb INTERFACE TBB_SUPPRESS_DEPRECATED_MESSAGES=1)
+move /Y "%EXT_CMAKE%.tmp" "%EXT_CMAKE%" >nul
+echo [integrate] Patched TBB deprecation warning
+goto :eof
+
+:patch_linker
+REM Append NODEFAULTLIB:MSVCRT linker flag for Debug builds (avoids CRT mismatch LNK4098)
+copy /Y "%FALCOR_CMAKE%" "%FALCOR_CMAKE%.tmp" >nul
+>> "%FALCOR_CMAKE%.tmp" echo.
+>> "%FALCOR_CMAKE%.tmp" echo target_link_options(Falcor PUBLIC $^<$^<AND:$^<CXX_COMPILER_ID:MSVC^>,$^<CONFIG:Debug^>^>:/NODEFAULTLIB:MSVCRT^>)
+move /Y "%FALCOR_CMAKE%.tmp" "%FALCOR_CMAKE%" >nul
+echo [integrate] Patched Falcor linker flags (NODEFAULTLIB:MSVCRT)
+goto :eof
+
+:patch_trimfile
+REM Append /d1trimfile to strip CI path prefix from diagnostics
+for %%I in ("%FALCOR%") do set "TRIM_PATH=%%~fI"
+set "TRIM_PATH=!TRIM_PATH:\=/!"
+copy /Y "%ROOT_CMAKE%" "%ROOT_CMAKE%.tmp" >nul
+>> "%ROOT_CMAKE%.tmp" echo.
+>> "%ROOT_CMAKE%.tmp" echo add_compile_options(/d1trimfile:!TRIM_PATH!/)
+move /Y "%ROOT_CMAKE%.tmp" "%ROOT_CMAKE%" >nul
+echo [integrate] Patched d1trimfile path stripping
+goto :eof

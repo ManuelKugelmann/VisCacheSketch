@@ -130,10 +130,12 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
     // Check if GBuffer has adjusted shading normals enabled.
     mGBufferAdjustShadingNormals = dict.getValue(Falcor::kRenderPassGBufferAdjustShadingNormals, false);
 
-    // Read VisCache hash table from upstream VisCache pass (if connected).
+    // Read VisCache resources from upstream VisCache pass (if connected).
+    // Both hash table buffer and params cbuffer must be present.
     bool wasAvailable = mVisCacheAvailable;
-    mpVHFTable = dict.keyExists("vhfTable") ? dict.getValue<ref<Buffer>>("vhfTable") : nullptr;
-    mVisCacheAvailable = (mpVHFTable != nullptr);
+    mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
+    mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
+    mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
     if (mVisCacheAvailable != wasAvailable) recreatePrograms();  // recompile on toggle
 
     mpRTXDI->beginFrame(pRenderContext, mFrameDim);
@@ -269,19 +271,12 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     mpScene->bindShaderData(rootVar["gScene"]);
     mpRTXDI->bindShaderData(rootVar);
 
-    // Bind VisCache resources when available.
+    // Bind VisCache GPU resources when available.
+    // Uses the whole params cbuffer exported by the VisCache pass.
     if (mVisCacheAvailable)
     {
-        auto& dict = renderData.getDictionary();
-        rootVar["gVHFTable"] = mpVHFTable;
-
-        auto vcVar = rootVar["VisCacheParams"];
-        vcVar["gTableCapacity"]  = dict.getValue<uint32_t>("vhfCapacity", 0u);
-        vcVar["gBootThreshold"]  = dict.getValue<uint32_t>("vhfBootThreshold", 32u);
-        vcVar["gVarThreshold"]   = dict.getValue<float>("vhfVarThreshold", 0.1f);
-        vcVar["gPMin"]           = dict.getValue<float>("vhfPMin", 0.05f);
-        vcVar["gFireflyBudget"]  = dict.getValue<float>("vhfFireflyBudget", 0.05f);
-        vcVar["gCamPos"]         = mpScene->getCamera()->getPosition();
+        rootVar["gVHFTable"]      = mpVHFTable;
+        rootVar["VisCacheParams"] = mpVHFParamsCB;
     }
 
     auto var = rootVar["gFinalShading"];

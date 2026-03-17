@@ -1,30 +1,17 @@
 name: Build
 
 on:
-  # Auto-triggers disabled — manual releases only for now
-  # push:
-  #   branches: ["main", "master"]
-  #   tags: ["v*"]
-  #   paths:
-  #     - 'Source/**'
-  #     - 'Falcor/**'
-  #     - 'scripts/**'
-  #     - 'CMakeLists.txt'
-  #     - 'setup.*'
-  #     - '.github/workflows/build.yml'
-  # pull_request:
-  #   branches: ["main", "master"]
   workflow_dispatch:
     inputs:
       platform:
         description: 'Platform to build'
         required: false
-        default: 'Windows Ninja'
+        default: 'Windows VS2022'
         type: choice
         options:
-          - Windows Ninja
-          - All
           - Windows VS2022
+          - All
+          - Windows Ninja
           - Linux GCC
       config:
         description: 'Build configuration'
@@ -35,11 +22,6 @@ on:
           - Debug
           - Release
           - Both
-      create_prerelease:
-        description: 'Create a dev prerelease after build (stable releases use v* tags instead)'
-        required: false
-        default: true
-        type: boolean
       commit_sha:
         description: 'Commit SHA to build and release (default: HEAD of selected branch)'
         required: false
@@ -62,6 +44,7 @@ jobs:
   # ---------------------------------------------------------------------------
   prepare:
     name: Prepare
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
@@ -102,38 +85,16 @@ jobs:
           echo "| Version | \`${VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Tag | \`${TAG}\` |" >> "$GITHUB_STEP_SUMMARY"
 
-  # Fast check — always visible in PR, skips builds if no source changes
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    outputs:
-      source: ${{ steps.filter.outputs.source }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            source:
-              - 'Source/**'
-              - 'Falcor/**'
-              - 'scripts/**'
-              - 'CMakeLists.txt'
-              - 'setup.*'
-              - '.github/workflows/build.yml'
-
   # ---------------------------------------------------------------------------
-  # Windows/VS2022 — secondary build, validates VS solution generation
+  # Windows/VS2022 — primary build, feeds releases
   # ---------------------------------------------------------------------------
   windows-vs2022:
     name: Windows VS2022
     needs: [prepare]
     if: >-
-      github.event_name != 'pull_request'
+      needs.prepare.result == 'success'
       && (inputs.platform == 'All' || inputs.platform == 'Windows VS2022' || inputs.platform == '')
     runs-on: windows-2022
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -161,8 +122,10 @@ jobs:
           SCCACHE_CACHE_SIZE: 2G
 
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -213,84 +176,24 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Clean stale CMake cache
+      - name: Build + verify + deploy
         shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set "BUILD_DIR=build\%CMAKE_BUILD_PRESET%"
-          if exist "%BUILD_DIR%\CMakeCache.txt" (
-            findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
-            if errorlevel 1 (
-              echo [build] Stale CMakeCache.txt detected (toolset mismatch), removing...
-              del /q "%BUILD_DIR%\CMakeCache.txt"
-              if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
-            )
-          )
-
-      - name: CMake Configure
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-
-      - name: Check NRD availability
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
-            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
-          ) else (
-            echo.
-            echo ========================================================
-            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
-            echo  The release will NOT include NRD denoiser support.
-            echo  Output will be raw noisy radiance.
-            echo ========================================================
-            echo.
-            echo ::warning::NRDPass DISABLED - release will not include NRD denoiser (missing NRD package or D3D12)
-          )
-
-      - name: Build
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }} -- /m
+        continue-on-error: false
+        run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }} --sccache
 
       - name: Print sccache stats
         if: always()
         shell: cmd
         run: sccache --show-stats
 
-      - name: Verify build output
-        shell: cmd
-        run: |
-          set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
-          call scripts\verify-build-output.bat "%OUTDIR%"
-
-      - name: Deploy scripts to build output
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
-          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
-          echo [CI] Deployed scripts to build output
-
-      - name: Headless smoke test
-        if: matrix.config == 'Release'
-        shell: cmd
-        continue-on-error: true   # no GPU on CI — device creation will fail
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
-            echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
-          )
-          exit /b 0
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-vs2022-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
       - name: Upload build artifacts
-        if: matrix.config == 'Release'
         uses: actions/upload-artifact@v6
         with:
           name: falcor-windows-vs2022-${{ matrix.config }}
@@ -299,22 +202,20 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Windows Ninja/MSVC — primary build (fastest), gates PRs + feeds releases
+  # Windows Ninja/MSVC — secondary build, optional
   # ---------------------------------------------------------------------------
   windows-ninja:
     name: Windows Ninja/MSVC
-    needs: [prepare, changes]
+    needs: [prepare]
     if: >-
-      always()
-      && needs.prepare.result == 'success'
-      && (needs.changes.outputs.source == 'true' || github.event_name != 'pull_request')
-      && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja' || inputs.platform == '' || github.event_name != 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch'
+      && (inputs.platform == 'All' || inputs.platform == 'Windows Ninja')
     runs-on: windows-2022
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        # PRs: Debug only; manual dispatch: respect input; pushes: both
-        config: ${{ github.event_name == 'pull_request' && fromJSON('["Debug"]') || inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
+        config: ${{ inputs.config == 'Release' && fromJSON('["Release"]') || inputs.config == 'Debug' && fromJSON('["Debug"]') || fromJSON('["Release", "Debug"]') }}
     env:
       CMAKE_BUILD_PRESET: windows-ninja-msvc-ci
       PM_PACKAGES_ROOT: C:\packman-cache
@@ -330,15 +231,11 @@ jobs:
           arch: x64
           sdk: 10.0.19041.0
 
-      # -- Caching: sccache for compiled objects --------------------------------
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-        env:
-          SCCACHE_CACHE_SIZE: 2G
-
       # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
+      # Split into restore/save so we can strip large link artifacts before saving
+      - name: Restore CMake build cache
+        id: cmake-cache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
           key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
@@ -388,95 +285,17 @@ jobs:
         shell: cmd
         run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
-      - name: Clean stale CMake cache
+      - name: Build + verify + deploy
         shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set "BUILD_DIR=build\%CMAKE_BUILD_PRESET%"
-          if exist "%BUILD_DIR%\CMakeCache.txt" (
-            findstr /C:"host=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
-            if errorlevel 1 (
-              echo [build] Stale CMakeCache.txt detected (toolset mismatch), removing...
-              del /q "%BUILD_DIR%\CMakeCache.txt"
-              if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
-            )
-          )
+        continue-on-error: false
+        run: call scripts\ci-windows-build.bat ${{ env.FALCOR_DIR }} %CMAKE_BUILD_PRESET% ${{ matrix.config }}
 
-      - name: CMake Configure
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --preset %CMAKE_BUILD_PRESET% -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-
-      - name: Check NRD availability
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          if exist "build\%CMAKE_BUILD_PRESET%\Source\RenderPasses\NRDPass" (
-            echo [build] NRDPass: ENABLED (FALCOR_HAS_NRD + D3D12)
-          ) else (
-            echo.
-            echo ========================================================
-            echo  WARNING: NRDPass DISABLED - missing NRD package or D3D12
-            echo  The release will NOT include NRD denoiser support.
-            echo  Output will be raw noisy radiance.
-            echo ========================================================
-            echo.
-            echo ::warning::NRDPass DISABLED - release will not include NRD denoiser (missing NRD package or D3D12)
-          )
-
-      - name: Build
-        shell: cmd
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          tools\.packman\cmake\bin\cmake.exe --build build\%CMAKE_BUILD_PRESET% --config ${{ matrix.config }}
-
-      - name: Print sccache stats
-        if: always()
-        shell: cmd
-        run: sccache --show-stats
-
-      - name: Verify build output
-        shell: cmd
-        run: |
-          set "OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}"
-          call scripts\verify-build-output.bat "%OUTDIR%"
-
-      - name: Deploy scripts to build output
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if not exist "%OUTDIR%\scripts\VisCache" mkdir "%OUTDIR%\scripts\VisCache"
-          xcopy "scripts\*" "%OUTDIR%\scripts\VisCache\" /s /y /q >nul
-          echo [CI] Deployed scripts to build output
-
-      - name: Headless smoke test
-        if: matrix.config == 'Release'
-        shell: cmd
-        continue-on-error: true   # no GPU on CI — device creation will fail
-        run: |
-          cd ${{ env.FALCOR_DIR }}
-          set BINDIR=build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          echo [CI] Attempting headless smoke test (no GPU expected)...
-          %BINDIR%\Mogwai.exe --headless --script %BINDIR%\scripts\VisCache\smoke_test.py 2>&1 || (
-            echo [CI] Mogwai exited with code %ERRORLEVEL% — expected without GPU
-          )
-          exit /b 0
-
-      - name: Bundle Falcor media scenes
-        if: matrix.config == 'Release'
-        shell: cmd
-        run: |
-          set OUTDIR=${{ env.FALCOR_DIR }}\build\%CMAKE_BUILD_PRESET%\bin\${{ matrix.config }}
-          if exist "${{ env.FALCOR_DIR }}\media\Arcade" (
-            xcopy "${{ env.FALCOR_DIR }}\media\Arcade" "%OUTDIR%\media\Arcade\" /s /y /q >nul
-            echo [CI] Bundled Arcade scene
-          )
-          if exist "${{ env.FALCOR_DIR }}\media\TestScenes" (
-            xcopy "${{ env.FALCOR_DIR }}\media\TestScenes" "%OUTDIR%\media\TestScenes\" /s /y /q >nul
-            echo [CI] Bundled TestScenes
-          )
+      - name: Save CMake build cache
+        if: always() && steps.cmake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
+          key: cmake-build-${{ runner.os }}-ninja-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -493,7 +312,7 @@ jobs:
     name: Linux/GCC
     needs: [prepare]
     if: >-
-      github.event_name != 'pull_request'
+      github.event_name == 'workflow_dispatch'
       && (inputs.platform == 'All' || inputs.platform == 'Linux GCC' || inputs.platform == '')
     runs-on: ubuntu-22.04
     continue-on-error: true
@@ -508,6 +327,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: shellcheck
+        run: |
+          sudo apt-get -qq install -y shellcheck
+          shellcheck scripts/integrate-plugins.sh scripts/verify-build-output.sh
 
       - name: Cache Falcor submodules
         uses: actions/cache@v5
@@ -533,39 +357,7 @@ jobs:
           git submodule update --init --depth 1
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev ccache
-
-      - name: Cache ccache
-        uses: actions/cache@v5
-        with:
-          path: ~/.ccache
-          key: ccache-${{ runner.os }}-gcc-${{ matrix.config }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-gcc-${{ matrix.config }}-
-            ccache-${{ runner.os }}-gcc-
-
-      - name: Configure ccache
-        run: |
-          ccache --set-config=max_size=2G
-          ccache --set-config=compression=true
-          ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime
-          ccache -z
-
-      # -- Caching: CMake build directory (incremental builds) -----------------
-      - name: Cache CMake build directory
-        uses: actions/cache@v5
-        with:
-          path: ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}
-          key: cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-${{ hashFiles('Falcor/Source/**/*.cpp', 'Falcor/Source/**/*.h', 'Source/**/*.cpp', 'Source/**/*.h') }}
-          restore-keys: |
-            cmake-build-${{ runner.os }}-gcc-${{ matrix.config }}-
-
-      - name: Cache packman packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/packman
-          key: packman-${{ runner.os }}-${{ hashFiles('Falcor/dependencies.xml') }}
-          restore-keys: packman-
+        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgtk-3-dev
 
       - name: Fetch Falcor packman dependencies
         run: |
@@ -587,8 +379,6 @@ jobs:
           SRCDIR="$(pwd)"
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
             -DFALCOR_VALIDATE_HEADERS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="
 
@@ -611,15 +401,19 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           ./tools/.packman/cmake/bin/cmake --build build/${{ env.CMAKE_BUILD_PRESET }} --config ${{ matrix.config }} -j $(nproc)
 
-      - name: Print ccache stats
-        if: always()
-        run: ccache -s
+      # Linux build validates compilation only — no data/DLL verification
+      # (NRD requires D3D12, data deployment is Windows-specific)
 
-      - name: Verify data file deployment
-        run: bash scripts/verify-build-output.sh "${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin"
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: falcor-linux-gcc-${{ matrix.config }}
+          path: |
+            ${{ env.FALCOR_DIR }}/build/${{ env.CMAKE_BUILD_PRESET }}/bin/
+          retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Dev prerelease — rolling "latest build" on every push to main/master
+  # Dev prerelease — every successful build creates a release
   # ---------------------------------------------------------------------------
   dev-release:
     name: Dev Prerelease
@@ -627,10 +421,8 @@ jobs:
     if: >-
       !cancelled()
       && needs.prepare.result == 'success'
-      && needs.windows-ninja.result == 'success'
-      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_prerelease))
-      && !startsWith(github.ref, 'refs/tags/')
-    needs: [prepare, windows-ninja]
+      && needs.windows-vs2022.result == 'success'
+    needs: [prepare, windows-vs2022]
     env:
       # Release if available, otherwise Debug
       RELEASE_CONFIG: ${{ inputs.config == 'Debug' && 'Debug' || 'Release' }}
@@ -640,10 +432,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
-      - name: Download Ninja build artifact
+      - name: Download VS2022 build artifact
         uses: actions/download-artifact@v7
         with:
-          name: falcor-windows-ninja-${{ env.RELEASE_CONFIG }}
+          name: falcor-windows-vs2022-${{ env.RELEASE_CONFIG }}
           path: release-bin/
 
       - name: Package release archive
@@ -694,7 +486,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [prepare, windows-ninja]
+    needs: [prepare, windows-vs2022]
     steps:
       - name: Checkout
         uses: actions/checkout@v6

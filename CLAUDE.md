@@ -55,7 +55,29 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
 - Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
 
+## Quickstart / Launch Scripts
+
+- Scripts support `--renderer`, `--variant`, `--scene`, and `--interactive` flags
+- Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT) — default: `restirpt`
+- Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to all renderers
+- Interactive mode (`-i`): numbered menus for renderer, variant, and scene selection
+- Graph scripts (vanilla): `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`
+- Graph scripts (VisCache): `MinimalPathTracer_VisCache_Graph.py`, `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`, `ReSTIRPT_VisCache_Graph.py` — thin wrappers that call vanilla with `viscache=True`
+- Each vanilla graph script accepts `viscache=True` to add the VisCache pass; no code duplication between vanilla and VisCache variants
+- There is no `renderer=viscache` — VisCache is always a variant, not a renderer
+
+## Scripting Architecture
+
+- **No duplicated code** — shared logic lives in helper scripts, never copy-pasted between scripts
+  - `deploy_to_release.bat/.sh` — shader/script/data deploy + NRD check + shader validation (called by `quickstart` step 3 and `run_release` before launch)
+  - `quickstart` step 6 delegates to `run_release` (no duplicated scene resolution or Mogwai launch)
+  - `run_release` defaults to interactive mode when called with no arguments
+- When adding new deploy/validation steps, add them to the helper script, not inline
+
 ## Workflow
 
+- **No backwards compatibility** — move forward, don't maintain back-compat aliases or shims
+- **No duplicated code** — extract shared logic into helper scripts; never copy-paste between .bat/.sh files
 - Work step by step for large edits — small incremental Edit calls, not massive Write
 - **Fix all errors encountered**, even pre-existing ones
+- **Never prefix git/shell commands with `cd`** — manage working directory separately via the Bash tool's cwd, not by chaining `cd &&` before commands
