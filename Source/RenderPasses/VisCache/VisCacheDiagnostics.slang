@@ -92,7 +92,7 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level — hash table health
     gVCVarMaturityLevel[pixel] = float4(
         saturate(float(g.probeSteps) / float(kMaxProbe)) + grey,   // R: probe steps [0,maxProbe]→[0,1]
-        saturate(float(g.N) / 256.f) + grey,                       // G: sample count [0,256]→[0,1]
+        saturate(float(g.N) / float(gBootThreshold * 8u)) + grey,   // G: sample count [0,8*boot]→[0,1]
         float(g.level + 1) / max(float(gNumLevels), 1.f) + grey,  // B: LOD level [0,N]→[0,1]
         1.f
     );

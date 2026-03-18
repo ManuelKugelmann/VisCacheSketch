@@ -154,7 +154,7 @@ import random
 random.seed(42)
 
 # Cluster center and radius
-cx, cy, cz = 0.5, 0.55, -0.45
+cx, cy, cz = 0.5, 0.35, -0.45
 cluster_r = 0.25
 n_tets = 15
 

@@ -93,19 +93,19 @@ for exr in glob.glob(os.path.join(kCaptureDir, "*.exr")):
 
     elif "VarMaturityMu" in base:
         # Composite: R=var, G=maturity, B=mu — cache quality
-        ffrun(["-i", exr, "-pix_fmt", "rgb24", out("var_maturity_mu")])
-        ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out("variance")])
-        ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out("maturity")])
-        ffrun(["-i", exr, "-vf", "extractplanes=b", "-pix_fmt", "gray", out("mu")])
-        print(f"[ladder-00] var_maturity_mu.png + variance/maturity/mu channels")
+        ffrun(["-i", exr, "-pix_fmt", "rgb24", out("quality_var_maturity_mu")])
+        ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out("quality__variance")])
+        ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out("quality__maturity")])
+        ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out("quality__mu")])
+        print(f"[ladder-00] quality_var_maturity_mu + splits")
 
     elif "VarMaturityLevel" in base:
         # Composite: R=probeSteps, G=sampleCount, B=level — hash health
-        ffrun(["-i", exr, "-pix_fmt", "rgb24", out("probe_count_level")])
-        ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out("probesteps")])
-        ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out("samplecount")])
-        ffrun(["-i", exr, "-vf", "extractplanes=b", "-pix_fmt", "gray", out("level")])
-        print(f"[ladder-00] probe_count_level.png + probesteps/samplecount/level channels")
+        ffrun(["-i", exr, "-pix_fmt", "rgb24", out("health_probe_count_level")])
+        ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out("health__probesteps")])
+        ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out("health__samplecount")])
+        ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out("health__level")])
+        print(f"[ladder-00] health_probe_count_level + splits")
 
 print(f"[ladder-00] Post-processing done.")
 exit()
