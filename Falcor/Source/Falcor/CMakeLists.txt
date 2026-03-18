@@ -1059,3 +1059,5 @@ endif()
 if(FALCOR_LINUX)
     file(GENERATE OUTPUT ${FALCOR_OUTPUT_DIRECTORY}/setpath.sh INPUT ${CMAKE_SOURCE_DIR}/build_scripts/setpath.sh.in)
 endif()
+
+target_link_options(Falcor PUBLIC $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Debug>>:/NODEFAULTLIB:MSVCRT>)

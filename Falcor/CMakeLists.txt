@@ -520,3 +520,9 @@ endif()
 
 # Make Mogwai the default startup project in VS.
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Mogwai)
+
+# Strip absolute build paths from diagnostics and PDB files for reproducible builds.
+if(MSVC)
+    file(TO_CMAKE_PATH "${CMAKE_SOURCE_DIR}/" _trim_path)
+    add_compile_options("/d1trimfile:${_trim_path}")
+endif()
