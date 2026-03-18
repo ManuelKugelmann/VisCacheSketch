@@ -1,11 +1,15 @@
 # Sponza.pyscene — Crytek Sponza Atrium
 # VisCache paper experiments — classic GI benchmark scene.
 #
-# Expects: sponza.obj + sponza.mtl + textures/ in same directory
-#          or reachable via FALCOR_MEDIA_FOLDERS.
+# Expects: runtime/media/Sponza/ with sponza.obj + textures/
 # Source:  Frank Meinl / Crytek (CC-BY 3.0)
 
-sceneBuilder.importScene('sponza.obj')
+import os
+_dir = os.path.dirname(os.path.abspath(__file__))
+_sponza_obj = os.path.join(_dir, '..', 'runtime', 'media', 'Sponza', 'sponza.obj')
+if not os.path.exists(_sponza_obj):
+    _sponza_obj = 'sponza.obj'  # fallback to asset resolver
+sceneBuilder.importScene(_sponza_obj)
 
 # Camera — classic atrium view from the side corridor
 camera = Camera('VisCacheDefault')
@@ -17,13 +21,13 @@ sceneBuilder.addCamera(camera)
 
 # Directional sunlight — harsh midday sun through the open roof
 sun = DirectionalLight('Sun')
-sun.intensity = float3(4.0, 3.6, 3.0)
+sun.intensity = float3(80.0, 72.0, 60.0)
 sun.direction = float3(0.3, -0.9, 0.2)
 sceneBuilder.addLight(sun)
 
-# Bounce fill — subtle warm fill from the floor
+# Bounce fill — warm fill from the floor
 fill = DirectionalLight('BounceFill')
-fill.intensity = float3(0.15, 0.12, 0.08)
+fill.intensity = float3(3.0, 2.4, 1.8)
 fill.direction = float3(-0.2, -0.3, -0.5)
 sceneBuilder.addLight(fill)
 

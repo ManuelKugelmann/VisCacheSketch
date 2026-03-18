@@ -63,6 +63,12 @@
 #define USE_VISCACHE_JITTER 1
 #endif
 
+// Default addressing to endpoint mode (posB = light position).
+// Set USE_VISCACHE_DIRDIST_ADDRESSING=1 for dir+dist mode (better area light coverage).
+#ifndef USE_VISCACHE_DIRDIST_ADDRESSING
+#define USE_VISCACHE_DIRDIST_ADDRESSING 0
+#endif
+
 // ===========================================================================
 // DATA STRUCTURES
 // ===========================================================================
@@ -294,25 +300,65 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 #endif
 }
 
+// ===========================================================================
+// ADDRESSING MODES
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// vhfAddressPosB: compute the posB used for cache addressing.
+//
+// Two modes (compile-time switch USE_VISCACHE_DIRDIST_ADDRESSING):
+//
+// Endpoint mode (default): posB = target position.
+//   Each unique light sample position maps to a different posB cell.
+//   Works well when few light positions exist (point lights, small area lights).
+//   With large area lights, samples scatter across many posB cells.
+//
+// Dir+dist mode: posB = posA + dir * quantized_distance.
+//   Groups all light samples in the same direction bin and distance bin.
+//   Much better sample accumulation for area lights and env maps.
+//   Distance quantization is coarse (4× coarsest cell size, log-scaled).
+//   No canonicalization — direction is asymmetric (V(A→B) ≠ V(B→A) key).
+// ---------------------------------------------------------------------------
+float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
+{
+#if USE_VISCACHE_DIRDIST_ADDRESSING
+    // Coarse distance quantization: log-scale bins, 4× coarsest cell size.
+    // Groups nearby distances so near/far lights in same direction share entries.
+    float distCell = gCellCoarse * 4.f;
+    float distQ = max(floor(dist / distCell + 0.5f) * distCell, distCell);
+    return posA + dir * distQ;
+#else
+    // Exact endpoint — posB is the light/target position.
+    return posA + dir * dist;
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // Canonical quantization: quantize both endpoints and lexicographic-swap
 // so that V(A,B) and V(B,A) always produce the same (qa, qb) pair.
 //
-// This exploits the symmetry of visibility: if point A can see point B,
-// then point B can see point A. Without canonicalization, the two orderings
-// would hash to different slots, wasting half the table capacity and
-// halving the sample accumulation rate.
+// In endpoint mode: canonicalization halves the table pressure since
+// V(A,B) = V(B,A) for any pair of surface points.
+//
+// In dir+dist mode: NO canonicalization — direction from A toward the light
+// is not the same as direction from the light toward A, so the keys are
+// inherently asymmetric.
 // ---------------------------------------------------------------------------
 void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
                      out int3 qa, out int3 qb)
 {
     qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
     qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
+
+#if !USE_VISCACHE_DIRDIST_ADDRESSING
     // Lexicographic sort ensures V(A,B) == V(B,A) map to same entry.
+    // Skipped in dir+dist mode where keys are asymmetric.
     if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
     {
         int3 tmp = qa; qa = qb; qb = tmp;
     }
+#endif
 }
 
 // ===========================================================================

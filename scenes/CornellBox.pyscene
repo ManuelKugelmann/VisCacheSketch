@@ -180,6 +180,37 @@ for idx in range(n_tets):
     ))
     sceneBuilder.addMeshInstance(node, tetraID)
 
+# Diagonal poles (thin cylinders approximated by elongated cubes)
+pole_mat = StandardMaterial('Pole')
+pole_mat.baseColor = float4(0.6, 0.55, 0.5, 1.0)
+pole_mat.roughness = 0.8
+pole_mat.metallic = 0.0
+
+pole_mesh = TriangleMesh.createCube(float3(0.03, 1.4, 0.03))
+pole_mesh.name = 'Pole'
+poleID = sceneBuilder.addTriangleMesh(pole_mesh, pole_mat)
+
+short_pole = TriangleMesh.createCube(float3(0.03, 0.6, 0.03))
+short_pole.name = 'ShortPole'
+shortPoleID = sceneBuilder.addTriangleMesh(short_pole, pole_mat)
+
+poles = [
+    # (x, y, z, rx, ry, rz, meshID)
+    ( 0.0,  0.7, -0.6,   25,  15,   0, poleID),       # leaning left-forward
+    ( 0.15, 0.7, -0.5,  -20, -10,  30, poleID),       # leaning right, twisted
+    (-0.1,  0.7, -0.55,  15,  40, -15, poleID),       # leaning back-right
+    ( 0.05, 0.7, -0.45, -30,  25,  10, poleID),       # crossing the others
+    ( 0.0,  0.08, -0.5,   85,  20,   0, shortPoleID), # near horizontal, floor
+    ( 0.1,  0.12, -0.4,   92, -35,   0, shortPoleID), # near horizontal, floor
+]
+
+for idx, (tx, ty, tz, rx, ry, rz, mid) in enumerate(poles):
+    node = sceneBuilder.addNode(f'Pole_{idx}', Transform(
+        translation=float3(tx, ty, tz),
+        rotationEulerDeg=float3(rx, ry, rz),
+    ))
+    sceneBuilder.addMeshInstance(node, mid)
+
 # Camera
 camera = Camera('CornellBoxCam')
 camera.position = float3(0.0, 1.0, -3.5)

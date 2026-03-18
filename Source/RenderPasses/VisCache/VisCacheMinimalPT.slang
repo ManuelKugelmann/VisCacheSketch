@@ -20,7 +20,7 @@ import Utils.Sampling.SampleGenerator;
 float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
                             inout SampleGenerator sg)
 {
-    float3 posB = posA + dir * distance;
+    float3 posB = vhfAddressPosB(posA, dir, distance);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(sg));
 
     if (g.shouldTrace)
@@ -35,7 +35,7 @@ float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
 float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
                             inout SampleGenerator sg, uint2 pixel)
 {
-    float3 posB = posA + dir * distance;
+    float3 posB = vhfAddressPosB(posA, dir, distance);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(sg));
 
     if (g.shouldTrace)

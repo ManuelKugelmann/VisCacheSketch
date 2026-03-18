@@ -175,7 +175,10 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
-        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck)
+        bool wasDirDist = mVisCacheDirDistAddr;
+        mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
+        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
+            || mVisCacheDirDistAddr != wasDirDist)
             mTracer.pVars = nullptr;  // force recompile on toggle
     }
 
@@ -190,6 +193,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     mTracer.pProgram->addDefine("USE_ENV_BACKGROUND", mpScene->useEnvBackground() ? "1" : "0");
     mTracer.pProgram->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
     mTracer.pProgram->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
+    mTracer.pProgram->addDefine("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.

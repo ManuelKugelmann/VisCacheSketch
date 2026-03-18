@@ -746,7 +746,8 @@ float evalSegmentVisibilityWeight(const float3 sourceVertex, const float3 target
     // For directions (env map), encode the direction as a position using
     // vhfEncodeDirection() so it can be hashed into the table's angular
     // binning scheme (octant-level bins at the coarsest LOD).
-    float3 vcPosB = isDirection ? vhfEncodeDirection(targetVertex) : targetVertex;
+    float3 vcPosB = isDirection ? vhfEncodeDirection(targetVertex)
+                                  : vhfAddressPosB(sourceVertex, dir, tMax);
 
     // Deterministic xi: same cell pair → same coin flip → no flicker.
     VHFGateResult vcGate = vhfGate(sourceVertex, vcPosB,

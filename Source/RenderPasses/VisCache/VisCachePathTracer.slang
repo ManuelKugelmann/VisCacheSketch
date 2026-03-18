@@ -21,14 +21,15 @@ import Utils.Sampling.SampleGenerator;
 float vcVisibility_Ray<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg)
 {
-    float3 posB = ray.origin + ray.dir * ray.tMax;
-    VHFGateResult g = vhfGate(ray.origin, posB, sampleNext1D(sg));
+    float3 posA = ray.origin;
+    float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(sg));
 
     if (g.shouldTrace)
     {
         SceneRayQuery<UseAlphaTest> sceneRayQuery;
         float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
-        return vhfCommit(ray.origin, posB, V, g);
+        return vhfCommit(posA, posB, V, g);
     }
     return g.visWeight;
 }
@@ -38,7 +39,7 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel)
 {
     float3 posA = ray.origin;
-    float3 posB = ray.origin + ray.dir * ray.tMax;
+    float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(sg));
 
     if (g.shouldTrace)

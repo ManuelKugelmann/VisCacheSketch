@@ -91,4 +91,5 @@ private:
              uint32_t numLevels=0; float cellCoarse=0, cellFine=0; uint32_t enableJitter=1; } mVCParams;
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
+    bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
 };

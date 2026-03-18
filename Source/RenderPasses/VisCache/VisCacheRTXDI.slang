@@ -29,7 +29,7 @@ float vcVisibility_InlineRay<S : ISampleGenerator>(
     inout S sg,
     float contribLuminance = 0.f)
 {
-    float3 posB = posA + dir * distance;
+    float3 posB = vhfAddressPosB(posA, dir, distance);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(sg), contribLuminance);
 
     if (g.shouldTrace)
@@ -49,7 +49,7 @@ float vcVisibility_InlineRay<S : ISampleGenerator>(
     uint2 pixel,
     float contribLuminance = 0.f)
 {
-    float3 posB = posA + dir * distance;
+    float3 posB = vhfAddressPosB(posA, dir, distance);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(sg), contribLuminance);
 
     if (g.shouldTrace)

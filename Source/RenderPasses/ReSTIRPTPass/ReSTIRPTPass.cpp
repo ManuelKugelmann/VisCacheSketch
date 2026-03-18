@@ -1536,13 +1536,16 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         bool wasJitter = mVisCacheJitter;
         mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
             || dict.getValue<bool>("vhfEnableJitter");  // default ON
+        bool wasDirDist = mVisCacheDirDistAddr;
+        mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
 
         // Recompile only when a flag actually changes — avoids unnecessary
         // shader recompilation on frames where the dict values are stable.
         if (mVisCacheAvailable != wasAvailable ||
             mVisCacheVisibilityCheck != wasVisCheck ||
             mVisCacheLightSelection != wasLightSel ||
-            mVisCacheJitter != wasJitter)
+            mVisCacheJitter != wasJitter ||
+            mVisCacheDirDistAddr != wasDirDist)
             mRecompile = true;
     }
 
@@ -1945,6 +1948,7 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
+    defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
     defines.add("USE_LOCAL_CVRRR", owner.mLocalCVRRR ? "1" : "0");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).

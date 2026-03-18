@@ -15,7 +15,9 @@ from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
 
 kWarmupFrames = 1024
-kCaptureDir   = "captures/ladder/00_bare"
+scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
+scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+kCaptureDir   = f"captures/ladder/00_bare_{scene_name}"
 
 # Override defaults for bare minimum config
 overrides = {
@@ -50,7 +52,6 @@ for k in overrides:
 
 m.addGraph(g)
 
-scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
 m.loadScene(scene_file)
 
 os.makedirs(kCaptureDir, exist_ok=True)

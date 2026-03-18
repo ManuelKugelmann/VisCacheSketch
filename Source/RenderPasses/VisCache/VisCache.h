@@ -99,6 +99,7 @@ public:
         bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
+        bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (vs endpoint pairs)
     };
 
     const Params& getParams() const { return mParams; }
