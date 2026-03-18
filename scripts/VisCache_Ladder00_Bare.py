@@ -14,12 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
 
-kWarmupFrames = 64
+kWarmupFrames = 1024
 kCaptureDir   = "captures/ladder/00_bare"
 
 # Override defaults for bare minimum config
 overrides = {
     "numLevels": 1,
+    "bootThreshold": 4,      # low threshold — mature quickly for visualization
     "pMin": 1.0,             # always trace — no RR skipping
     "enableVisCacheJitter": False,
     "enableVisCacheVarianceGate": False,

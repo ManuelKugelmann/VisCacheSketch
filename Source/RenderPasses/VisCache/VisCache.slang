@@ -471,22 +471,72 @@ VHFResult vhfLookup(float3 posA, float3 posB)
 
         VHFEntry e  = gVHFTable[slot];
         uint total  = e.packed & 0xFFFFu;
-        if (total < gBootThreshold || total == 0u) break;  // Not enough samples — stop
+        if (total == 0u) break;
 
         uint  vis = e.packed >> 16u;
         float mu  = float(vis) / float(total);
         float var = mu * (1.0f - mu);  // Bernoulli variance
 
-        // This level is mature — record as current best.
+        // Always record entry data (even immature) so diagnostics can show it.
+        // valid is only set when mature (>= bootThreshold) — the gate uses
+        // valid to decide whether to trust the entry for RR decisions.
         best.mu    = mu;
         best.var   = var;
         best.level = lvl;
         best.N     = total;
-        best.valid = true;
+        if (total >= gBootThreshold)
+            best.valid = true;
+
+        // Immature entry: don't stop cascade, let finer levels try.
+        if (total < gBootThreshold) continue;
 
         // Variance gate: if this level is converged (low variance),
         // finer levels would produce the same estimate. Stop early.
         if (var <= gVarThreshold) break;
+    }
+
+    return best;
+}
+
+// ---------------------------------------------------------------------------
+// vhfLookupRaw: diagnostic variant that returns entry data even below
+// bootThreshold. Returns the finest level that has ANY samples (total > 0).
+// Used by vcWriteDiag to show mu/level for immature entries.
+// ---------------------------------------------------------------------------
+VHFResult vhfLookupRaw(float3 posA, float3 posB)
+{
+    VHFResult best;
+    best.mu    = 0.5f;
+    best.var   = 0.5f;
+    best.level = -1;
+    best.N     = 0u;
+    best.valid = false;
+
+    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
+    {
+        float cs = vhfCellSize(lvl);
+        int3 qa, qb;
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
+
+        uint fp   = vhfFingerprint(qa, qb, uint(lvl));
+        uint addr = vhfAddr(qa, qb, uint(lvl));
+        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+
+        if (slot < 0) break;
+
+        VHFEntry e  = gVHFTable[slot];
+        uint total  = e.packed & 0xFFFFu;
+        if (total == 0u) break;
+
+        uint  vis = e.packed >> 16u;
+        float mu  = float(vis) / float(total);
+        float var = mu * (1.0f - mu);
+
+        best.mu    = mu;
+        best.var   = var;
+        best.level = lvl;
+        best.N     = total;
+        best.valid = (total >= gBootThreshold);  // valid only if mature
     }
 
     return best;
@@ -555,17 +605,19 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     VHFGateResult g;
     VHFResult r = vhfLookup(posA, posB);
 
-    // Cold miss: no mature entry at any level. Must trace unconditionally.
+    // No mature entry: must trace unconditionally.
     // invP = 1 means the commit weight is just V (no correction needed).
+    // Pass through immature data (mu, level, N) if any entry exists — the
+    // diagnostic uses these even though the RR decision doesn't trust them.
     if (!r.valid)
     {
         g.shouldTrace = true;
         g.visWeight   = 0.f;
-        g.mu          = 0.f;
+        g.mu          = r.mu;     // immature mu if entry exists, 0.5 if no entry
         g.invP        = 1.f;
-        g.var         = 1.f;
-        g.level       = -1;
-        g.N           = 0u;
+        g.var         = r.var;    // immature var if entry exists, 0.5 if no entry
+        g.level       = r.level;  // -1 if truly no entry, else immature level
+        g.N           = r.N;      // 0 if no entry, else immature sample count
         return g;
     }
 
@@ -781,7 +833,10 @@ void vhfInsert(float3 posA, float3 posB, float V)
 
         // Gate 1: maturity — skip entries with enough samples.
         // Decay periodically un-matures entries for revalidation.
-        if (vhfIsMature(addr, fp)) continue;
+        // Never skip the finest level — always keep it populated for
+        // maximum spatial resolution at shadow boundaries.
+        bool isFinestLevel = (lvl == int(gNumLevels) - 1);
+        if (!isFinestLevel && vhfIsMature(addr, fp)) continue;
 
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
         if (slot < 0) continue;  // Table full at this probe depth

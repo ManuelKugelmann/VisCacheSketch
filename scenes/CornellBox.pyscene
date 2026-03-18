@@ -3,20 +3,33 @@
 # Built with Falcor's TriangleMesh API. All normals face inward.
 # Camera at -Z looking into the box.
 
-# Materials
+# Materials — perfectly diffuse walls (roughness=1)
 white = StandardMaterial('White')
 white.baseColor = float4(0.73, 0.73, 0.73, 1.0)
+white.roughness = 1.0
+white.metallic = 0.0
 
 red = StandardMaterial('Red')
 red.baseColor = float4(0.65, 0.05, 0.05, 1.0)
+red.roughness = 1.0
+red.metallic = 0.0
 
 green = StandardMaterial('Green')
 green.baseColor = float4(0.12, 0.45, 0.15, 1.0)
+green.roughness = 1.0
+green.metallic = 0.0
+
+# Shiny box material (metallic mirror-like)
+shiny = StandardMaterial('Shiny')
+shiny.baseColor = float4(0.9, 0.9, 0.9, 1.0)
+shiny.roughness = 0.05
+shiny.metallic = 1.0
 
 light_mat = StandardMaterial('Light')
 light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
-light_mat.emissiveColor = float3(50.0, 40.0, 30.0)
+light_mat.emissiveColor = float3(80.0, 65.0, 50.0)
 light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
 
 def addQuad(name, mat, p0, p1, p2, p3, nx, ny, nz):
     """Add a quad with explicit normal. Vertices in CCW order when viewed from normal direction."""
@@ -39,62 +52,113 @@ B, T =  0.0, 2.0
 Bk   =  1.0       # back wall Z
 Fr   = -1.0       # front (open) Z — camera side
 
-# Floor: normal UP (0,1,0) — CCW when viewed from above
+# Floor: normal UP (0,1,0)
 addQuad('Floor', white,
     float3(L, B, Bk), float3(R, B, Bk), float3(R, B, Fr), float3(L, B, Fr),
     0, 1, 0)
 
-# Ceiling: normal DOWN (0,-1,0) — CCW when viewed from below
+# Ceiling: normal DOWN (0,-1,0)
 addQuad('Ceiling', white,
     float3(L, T, Fr), float3(R, T, Fr), float3(R, T, Bk), float3(L, T, Bk),
     0, -1, 0)
 
-# Back wall: normal toward camera (0,0,-1) — CCW when viewed from -Z
+# Back wall: normal toward camera (0,0,-1)
 addQuad('BackWall', white,
     float3(R, B, Bk), float3(L, B, Bk), float3(L, T, Bk), float3(R, T, Bk),
     0, 0, -1)
 
-# Left wall (green): normal RIGHT (1,0,0) — CCW when viewed from +X
-addQuad('LeftWall', green,
+# Left wall (X=-1, appears screen-right → red)
+addQuad('LeftWall', red,
     float3(L, B, Fr), float3(L, B, Bk), float3(L, T, Bk), float3(L, T, Fr),
     1, 0, 0)
 
-# Right wall (red): normal LEFT (-1,0,0) — CCW when viewed from -X
-addQuad('RightWall', red,
+# Right wall (X=+1, appears screen-left → green)
+addQuad('RightWall', green,
     float3(R, B, Bk), float3(R, B, Fr), float3(R, T, Fr), float3(R, T, Bk),
     -1, 0, 0)
 
-# Ceiling light: normal DOWN (0,-1,0) — emits into the room
+# Ceiling light: wide area light for visible penumbrae
 addQuad('CeilingLight', light_mat,
-    float3(-0.3, 1.98, 0.3), float3(0.3, 1.98, 0.3), float3(0.3, 1.98, -0.3), float3(-0.3, 1.98, -0.3),
+    float3(-0.25, 1.98, -0.25), float3(0.25, 1.98, -0.25), float3(0.25, 1.98, 0.25), float3(-0.25, 1.98, 0.25),
     0, -1, 0)
 
-# Tall box (left side, slightly rotated)
+# Tall box (left, diffuse)
 tall = TriangleMesh.createCube(float3(0.6, 1.2, 0.6))
 tall.name = 'TallBox'
 tallID = sceneBuilder.addTriangleMesh(tall, white)
 tallNode = sceneBuilder.addNode('TallBox', Transform(
-    translation=float3(-0.35, 0.6, 0.3),
-    rotationEulerDeg=float3(0, 15, 0),
+    translation=float3(0.35, 0.6, 0.3),
+    rotationEulerDeg=float3(0, -15, 0),
 ))
 sceneBuilder.addMeshInstance(tallNode, tallID)
 
-# Short box (right side, slightly rotated)
+# Short box (right, diffuse white)
 short = TriangleMesh.createCube(float3(0.6, 0.6, 0.6))
 short.name = 'ShortBox'
 shortID = sceneBuilder.addTriangleMesh(short, white)
 shortNode = sceneBuilder.addNode('ShortBox', Transform(
-    translation=float3(0.35, 0.3, -0.2),
-    rotationEulerDeg=float3(0, -15, 0),
+    translation=float3(-0.35, 0.3, -0.2),
+    rotationEulerDeg=float3(0, 15, 0),
 ))
 sceneBuilder.addMeshInstance(shortNode, shortID)
 
+# Floating sphere (shiny, above short box)
+sphere = TriangleMesh.createSphere(radius=0.25, segmentsU=48, segmentsV=48)
+sphere.name = 'Sphere'
+sphereID = sceneBuilder.addTriangleMesh(sphere, shiny)
+sphereNode = sceneBuilder.addNode('Sphere', Transform(
+    translation=float3(-0.4, 1.1, 0.4),
+))
+sceneBuilder.addMeshInstance(sphereNode, sphereID)
+
+# Floating tetrahedron (diffuse, above short box)
+import math
+tetra = TriangleMesh()
+tetra.name = 'Tetrahedron'
+s = 0.3  # edge length
+h = s * math.sqrt(2.0/3.0)
+# Vertices of a regular tetrahedron centered at origin
+v0 = float3( s/2,  -h/2,  -s/(2*math.sqrt(3)))
+v1 = float3(-s/2,  -h/2,  -s/(2*math.sqrt(3)))
+v2 = float3( 0.0,  -h/2,   s*math.sqrt(3)/2 - s/(2*math.sqrt(3)))
+v3 = float3( 0.0,   h/2,   0.0)
+# Face normals (outward)
+def sub(a, b): return float3(a.x-b.x, a.y-b.y, a.z-b.z)
+def cross(a, b): return float3(a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x)
+def norm(v):
+    l = (v.x**2+v.y**2+v.z**2)**0.5
+    return float3(v.x/l, v.y/l, v.z/l) if l>0 else float3(0,1,0)
+uv = float2(0,0)
+# Bottom face (v0, v2, v1)
+n = norm(cross(sub(v2,v0), sub(v1,v0)))
+i = tetra.addVertex(v0, n, uv); tetra.addVertex(v2, n, uv); tetra.addVertex(v1, n, uv)
+tetra.addTriangle(i, i+1, i+2)
+# Front face (v0, v1, v3)
+n = norm(cross(sub(v1,v0), sub(v3,v0)))
+i = tetra.addVertex(v0, n, uv); tetra.addVertex(v1, n, uv); tetra.addVertex(v3, n, uv)
+tetra.addTriangle(i, i+1, i+2)
+# Left face (v1, v2, v3)
+n = norm(cross(sub(v2,v1), sub(v3,v1)))
+i = tetra.addVertex(v1, n, uv); tetra.addVertex(v2, n, uv); tetra.addVertex(v3, n, uv)
+tetra.addTriangle(i, i+1, i+2)
+# Right face (v2, v0, v3)
+n = norm(cross(sub(v0,v2), sub(v3,v2)))
+i = tetra.addVertex(v2, n, uv); tetra.addVertex(v0, n, uv); tetra.addVertex(v3, n, uv)
+tetra.addTriangle(i, i+1, i+2)
+
+tetraID = sceneBuilder.addTriangleMesh(tetra, white)
+tetraNode = sceneBuilder.addNode('Tetrahedron', Transform(
+    translation=float3(0.5, 0.22, -0.5),
+    rotationEulerDeg=float3(173, 55, 8),
+))
+sceneBuilder.addMeshInstance(tetraNode, tetraID)
+
 # Camera
 camera = Camera('CornellBoxCam')
-camera.position = float3(0.0, 1.0, -2.8)
+camera.position = float3(0.0, 1.0, -3.5)
 camera.target   = float3(0.0, 1.0, 0.0)
 camera.up       = float3(0.0, 1.0, 0.0)
-camera.focalLength = 35.0
+camera.focalLength = 25.0
 sceneBuilder.addCamera(camera)
 
 settings = sceneBuilder.renderSettings

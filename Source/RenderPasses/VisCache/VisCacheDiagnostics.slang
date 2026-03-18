@@ -44,28 +44,31 @@ RWTexture2D<float>  gVCNoise;          ///< Per-pixel noise EMA (variance)
 /// @param V           Ground-truth visibility (only valid when traced=true).
 void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V)
 {
-    gVCDiag[pixel] = float4(
-        g.mu,                           // R: cached mean visibility [0,1]
-        g.var,                          // G: Bernoulli variance [0,0.25]
-        float(g.level + 1),             // B: LOD level+1 (0=miss, 1=L0, 2=L1, ...)
-        traced ? 0.f : 1.f             // A: 1=ray saved, 0=ray traced
-    );
-
     gVCDiagError[pixel] = traced ? abs(g.mu - V) : 0.f;
 
-    // Composite heatmap: 3 diagnostics in one RGB image, pre-normalized to [0,1].
+    // Show exactly what the algorithm sees — the gate result from vhfLookup.
+    // No extra lookups. Three visual states:
+    //   black (0,0,0)     = no write (no NEE, background, specular)
+    //   mid-grey (0.3)    = true miss (no hash entry at all)
+    //   colored            = entry exists — uses real mu/var/level/N data
+    //                        (including immature entries below bootThreshold)
+    bool noEntry = (g.level < 0);
+    float grey = noEntry ? 0.3f : 0.f;
+    float diagVar = noEntry ? 0.f : g.var;
+
+    gVCDiag[pixel] = float4(g.mu, diagVar, float(g.level + 1), traced ? 0.f : 1.f);
+
     gVCVarMaturityLevel[pixel] = float4(
-        saturate(g.var * 4.f),                              // R: variance / 0.25
-        saturate(float(g.N) / float(gBootThreshold)),       // G: maturity
-        float(g.level + 1) / float(gNumLevels),             // B: LOD level
+        saturate(diagVar * 4.f) + grey,                          // R: variance
+        saturate(float(g.N) / float(gBootThreshold)) + grey,    // G: maturity
+        float(g.level + 1) / max(float(gNumLevels), 1.f) + grey, // B: LOD level
         1.f
     );
 
-    // Composite 2: same R,G but B = mu instead of level.
     gVCVarMaturityMu[pixel] = float4(
-        saturate(g.var * 4.f),
-        saturate(float(g.N) / float(gBootThreshold)),
-        g.mu,                                                // B: cached mu
+        saturate(diagVar * 4.f) + grey,
+        saturate(float(g.N) / float(gBootThreshold)) + grey,
+        g.mu + grey,                                              // B: cached mu
         1.f
     );
 
