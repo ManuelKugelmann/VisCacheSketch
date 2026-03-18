@@ -17,7 +17,6 @@ from PathTracer_Graph import render_graph_PathTracer
 kWarmupFrames = 1024
 scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
 scene_name = os.path.splitext(os.path.basename(scene_file))[0]
-kCaptureDir   = f"captures/ladder/00_bare_{scene_name}"
 
 # Override defaults for bare minimum config
 overrides = {
@@ -28,11 +27,15 @@ overrides = {
     "bootThreshold": 4,      # low threshold — mature quickly for visualization
     "pMin": 1.0,             # always trace — no RR skipping
     "enableVisCacheJitter": False,
+    "enableVisCacheDirDistAddr": True,
     "enableVisCacheVarianceGate": False,
     "enableVisCacheWarpReduction": False,
     "enableVisCacheDecay": False,
     "enableVisCachePressureEvict": False,
 }
+
+addr_mode = "pointXdirdist" if overrides.get("enableVisCacheDirDistAddr", False) else "pointXpoint"
+kCaptureDir = f"captures/ladder/00_{addr_mode}_{scene_name}"
 
 # Apply overrides
 saved = {}

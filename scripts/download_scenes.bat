@@ -182,6 +182,11 @@ if not exist "%MEDIA_DIR%\Sponza" (
             rmdir /S /Q "%MEDIA_DIR%\Sponza\%%S" 2>nul
         )
     )
+    REM Fix Crytek Sponza MTL: d 0.000000 (fully transparent) -> d 1.000000 (opaque)
+    if exist "%MEDIA_DIR%\Sponza\sponza.mtl" (
+        powershell -Command "(Get-Content '%MEDIA_DIR%\Sponza\sponza.mtl') -replace '^d 0\.000000$','d 1.000000' | Set-Content '%MEDIA_DIR%\Sponza\sponza.mtl'"
+        echo [scenes] Fixed Sponza MTL opacity
+    )
     REM Copy pyscene from repo if not already present
     if not exist "%MEDIA_DIR%\Sponza\Sponza.pyscene" (
         if exist "%SCENES_DIR%\Sponza.pyscene" (

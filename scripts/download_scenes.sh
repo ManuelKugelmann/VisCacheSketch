@@ -169,6 +169,12 @@ if [ ! -d "$MEDIA_DIR/Sponza" ]; then
     case "$yn" in
         [Yy]*)
             download_and_extract "Sponza" "$SPONZA_URL"
+            # Fix Crytek Sponza MTL: d 0.000000 (fully transparent) → d 1.000000 (opaque)
+            # This is a known bug in the Crytek Sponza OBJ distribution.
+            if [ -f "$MEDIA_DIR/Sponza/sponza.mtl" ]; then
+                sed -i 's/^d 0\.000000$/d 1.000000/' "$MEDIA_DIR/Sponza/sponza.mtl"
+                echo "[scenes] Fixed Sponza MTL opacity (d 0.0 → d 1.0)"
+            fi
             # Copy pyscene from repo if not already present
             if [ ! -f "$MEDIA_DIR/Sponza/Sponza.pyscene" ] && [ -f "$SCENES_DIR/Sponza.pyscene" ]; then
                 cp "$SCENES_DIR/Sponza.pyscene" "$MEDIA_DIR/Sponza/Sponza.pyscene"

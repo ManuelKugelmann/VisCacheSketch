@@ -1,37 +1,35 @@
 # Sponza.pyscene — Crytek Sponza Atrium
-# VisCache paper experiments — classic GI benchmark scene.
+# Classic GI benchmark — sun through open roof.
 #
 # Expects: runtime/media/Sponza/ with sponza.obj + textures/
-# Source:  Frank Meinl / Crytek (CC-BY 3.0)
 
 import os
 _dir = os.path.dirname(os.path.abspath(__file__))
 _sponza_obj = os.path.join(_dir, '..', 'runtime', 'media', 'Sponza', 'sponza.obj')
 if not os.path.exists(_sponza_obj):
-    _sponza_obj = 'sponza.obj'  # fallback to asset resolver
+    _sponza_obj = 'sponza.obj'
 sceneBuilder.importScene(_sponza_obj)
 
-# Camera — classic atrium view from the side corridor
+# Camera — classic atrium view
 camera = Camera('VisCacheDefault')
-camera.position = float3(-11.0, 4.0,  0.0)
-camera.target   = float3(  0.0, 2.0,  0.0)
-camera.up       = float3(  0.0, 1.0,  0.0)
-camera.focalLength = 24.0
+# Sponza OBJ is in centimeters (~3600 wide, ~1500 tall, ~2300 deep)
+# Classic view: from one end of the atrium looking down the length
+# The atrium runs along X with open roof above
+camera.position = float3(-800.0, 200.0, -150.0)
+camera.target   = float3(600.0, 150.0, 50.0)
+camera.up       = float3(0.0, 1.0, 0.0)
+camera.focalLength = 21.0
+camera.farPlane = 10000.0
 sceneBuilder.addCamera(camera)
 
-# Directional sunlight — harsh midday sun through the open roof
+# Sun — harsh midday through the open roof
 sun = DirectionalLight('Sun')
-sun.intensity = float3(80.0, 72.0, 60.0)
-sun.direction = float3(0.3, -0.9, 0.2)
+sun.intensity = float3(300.0, 270.0, 220.0)
+sun.direction = float3(0.1, -1.0, 0.05)
 sceneBuilder.addLight(sun)
 
-# Bounce fill — warm fill from the floor
-fill = DirectionalLight('BounceFill')
-fill.intensity = float3(3.0, 2.4, 1.8)
-fill.direction = float3(-0.2, -0.3, -0.5)
-sceneBuilder.addLight(fill)
-
-# Render settings
+# Render settings — sun + sky only, no fill
 settings = sceneBuilder.renderSettings
 settings.useAnalyticLights = True
 settings.useEmissiveLights = True
+settings.useEnvLight = True
