@@ -165,9 +165,8 @@ echo "========================================"
 echo " Step 3: Copy newer shaders, data, etc. to release"
 echo "========================================"
 if [ -d "$RELEASE_DIR" ]; then
-    echo "[quickstart] step 3 deploy shaders, scripts, data from source tree to release"
-    export ROOT_DIR RELEASE_DIR
-    source "$SCRIPT_DIR/deploy_to_release.sh"
+    echo "[quickstart] step 3 sync shaders, scripts, data from source tree to release"
+    bash "${ROOT_DIR}/.scripts/sync_to_release.sh"
 else
     echo "[quickstart] step 3 deploy shaders, scripts, data -- skipped (no release found)"
 fi

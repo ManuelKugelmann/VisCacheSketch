@@ -41,18 +41,12 @@ if [ -d "${SCRIPT_DIR}/.githooks" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Steps 2-3: Integrate plugins (copy sources + data + tests, patch CMake)
+# Steps 2-3: Plugin integration
 # ---------------------------------------------------------------------------
-# NOTE: Sources must be copied BEFORE Falcor setup because setup may run
-# cmake configure. If CMakeLists.txt already has add_subdirectory(ReSTIRPTPass)
-# from a prior run, cmake will fail unless the source directories exist.
-log "Steps 2-3: Integrating plugins into Falcor tree..."
-
-# Restore from git to discard any corruption from prior runs
-git -C "${FALCOR_ROOT}" checkout -- Source/RenderPasses/CMakeLists.txt 2>/dev/null || true
-
-# Delegate to the shared integrate-plugins script (same script used by CI).
-bash "${SCRIPT_DIR}/scripts/integrate-plugins.sh" "${FALCOR_ROOT}"
+# Plugins build in-place via FALCOR_PLUGIN_DIRS (no source copy needed).
+# CMake patches are committed in the Falcor subtree.
+# Scripts, data, and shaders are deployed by CMake POST_BUILD rules.
+log "Steps 2-3: Plugin integration handled by CMake (no copy needed)"
 
 # ---------------------------------------------------------------------------
 # Step 4: Run Falcor's own setup (submodules + packman deps)

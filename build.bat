@@ -95,15 +95,12 @@ if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
     set "CMAKE=%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe"
 )
 
-if exist "!BUILD_DIR!\CMakeCache.txt" (
-    echo [build] CMake cache exists, skipping configure
-) else (
-    echo [build] Configuring: %CMAKE% --preset %PRESET%
-    "%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%"
-    if errorlevel 1 (
-        echo [build] ERROR: CMake configure failed!
-        exit /b 1
-    )
+set "PLUGIN_DIRS=%ROOT%Source\RenderPasses\VisCache;%ROOT%Source\RenderPasses\ReSTIRPTPass"
+echo [build] Configuring: %CMAKE% --preset %PRESET%
+"%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%" -DFALCOR_PLUGIN_DIRS="!PLUGIN_DIRS!" -DFALCOR_RUNTIME_OUTPUT_DIRECTORY="%ROOT%release"
+if errorlevel 1 (
+    echo [build] ERROR: CMake configure failed!
+    exit /b 1
 )
 
 REM VS2022 presets use MSBuild (/m for parallel); Ninja presets use native parallel
@@ -151,10 +148,9 @@ if not exist "!BUILD_OUT!\Mogwai.exe" (
     goto :done
 )
 
-echo [build] Copying build output to %RELEASE_DIR%\
-if not exist "%RELEASE_DIR%" mkdir "%RELEASE_DIR%"
-xcopy /E /I /Q /Y "!BUILD_OUT!\*" "%RELEASE_DIR%\" >nul
-echo [build] Deployed to %RELEASE_DIR%\
+REM Build output goes directly to release/ via FALCOR_RUNTIME_OUTPUT_DIRECTORY.
+REM Shaders deployed by target_copy_shaders(), data by target_copy_data().
+echo [build] Build output is in %RELEASE_DIR%\ (no copy needed)
 
 :done
 echo.

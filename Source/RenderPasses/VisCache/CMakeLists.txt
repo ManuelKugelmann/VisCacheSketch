@@ -14,6 +14,17 @@ target_sources(VisCachePass PRIVATE
 
 target_copy_shaders(VisCachePass RenderPasses/VisCache)
 
+# Deploy project scripts to build output (graph configs, smoke tests, etc.)
+set(_viscache_project_root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${_viscache_project_root}/scripts/smoke_test.py")
+    add_custom_command(TARGET VisCachePass POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${_viscache_project_root}/scripts"
+            "${FALCOR_OUTPUT_DIRECTORY}/scripts/VisCache"
+        COMMENT "VisCachePass: Deploying project scripts"
+    )
+endif()
+
 target_source_group(VisCachePass "RenderPasses")
 
 # ---------------------------------------------------------------------------

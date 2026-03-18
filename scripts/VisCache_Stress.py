@@ -21,14 +21,11 @@ kFlythroughFrames = 300   # total frames for flythrough
 kCaptureDir       = "captures/stress"
 
 # Camera keyframes: positions for a room traversal
-# These are relative — actual positions depend on scene scale.
-# The flythrough moves the camera linearly between waypoints.
 CAMERA_WAYPOINTS = [
-    # (position_x, position_y, position_z, target_x, target_y, target_z)
-    (0.0,  1.6,  0.0,   5.0,  1.6,  0.0),   # start: looking forward
-    (5.0,  1.6,  0.0,   5.0,  1.6, -5.0),   # turn corner
-    (5.0,  1.6, -5.0,   0.0,  1.6, -5.0),   # look across room
-    (0.0,  1.6, -5.0,   0.0,  1.6,  0.0),   # return to start area
+    (0.0,  1.6,  0.0,   5.0,  1.6,  0.0),
+    (5.0,  1.6,  0.0,   5.0,  1.6, -5.0),
+    (5.0,  1.6, -5.0,   0.0,  1.6, -5.0),
+    (0.0,  1.6, -5.0,   0.0,  1.6,  0.0),
 ]
 
 
@@ -44,10 +41,7 @@ def get_camera_at_frame(frame, total_frames):
     t_local = t_global - segment
 
     wp = CAMERA_WAYPOINTS[segment]
-    if segment + 1 < num_segments:
-        wp_next = CAMERA_WAYPOINTS[segment + 1]
-    else:
-        wp_next = CAMERA_WAYPOINTS[segment]
+    wp_next = CAMERA_WAYPOINTS[segment + 1] if segment + 1 < num_segments else wp
 
     pos = (lerp(wp[0], wp_next[0], t_local),
            lerp(wp[1], wp_next[1], t_local),
@@ -58,22 +52,13 @@ def get_camera_at_frame(frame, total_frames):
     return pos, tgt
 
 
-# ---------------------------------------------------------------------------
-# Build graph: full ReSTIR PT + VisCache pipeline
-# ---------------------------------------------------------------------------
-import importlib.util, sys
-
-spec = importlib.util.spec_from_file_location(
-    "ReSTIRPT_Graph",
-    os.path.join(os.path.dirname(__file__), "ReSTIRPT_Graph.py")
-)
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-g = mod.render_graph_ReSTIRPT(viscache=True)
-m.addGraph(g)
+# Load render_graph_ReSTIRPT into this namespace
+_graph_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ReSTIRPT_Graph.py")
+with open(_graph_path, "r") as _f:
+    exec(compile(_f.read(), _graph_path, "exec"))
 
 # ---------------------------------------------------------------------------
-# Capture: every frame, with camera animation
+# Stress test configs — fresh graph per config
 # ---------------------------------------------------------------------------
 CONFIGS = [
     ("full_viscache", {}),
@@ -83,36 +68,30 @@ CONFIGS = [
 for (name, overrides) in CONFIGS:
     print(f"[Stress] Running flythrough: {name}")
 
-    # Apply config
-    visCache = g.getPass("VisCache")
-    # Reset to full
-    for attr in ["enableVisCacheVarianceGate",
-                 "enableVisCacheWarpReduction", "enableVisCacheDecay",
-                 "enableVisCachePressureEvict", "enableVisCacheVisibilityCheck",
-                 "enableVisCacheLightSelection"]:
-        setattr(visCache, attr, True)
-    visCache.numLevels = 3
-    for k, v in overrides.items():
-        setattr(visCache, k, v)
+    g = render_graph_ReSTIRPT(viscache=True, ablation=overrides)
+    m.addGraph(g)
 
     outdir = os.path.join(kCaptureDir, name)
     os.makedirs(outdir, exist_ok=True)
     m.frameCapture.outputDir    = outdir
     m.frameCapture.baseFilename = name
 
+    # Warmup frame to compile the graph before capture
+    renderFrame()
+
     for frame in range(kFlythroughFrames):
-        # Animate camera
         pos, tgt = get_camera_at_frame(frame, kFlythroughFrames)
         try:
             cam = m.scene.camera
             cam.position = float3(*pos)
             cam.target   = float3(*tgt)
         except Exception:
-            pass  # Scene may not have a controllable camera
+            pass
 
         m.frameCapture.capture()
         renderFrame()
 
+    m.removeGraph(g)
     print(f"[Stress] {name} done — {kFlythroughFrames} frames saved to {outdir}")
 
 print("[Stress] All stress test configs complete.")

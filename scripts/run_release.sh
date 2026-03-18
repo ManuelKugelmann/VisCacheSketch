@@ -118,10 +118,9 @@ if [ "$VARIANT" = "viscache" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Deploy shaders, scripts, data, validate NRD & shaders
+# Sync shaders, scripts, data from source to release/
 # ---------------------------------------------------------------------------
-export ROOT_DIR RELEASE_DIR
-source "$SCRIPT_DIR/deploy_to_release.sh"
+bash "${ROOT_DIR}/.scripts/sync_to_release.sh"
 
 # ---------------------------------------------------------------------------
 # Check Mogwai.exe exists

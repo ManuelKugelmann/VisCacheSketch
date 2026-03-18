@@ -122,10 +122,9 @@ if "%GRAPH_SCRIPT%"=="" (
 )
 
 REM ---------------------------------------------------------------------------
-REM Deploy shaders, scripts, data, validate NRD & shaders
+REM Sync shaders, scripts, data from source to release/
 REM ---------------------------------------------------------------------------
-call "%SCRIPT_DIR%deploy_to_release.bat"
-if errorlevel 1 exit /b 1
+bash "%ROOT%\.scripts\sync_to_release.sh"
 
 REM ---------------------------------------------------------------------------
 REM Check Mogwai.exe exists

@@ -42,24 +42,12 @@ if not exist "%FALCOR_ROOT%\CMakeLists.txt" (
 )
 
 : ---------------------------------------------------------------------------
-: Steps 2-3: Integrate plugins (copy sources + data + tests, patch CMake)
+: Steps 2-3: Plugin integration
 : ---------------------------------------------------------------------------
-: NOTE: Sources must be copied BEFORE Falcor setup because setup_vs2022.bat
-: runs cmake --preset which configures the project. If CMakeLists.txt already
-: has add_subdirectory(ReSTIRPTPass) from a prior run, cmake will fail unless
-: the source directories exist.
-echo [VisCache] Steps 2-3: Integrating plugins into Falcor tree...
-
-: Restore CMakeLists.txt from git to discard any corruption from prior runs
-: (e.g. truncated lines from unescaped batch parentheses).
-git -C "%FALCOR_ROOT%" checkout -- Source\RenderPasses\CMakeLists.txt >nul 2>&1
-
-: Delegate to the shared integrate-plugins script (same script used by CI).
-call "%SCRIPT_DIR%scripts\integrate-plugins.bat" "%FALCOR_ROOT%"
-if errorlevel 1 (
-    echo [VisCache] ERROR: integrate-plugins.bat failed!
-    exit /b 1
-)
+: Plugins build in-place via FALCOR_PLUGIN_DIRS (no source copy needed).
+: CMake patches are committed in the Falcor subtree.
+: Scripts, data, and shaders are deployed by CMake POST_BUILD rules.
+echo [VisCache] Steps 2-3: Plugin integration handled by CMake (no copy needed)
 
 : ---------------------------------------------------------------------------
 : Step 4: Run Falcor's own setup (submodules, packman deps, VS2022 solution)
