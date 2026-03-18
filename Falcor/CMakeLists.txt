@@ -282,6 +282,28 @@ function(target_copy_shaders target output_dir)
     endforeach()
 endfunction()
 
+# Deploy a plugin's Data/ subdirectory to ${FALCOR_OUTPUT_DIRECTORY}/data/<subdir>/.
+function(target_copy_data target subdir)
+    set(data_dir "${CMAKE_CURRENT_SOURCE_DIR}/Data")
+    if(EXISTS "${data_dir}")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${data_dir}" "${FALCOR_OUTPUT_DIRECTORY}/data/${subdir}"
+            COMMENT "${target}: Copying data files to data/${subdir}"
+        )
+    endif()
+endfunction()
+
+# Deploy a plugin's Scripts/ subdirectory to ${FALCOR_OUTPUT_DIRECTORY}/scripts/<subdir>/.
+function(target_copy_scripts target subdir)
+    set(scripts_dir "${CMAKE_CURRENT_SOURCE_DIR}/Scripts")
+    if(EXISTS "${scripts_dir}")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${scripts_dir}" "${FALCOR_OUTPUT_DIRECTORY}/scripts/${subdir}"
+            COMMENT "${target}: Copying scripts to scripts/${subdir}"
+        )
+    endif()
+endfunction()
+
 # -----------------------------------------------------------------------------
 # Data file handling
 # -----------------------------------------------------------------------------
@@ -457,6 +479,20 @@ add_dependencies(Falcor copy_data_folder copy_scripts_folder)
 
 # Make Falcor core library depend on deploying all dependencies.
 add_dependencies(Falcor deploy_dependencies)
+
+# ---------------------------------------------------------------------------
+# External plugins via FALCOR_PLUGIN_DIRS
+# Pass a semicolon-separated list of directories, each containing a
+# CMakeLists.txt that calls add_plugin(). Example:
+#   cmake -DFALCOR_PLUGIN_DIRS="/path/to/MyPass;/path/to/OtherPass" ...
+# ---------------------------------------------------------------------------
+if(DEFINED FALCOR_PLUGIN_DIRS)
+    foreach(plugin_dir IN LISTS FALCOR_PLUGIN_DIRS)
+        get_filename_component(plugin_name "${plugin_dir}" NAME)
+        message(STATUS "Adding external plugin: ${plugin_name} from ${plugin_dir}")
+        add_subdirectory("${plugin_dir}" "${CMAKE_CURRENT_BINARY_DIR}/external_plugins/${plugin_name}")
+    endforeach()
+endif()
 
 # Get list of all plugin targets.
 get_property(plugin_targets GLOBAL PROPERTY FALCOR_PLUGIN_TARGETS)
