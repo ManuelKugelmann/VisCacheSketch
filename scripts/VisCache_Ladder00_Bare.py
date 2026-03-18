@@ -20,6 +20,9 @@ kCaptureDir   = "captures/ladder/00_bare"
 # Override defaults for bare minimum config
 overrides = {
     "numLevels": 1,
+    "cellCoarse": 0.06,      # ~6cm cells — compromise between resolution and maturity
+    "cellFine": 0.06,
+    "autoTuneCells": False,
     "bootThreshold": 4,      # low threshold — mature quickly for visualization
     "pMin": 1.0,             # always trace — no RR skipping
     "enableVisCacheJitter": False,
@@ -66,15 +69,43 @@ m.renderFrame()
 
 print(f"[ladder-00] Captured to {kCaptureDir}/")
 
-# Convert EXR to PNG
+# Post-process: convert EXR to named PNGs
 import glob
-for exr in glob.glob(os.path.join(kCaptureDir, "*.exr")):
-    png = exr.replace(".exr", ".png")
-    try:
-        subprocess.run(["ffmpeg", "-y", "-i", exr, "-pix_fmt", "rgb24", png],
-                       capture_output=True, timeout=10)
-        print(f"[ladder-00] Converted {os.path.basename(png)}")
-    except Exception:
-        pass
 
+def ffrun(args):
+    try:
+        subprocess.run(["ffmpeg", "-y"] + args, capture_output=True, timeout=10)
+        return True
+    except Exception:
+        return False
+
+def out(name):
+    """Build output path from descriptive name."""
+    return os.path.join(kCaptureDir, f"{name}.png")
+
+for exr in glob.glob(os.path.join(kCaptureDir, "*.exr")):
+    base = os.path.basename(exr)
+
+    if "vcDiag." in base:
+        # Cell hash debug — RGB composite only
+        if ffrun(["-i", exr, "-pix_fmt", "rgb24", out("cellhash")]):
+            print(f"[ladder-00] cellhash.png")
+
+    elif "VarMaturityMu" in base:
+        # Composite: R=var, G=maturity, B=mu — cache quality
+        ffrun(["-i", exr, "-pix_fmt", "rgb24", out("var_maturity_mu")])
+        ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out("variance")])
+        ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out("maturity")])
+        ffrun(["-i", exr, "-vf", "extractplanes=b", "-pix_fmt", "gray", out("mu")])
+        print(f"[ladder-00] var_maturity_mu.png + variance/maturity/mu channels")
+
+    elif "VarMaturityLevel" in base:
+        # Composite: R=probeSteps, G=sampleCount, B=level — hash health
+        ffrun(["-i", exr, "-pix_fmt", "rgb24", out("probe_count_level")])
+        ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out("probesteps")])
+        ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out("samplecount")])
+        ffrun(["-i", exr, "-vf", "extractplanes=b", "-pix_fmt", "gray", out("level")])
+        print(f"[ladder-00] probe_count_level.png + probesteps/samplecount/level channels")
+
+print(f"[ladder-00] Post-processing done.")
 exit()

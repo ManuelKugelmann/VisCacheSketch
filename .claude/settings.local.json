@@ -136,7 +136,10 @@
       "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v8 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
       "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v9 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
       "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v10 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
-      "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v11 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)"
+      "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v11 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
+      "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v12 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
+      "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v13 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
+      "Bash(GRAPH_SCRIPT=scripts/VisCache/PathTracer_Graph.py GALLERY_DIR=../.tests SCENE_FILE=../scenes/CornellBox.pyscene WARMUP_FRAMES=256 CAPTURE_NAME=cornell_v14 ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)"
     ],
     "deny": []
   }

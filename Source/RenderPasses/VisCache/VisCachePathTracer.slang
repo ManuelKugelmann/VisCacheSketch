@@ -46,10 +46,10 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
         SceneRayQuery<UseAlphaTest> sceneRayQuery;
         float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
         float w = vhfCommit(posA, posB, V, g);
-        vcWriteDiag(pixel, g, true, V);
+        vcWriteDiag(pixel, g, true, V, posA, posB);
         return w;
     }
-    vcWriteDiag(pixel, g, false, 0.f);
+    vcWriteDiag(pixel, g, false, 0.f, posA, posB);
     return g.visWeight;
 }
 #endif // VISCACHE_DIAGNOSTICS

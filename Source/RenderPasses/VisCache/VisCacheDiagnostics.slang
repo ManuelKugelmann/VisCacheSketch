@@ -42,7 +42,8 @@ RWTexture2D<float>  gVCNoise;          ///< Per-pixel noise EMA (variance)
 /// @param g           Gate result from vhfGate() or vhfGateDeterministic().
 /// @param traced      True if a shadow ray was actually traced.
 /// @param V           Ground-truth visibility (only valid when traced=true).
-void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V)
+void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
+                  float3 posA, float3 posB)
 {
     gVCDiagError[pixel] = traced ? abs(g.mu - V) : 0.f;
 
@@ -56,19 +57,43 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V)
     float grey = noEntry ? 0.3f : 0.f;
     float diagVar = noEntry ? 0.f : g.var;
 
-    gVCDiag[pixel] = float4(g.mu, diagVar, float(g.level + 1), traced ? 0.f : 1.f);
+    // --- gVCDiag debug visualizations (uncomment ONE) ---
+    // Each variant writes a pseudo-random color per cell so boundaries are
+    // directly visible regardless of cache state.
+    {
+        float cs = vhfCellSize(0);
 
-    gVCVarMaturityLevel[pixel] = float4(
-        saturate(diagVar * 4.f) + grey,                          // R: variance
-        saturate(float(g.N) / float(gBootThreshold)) + grey,    // G: maturity
-        float(g.level + 1) / max(float(gNumLevels), 1.f) + grey, // B: LOD level
+        // posA cell hash — shows spatial quantization grid at shading point
+        int3 cellA = int3(floor(posA / cs));
+        uint3 hA = pcg3d(uint3(cellA));
+        gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,
+                                 float(hA.y & 0xFFu) / 255.f,
+                                 float(hA.z & 0xFFu) / 255.f, 1.f);
+
+        // posB cell hash — shows light-side quantization
+        // int3 cellB = int3(floor(posB / cs));
+        // uint3 hB = pcg3d(uint3(cellB));
+        // gVCDiag[pixel] = float4(float(hB.x & 0xFFu) / 255.f,
+        //                          float(hB.y & 0xFFu) / 255.f,
+        //                          float(hB.z & 0xFFu) / 255.f, 1.f);
+
+        // Normal diagnostic: mu, var, level, raySaved
+        // gVCDiag[pixel] = float4(g.mu, diagVar, float(g.level + 1), traced ? 0.f : 1.f);
+    }
+
+    // VarMaturityMu: R=variance, G=maturity, B=mu — cache quality at a glance
+    gVCVarMaturityMu[pixel] = float4(
+        saturate(diagVar * 4.f) + grey,                             // R: variance [0,0.25]→[0,1]
+        saturate(float(g.N) / float(gBootThreshold)) + grey,       // G: maturity [0,1]
+        g.mu + grey,                                                // B: cached mu [0,1]
         1.f
     );
 
-    gVCVarMaturityMu[pixel] = float4(
-        saturate(diagVar * 4.f) + grey,
-        saturate(float(g.N) / float(gBootThreshold)) + grey,
-        g.mu + grey,                                              // B: cached mu
+    // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level — hash table health
+    gVCVarMaturityLevel[pixel] = float4(
+        saturate(float(g.probeSteps) / float(kMaxProbe)) + grey,   // R: probe steps [0,maxProbe]→[0,1]
+        saturate(float(g.N) / 256.f) + grey,                       // G: sample count [0,256]→[0,1]
+        float(g.level + 1) / max(float(gNumLevels), 1.f) + grey,  // B: LOD level [0,N]→[0,1]
         1.f
     );
 

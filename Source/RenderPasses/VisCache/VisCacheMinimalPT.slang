@@ -42,10 +42,10 @@ float vcVisibility_DirDist(float3 posA, float3 dir, float distance,
     {
         float V = traceShadowRay(posA, dir, distance) ? 1.f : 0.f;
         float w = vhfCommit(posA, posB, V, g);
-        vcWriteDiag(pixel, g, true, V);
+        vcWriteDiag(pixel, g, true, V, posA, posB);
         return w;
     }
-    vcWriteDiag(pixel, g, false, 0.f);
+    vcWriteDiag(pixel, g, false, 0.f, posA, posB);
     return g.visWeight;
 }
 #endif // VISCACHE_DIAGNOSTICS

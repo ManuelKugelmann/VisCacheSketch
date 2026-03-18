@@ -82,7 +82,8 @@ def render_graph_PathTracer(viscache=False):
     # (which already depends on PathTracer.color).
     # -------------------------------------------------------------------
     if viscache:
-        # Mark raw var/maturity heatmaps as outputs (captured at end of frame, after all passes)
+        # Mark diagnostic outputs (captured at end of frame, after all passes)
+        g.markOutput("VisCache.vcDiag")             # posA cell hash (debug) / raw diag data
         g.markOutput("VisCache.vcVarMaturityLevel")
         g.markOutput("VisCache.vcVarMaturityMu")
 

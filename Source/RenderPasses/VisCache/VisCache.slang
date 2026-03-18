@@ -107,6 +107,7 @@ struct VHFResult
     int   level;    ///< LOD level that produced this result (-1 = miss)
     uint  N;        ///< Total sample count at matched level (0 = miss, for diagnostics)
     bool  valid;    ///< false = cold miss — no mature entry found, always trace
+    uint  probeSteps; ///< Total probe steps across all levels (diagnostics — collision pressure)
 };
 
 // ===========================================================================
@@ -393,7 +394,7 @@ static const uint kDecayShift      = 3u;      ///< Decay strength: subtract valu
 ///
 /// When allowInsert is true (insert mode): also considers empty slots and
 /// evictable entries as valid return values.
-int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
+int vhfFindSlot(uint addr0, uint fp, bool allowInsert, out uint probeSteps)
 {
     uint h2 = fp | 1u;  // Odd step → coprime with power-of-two table → full traversal
     for (uint i = 0u; i < kMaxProbe; i++)
@@ -403,13 +404,19 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
 
         // Exact match — this slot holds our cell pair's data.
         if (efp == fp)
+        {
+            probeSteps = i;
             return int(slot);
+        }
 
         if (allowInsert)
         {
             // Empty slot — available for new entry.
             if (efp == 0u && gVHFTable[slot].packed == 0u)
+            {
+                probeSteps = i;
                 return int(slot);
+            }
 
             // Pressure-scaled eviction: deeper probe steps can evict
             // entries with few samples. This prevents probe chains from
@@ -419,10 +426,14 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert)
                 uint total = gVHFTable[slot].packed & 0xFFFFu;
                 uint threshold = kEvictBaseCount << (i - kEvictStartStep);
                 if (total < threshold)
+                {
+                    probeSteps = i;
                     return int(slot);  // Evict this low-sample entry
+                }
             }
         }
     }
+    probeSteps = kMaxProbe;
     return -1;  // No slot found within kMaxProbe steps
 }
 
@@ -454,6 +465,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
     best.mu    = 0.5f;   // Default: uncertain (max variance)
     best.var   = 1.0f;
     best.level = -1;
+    best.probeSteps = 0u;
     best.N     = 0u;
     best.valid = false;
 
@@ -465,7 +477,9 @@ VHFResult vhfLookup(float3 posA, float3 posB)
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
-        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+        uint lvlProbe;
+        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, lvlProbe);
+        best.probeSteps += lvlProbe;
 
         if (slot < 0) break;  // No entry at this level — stop cascade
 
@@ -520,7 +534,8 @@ VHFResult vhfLookupRaw(float3 posA, float3 posB)
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
-        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+        uint _ps;
+        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, _ps);
 
         if (slot < 0) break;
 
@@ -536,7 +551,7 @@ VHFResult vhfLookupRaw(float3 posA, float3 posB)
         best.var   = var;
         best.level = lvl;
         best.N     = total;
-        best.valid = (total >= gBootThreshold);  // valid only if mature
+        best.valid = (total >= gBootThreshold);
     }
 
     return best;
@@ -588,6 +603,7 @@ struct VHFGateResult
     float var;          ///< Cached variance mu*(1-mu) (diagnostics)
     int   level;        ///< LOD level used, -1 = miss (diagnostics)
     uint  N;            ///< Total sample count at matched level (diagnostics)
+    uint  probeSteps;   ///< Hash probe steps (diagnostics — collision pressure)
 };
 
 /// Phase 1: lookup + RR decision.
@@ -618,6 +634,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.var         = r.var;    // immature var if entry exists, 0.5 if no entry
         g.level       = r.level;  // -1 if truly no entry, else immature level
         g.N           = r.N;      // 0 if no entry, else immature sample count
+        g.probeSteps  = r.probeSteps;
         return g;
     }
 
@@ -641,9 +658,10 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     float p = clamp(r.var / gVarThreshold, pFloor, 1.f);
 
     // Pass through diagnostic fields from the lookup result.
-    g.var   = r.var;
-    g.level = r.level;
-    g.N     = r.N;
+    g.var        = r.var;
+    g.level      = r.level;
+    g.N          = r.N;
+    g.probeSteps = r.probeSteps;
 
     // RR coin flip: trace if xi < p, skip otherwise.
     if (xi < p)
@@ -746,7 +764,8 @@ VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
 // ---------------------------------------------------------------------------
 bool vhfIsMature(uint addr, uint fp)
 {
-    int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false);
+    uint _ps;
+    int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, _ps);
     if (slot < 0) return false;  // No entry — definitely not mature
 
     // Single atomic read — avoids double-fetch race with concurrent writers.
@@ -838,7 +857,8 @@ void vhfInsert(float3 posA, float3 posB, float V)
         bool isFinestLevel = (lvl == int(gNumLevels) - 1);
         if (!isFinestLevel && vhfIsMature(addr, fp)) continue;
 
-        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
+        uint _ps;
+        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true, _ps);
         if (slot < 0) continue;  // Table full at this probe depth
 
         // Atomic CAS: only write fingerprint if slot is still empty (fp==0).
