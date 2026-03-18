@@ -132,6 +132,13 @@ struct VisibilityQuery : IVisibilityQuery
     {
         return vcVisibility_Ray<kUseAlphaTest>(ray, sg);
     }
+#ifdef VISCACHE_DIAGNOSTICS
+    /// CV+RRR with per-pixel diagnostic output (PixelStats pattern).
+    float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel)
+    {
+        return vcVisibility_Ray_Diag<kUseAlphaTest>(ray, sg, pixel);
+    }
+#endif
 #endif
 };
 

@@ -25,16 +25,16 @@ static constexpr uint32_t kStatCount = 5u;
 // Diagnostic heatmap output channel names
 static const std::string kOutputDiag           = "vcDiag";
 static const std::string kOutputDiagError      = "vcDiagError";
-static const std::string kOutputDiagComposite  = "vcDiagComposite";
-static const std::string kOutputDiagComposite2 = "vcDiagComposite2";
+static const std::string kOutputVarMaturityLevel  = "vcVarMaturityLevel";
+static const std::string kOutputVarMaturityMu = "vcVarMaturityMu";
 static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
 static const std::string kOutputNoise          = "vcNoise";
 
 static const ChannelList kDiagOutputChannels = {
     { kOutputDiag,           "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)",  true, ResourceFormat::RGBA32Float },
     { kOutputDiagError,      "", "VisCache prediction error |mu - V|",                       true, ResourceFormat::R32Float },
-    { kOutputDiagComposite,  "", "VisCache composite heatmap (R=var, G=maturity, B=level)",  true, ResourceFormat::RGBA32Float },
-    { kOutputDiagComposite2, "", "VisCache composite heatmap (R=var, G=maturity, B=mu)",     true, ResourceFormat::RGBA32Float },
+    { kOutputVarMaturityLevel,  "", "VisCache var/maturity/level heatmap (R=var, G=maturity, B=level)",  true, ResourceFormat::RGBA32Float },
+    { kOutputVarMaturityMu, "", "VisCache var/maturity/mu heatmap (R=var, G=maturity, B=mu)",     true, ResourceFormat::RGBA32Float },
     { kOutputRaySavedRatio,  "", "Per-pixel ray savings ratio [0,1] (accumulated)",          true, ResourceFormat::R32Float },
     { kOutputNoise,          "", "Per-pixel noise estimate (variance EMA)",                   true, ResourceFormat::R32Float },
 };
@@ -158,6 +158,7 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
         defines.add("USE_VISCACHE", "1");
         mpDecayPass = ComputePass::create(mpDevice, desc, defines);
     }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +230,11 @@ void VisCache::allocateBuffers()
 // ---------------------------------------------------------------------------
 void VisCache::autoTuneCellSizes()
 {
-    static constexpr float kMaxRatio = 4.f;  // base refinement factor
+    // L0 (coarsest) = sceneDiameter / 16 — covers ~16 cells across the scene.
+    // Fine level derived via geometric refinement: each added level halves the
+    // per-level ratio rather than doubling the total range (sqrt exponent).
+    static constexpr float kCoarseScale = 16.f;
+    static constexpr float kMaxRatio = 4.f;
 
     if (!mpScene) return;
 
@@ -238,12 +243,7 @@ void VisCache::autoTuneCellSizes()
     float sceneDiameter = std::max({extent.x, extent.y, extent.z});
     if (sceneDiameter <= 0.f) return;
 
-    float farPlane = 1000.f;
-    if (mpScene->getCamera())
-        farPlane = mpScene->getCamera()->getFarPlane();
-
-    float viewDist = std::min(farPlane, sceneDiameter);
-    float coarse = viewDist / 10.f;
+    float coarse = sceneDiameter / kCoarseScale;
     float fine   = coarse / std::pow(kMaxRatio, std::sqrt(float(mParams.numLevels - 1)));
 
     mParams.cellCoarse = coarse;
@@ -255,7 +255,22 @@ void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
 {
     mpScene = pScene;
     if (mParams.autoTuneCells && mpScene)
+    {
+        const auto& bounds = mpScene->getSceneBounds();
+        float3 ext = bounds.extent();
+        float sceneDiam = std::max({ext.x, ext.y, ext.z});
         autoTuneCellSizes();
+        logInfo("[VisCache] Scene: diameter={:.2f} extent=({:.2f}, {:.2f}, {:.2f})",
+                sceneDiam, ext.x, ext.y, ext.z);
+        logInfo("[VisCache] Auto-tuned cells: coarse={:.4f} fine={:.4f} (numLevels={})",
+                mParams.cellCoarse, mParams.cellFine, mParams.numLevels);
+        for (uint32_t lvl = 0; lvl < mParams.numLevels; lvl++)
+        {
+            float t = (mParams.numLevels <= 1u) ? 0.f : float(lvl) / float(mParams.numLevels - 1u);
+            float cs = mParams.cellCoarse * std::exp(t * std::log(mParams.cellFine / mParams.cellCoarse));
+            logInfo("[VisCache]   L{}: cellSize={:.4f}", lvl, cs);
+        }
+    }
     allocateBuffers();
 }
 
@@ -365,13 +380,13 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         };
 
         // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
-        ref<Texture> diagTex, diagErrorTex, diagCompositeTex, diagComposite2Tex;
+        ref<Texture> diagTex, diagErrorTex, varMatLevelTex, varMatMuTex;
         ref<Texture> raySavedRatioTex, noiseTex;
 
         if (auto p = renderData[kOutputDiag])           diagTex           = p->asTexture();
         if (auto p = renderData[kOutputDiagError])      diagErrorTex      = p->asTexture();
-        if (auto p = renderData[kOutputDiagComposite])  diagCompositeTex  = p->asTexture();
-        if (auto p = renderData[kOutputDiagComposite2]) diagComposite2Tex = p->asTexture();
+        if (auto p = renderData[kOutputVarMaturityLevel])  varMatLevelTex  = p->asTexture();
+        if (auto p = renderData[kOutputVarMaturityMu]) varMatMuTex = p->asTexture();
         if (auto p = renderData[kOutputRaySavedRatio])  raySavedRatioTex  = p->asTexture();
         if (auto p = renderData[kOutputNoise])          noiseTex          = p->asTexture();
 
@@ -383,8 +398,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             if (needRealloc)
             {
                 mpDiagTex           = makeRGBA("VHF_Diag");
-                mpDiagCompositeTex  = makeRGBA("VHF_DiagComposite");
-                mpDiagComposite2Tex = makeRGBA("VHF_DiagComposite2");
+                mpVarMaturityLevelTex  = makeRGBA("VHF_VarMaturityLevel");
+                mpVarMaturityMuTex = makeRGBA("VHF_VarMaturityMu");
                 mpDiagErrorTex      = makeR32F("VHF_DiagError");
                 mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
                 mpNoiseTex          = makeR32F("VHF_Noise");
@@ -392,8 +407,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             }
             if (!diagTex)           diagTex           = mpDiagTex;
             if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
-            if (!diagCompositeTex)  diagCompositeTex  = mpDiagCompositeTex;
-            if (!diagComposite2Tex) diagComposite2Tex = mpDiagComposite2Tex;
+            if (!varMatLevelTex)  varMatLevelTex  = mpVarMaturityLevelTex;
+            if (!varMatMuTex) varMatMuTex = mpVarMaturityMuTex;
             if (!raySavedRatioTex)  raySavedRatioTex  = mpRaySavedRatioTex;
             if (!noiseTex)          noiseTex          = mpNoiseTex;
         }
@@ -422,22 +437,17 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // Write test values to diagnostic textures so we can verify the
-        // pipeline (VisCache → ColorMapPass → output) works end-to-end.
-        // Downstream RT passes can't write diagnostics yet (RT linker issue),
-        // so the VisCache compute pass writes uniform test data directly.
-        // TODO: Replace with a compute pass that reads G-Buffer + hash table
-        //       and writes real per-pixel diagnostic data.
-        auto testAndExpose = [&](ref<Texture>& tex, const char* key, float4 val) {
-            if (tex) { pCtx->clearUAV(tex->getUAV().get(), val); dict[key] = tex; }
+        // Clear and expose per-frame diagnostic textures via dictionary.
+        // Downstream RT passes write to these inline during tracing (PixelStats pattern).
+        auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
+            if (tex) { pCtx->clearUAV(tex->getUAV().get(), float4(0.f)); dict[key] = tex; }
         };
-        float testPhase = float(mFrameCount % 120) / 120.f;  // cycle 0..1 over 120 frames
-        testAndExpose(diagTex,           "vhfDiag",           float4(0.7f, 0.1f, 2.f, testPhase));
-        testAndExpose(diagErrorTex,      "vhfDiagError",      float4(testPhase));
-        testAndExpose(diagCompositeTex,  "vhfDiagComposite",  float4(testPhase, 0.8f, 0.5f, 1.f));
-        testAndExpose(diagComposite2Tex, "vhfDiagComposite2", float4(testPhase, 0.8f, 0.7f, 1.f));
-        testAndExpose(raySavedRatioTex,  "vhfRaySavedRatio",  float4(0.6f));
-        testAndExpose(noiseTex,          "vhfNoise",          float4(testPhase * 0.25f));
+        clearAndExpose(diagTex,           "vhfDiag");
+        clearAndExpose(diagErrorTex,      "vhfDiagError");
+        clearAndExpose(varMatLevelTex,  "vhfVarMaturityLevel");
+        clearAndExpose(varMatMuTex, "vhfVarMaturityMu");
+        clearAndExpose(raySavedRatioTex,  "vhfRaySavedRatio");
+        clearAndExpose(noiseTex,          "vhfNoise");
 
         dict["vhfDiagEnabled"] = (diagTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);

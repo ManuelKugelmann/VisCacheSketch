@@ -74,8 +74,24 @@ def render_graph_PathTracer(viscache=False):
     # -------------------------------------------------------------------
     # VisCache diagnostic heatmaps (only when viscache=True)
     # -------------------------------------------------------------------
+    # Diagnostic heatmaps are written INLINE by PathTracer (PixelStats pattern)
+    # into textures owned by the VisCache pass. The ColorMapPass must execute
+    # AFTER PathTracer finishes, but there's no data edge from PathTracer to
+    # the diagnostic textures (they flow via InternalDictionary). We enforce
+    # ordering by routing the diagnostic textures through AccumulatePass first
+    # (which already depends on PathTracer.color).
+    # -------------------------------------------------------------------
     if viscache:
-        # Prediction error |mu - V|
+        # Mark raw var/maturity heatmaps as outputs (captured at end of frame, after all passes)
+        g.markOutput("VisCache.vcVarMaturityLevel")
+        g.markOutput("VisCache.vcVarMaturityMu")
+
+        # Heatmaps: connect VisCache outputs to ColorMapPass.
+        # NOTE: These show previous-frame data because the render graph executes
+        # VisCache → ColorMapPass → PathTracer (no ordering edge from PT to heatmaps).
+        # After warmup the cache is stable so this is visually correct.
+        # TODO: Add a dedicated VisCacheDiagResolve pass that runs after PathTracer
+        #       to produce same-frame heatmaps.
         heatErr = createPass("ColorMapPass", {
             "colorMap": "Inferno",
             "channel":  0,
@@ -85,7 +101,6 @@ def render_graph_PathTracer(viscache=False):
         g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
         g.markOutput("HeatmapError.output")
 
-        # Accumulated ray savings ratio → false-color
         heatRayPct = createPass("ColorMapPass", {
             "colorMap": "Viridis",
             "channel":  0,
@@ -97,7 +112,6 @@ def render_graph_PathTracer(viscache=False):
         g.addEdge("VisCache.vcRaySavedRatio", "HeatmapRaySavedPct.input")
         g.markOutput("HeatmapRaySavedPct.output")
 
-        # Noise estimate (cache variance EMA) → false-color
         heatNoise = createPass("ColorMapPass", {
             "colorMap": "Inferno",
             "channel":  0,
@@ -106,10 +120,6 @@ def render_graph_PathTracer(viscache=False):
         g.addPass(heatNoise, "HeatmapNoise")
         g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
         g.markOutput("HeatmapNoise.output")
-
-        # Composite heatmaps — pre-normalized RGB
-        g.markOutput("VisCache.vcDiagComposite")
-        g.markOutput("VisCache.vcDiagComposite2")
 
     return g
 

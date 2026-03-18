@@ -6,8 +6,8 @@
  * Per-frame outputs (cleared each frame, written by downstream passes):
  *   gVCDiag           (RGBA32Float) — R=cachedMu, G=variance, B=level, A=raySaved
  *   gVCDiagError      (R32Float)    — |mu - V| prediction error (only when traced)
- *   gVCDiagComposite  (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=level
- *   gVCDiagComposite2 (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=mu
+ *   gVCVarMaturityLevel  (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=level
+ *   gVCVarMaturityMu (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=mu
  *
  * Accumulated outputs (persistent across frames):
  *   gVCAccumSaved     (R32Uint)     — per-pixel count of saved rays
@@ -28,8 +28,8 @@ import RenderPasses.VisCache.VisCache;
 // --- Per-frame outputs (cleared each frame) ---
 RWTexture2D<float4> gVCDiag;           ///< R=mu, G=var, B=level+1 (0=miss), A=raySaved
 RWTexture2D<float>  gVCDiagError;      ///< |mu - V| prediction error
-RWTexture2D<float4> gVCDiagComposite;  ///< Pre-normalized RGB (R=var, G=maturity, B=level)
-RWTexture2D<float4> gVCDiagComposite2; ///< Pre-normalized RGB (R=var, G=maturity, B=mu)
+RWTexture2D<float4> gVCVarMaturityLevel;  ///< Pre-normalized RGB (R=var, G=maturity, B=level)
+RWTexture2D<float4> gVCVarMaturityMu; ///< Pre-normalized RGB (R=var, G=maturity, B=mu)
 
 // --- Accumulated outputs (persistent, NOT cleared per frame) ---
 RWTexture2D<uint>   gVCAccumSaved;     ///< Per-pixel saved ray count
@@ -54,7 +54,7 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V)
     gVCDiagError[pixel] = traced ? abs(g.mu - V) : 0.f;
 
     // Composite heatmap: 3 diagnostics in one RGB image, pre-normalized to [0,1].
-    gVCDiagComposite[pixel] = float4(
+    gVCVarMaturityLevel[pixel] = float4(
         saturate(g.var * 4.f),                              // R: variance / 0.25
         saturate(float(g.N) / float(gBootThreshold)),       // G: maturity
         float(g.level + 1) / float(gNumLevels),             // B: LOD level
@@ -62,7 +62,7 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V)
     );
 
     // Composite 2: same R,G but B = mu instead of level.
-    gVCDiagComposite2[pixel] = float4(
+    gVCVarMaturityMu[pixel] = float4(
         saturate(g.var * 4.f),
         saturate(float(g.N) / float(gBootThreshold)),
         g.mu,                                                // B: cached mu

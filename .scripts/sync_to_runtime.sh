@@ -61,7 +61,9 @@ fi
 
 # --- Clear shader cache ---
 if [ -d "$RUNTIME/.shadercache" ]; then
-    rm -rf "$RUNTIME/.shadercache"
+    # Lock file may be held by a running Mogwai — delete everything except it.
+    find "$RUNTIME/.shadercache" -not -name lock -not -path "$RUNTIME/.shadercache" -delete 2>/dev/null
+    rm -f "$RUNTIME/.shadercache/index" 2>/dev/null
     echo "[sync] Shader cache cleared"
 fi
 

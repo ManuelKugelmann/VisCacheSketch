@@ -58,7 +58,8 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     })
     g.addPass(gbuf, "GBufferRT")
 
-    # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
+    # Visibility Cache (optional) — hash table + params via InternalDictionary.
+    # Diagnostics are written inline by downstream RT passes (PixelStats pattern).
     if viscache:
         vc_params = dict(VISCACHE_DEFAULTS)
         vc_params.update(ablation)
@@ -147,13 +148,11 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
 
     # -------------------------------------------------------------------
-    # VisCache diagnostic heatmaps (only when viscache=True)
-    #
-    # vcRaySavedRatio (R32F): per-pixel accumulated ray savings [0,1]
-    # vcNoise (R32F): per-pixel noise estimate (cache variance EMA)
-    # vcDiagError (R32F): |mu - V| prediction error
-    # vcDiagComposite  (RGBA32F): R=var, G=maturity, B=level
-    # vcDiagComposite2 (RGBA32F): R=var, G=maturity, B=mu
+    # VisCache diagnostic heatmaps (only when viscache=True).
+    # Written INLINE by the renderer (PixelStats pattern) into textures
+    # owned by VisCache. ColorMapPass heatmaps show previous-frame data
+    # (no ordering edge from renderer to heatmaps); raw composites are
+    # captured at end of frame and show current-frame data.
     # -------------------------------------------------------------------
     if viscache:
         # Prediction error |mu - V|
@@ -188,9 +187,9 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
         g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
         g.markOutput("HeatmapNoise.output")
 
-        # Composite heatmaps — pre-normalized RGB
-        g.markOutput("VisCache.vcDiagComposite")
-        g.markOutput("VisCache.vcDiagComposite2")
+        # Var/maturity heatmaps — pre-normalized RGB
+        g.markOutput("VisCache.vcVarMaturityLevel")
+        g.markOutput("VisCache.vcVarMaturityMu")
 
     return g
 

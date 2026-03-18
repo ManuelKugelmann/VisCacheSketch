@@ -58,6 +58,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 
 ## Scenes
 
+- **Use Arcade for quick tests** — bundled with the build, multi-light scene with varied geometry
 - **Default test scene: VeachAjar** (DQLin ReSTIR PT reference scene) — small, no download needed after data deploy
 - VeachAjar lives in source tree: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/`, deployed to `runtime/data/ReSTIRPTPass/VeachAjar/`
 - Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`

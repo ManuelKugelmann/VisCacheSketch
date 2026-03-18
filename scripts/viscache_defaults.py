@@ -8,9 +8,8 @@ VISCACHE_DEFAULTS = {
     "fireflyBudget":   0.05,
     "decayPeriod":     300,       # auto-tuned by PI controller
     "decayPeriodMax":  600,
-    "numLevels":       3,
-    "cellCoarse":      10.0,
-    "cellFine":        0.16,
+    "numLevels":       8,
+    # cellCoarse/cellFine omitted — auto-tuned from scene bounds (L0 ≈ sceneDiameter/10)
     "enableVisCacheVisibilityCheck":   True,
     "enableVisCacheLightSelection": True,
     "enableVisCacheWarpReduction":  True,

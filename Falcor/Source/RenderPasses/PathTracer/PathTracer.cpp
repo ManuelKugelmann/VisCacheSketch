@@ -1230,8 +1230,38 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
             || dict.getValue<bool>("vhfEnableJitter");  // default ON
 
+        // Diagnostic textures — bound at root var like PixelStats so all RT stages
+        // can write per-pixel heatmap data inline during tracing.
+        bool wasDiag = mVisCacheDiagnostics;
+        mVisCacheDiagnostics = mVisCacheAvailable &&
+            dict.keyExists("vhfDiagEnabled") && dict.getValue<bool>("vhfDiagEnabled");
+        auto getTex = [&](const char* key) -> ref<Texture> {
+            return dict.keyExists(key) ? dict.getValue<ref<Texture>>(key) : nullptr;
+        };
+        if (mVisCacheDiagnostics)
+        {
+            mpVCDiag           = getTex("vhfDiag");
+            mpVCDiagError      = getTex("vhfDiagError");
+            mpVCVarMaturityLevel  = getTex("vhfVarMaturityLevel");
+            mpVCVarMaturityMu = getTex("vhfVarMaturityMu");
+            mpVCAccumSaved     = getTex("vhfAccumSaved");
+            mpVCAccumTotal     = getTex("vhfAccumTotal");
+            mpVCRaySavedRatio  = getTex("vhfRaySavedRatio");
+            mpVCNoise          = getTex("vhfNoise");
+        }
+        else
+        {
+            mpVCDiag = mpVCDiagError = mpVCVarMaturityLevel = mpVCVarMaturityMu = nullptr;
+            mpVCAccumSaved = mpVCAccumTotal = mpVCRaySavedRatio = mpVCNoise = nullptr;
+        }
+
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-            || mVisCacheJitter != wasJitter) mRecompile = true;
+            || mVisCacheJitter != wasJitter || mVisCacheDiagnostics != wasDiag)
+        {
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} diag={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDiagnostics);
+            mRecompile = true;
+        }
     }
 
     // Check if fixed sample count should be used. When the sample count input is connected we load the count from there instead.
@@ -1388,6 +1418,20 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
     }
+    // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
+    // so all RT stages can write per-pixel heatmap data inline during tracing.
+    // Define is set in getDefines(); here we just bind the textures.
+    if (mVisCacheDiagnostics)
+    {
+        if (mpVCDiag)           var["gVCDiag"]           = mpVCDiag;
+        if (mpVCDiagError)      var["gVCDiagError"]      = mpVCDiagError;
+        if (mpVCVarMaturityLevel)  var["gVCVarMaturityLevel"]  = mpVCVarMaturityLevel;
+        if (mpVCVarMaturityMu) var["gVCVarMaturityMu"] = mpVCVarMaturityMu;
+        if (mpVCAccumSaved)     var["gVCAccumSaved"]     = mpVCAccumSaved;
+        if (mpVCAccumTotal)     var["gVCAccumTotal"]      = mpVCAccumTotal;
+        if (mpVCRaySavedRatio)  var["gVCRaySavedRatio"]  = mpVCRaySavedRatio;
+        if (mpVCNoise)          var["gVCNoise"]          = mpVCNoise;
+    }
     // Full screen dispatch.
     mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));
 }
@@ -1483,6 +1527,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
+    if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
 
     // Scene-specific configuration.
     // Set defaults

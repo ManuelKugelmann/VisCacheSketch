@@ -166,8 +166,8 @@ private:
     // Per-frame diag textures (cleared each frame)
     ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
     ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
-    ref<Texture>    mpDiagCompositeTex; ///< RGBA32F: composite (R=var, G=maturity, B=level)
-    ref<Texture>    mpDiagComposite2Tex;///< RGBA32F: composite (R=var, G=maturity, B=mu)
+    ref<Texture>    mpVarMaturityLevelTex; ///< RGBA32F: var/maturity/level heatmap (R=var, G=maturity, B=level)
+    ref<Texture>    mpVarMaturityMuTex; ///< RGBA32F: var/maturity/mu heatmap (R=var, G=maturity, B=mu)
 
     // Accumulated textures (persistent across frames, cleared on reset)
     ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count

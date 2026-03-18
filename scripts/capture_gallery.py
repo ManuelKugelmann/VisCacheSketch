@@ -82,8 +82,8 @@ if is_viscache:
         f"{capture_name}.HeatmapError",
         f"{capture_name}.HeatmapRaySavedPct",
         f"{capture_name}.HeatmapNoise",
-        f"{capture_name}.vcDiagComposite",
-        f"{capture_name}.vcDiagComposite2",
+        f"{capture_name}.vcVarMaturityLevel",
+        f"{capture_name}.vcVarMaturityMu",
     ]
 print(f"[capture] Done — captured {len(outputs)} output(s) to {gallery_dir}/")
 for o in outputs:

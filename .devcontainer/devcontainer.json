@@ -1,0 +1,76 @@
+{
+    "name": "VisCacheSketch",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+
+    // GPU passthrough — requires Docker Desktop with WSL2 + NVIDIA Container Toolkit
+    "runArgs": ["--gpus", "all"],
+    "containerEnv": {
+        "NVIDIA_VISIBLE_DEVICES": "all",
+        "NVIDIA_DRIVER_CAPABILITIES": "all",
+        // Falcor uses Vulkan on Linux (D3D12 is Windows-only)
+        "FALCOR_DEVICE_TYPE": "vulkan",
+        "DISPLAY": "${localEnv:DISPLAY}"
+    },
+
+    // Mount X11 socket for GUI (optional — Mogwai headless works without)
+    "mounts": [
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached"
+    ],
+
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "cmake.configureOnOpen": true,
+                "cmake.buildDirectory": "${workspaceFolder}/Falcor/build/${presetName}",
+                "cmake.sourceDirectory": "${workspaceFolder}/Falcor",
+                "cmake.useCMakePresets": "always",
+                "cmake.configureSettings": {},
+
+                "files.associations": {
+                    "*.slang": "hlsl",
+                    "*.slangh": "hlsl",
+                    "*.pyscene": "python"
+                },
+                "files.exclude": {
+                    "**/Falcor/build": true,
+                    "**/release/shaders": true
+                },
+                "files.eol": "\n",
+                "editor.formatOnSave": false,
+                "editor.rulers": [120],
+
+                "python.defaultInterpreterPath": "/usr/bin/python3",
+                "terminal.integrated.defaultProfile.linux": "bash"
+            },
+            "extensions": [
+                // C++ & CMake
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "twxs.cmake",
+                // Shader editing (Slang uses HLSL syntax)
+                "slevesque.shader",
+                "tiehuis.vscode-hlsl",
+                // Python (scene scripts, test scripts)
+                "ms-python.python",
+                // Git
+                "mhutchie.git-graph",
+                "eamodio.gitlens",
+                // Markdown (paper)
+                "yzhang.markdown-all-in-one",
+                // General
+                "EditorConfig.EditorConfig"
+            ]
+        }
+    },
+
+    // Post-create: fetch packman deps + integrate plugins
+    "postCreateCommand": "bash -c 'cd Falcor && ./setup.sh && cd .. && bash scripts/integrate-plugins.sh 2>/dev/null || true'",
+
+    // Post-start: deploy shaders to release/
+    "postStartCommand": "bash scripts/deploy_to_release.sh 2>/dev/null || true",
+
+    "remoteUser": "vscode"
+}
