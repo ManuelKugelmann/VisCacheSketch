@@ -29,8 +29,8 @@ SCENE="VeachAjar"
 RENDERER="restirpt"
 VARIANT=""
 INTERACTIVE=0
-RELEASE_DIR="${ROOT_DIR}/release"
-MEDIA_DIR="${ROOT_DIR}/release/media"
+RUNTIME_DIR="${ROOT_DIR}/runtime"
+MEDIA_DIR="${ROOT_DIR}/runtime/media"
 SKIP_SCENES=0
 SKIP_PULL=0
 SKIP_LAUNCH=0
@@ -164,9 +164,9 @@ echo ""
 echo "========================================"
 echo " Step 3: Copy newer shaders, data, etc. to release"
 echo "========================================"
-if [ -d "$RELEASE_DIR" ]; then
+if [ -d "$RUNTIME_DIR" ]; then
     echo "[quickstart] step 3 sync shaders, scripts, data from source tree to release"
-    bash "${ROOT_DIR}/.scripts/sync_to_release.sh"
+    bash "${ROOT_DIR}/.scripts/sync_to_runtime.sh"
 else
     echo "[quickstart] step 3 deploy shaders, scripts, data -- skipped (no release found)"
 fi
@@ -190,9 +190,9 @@ echo " Step 5: Headless smoke test"
 echo "========================================"
 if [ "$SKIP_LAUNCH" -eq 1 ]; then
     echo "[quickstart] step 5 headless smoke test -- skipped (--skip-launch)"
-elif [ -f "$RELEASE_DIR/Mogwai.exe" ]; then
+elif [ -f "$RUNTIME_DIR/Mogwai.exe" ]; then
     echo "[quickstart] step 5 run headless smoke test"
-    "$RELEASE_DIR/Mogwai.exe" --headless --script "$RELEASE_DIR/scripts/VisCache/smoke_test.py" || \
+    "$RUNTIME_DIR/Mogwai.exe" --headless --script "$RUNTIME_DIR/scripts/VisCache/smoke_test.py" || \
         echo "[quickstart] WARNING: Smoke test failed"
 else
     echo "[quickstart] step 5 headless smoke test -- skipped (Mogwai.exe not found)"
@@ -210,7 +210,7 @@ if [ "$SKIP_LAUNCH" -eq 1 ]; then
     exit 0
 fi
 
-if [ ! -f "$RELEASE_DIR/Mogwai.exe" ]; then
+if [ ! -f "$RUNTIME_DIR/Mogwai.exe" ]; then
     echo "[quickstart] step 6 launch -- skipped (Mogwai.exe not found)"
     echo "[quickstart] Run scripts/download_release.sh first, or build from source."
     exit 0
@@ -221,11 +221,11 @@ CHECKOUT_SHA=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "un
 CHECKOUT_DATE=$(git -C "$ROOT_DIR" log -1 --format=%ci 2>/dev/null || echo "unknown")
 RELEASE_SHA="unknown"
 RELEASE_VER="unknown"
-if [ -f "$RELEASE_DIR/.release-sha" ]; then
-    RELEASE_SHA=$(head -c 7 "$RELEASE_DIR/.release-sha")
+if [ -f "$RUNTIME_DIR/.release-sha" ]; then
+    RELEASE_SHA=$(head -c 7 "$RUNTIME_DIR/.release-sha")
 fi
-if [ -f "$RELEASE_DIR/.release-version" ]; then
-    RELEASE_VER=$(cat "$RELEASE_DIR/.release-version")
+if [ -f "$RUNTIME_DIR/.release-version" ]; then
+    RELEASE_VER=$(cat "$RUNTIME_DIR/.release-version")
 fi
 echo "[quickstart] checkout: $CHECKOUT_SHA ($CHECKOUT_DATE)"
 echo "[quickstart] release:  $RELEASE_SHA ($RELEASE_VER)"

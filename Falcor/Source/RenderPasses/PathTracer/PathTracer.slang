@@ -57,6 +57,15 @@ interface IVisibilityQuery
         \return Returns true if the ray endpoints are mutually visible (i.e. the ray does NOT intersect the scene).
     */
     [mutating] bool traceVisibilityRay(const Ray ray);
+
+#if USE_VISCACHE_VISIBILITYCHECK
+    /** CV+RRR visibility query via VisCache. Returns fractional visWeight in [0,1].
+        \param[in] ray Shadow ray to evaluate.
+        \param[in,out] sg Sample generator for RR coin flip.
+        \return Unbiased CV+RRR visibility weight.
+    */
+    [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg);
+#endif
 };
 
 /** Path tracer.

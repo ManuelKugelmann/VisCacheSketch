@@ -15,8 +15,8 @@ set "REPO=ManuelKugelmann/VisCache"
 for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 
 call "%SCRIPT_DIR%version.bat" launch 2>nul
-set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\release\media"
+set "RUNTIME_DIR=%ROOT%\runtime"
+set "MEDIA_DIR=%ROOT%\runtime\media"
 set "SCENE=VeachAjar"
 set "RENDERER=restirpt"
 set "VARIANT="
@@ -124,12 +124,12 @@ if "%GRAPH_SCRIPT%"=="" (
 REM ---------------------------------------------------------------------------
 REM Sync shaders, scripts, data from source to release/
 REM ---------------------------------------------------------------------------
-bash "%ROOT%\.scripts\sync_to_release.sh"
+bash "%ROOT%\.scripts\sync_to_runtime.sh"
 
 REM ---------------------------------------------------------------------------
 REM Check Mogwai.exe exists
 REM ---------------------------------------------------------------------------
-if not exist "%RELEASE_DIR%\Mogwai.exe" (
+if not exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [launch] Mogwai.exe not found -- no release downloaded.
     echo [launch] Run scripts\download_release.bat first, or build from source.
     echo [launch] Releases: https://github.com/%REPO%/releases
@@ -140,7 +140,7 @@ REM ---------------------------------------------------------------------------
 REM Resolve scene path and launch
 REM ---------------------------------------------------------------------------
 set "SCENE_FILE="
-if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RELEASE_DIR%\data\ReSTIRPTPass\VeachAjar\VeachAjar.pyscene"
+if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RUNTIME_DIR%\data\ReSTIRPTPass\VeachAjar\VeachAjar.pyscene"
 if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
@@ -161,7 +161,7 @@ if not exist "%SCENE_FILE%" (
 REM Build full script path and validate before launch.
 REM Quoting a path ending in "\" on Windows causes the MSVC CRT to interpret
 REM \" as an escaped quote, merging subsequent arguments into the path.
-set "SCRIPT_PATH=%RELEASE_DIR%\scripts\VisCache\%GRAPH_SCRIPT%"
+set "SCRIPT_PATH=%RUNTIME_DIR%\scripts\VisCache\%GRAPH_SCRIPT%"
 if not exist "%SCRIPT_PATH%" (
     echo [launch] ERROR: Graph script not found: %SCRIPT_PATH%
     echo [launch] Check that scripts were deployed to release\scripts\VisCache\
@@ -169,9 +169,9 @@ if not exist "%SCRIPT_PATH%" (
 )
 
 echo [launch] Starting Mogwai with %SCENE% (renderer: %RENDERER%)...
-echo [launch] %RELEASE_DIR%\Mogwai.exe --script scripts\VisCache\%GRAPH_SCRIPT% --scene %SCENE_FILE%
+echo [launch] %RUNTIME_DIR%\Mogwai.exe --script scripts\VisCache\%GRAPH_SCRIPT% --scene %SCENE_FILE%
 echo.
 set "FALCOR_MEDIA_FOLDERS=%MEDIA_DIR%"
-"%RELEASE_DIR%\Mogwai.exe" --script "%SCRIPT_PATH%" --scene "%SCENE_FILE%"
+"%RUNTIME_DIR%\Mogwai.exe" --script "%SCRIPT_PATH%" --scene "%SCENE_FILE%"
 
 endlocal

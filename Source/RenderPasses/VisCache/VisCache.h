@@ -37,6 +37,7 @@ public:
 
     // RenderPass interface
     Properties getProperties() const override;
+    void setProperties(const Properties& props) override;
     RenderPassReflection reflect(const CompileData& compileData) override;
     void compile(RenderContext* pRenderContext,
                  const CompileData& compileData) override;
@@ -63,8 +64,10 @@ public:
         uint32_t numLevels;
         float    cellCoarse;
         float    cellFine;
+        uint32_t enableJitter;
+        uint32_t _pad[3];  ///< HLSL cbuffers are reflected at 16-byte row granularity
     };
-    static_assert(sizeof(GPUParams) == 32, "GPUParams must match VisCacheParams cbuffer (32 bytes)");
+    static_assert(sizeof(GPUParams) == 48, "GPUParams must match VisCacheParams cbuffer (48 bytes, 16-byte aligned)");
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
     /// ablation toggles). Feature and ablation toggles are exported via InternalDictionary
@@ -95,6 +98,7 @@ public:
         bool     enableVisCacheVarianceGate   = true;  ///< B: Bernoulli variance-gated write depth
         bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
+        bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
     };
 
     const Params& getParams() const { return mParams; }

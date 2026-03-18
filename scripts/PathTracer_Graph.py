@@ -71,6 +71,46 @@ def render_graph_PathTracer(viscache=False):
 
     g.markOutput("ToneMapper.dst")
 
+    # -------------------------------------------------------------------
+    # VisCache diagnostic heatmaps (only when viscache=True)
+    # -------------------------------------------------------------------
+    if viscache:
+        # Prediction error |mu - V|
+        heatErr = createPass("ColorMapPass", {
+            "colorMap": "Inferno",
+            "channel":  0,
+            "autoRange": True,
+        })
+        g.addPass(heatErr, "HeatmapError")
+        g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
+        g.markOutput("HeatmapError.output")
+
+        # Accumulated ray savings ratio → false-color
+        heatRayPct = createPass("ColorMapPass", {
+            "colorMap": "Viridis",
+            "channel":  0,
+            "autoRange": False,
+            "minValue":  0.0,
+            "maxValue":  1.0,
+        })
+        g.addPass(heatRayPct, "HeatmapRaySavedPct")
+        g.addEdge("VisCache.vcRaySavedRatio", "HeatmapRaySavedPct.input")
+        g.markOutput("HeatmapRaySavedPct.output")
+
+        # Noise estimate (cache variance EMA) → false-color
+        heatNoise = createPass("ColorMapPass", {
+            "colorMap": "Inferno",
+            "channel":  0,
+            "autoRange": True,
+        })
+        g.addPass(heatNoise, "HeatmapNoise")
+        g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
+        g.markOutput("HeatmapNoise.output")
+
+        # Composite heatmaps — pre-normalized RGB
+        g.markOutput("VisCache.vcDiagComposite")
+        g.markOutput("VisCache.vcDiagComposite2")
+
     return g
 
 

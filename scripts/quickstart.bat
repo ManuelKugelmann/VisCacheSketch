@@ -26,8 +26,8 @@ for %%I in ("%SCRIPT_DIR%..") do set "ROOT=%%~fI"
 set "SCENE=VeachAjar"
 set "RENDERER=restirpt"
 set "VARIANT="
-set "RELEASE_DIR=%ROOT%\release"
-set "MEDIA_DIR=%ROOT%\release\media"
+set "RUNTIME_DIR=%ROOT%\runtime"
+set "MEDIA_DIR=%ROOT%\runtime\media"
 set "INTERACTIVE=0"
 
 call "%SCRIPT_DIR%version.bat" quickstart 2>nul
@@ -110,9 +110,9 @@ echo.
 echo ========================================
 echo  Step 3: Copy newer shaders, data, etc. to release
 echo ========================================
-if exist "%RELEASE_DIR%\Mogwai.exe" (
+if exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [quickstart] step 3 sync shaders, scripts, data from source tree to release
-    bash "%ROOT%\.scripts\sync_to_release.sh"
+    bash "%ROOT%\.scripts\sync_to_runtime.sh"
 ) else (
     echo [quickstart] step 3 deploy shaders, scripts, data -- skipped ^(no release found^)
 )
@@ -137,9 +137,9 @@ echo  Step 5: Headless smoke test
 echo ========================================
 if "%SKIP_LAUNCH%"=="1" (
     echo [quickstart] step 5 headless smoke test -- skipped ^(--skip-launch^)
-) else if exist "%RELEASE_DIR%\Mogwai.exe" (
+) else if exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [quickstart] step 5 run headless smoke test
-    "%RELEASE_DIR%\Mogwai.exe" --headless --script "%RELEASE_DIR%\scripts\VisCache\smoke_test.py"
+    "%RUNTIME_DIR%\Mogwai.exe" --headless --script "%RUNTIME_DIR%\scripts\VisCache\smoke_test.py"
     if errorlevel 1 (
         echo [quickstart] WARNING: Smoke test failed
     ) else (
@@ -160,7 +160,7 @@ if "%SKIP_LAUNCH%"=="1" (
     echo [quickstart] step 6 launch -- skipped ^(--skip-launch^)
     goto :done
 )
-if not exist "%RELEASE_DIR%\Mogwai.exe" (
+if not exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [quickstart] step 6 launch -- skipped ^(Mogwai.exe not found^)
     echo [quickstart] Run scripts\download_release.bat first, or build from source.
     goto :done
@@ -175,12 +175,12 @@ where git >nul 2>&1 && (
 )
 set "RELEASE_SHA=unknown"
 set "RELEASE_VER=unknown"
-if exist "%RELEASE_DIR%\.release-sha" (
-    set /p RELEASE_SHA=<"%RELEASE_DIR%\.release-sha"
+if exist "%RUNTIME_DIR%\.release-sha" (
+    set /p RELEASE_SHA=<"%RUNTIME_DIR%\.release-sha"
     set "RELEASE_SHA=!RELEASE_SHA:~0,7!"
 )
-if exist "%RELEASE_DIR%\.release-version" (
-    set /p RELEASE_VER=<"%RELEASE_DIR%\.release-version"
+if exist "%RUNTIME_DIR%\.release-version" (
+    set /p RELEASE_VER=<"%RUNTIME_DIR%\.release-version"
 )
 echo [quickstart] checkout: !CHECKOUT_SHA! ^(!CHECKOUT_DATE!^)
 echo [quickstart] release:  !RELEASE_SHA! ^(!RELEASE_VER!^)

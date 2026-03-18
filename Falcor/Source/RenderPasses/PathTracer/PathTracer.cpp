@@ -1209,12 +1209,29 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     {
         bool wasAvailable = mVisCacheAvailable;
         bool wasVisCheck = mVisCacheVisibilityCheck;
+        bool wasJitter = mVisCacheJitter;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
-        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
+        mVisCacheAvailable = (mpVHFTable != nullptr &&
+            dict.keyExists("vhfParam_tableCapacity"));
+        if (mVisCacheAvailable)
+        {
+            mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
+            mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+            mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
+            mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
+            mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
+            mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
+            mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
+            mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
+            mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+        }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
-        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck) mRecompile = true;
+        mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
+            || dict.getValue<bool>("vhfEnableJitter");  // default ON
+
+        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
+            || mVisCacheJitter != wasJitter) mRecompile = true;
     }
 
     // Check if fixed sample count should be used. When the sample count input is connected we load the count from there instead.
@@ -1355,15 +1372,22 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
 
     // -----------------------------------------------------------------
     // Bind VisCache GPU resources when available.
-    // Uses the whole params cbuffer exported by the VisCache pass,
-    // matching the binding pattern in ReSTIRPTPass and MinimalPathTracer.
+    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't
+    // support whole-buffer cbuffer binding via setBuffer().
     // -----------------------------------------------------------------
     if (mVisCacheAvailable)
     {
-        var["gVHFTable"]      = mpVHFTable;
-        var["VisCacheParams"] = mpVHFParamsCB;
+        var["gVHFTable"] = mpVHFTable;
+        var["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
+        var["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
+        var["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
+        var["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
+        var["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
+        var["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
+        var["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
+        var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
+        var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
     }
-
     // Full screen dispatch.
     mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));
 }
@@ -1458,6 +1482,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     // VisCache integration.
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
+    defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults

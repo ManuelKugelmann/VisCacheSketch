@@ -159,6 +159,126 @@ target_link_options(CudaInterop PRIVATE /NODEFAULTLIB:LIBCMT)
 
 ---
 
+## Proposed upstream improvement: FALCOR_PLUGIN_DIRS
+
+Falcor has no built-in way to build external render passes without copying sources
+into the Falcor tree or patching `Source/RenderPasses/CMakeLists.txt`. A
+`FALCOR_PLUGIN_DIRS` CMake variable would allow projects to register external plugin
+directories cleanly.
+
+**Proposed API:**
+
+```cmake
+# In the consuming project's CMakeLists.txt or via -D on the command line:
+set(FALCOR_PLUGIN_DIRS
+    "${CMAKE_SOURCE_DIR}/Source/RenderPasses/VisCache"
+    "${CMAKE_SOURCE_DIR}/Source/RenderPasses/ReSTIRPTPass"
+)
+
+# Then add_subdirectory(Falcor) — Falcor discovers and builds the external plugins.
+```
+
+**Implementation sketch** (in `Falcor/CMakeLists.txt`, after the `add_plugin()` function
+definition and before `get_property(plugin_targets ...)`):
+
+```cmake
+# Build external plugins from FALCOR_PLUGIN_DIRS (user-provided list of directories).
+# Each directory must contain a CMakeLists.txt that calls add_plugin().
+if(DEFINED FALCOR_PLUGIN_DIRS)
+    foreach(plugin_dir IN LISTS FALCOR_PLUGIN_DIRS)
+        get_filename_component(plugin_name "${plugin_dir}" NAME)
+        message(STATUS "Adding external plugin: ${plugin_name} from ${plugin_dir}")
+        add_subdirectory("${plugin_dir}" "${CMAKE_CURRENT_BINARY_DIR}/external_plugins/${plugin_name}")
+    endforeach()
+endif()
+```
+
+This would eliminate the need for:
+- Copying source files into the Falcor tree
+- Patching `Source/RenderPasses/CMakeLists.txt`
+- Complex integrate-plugins scripts
+
+External plugins would use the same `add_plugin()` / `target_copy_shaders()` macros
+and get included in `plugins.json` automatically via the existing `FALCOR_PLUGIN_TARGETS`
+global property.
+
+### Data, shaders, and scripts
+
+Falcor already provides `target_copy_shaders(target subdir)` for `.slang` files.
+External plugins also need conventions for data files (e.g. lookup tables, test
+scenes) and scripts (e.g. render graph configs, smoke tests). Proposed companion
+macros:
+
+```cmake
+# Copy Data/ subdirectory to ${FALCOR_OUTPUT_DIRECTORY}/data/<subdir>/
+function(target_copy_data target subdir)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Data")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/Data"
+                "${FALCOR_OUTPUT_DIRECTORY}/data/${subdir}"
+            COMMENT "Copying ${target} data files"
+        )
+    endif()
+endfunction()
+
+# Copy Scripts/ subdirectory to ${FALCOR_OUTPUT_DIRECTORY}/scripts/<subdir>/
+function(target_copy_scripts target subdir)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Scripts")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/Scripts"
+                "${FALCOR_OUTPUT_DIRECTORY}/scripts/${subdir}"
+            COMMENT "Copying ${target} scripts"
+        )
+    endif()
+endfunction()
+```
+
+**Convention-based alternative:** Instead of explicit macro calls, `add_plugin()`
+could auto-detect and deploy standard subdirectories:
+
+```cmake
+function(add_plugin target)
+    # ... existing add_plugin() logic ...
+
+    # Auto-deploy standard subdirectories if they exist
+    foreach(asset_type IN ITEMS Data Scripts Scenes)
+        string(TOLOWER "${asset_type}" asset_lower)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${asset_type}")
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${CMAKE_CURRENT_SOURCE_DIR}/${asset_type}"
+                    "${FALCOR_OUTPUT_DIRECTORY}/${asset_lower}/${target}"
+                COMMENT "Deploying ${target}/${asset_type}"
+            )
+        endif()
+    endforeach()
+endfunction()
+```
+
+This way a plugin directory like:
+```
+MyPlugin/
+  CMakeLists.txt      # calls add_plugin(MyPlugin)
+  MyPlugin.cpp
+  MyPlugin.slang      # deployed by target_copy_shaders()
+  Data/               # auto-deployed to build/data/MyPlugin/
+    lookup_table.txt
+  Scripts/             # auto-deployed to build/scripts/MyPlugin/
+    MyPlugin_Graph.py
+  Scenes/              # auto-deployed to build/scenes/MyPlugin/
+    TestScene.pyscene
+```
+
+would be fully self-contained — no external deploy scripts needed.
+
+**Current workaround:** We add `add_subdirectory()` calls to `Falcor/CMakeLists.txt`
+via `integrate-plugins.bat`, pointing to `Source/RenderPasses/*` with explicit binary
+directories. Data and script deployment is handled by `deploy_to_release.sh`.
+
+---
+
 ## 7. setup_vs2022.bat: add --host parameter for toolset architecture
 
 **File:** `setup_vs2022.bat`
@@ -171,3 +291,23 @@ prompt), reconfiguring fails with "generator toolset does not match".
 Usage: `setup_vs2022.bat --host x64` or `setup_vs2022.bat ci --host x64`.
 
 **Upstream status:** Not yet reported.
+
+---
+
+## 13. VisCache cbuffer: per-member binding required
+
+**Files:** `PathTracer.cpp`, `MinimalPathTracer.cpp`, `RTXDIPass.cpp`, `ReSTIRPTPass.cpp`
+
+Falcor 8's `ParameterBlock::setBuffer()` does not support binding a raw `Buffer`
+to a `cbuffer` shader variable. Calling `rootVar["MyCBuffer"] = someBuffer` hits
+the else branch in `ParameterBlock.cpp:506` which throws "Error trying to bind
+buffer to a non SRV/UAV variable." `setBlob()` also rejects cbuffer types.
+
+**Fix:** Bind cbuffer members individually:
+```cpp
+rootVar["VisCacheParams"]["gTableCapacity"] = params.tableCapacity;
+rootVar["VisCacheParams"]["gBootThreshold"] = params.bootThreshold;
+// ... etc
+```
+The VisCache pass exports per-member values via `InternalDictionary` keys
+(`vhfParam_tableCapacity`, etc.) so downstream passes can read and bind them.

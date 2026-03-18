@@ -14,11 +14,11 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 - `scripts/` — .py graph scripts, smoke tests, validation scripts
 - `.scripts/` — shell wrappers for common operations (build, test, deploy)
 - `scenes/` — .pyscene scene configs (camera, lights, env map); see [`docs/PYSCENE_API.md`](docs/PYSCENE_API.md) for Falcor 8 API reference
-- `release/` — build output directory (CMake builds directly here via `FALCOR_RUNTIME_OUTPUT_DIRECTORY`)
-  - `release/shaders/RenderPasses/` — deployed .slang shaders
-  - `release/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)
-  - `release/scripts/VisCache/` — graph configs and smoke tests
-  - `release/media/` — all scene assets (Arcade + TestScenes bundled from CI; Bistro, Sponza downloaded)
+- `runtime/` — build output directory (CMake builds directly here via `FALCOR_RUNTIME_OUTPUT_DIRECTORY`)
+  - `runtime/shaders/RenderPasses/` — deployed .slang shaders
+  - `runtime/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)
+  - `runtime/scripts/VisCache/` — graph configs and smoke tests
+  - `runtime/media/` — all scene assets (Arcade + TestScenes bundled from CI; Bistro, Sponza downloaded)
 - `viscachepaper/sections/*.md` — WIP paper content
 
 ## Scripting
@@ -31,7 +31,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 ## Build System
 
 - **External plugin builds via `FALCOR_PLUGIN_DIRS`** — plugins in `Source/RenderPasses/` build directly from source, no copy into Falcor tree needed. `build.bat` passes `-DFALCOR_PLUGIN_DIRS=...` to cmake.
-- **Build output goes directly to `release/`** via `-DFALCOR_RUNTIME_OUTPUT_DIRECTORY=release` — no manual copy/deploy step after build
+- **Build output goes directly to `runtime/`** via `-DFALCOR_RUNTIME_OUTPUT_DIRECTORY=release` — no manual copy/deploy step after build
 - Packman fetches binary deps (CUDA, D3D12 Agility SDK, nvtt, slang); also `falcor_media` (Arcade, TestScenes)
 - CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
 - Windows: SDK 10.0.19041.0 required (`windows-2022` runner, NOT `windows-latest`)
@@ -39,7 +39,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
   - `target_copy_shaders(target subdir)` — deploys .slang files
   - `target_copy_data(target subdir)` — deploys `Data/` subdirectory
   - `target_copy_scripts(target subdir)` — deploys `Scripts/` subdirectory
-- **Shader source of truth is `Source/`**, not `release/shaders/` — only edit under `Source/RenderPasses/`
+- **Shader source of truth is `Source/`**, not `runtime/shaders/` — only edit under `Source/RenderPasses/`
 - **Quick build:** `build.bat --skip-setup` (skips packman/submodules, just configure+build)
 - **Clean rebuild:** `build.bat --clean` (removes CMake cache, full reconfigure)
 
@@ -59,7 +59,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 ## Scenes
 
 - **Default test scene: VeachAjar** (DQLin ReSTIR PT reference scene) — small, no download needed after data deploy
-- VeachAjar lives in source tree: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/`, deployed to `release/data/ReSTIRPTPass/VeachAjar/`
+- VeachAjar lives in source tree: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/`, deployed to `runtime/data/ReSTIRPTPass/VeachAjar/`
 - Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
 - Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
 
@@ -80,7 +80,7 @@ Reusable wrappers for common operations (avoids `cd release` boilerplate):
 
 - **`.scripts/mogwai-headless.sh <pattern> [scene] [frames]`** — headless test, supports glob patterns (e.g. `*_Graph.py`)
 - **`.scripts/mogwai-headed.sh <pattern> [scene]`** — headed (GPU window) test
-- **`.scripts/sync_to_release.sh`** — hot-sync shaders, scripts, data from source to `release/` without rebuilding; clears shader cache
+- **`.scripts/sync_to_runtime.sh`** — hot-sync shaders, scripts, data from source to `runtime/` without rebuilding; clears shader cache
 - **`.scripts/smoke.sh`** — quick build validation (1 frame with scene)
 
 ## Testing with Mogwai
@@ -89,9 +89,9 @@ Reusable wrappers for common operations (avoids `cd release` boilerplate):
 - **Full test matrix:** `.scripts/mogwai-headless.sh '*_Graph.py'` (all 9 renderer×variant combos)
 - **Paper scripts:** run individually via `.scripts/mogwai-headless.sh 'VisCache_Ablation.py'` etc.
 - **Scene loading:** `run_graph_headless.py` loads the scene via `m.loadScene()` inside the script (NOT via Mogwai's `--scene` flag, which loads too late)
-- Graph scripts live in `release/scripts/VisCache/` (synced from `scripts/`)
-- Exit code 0 = success; check Mogwai.exe.*.log in release/ for errors
-- **Hot-reload shaders/scripts:** `.scripts/sync_to_release.sh` (no rebuild needed for .slang/.py changes)
+- Graph scripts live in `runtime/scripts/VisCache/` (synced from `scripts/`)
+- Exit code 0 = success; check Mogwai.exe.*.log in runtime/ for errors
+- **Hot-reload shaders/scripts:** `.scripts/sync_to_runtime.sh` (no rebuild needed for .slang/.py changes)
 
 ## Workflow
 

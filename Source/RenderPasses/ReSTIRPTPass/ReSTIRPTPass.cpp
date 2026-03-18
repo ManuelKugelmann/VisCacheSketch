@@ -1514,19 +1514,35 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         bool wasLightSel = mVisCacheLightSelection;
 
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
-        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
+        mVisCacheAvailable = (mpVHFTable != nullptr &&
+            dict.keyExists("vhfParam_tableCapacity"));
+        if (mVisCacheAvailable)
+        {
+            mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
+            mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+            mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
+            mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
+            mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
+            mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
+            mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
+            mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
+            mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+        }
 
         mVisCacheVisibilityCheck  = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheLightSelection = mVisCacheAvailable &&
             dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
+        bool wasJitter = mVisCacheJitter;
+        mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
+            || dict.getValue<bool>("vhfEnableJitter");  // default ON
 
         // Recompile only when a flag actually changes — avoids unnecessary
         // shader recompilation on frames where the dict values are stable.
         if (mVisCacheAvailable != wasAvailable ||
             mVisCacheVisibilityCheck != wasVisCheck ||
-            mVisCacheLightSelection != wasLightSel)
+            mVisCacheLightSelection != wasLightSel ||
+            mVisCacheJitter != wasJitter)
             mRecompile = true;
     }
 
@@ -1636,8 +1652,8 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
 
     // Bind global resources.
     auto var = pass->getRootVar();
-    // [Falcor 8] bindShaderDataForRaytracing replaces setRaytracingShaderData.
-    mpScene->bindShaderDataForRaytracing(pRenderContext, var);
+    // [Falcor 8] bindShaderDataForRaytracing expects the gScene ShaderVar, not root.
+    mpScene->bindShaderDataForRaytracing(pRenderContext, var["gScene"]);
 
     if (mVarsChanged) mpSampleGenerator->bindShaderData(var);
 
@@ -1749,22 +1765,22 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
 
     // -----------------------------------------------------------------
     // Bind VisCache GPU resources to the PathReusePass shader root.
-    //
-    // gVHFTable: the hash table UAV — shared across all VisCache consumers.
-    //   Bound as RWStructuredBuffer<VHFEntry> for both reads and atomic writes.
-    //
-    // VisCacheParams: the params cbuffer — tuning knobs (pMin, varThreshold,
-    //   cellCoarse/cellFine, etc.). Uploaded by the VisCache pass each frame.
-    //
-    // Both resources are only bound when VisCache is available (the upstream
-    // VisCache pass exists in the render graph and exported its resources).
-    // When USE_VISCACHE=0 the Slang compiler eliminates these bindings entirely.
+    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't
+    // support whole-buffer cbuffer binding.
     // -----------------------------------------------------------------
     if (mVisCacheAvailable)
     {
         auto rootVar = pass->getRootVar();
-        rootVar["gVHFTable"]      = mpVHFTable;
-        rootVar["VisCacheParams"] = mpVHFParamsCB;
+        rootVar["gVHFTable"] = mpVHFTable;
+        rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
+        rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
+        rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
+        rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
+        rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
+        rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
+        rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
+        rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
+        rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
     // separate cbuffer needed. VisCacheParams is already bound above
@@ -1839,13 +1855,21 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
     // Bind VisCache resources to PathRetracePass (same pattern as PathReusePass).
+    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't support whole-buffer cbuffer binding.
     if (mVisCacheAvailable)
     {
         auto rootVar = pass->getRootVar();
-        rootVar["gVHFTable"]      = mpVHFTable;
-        rootVar["VisCacheParams"] = mpVHFParamsCB;
+        rootVar["gVHFTable"] = mpVHFTable;
+        rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
+        rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
+        rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
+        rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
+        rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
+        rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
+        rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
+        rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
+        rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
     }
-    // Local CV+RRR reuses VisCacheParams — no separate cbuffer binding.
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1920,6 +1944,7 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
+    defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_LOCAL_CVRRR", owner.mLocalCVRRR ? "1" : "0");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).

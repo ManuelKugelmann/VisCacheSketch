@@ -205,9 +205,14 @@ private:
     ref<Buffer>                     mpSampleNRDEmission;        ///< Compact per-sample NRD emission data.
     ref<Buffer>                     mpSampleNRDReflectance;     ///< Compact per-sample NRD reflectance data.
 
-    // VisCache integration — hash table + params buffer from InternalDictionary.
+    // VisCache integration — hash table + per-member cbuffer params from InternalDictionary.
     ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
-    ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
+    bool mVisCacheJitter = true;            ///< F: jitter-before-quantize (§4.2)
+
+    // Cached cbuffer values — bound per-member because Falcor 8 ParameterBlock
+    // doesn't support whole-buffer cbuffer binding.
+    struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
+             uint32_t numLevels=0; float cellCoarse=0, cellFine=0; uint32_t enableJitter=1; } mVCParams;
 };

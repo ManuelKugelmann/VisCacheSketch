@@ -5,7 +5,7 @@ Validates:
 1.  Toggle consistency — property keys match across DI/GI/PT
 2.  Ablation matrix — all toggle combinations are valid
 3.  Light-selection-only ablation (S11.1 without S11.3)
-4.  VisCache internal ablation toggles A–E are property-accessible
+4.  VisCache internal ablation toggles A–F are property-accessible
 5.  All enableVisCache* flags use consistent naming
 6.  Decay-off ablation semantics
 
@@ -111,10 +111,10 @@ for pass_name in ["DI", "GI", "PT"]:
 viscache_ablation_keys = {
     "enableVisCacheVarianceGate",
     "enableVisCacheWarpReduction", "enableVisCacheDecay",
-    "enableVisCachePressureEvict"
+    "enableVisCachePressureEvict", "enableVisCacheJitter"
 }
-check("VisCache ablation: 4 toggles (B–E) are property-accessible",
-      len(viscache_ablation_keys) == 4,
+check("VisCache ablation: 5 toggles (B–F) are property-accessible",
+      len(viscache_ablation_keys) == 5,
       f"keys={sorted(viscache_ablation_keys)}")
 
 # Each ablation disables exactly one feature while keeping others on
@@ -122,8 +122,8 @@ for key in sorted(viscache_ablation_keys):
     defaults = {k: True for k in viscache_ablation_keys}
     defaults[key] = False
     active_count = sum(1 for v in defaults.values() if v)
-    check(f"VisCache ablation: disabling {key} keeps {active_count}/4 active",
-          active_count == 3,
+    check(f"VisCache ablation: disabling {key} keeps {active_count}/5 active",
+          active_count == 4,
           f"{key}=False, rest=True")
 
 # ---------------------------------------------------------------------------
@@ -133,8 +133,8 @@ for key in sorted(viscache_ablation_keys):
 viscache_all_keys = viscache_ablation_keys | {
     "enableVisCacheVisibilityCheck", "enableVisCacheLightSelection"
 }
-check("VisCache: 6 enableVisCache* flags (4 ablation + 2 feature)",
-      len(viscache_all_keys) == 6,
+check("VisCache: 7 enableVisCache* flags (5 ablation + 2 feature)",
+      len(viscache_all_keys) == 7,
       f"keys={sorted(viscache_all_keys)}")
 
 check("VisCache: all flags use enableVisCache prefix",

@@ -58,6 +58,11 @@
 // the empty module at compile time.
 #if USE_VISCACHE
 
+// Default jitter to ON — downstream passes set USE_VISCACHE_JITTER=0 for ablation F.
+#ifndef USE_VISCACHE_JITTER
+#define USE_VISCACHE_JITTER 1
+#endif
+
 // ===========================================================================
 // DATA STRUCTURES
 // ===========================================================================
@@ -163,6 +168,10 @@ cbuffer VisCacheParams
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
     float  gCellCoarse;      ///< Coarsest level cell size (world units)
     float  gCellFine;        ///< Finest level cell size (world units)
+    uint   gEnableJitter;    ///< Unused at runtime; jitter gate is USE_VISCACHE_JITTER define
+    uint   _pad0;            ///< Explicit padding — HLSL reflects cbuffers at 16-byte row granularity
+    uint   _pad1;
+    uint   _pad2;
 };
 
 // ---------------------------------------------------------------------------
@@ -275,9 +284,13 @@ float3 vhfEncodeDirection(float3 dir)
 int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 {
     int3 baseIdx = int3(floor(pos / cellSize));
+#if USE_VISCACHE_JITTER
     uint3 r = pcg3d(uint3(baseIdx) ^ seed);
     float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
     return int3(floor((pos + jitter * cellSize) / cellSize));
+#else
+    return baseIdx;  // Ablation F: naive floor quantization (cell-boundary aliasing)
+#endif
 }
 
 // ---------------------------------------------------------------------------

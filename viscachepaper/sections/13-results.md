@@ -43,6 +43,7 @@ All measurements at 1920×1080, 1 spp, RTX 4090, driver 560.x, DXR 1.1. Referenc
 | − variance gate (always write all levels) | red | red | red |
 | − maturity gate (always write, no SE check) | red | red | red |
 | − warp reduction (per-thread atomics only) | red | red | red |
+| − jitter-before-quantize (naive floor, §4.2) | red | red | red |
 | L0 only (coarsest, 10 m cells) | red | red | red |
 | L2 only (finest, 8 cm cells) | red | red | red |
 | − firefly adaptive Pmin | red | red | red |

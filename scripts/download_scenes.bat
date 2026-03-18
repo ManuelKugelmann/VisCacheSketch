@@ -13,7 +13,7 @@ REM --yes skips interactive prompts (download everything).
 setlocal enabledelayedexpansion
 
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "MEDIA_DIR=%ROOT%\release\media"
+set "MEDIA_DIR=%ROOT%\runtime\media"
 set "SCENES_DIR=%ROOT%\scenes"
 set "AUTO_YES=0"
 
@@ -49,9 +49,9 @@ REM ---------------------------------------------------------------------------
 REM 1. Arcade — bundled in release or Falcor media
 REM ---------------------------------------------------------------------------
 if not exist "%MEDIA_DIR%\Arcade" (
-    if exist "%ROOT%\release\media\Arcade" (
+    if exist "%ROOT%\runtime\media\Arcade" (
         echo [scenes] Copying Arcade from release bundle...
-        xcopy /E /I /Q "%ROOT%\release\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
+        xcopy /E /I /Q "%ROOT%\runtime\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
     ) else if exist "%ROOT%\Falcor\media\Arcade" (
         echo [scenes] Copying Arcade from Falcor\media\...
         xcopy /E /I /Q "%ROOT%\Falcor\media\Arcade" "%MEDIA_DIR%\Arcade" >nul
@@ -66,9 +66,9 @@ REM ---------------------------------------------------------------------------
 REM 2. Cornell Box — bundled in release or Falcor test_scenes
 REM ---------------------------------------------------------------------------
 if not exist "%MEDIA_DIR%\TestScenes" (
-    if exist "%ROOT%\release\media\TestScenes" (
+    if exist "%ROOT%\runtime\media\TestScenes" (
         echo [scenes] Copying TestScenes from release bundle...
-        xcopy /E /I /Q "%ROOT%\release\media\TestScenes" "%MEDIA_DIR%\TestScenes" >nul
+        xcopy /E /I /Q "%ROOT%\runtime\media\TestScenes" "%MEDIA_DIR%\TestScenes" >nul
     ) else if exist "%ROOT%\Falcor\media\TestScenes" (
         echo [scenes] Copying TestScenes from Falcor\media\...
         xcopy /E /I /Q "%ROOT%\Falcor\media\TestScenes" "%MEDIA_DIR%\TestScenes" >nul

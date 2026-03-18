@@ -151,7 +151,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     // -----------------------------------------------------------------
     // Read VisCache resources from upstream VisCache pass (if connected).
-    // Both the hash table buffer and params cbuffer must be present for
+    // The hash table buffer and per-member params must be present for
     // VisCache to be considered available. A change in availability
     // triggers shader recompilation (USE_VISCACHE define changes).
     // -----------------------------------------------------------------
@@ -159,8 +159,20 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         bool wasAvailable = mVisCacheAvailable;
         bool wasVisCheck = mVisCacheVisibilityCheck;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
-        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
+        mVisCacheAvailable = (mpVHFTable != nullptr &&
+            dict.keyExists("vhfParam_tableCapacity"));
+        if (mVisCacheAvailable)
+        {
+            mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
+            mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+            mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
+            mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
+            mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
+            mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
+            mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
+            mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
+            mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+        }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck)
@@ -210,16 +222,21 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     // -----------------------------------------------------------------
     // Bind VisCache GPU resources when available.
-    //
-    // gVHFTable: the hash table UAV (RWStructuredBuffer<VHFEntry>).
-    // VisCacheParams: the params cbuffer — uploaded as a whole buffer by
-    //   the VisCache pass, bound here as a constant buffer resource.
-    //   This is the same binding pattern used by ReSTIRPTPass.
+    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't
+    // support whole-buffer cbuffer binding.
     // -----------------------------------------------------------------
     if (mVisCacheAvailable)
     {
-        var["gVHFTable"]      = mpVHFTable;
-        var["VisCacheParams"] = mpVHFParamsCB;
+        var["gVHFTable"] = mpVHFTable;
+        var["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
+        var["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
+        var["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
+        var["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
+        var["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
+        var["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
+        var["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
+        var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
+        var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
     }
 
     // Get dimensions of ray dispatch.

@@ -31,6 +31,7 @@ set "UPDATE_ARGS="
 set "SKIP_SETUP=0"
 set "CLEAN_CACHE=0"
 set "OPEN_IDE=0"
+set "TARGETS="
 
 REM ---------------------------------------------------------------------------
 REM Parse arguments
@@ -44,8 +45,9 @@ if /i "%~1"=="--skip-scenes" (set "UPDATE_ARGS=!UPDATE_ARGS! --skip-scenes" & sh
 if /i "%~1"=="--scene" (set "UPDATE_ARGS=!UPDATE_ARGS! --scene %~2" & shift & shift & goto :parse_args)
 if /i "%~1"=="--clean" (set "CLEAN_CACHE=1" & shift & goto :parse_args)
 if /i "%~1"=="--open" (set "OPEN_IDE=1" & shift & goto :parse_args)
+if /i "%~1"=="--target" (set "TARGETS=!TARGETS! --target %~2" & shift & shift & goto :parse_args)
 echo Unknown argument: %~1
-echo Usage: %~nx0 [--config Release^|Debug] [--preset ^<preset^>] [--skip-setup] [--skip-scenes] [--scene ^<name^>] [--clean] [--open]
+echo Usage: %~nx0 [--config Release^|Debug] [--preset ^<preset^>] [--target ^<name^>] [--skip-setup] [--skip-scenes] [--scene ^<name^>] [--clean] [--open]
 exit /b 1
 :args_done
 
@@ -53,10 +55,21 @@ REM ---------------------------------------------------------------------------
 REM Clean stale CMake cache (before setup, since setup_vs2022.bat also configures)
 REM ---------------------------------------------------------------------------
 set "BUILD_DIR=%FALCOR_ROOT%\build\%PRESET%"
+set "CLEAN_CMAKE=cmake"
+if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
+    set "CLEAN_CMAKE=%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe"
+)
 if "%CLEAN_CACHE%"=="1" (
-    if exist "!BUILD_DIR!\CMakeCache.txt" (
-        echo [build] --clean: removing CMakeCache.txt and CMakeFiles...
-        del /q "!BUILD_DIR!\CMakeCache.txt"
+    if exist "!BUILD_DIR!" (
+        echo [build] --clean: cleaning build artifacts...
+        REM cmake --build --target clean removes all build outputs via the
+        REM native build system (MSBuild/Ninja), ensuring no stale .obj files
+        REM survive header changes.
+        if exist "!BUILD_DIR!\CMakeCache.txt" (
+            "!CLEAN_CMAKE!" --build "!BUILD_DIR!" --target clean 2>nul
+        )
+        echo [build] --clean: removing CMake cache for full reconfigure...
+        if exist "!BUILD_DIR!\CMakeCache.txt" del /q "!BUILD_DIR!\CMakeCache.txt"
         if exist "!BUILD_DIR!\CMakeFiles" rmdir /s /q "!BUILD_DIR!\CMakeFiles"
     )
 )
@@ -97,19 +110,24 @@ if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
 
 set "PLUGIN_DIRS=%ROOT%Source\RenderPasses\VisCache;%ROOT%Source\RenderPasses\ReSTIRPTPass"
 echo [build] Configuring: %CMAKE% --preset %PRESET%
-"%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%" -DFALCOR_PLUGIN_DIRS="!PLUGIN_DIRS!" -DFALCOR_RUNTIME_OUTPUT_DIRECTORY="%ROOT%release"
+"%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%" -DFALCOR_PLUGIN_DIRS="!PLUGIN_DIRS!" -DFALCOR_RUNTIME_OUTPUT_DIRECTORY="%ROOT%runtime"
 if errorlevel 1 (
     echo [build] ERROR: CMake configure failed!
     exit /b 1
 )
 
-REM VS2022 presets use MSBuild (/m for parallel); Ninja presets use native parallel
-echo [build] Building: %CMAKE% --build ... --config %CONFIG%
+REM VS2022 presets use MSBuild; Ninja presets use native parallel.
+REM --target limits the build to specific targets (e.g. --target VisCachePass --target Mogwai).
+if "!TARGETS!"=="" (
+    echo [build] Building: all targets (%CONFIG%)
+) else (
+    echo [build] Building:%TARGETS% (%CONFIG%)
+)
 echo "%PRESET%" | findstr /i "ninja" >nul
 if errorlevel 1 (
-    "%CMAKE%" --build "%FALCOR_ROOT%\build\%PRESET%" --config %CONFIG% -- /m
+    "%CMAKE%" --build "%FALCOR_ROOT%\build\%PRESET%" --config %CONFIG% !TARGETS!
 ) else (
-    "%CMAKE%" --build "%FALCOR_ROOT%\build\%PRESET%" --config %CONFIG%
+    "%CMAKE%" --build "%FALCOR_ROOT%\build\%PRESET%" --config %CONFIG% !TARGETS!
 )
 if errorlevel 1 (
     echo [build] ERROR: Build failed!
@@ -139,9 +157,9 @@ REM Step 4: Deploy build output to release\
 REM ---------------------------------------------------------------------------
 echo.
 echo ========================================
-echo  Step 4: Deploy to release\
+echo  Step 4: Verify runtime output
 echo ========================================
-set "RELEASE_DIR=%ROOT%release"
+set "RUNTIME_DIR=%ROOT%runtime"
 
 if not exist "!BUILD_OUT!\Mogwai.exe" (
     echo [build] WARNING: Mogwai.exe not found at !BUILD_OUT!
@@ -150,7 +168,7 @@ if not exist "!BUILD_OUT!\Mogwai.exe" (
 
 REM Build output goes directly to release/ via FALCOR_RUNTIME_OUTPUT_DIRECTORY.
 REM Shaders deployed by target_copy_shaders(), data by target_copy_data().
-echo [build] Build output is in %RELEASE_DIR%\ (no copy needed)
+echo [build] Build output is in %RUNTIME_DIR%\ (no copy needed)
 
 :done
 echo.
@@ -158,7 +176,7 @@ echo ========================================
 echo  Build complete
 echo ========================================
 echo [build] Build output: !BUILD_OUT!
-echo [build] Deployed to:  %RELEASE_DIR%\
+echo [build] Deployed to:  %RUNTIME_DIR%\
 echo.
 
 REM Open VS solution if requested

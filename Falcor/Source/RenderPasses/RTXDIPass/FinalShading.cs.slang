@@ -32,7 +32,7 @@ import Rendering.RTXDI.RTXDI;
 import Utils.Sampling.TinyUniformSampleGenerator;
 import Utils.Sampling.SampleGenerator;
 
-import RenderPasses.VisCache.VisCacheTracing;
+import RenderPasses.VisCache.VisCacheRTXDI;
 
 RWTexture2D<float4> gColor;
 RWTexture2D<float4> gEmission;
@@ -90,8 +90,10 @@ struct FinalShading
                 float3 origin = sd.computeRayOrigin();
 
 #if USE_VISCACHE_VISIBILITYCHECK
-                SampleGenerator sg = SampleGenerator(pixel, gRTXDI.frameIndex);
-                visWeight = vcVisibility_InlineRay(origin, dir, distance, sg, luminance(Li));
+                TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, gRTXDI.frameIndex);
+                // BT.709 luminance — ColorHelpers.slang not imported in RTXDI context.
+                float contribLum = dot(Li, float3(0.2126f, 0.7152f, 0.0722f));
+                visWeight = vcVisibility_InlineRay(origin, dir, distance, sg, contribLum);
                 if (visWeight <= 0.f) valid = false;
 #else
                 SceneRayQuery<1> rayQuery;

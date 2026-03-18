@@ -7,7 +7,9 @@ target_sources(VisCachePass PRIVATE
     VisCacheDiagnostics.slang
     VisCacheInsert.cs.slang
     VisCacheDecay.cs.slang
-    VisCacheTracing.slang
+    VisCachePathTracer.slang
+    VisCacheRTXDI.slang
+    VisCacheMinimalPT.slang
     RevalidationCommon.slang
     ShadingCV.slang
 )

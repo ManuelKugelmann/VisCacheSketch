@@ -64,7 +64,7 @@ import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
 import Rendering.Lights.LightHelpers;
 
-import RenderPasses.VisCache.VisCacheTracing;
+import RenderPasses.VisCache.VisCacheMinimalPT;
 
 cbuffer CB
 {

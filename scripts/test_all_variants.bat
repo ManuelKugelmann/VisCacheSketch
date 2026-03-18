@@ -28,10 +28,9 @@ for %%R in (MinimalPathTracer PathTracer RTXDI ReSTIRPT) do (
 
         set "GRAPH_SCRIPT=!SCRIPT!"
         set "NUM_FRAMES=%FRAMES%"
-        pushd "%RELEASE%"
-        "%MOGWAI%" --headless -s "%RUNNER%" -S "%SCENE%" >nul 2>&1
+        set "SCENE_FILE=%SCENE%"
+        call "%ROOT%\scripts\mogwai_run.bat" --headless -s "%RUNNER%" >nul 2>&1
         set "EC=!errorlevel!"
-        popd
 
         if !EC! equ 0 (
             echo [test]   PASS

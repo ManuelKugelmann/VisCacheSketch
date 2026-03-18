@@ -28,6 +28,7 @@ ABLATIONS = {
     "minus_warp":   {"enableVisCacheWarpReduction": False},      # -C: no warp reduction (per-lane atomics)
     "minus_decay":  {"enableVisCacheDecay": False},              # -D: no inline CAS decay
     "minus_evict":  {"enableVisCachePressureEvict": False},      # -E: no pressure-scaled eviction
+    "minus_jitter": {"enableVisCacheJitter": False},             # -F: no jitter-before-quantize (cell aliasing)
     "single_level": {"numLevels": 1},                            # Single-level (N=1) vs. multilevel
 }
 

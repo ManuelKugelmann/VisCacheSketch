@@ -17,4 +17,6 @@ VISCACHE_DEFAULTS = {
     "enableVisCacheVarianceGate":   True,
     "enableVisCacheDecay":          True,
     "enableVisCachePressureEvict":  True,
+    "enableVisCacheJitter":         True,
+    "enableDiagnostics":            True,
 }

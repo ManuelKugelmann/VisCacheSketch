@@ -176,10 +176,12 @@ private:
     // register pressure from unused VisCache cbuffer bindings.
     // -----------------------------------------------------------------
     ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
-    ref<Buffer> mpVHFParamsCB;             ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
+    struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
+             uint32_t numLevels=0; float cellCoarse=0, cellFine=0; uint32_t enableJitter=1; } mVCParams;
     bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
     bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)
     bool mVisCacheLightSelection = false;  ///< §11.1: cached mu gates NEE shadow rays (PathTracer.slang)
+    bool mVisCacheJitter = true;           ///< F: jitter-before-quantize (§4.2)
     bool mLocalCVRRR = false;       ///< Ablation: reservoir-local CV+RRR (reuses VisCacheParams)
 
     uint64_t                        mAccumulatedRayCount = 0;

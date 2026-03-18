@@ -38,7 +38,7 @@ import PathTracerNRD;
 
 import Utils.NVAPI; // TODO(@skallweit) this is currently needed to make g_NvidiaExt visible
 
-import RenderPasses.VisCache.VisCacheTracing;
+import RenderPasses.VisCache.VisCachePathTracer;
 
 ParameterBlock<PathTracer> gPathTracer;
 #if USE_SER

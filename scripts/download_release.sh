@@ -13,12 +13,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-RELEASE_DIR="${ROOT_DIR}/release"
+RUNTIME_DIR="${ROOT_DIR}/runtime"
 REPO="ManuelKugelmann/VisCacheSketch"
-SHA_FILE="${RELEASE_DIR}/.release-sha"
-VERSION_FILE="${RELEASE_DIR}/.release-version"
+SHA_FILE="${RUNTIME_DIR}/.release-sha"
+VERSION_FILE="${RUNTIME_DIR}/.release-version"
 
-mkdir -p "$RELEASE_DIR"
+mkdir -p "$RUNTIME_DIR"
 
 # ---------------------------------------------------------------------------
 # Step 1: Find the latest dev-* prerelease tag via GitHub API
@@ -34,7 +34,7 @@ fi
 
 if [ -z "$REMOTE_TAG" ]; then
     echo "[release] No dev-* prerelease found on GitHub."
-    if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
+    if [ -f "$RUNTIME_DIR/Mogwai.exe" ] || [ -f "$RUNTIME_DIR/Mogwai" ]; then
         echo "[release] Keeping existing release."
         exit 0
     else
@@ -67,7 +67,7 @@ fi
 # ---------------------------------------------------------------------------
 # Check for newer release via commit SHA
 # ---------------------------------------------------------------------------
-if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
+if [ -f "$RUNTIME_DIR/Mogwai.exe" ] || [ -f "$RUNTIME_DIR/Mogwai" ]; then
     if [ -f "$SHA_FILE" ]; then
         OLD_SHA="$(cat "$SHA_FILE")"
         echo "[release] Checking for newer release..."
@@ -143,9 +143,9 @@ echo "$REMOTE_TAG ($REMOTE_DATE)" > "$VERSION_FILE"
 LOCAL_DATA_BACKUP="$(mktemp -d /tmp/viscache-local-data.XXXXXX)"
 LOCAL_DIRS_PRESERVED=()
 for LOCAL_DIR in media data; do
-    if [ -d "$RELEASE_DIR/$LOCAL_DIR" ]; then
+    if [ -d "$RUNTIME_DIR/$LOCAL_DIR" ]; then
         echo "[release] Preserving local $LOCAL_DIR/..."
-        mv "$RELEASE_DIR/$LOCAL_DIR" "$LOCAL_DATA_BACKUP/$LOCAL_DIR"
+        mv "$RUNTIME_DIR/$LOCAL_DIR" "$LOCAL_DATA_BACKUP/$LOCAL_DIR"
         LOCAL_DIRS_PRESERVED+=("$LOCAL_DIR")
     fi
 done
@@ -154,31 +154,31 @@ done
 # Clean old release — move aside so tar doesn't hit overwrite errors
 # ---------------------------------------------------------------------------
 OLD_RELEASE="$(mktemp -d /tmp/viscache-old-release.XXXXXX)"
-if [ -f "$RELEASE_DIR/Mogwai.exe" ] || [ -f "$RELEASE_DIR/Mogwai" ]; then
+if [ -f "$RUNTIME_DIR/Mogwai.exe" ] || [ -f "$RUNTIME_DIR/Mogwai" ]; then
     echo "[release] Moving old release aside..."
-    mv "$RELEASE_DIR" "$OLD_RELEASE/release"
-    mkdir -p "$RELEASE_DIR"
+    mv "$RUNTIME_DIR" "$OLD_RELEASE/runtime"
+    mkdir -p "$RUNTIME_DIR"
     # Preserve SHA and version files
-    if [ -f "$OLD_RELEASE/release/.release-sha" ]; then
-        cp "$OLD_RELEASE/release/.release-sha" "$SHA_FILE"
+    if [ -f "$OLD_RELEASE/runtime/.release-sha" ]; then
+        cp "$OLD_RELEASE/runtime/.release-sha" "$SHA_FILE"
     fi
-    if [ -f "$OLD_RELEASE/release/.release-version" ]; then
-        cp "$OLD_RELEASE/release/.release-version" "$VERSION_FILE"
+    if [ -f "$OLD_RELEASE/runtime/.release-version" ]; then
+        cp "$OLD_RELEASE/runtime/.release-version" "$VERSION_FILE"
     fi
 fi
 
-echo "[release] Extracting to $RELEASE_DIR..."
-if ! tar xzf "$ARCHIVE" -C "$RELEASE_DIR"; then
+echo "[release] Extracting to $RUNTIME_DIR..."
+if ! tar xzf "$ARCHIVE" -C "$RUNTIME_DIR"; then
     echo "[release] ERROR: Extraction failed."
-    if [ -d "$OLD_RELEASE/release" ]; then
+    if [ -d "$OLD_RELEASE/runtime" ]; then
         echo "[release] Restoring previous release..."
-        rm -rf "$RELEASE_DIR"
-        mv "$OLD_RELEASE/release" "$RELEASE_DIR"
+        rm -rf "$RUNTIME_DIR"
+        mv "$OLD_RELEASE/runtime" "$RUNTIME_DIR"
     fi
     # Restore local data on failure
     for LOCAL_DIR in "${LOCAL_DIRS_PRESERVED[@]}"; do
         if [ -d "$LOCAL_DATA_BACKUP/$LOCAL_DIR" ]; then
-            mv "$LOCAL_DATA_BACKUP/$LOCAL_DIR" "$RELEASE_DIR/$LOCAL_DIR"
+            mv "$LOCAL_DATA_BACKUP/$LOCAL_DIR" "$RUNTIME_DIR/$LOCAL_DIR"
         fi
     done
     rm -rf "$LOCAL_DATA_BACKUP"
@@ -192,14 +192,14 @@ rm -f "$ARCHIVE"
 # ---------------------------------------------------------------------------
 for LOCAL_DIR in "${LOCAL_DIRS_PRESERVED[@]}"; do
     if [ -d "$LOCAL_DATA_BACKUP/$LOCAL_DIR" ]; then
-        mkdir -p "$RELEASE_DIR/$LOCAL_DIR"
+        mkdir -p "$RUNTIME_DIR/$LOCAL_DIR"
         # Copy back items that don't exist in the new release (no overwrite)
         for item in "$LOCAL_DATA_BACKUP/$LOCAL_DIR"/*; do
             [ -e "$item" ] || continue
             basename_item="$(basename "$item")"
-            if [ ! -e "$RELEASE_DIR/$LOCAL_DIR/$basename_item" ]; then
+            if [ ! -e "$RUNTIME_DIR/$LOCAL_DIR/$basename_item" ]; then
                 echo "[release] Restoring local $LOCAL_DIR/$basename_item"
-                mv "$item" "$RELEASE_DIR/$LOCAL_DIR/$basename_item"
+                mv "$item" "$RUNTIME_DIR/$LOCAL_DIR/$basename_item"
             fi
         done
     fi
@@ -208,4 +208,4 @@ rm -rf "$LOCAL_DATA_BACKUP"
 
 # Remove old release now that extraction succeeded
 rm -rf "$OLD_RELEASE"
-echo "[release] Release ready at $RELEASE_DIR"
+echo "[release] Release ready at $RUNTIME_DIR"

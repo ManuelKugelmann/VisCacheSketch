@@ -13,9 +13,9 @@ setlocal enabledelayedexpansion
 
 set "REPO=ManuelKugelmann/VisCacheSketch"
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "RELEASE_DIR=%ROOT%\release"
-set "SHA_FILE=%RELEASE_DIR%\.release-sha"
-set "VERSION_FILE=%RELEASE_DIR%\.release-version"
+set "RUNTIME_DIR=%ROOT%\runtime"
+set "SHA_FILE=%RUNTIME_DIR%\.release-sha"
+set "VERSION_FILE=%RUNTIME_DIR%\.release-version"
 set "ARCHIVE=%TEMP%\viscache-latest.tar.gz"
 
 where curl >nul 2>&1
@@ -29,7 +29,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-mkdir "%RELEASE_DIR%" 2>nul
+mkdir "%RUNTIME_DIR%" 2>nul
 
 REM ---------------------------------------------------------------------------
 REM Step 1: Find the latest dev-* prerelease tag via GitHub API
@@ -91,7 +91,7 @@ del "%API_JSON%" 2>nul
 REM ---------------------------------------------------------------------------
 REM Check for newer release via commit SHA
 REM ---------------------------------------------------------------------------
-if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%SHA_FILE%" (
+if exist "%RUNTIME_DIR%\Mogwai.exe" if exist "%SHA_FILE%" (
     set /p OLD_SHA=<"%SHA_FILE%"
     set "INSTALLED_VER=unknown"
     if exist "%VERSION_FILE%" set /p INSTALLED_VER=<"%VERSION_FILE%"
@@ -114,7 +114,7 @@ if exist "%RELEASE_DIR%\Mogwai.exe" if exist "%SHA_FILE%" (
         echo [release] Could not verify remote SHA -- keeping existing release.
         exit /b 0
     )
-) else if exist "%RELEASE_DIR%\Mogwai.exe" (
+) else if exist "%RUNTIME_DIR%\Mogwai.exe" (
     REM Mogwai exists but no SHA saved -- re-download to establish baseline
     echo [release] Mogwai.exe exists but no version info. Re-downloading...
 )
@@ -157,14 +157,14 @@ set "LOCAL_DATA_BACKUP=%TEMP%\viscache-local-data-%RANDOM%"
 mkdir "%LOCAL_DATA_BACKUP%" 2>nul
 set "PRESERVED_MEDIA=0"
 set "PRESERVED_DATA=0"
-if exist "%RELEASE_DIR%\media" (
+if exist "%RUNTIME_DIR%\media" (
     echo [release] Preserving local media\...
-    move /y "%RELEASE_DIR%\media" "%LOCAL_DATA_BACKUP%\media" >nul 2>&1
+    move /y "%RUNTIME_DIR%\media" "%LOCAL_DATA_BACKUP%\media" >nul 2>&1
     set "PRESERVED_MEDIA=1"
 )
-if exist "%RELEASE_DIR%\data" (
+if exist "%RUNTIME_DIR%\data" (
     echo [release] Preserving local data\...
-    move /y "%RELEASE_DIR%\data" "%LOCAL_DATA_BACKUP%\data" >nul 2>&1
+    move /y "%RUNTIME_DIR%\data" "%LOCAL_DATA_BACKUP%\data" >nul 2>&1
     set "PRESERVED_DATA=1"
 )
 
@@ -172,27 +172,27 @@ REM ---------------------------------------------------------------------------
 REM Clean old release — move aside so tar doesn't hit "Refusing to overwrite"
 REM ---------------------------------------------------------------------------
 set "OLD_RELEASE=%TEMP%\viscache-old-release-%RANDOM%"
-if exist "%RELEASE_DIR%\Mogwai.exe" (
+if exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [release] Moving old release aside...
-    move /y "%RELEASE_DIR%" "%OLD_RELEASE%" >nul 2>&1
-    mkdir "%RELEASE_DIR%" 2>nul
+    move /y "%RUNTIME_DIR%" "%OLD_RELEASE%" >nul 2>&1
+    mkdir "%RUNTIME_DIR%" 2>nul
     REM Preserve SHA and version files
     if exist "%OLD_RELEASE%\.release-sha" copy /y "%OLD_RELEASE%\.release-sha" "%SHA_FILE%" >nul 2>&1
     if exist "%OLD_RELEASE%\.release-version" copy /y "%OLD_RELEASE%\.release-version" "%VERSION_FILE%" >nul 2>&1
 )
 
-echo [release] Extracting to %RELEASE_DIR%...
-tar xzf "%ARCHIVE%" -C "%RELEASE_DIR%"
+echo [release] Extracting to %RUNTIME_DIR%...
+tar xzf "%ARCHIVE%" -C "%RUNTIME_DIR%"
 if errorlevel 1 (
     echo [release] ERROR: Extraction failed.
     if exist "%OLD_RELEASE%\Mogwai.exe" (
         echo [release] Restoring previous release...
-        rd /s /q "%RELEASE_DIR%" 2>nul
-        move /y "%OLD_RELEASE%" "%RELEASE_DIR%" >nul 2>&1
+        rd /s /q "%RUNTIME_DIR%" 2>nul
+        move /y "%OLD_RELEASE%" "%RUNTIME_DIR%" >nul 2>&1
     )
     REM Restore local data on failure
-    if "!PRESERVED_MEDIA!"=="1" if exist "%LOCAL_DATA_BACKUP%\media" move /y "%LOCAL_DATA_BACKUP%\media" "%RELEASE_DIR%\media" >nul 2>&1
-    if "!PRESERVED_DATA!"=="1" if exist "%LOCAL_DATA_BACKUP%\data" move /y "%LOCAL_DATA_BACKUP%\data" "%RELEASE_DIR%\data" >nul 2>&1
+    if "!PRESERVED_MEDIA!"=="1" if exist "%LOCAL_DATA_BACKUP%\media" move /y "%LOCAL_DATA_BACKUP%\media" "%RUNTIME_DIR%\media" >nul 2>&1
+    if "!PRESERVED_DATA!"=="1" if exist "%LOCAL_DATA_BACKUP%\data" move /y "%LOCAL_DATA_BACKUP%\data" "%RUNTIME_DIR%\data" >nul 2>&1
     rd /s /q "%LOCAL_DATA_BACKUP%" 2>nul
     del "%ARCHIVE%" 2>nul
     exit /b 1
@@ -204,18 +204,18 @@ REM Merge preserved local data back (keep new release files, add back local-only
 REM ---------------------------------------------------------------------------
 for %%L in (media data) do (
     if exist "%LOCAL_DATA_BACKUP%\%%L" (
-        mkdir "%RELEASE_DIR%\%%L" 2>nul
+        mkdir "%RUNTIME_DIR%\%%L" 2>nul
         REM Copy back items that don't exist in the new release (no overwrite)
         for /d %%D in ("%LOCAL_DATA_BACKUP%\%%L\*") do (
-            if not exist "%RELEASE_DIR%\%%L\%%~nxD" (
+            if not exist "%RUNTIME_DIR%\%%L\%%~nxD" (
                 echo [release] Restoring local %%L\%%~nxD
-                move /y "%%D" "%RELEASE_DIR%\%%L\%%~nxD" >nul 2>&1
+                move /y "%%D" "%RUNTIME_DIR%\%%L\%%~nxD" >nul 2>&1
             )
         )
         REM Also restore loose files (not just directories)
         for %%F in ("%LOCAL_DATA_BACKUP%\%%L\*") do (
-            if not exist "%RELEASE_DIR%\%%L\%%~nxF" (
-                move /y "%%F" "%RELEASE_DIR%\%%L\%%~nxF" >nul 2>&1
+            if not exist "%RUNTIME_DIR%\%%L\%%~nxF" (
+                move /y "%%F" "%RUNTIME_DIR%\%%L\%%~nxF" >nul 2>&1
             )
         )
     )
@@ -225,19 +225,19 @@ rd /s /q "%LOCAL_DATA_BACKUP%" 2>nul
 REM Remove old release now that extraction succeeded
 if exist "%OLD_RELEASE%" rd /s /q "%OLD_RELEASE%" 2>nul
 
-if exist "%RELEASE_DIR%\Mogwai.exe" (
+if exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [release] OK: Mogwai.exe ready
 ) else (
     echo [release] WARNING: Mogwai.exe not found after extraction.
     echo [release] Archive contents:
-    dir /b "%RELEASE_DIR%"
+    dir /b "%RUNTIME_DIR%"
 )
 
 endlocal
 exit /b 0
 
 :try_existing
-if exist "%RELEASE_DIR%\Mogwai.exe" (
+if exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [release] Could not check remote -- keeping existing release.
     exit /b 0
 ) else (

@@ -85,9 +85,10 @@ private:
     bool mOptionsChanged = false;
     bool mGBufferAdjustShadingNormals = false;
 
-    // VisCache integration — hash table + params buffer from InternalDictionary.
+    // VisCache integration — hash table + per-member params from InternalDictionary.
     ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
-    ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — tuning knobs (32 bytes)
+    struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
+             uint32_t numLevels=0; float cellCoarse=0, cellFine=0; uint32_t enableJitter=1; } mVCParams;
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
 };

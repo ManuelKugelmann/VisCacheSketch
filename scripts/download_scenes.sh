@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-MEDIA_DIR="${ROOT_DIR}/release/media"
+MEDIA_DIR="${ROOT_DIR}/runtime/media"
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "scenes" 2>/dev/null || true
@@ -85,9 +85,9 @@ download_and_extract() {
 # 1. Arcade — bundled in release or Falcor media
 # ---------------------------------------------------------------------------
 if [ ! -d "$MEDIA_DIR/Arcade" ]; then
-    if [ -d "$ROOT_DIR/release/media/Arcade" ]; then
+    if [ -d "$ROOT_DIR/runtime/media/Arcade" ]; then
         echo "[scenes] Copying Arcade from release bundle..."
-        cp -r "$ROOT_DIR/release/media/Arcade" "$MEDIA_DIR/Arcade"
+        cp -r "$ROOT_DIR/runtime/media/Arcade" "$MEDIA_DIR/Arcade"
     elif [ -d "$ROOT_DIR/Falcor/media/Arcade" ]; then
         echo "[scenes] Copying Arcade from Falcor/media/..."
         cp -r "$ROOT_DIR/Falcor/media/Arcade" "$MEDIA_DIR/Arcade"
@@ -102,9 +102,9 @@ fi
 # 2. Cornell Box — bundled in release or Falcor test_scenes
 # ---------------------------------------------------------------------------
 if [ ! -d "$MEDIA_DIR/TestScenes" ]; then
-    if [ -d "$ROOT_DIR/release/media/TestScenes" ]; then
+    if [ -d "$ROOT_DIR/runtime/media/TestScenes" ]; then
         echo "[scenes] Copying TestScenes from release bundle..."
-        cp -r "$ROOT_DIR/release/media/TestScenes" "$MEDIA_DIR/TestScenes"
+        cp -r "$ROOT_DIR/runtime/media/TestScenes" "$MEDIA_DIR/TestScenes"
     elif [ -d "$ROOT_DIR/Falcor/media/TestScenes" ]; then
         echo "[scenes] Copying TestScenes from Falcor/media/..."
         cp -r "$ROOT_DIR/Falcor/media/TestScenes" "$MEDIA_DIR/TestScenes"

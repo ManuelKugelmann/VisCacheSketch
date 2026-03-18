@@ -67,6 +67,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
+    if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -76,6 +77,32 @@ ref<VisCache> VisCache::create(ref<Device> pDevice,
                                           const Properties& props)
 {
     return make_ref<VisCache>(pDevice, props);
+}
+
+// ---------------------------------------------------------------------------
+void VisCache::setProperties(const Properties& props)
+{
+    if (props.has("tableCapacity"))  mParams.tableCapacity  = props["tableCapacity"];
+    if (props.has("bootThreshold"))  mParams.bootThreshold  = props["bootThreshold"];
+    if (props.has("varThreshold"))   mParams.varThreshold   = props["varThreshold"];
+    if (props.has("pMin"))           mParams.pMin           = props["pMin"];
+    if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
+    if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
+    if (props.has("cellCoarse"))   { mParams.cellCoarse     = props["cellCoarse"];   mParams.autoTuneCells = false; }
+    if (props.has("cellFine"))     { mParams.cellFine       = props["cellFine"];     mParams.autoTuneCells = false; }
+    if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
+    if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
+
+    if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
+    if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
+    if (props.has("enableVisCacheVarianceGate"))    mParams.enableVisCacheVarianceGate    = props["enableVisCacheVarianceGate"];
+    if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
+    if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
+    if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
+    if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
+    if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
+    if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
+    if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +127,7 @@ Properties VisCache::getProperties() const
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
+    p["enableVisCacheJitter"]          = mParams.enableVisCacheJitter;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -248,7 +276,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     if (mParams.cellFine      <= 0.f) mParams.cellFine      = 0.01f;
     if (mParams.pMin          <= 0.f) mParams.pMin          = 0.01f;
 
-    GPUParams gpu;
+    GPUParams gpu = {};
     gpu.tableCapacity = mParams.tableCapacity;
     gpu.bootThreshold = mParams.bootThreshold;
     gpu.varThreshold  = mParams.varThreshold;
@@ -257,12 +285,41 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.numLevels     = mParams.numLevels;
     gpu.cellCoarse    = mParams.cellCoarse;
     gpu.cellFine      = mParams.cellFine;
+    gpu.enableJitter  = mParams.enableVisCacheJitter ? 1u : 0u;
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
 
+    // Log params on first frame for debugging.
+    if (mFrameCount == 0u)
+    {
+        logInfo("[VisCache] tableCapacity={} bootThreshold={} varThreshold={:.3f} pMin={:.3f}",
+                mParams.tableCapacity, mParams.bootThreshold, mParams.varThreshold, mParams.pMin);
+        logInfo("[VisCache] numLevels={} cellCoarse={:.2f} cellFine={:.3f} fireflyBudget={:.3f}",
+                mParams.numLevels, mParams.cellCoarse, mParams.cellFine, mParams.fireflyBudget);
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitter={}",
+                mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
+                mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
+                mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
+                mParams.enableVisCacheJitter);
+        logInfo("[VisCache] diagnostics={} diagMode={}",
+                mEnableDiagnostics, uint32_t(mDiagMode));
+    }
+
     auto& dict = renderData.getDictionary();
     dict["vhfTable"]    = mpHashTable;
-    dict["vhfParamsCB"] = mpParamsBuffer;
+    dict["vhfParamsCB"] = mpParamsBuffer;  // kept for backward compat; prefer per-member binding below
+
+    // Per-member cbuffer values — downstream passes bind these individually
+    // because Falcor 8 ParameterBlock::setBuffer() doesn't support cbuffer binding.
+    dict["vhfParam_tableCapacity"] = mParams.tableCapacity;
+    dict["vhfParam_bootThreshold"] = mParams.bootThreshold;
+    dict["vhfParam_varThreshold"]  = mParams.varThreshold;
+    dict["vhfParam_pMin"]          = mParams.pMin;
+    dict["vhfParam_fireflyBudget"] = mParams.fireflyBudget;
+    dict["vhfParam_numLevels"]     = mParams.numLevels;
+    dict["vhfParam_cellCoarse"]    = mParams.cellCoarse;
+    dict["vhfParam_cellFine"]      = mParams.cellFine;
+    dict["vhfParam_enableJitter"]  = mParams.enableVisCacheJitter ? 1u : 0u;
 
     // Feature + ablation toggles — downstream passes read these
     dict["vhfEnableVisibilityCheck"] = mParams.enableVisCacheVisibilityCheck;
@@ -271,6 +328,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
+    dict["vhfEnableJitter"]          = mParams.enableVisCacheJitter;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -364,18 +422,22 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // Clear per-frame textures and expose via dictionary
-        auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
-            if (tex) { pCtx->clearUAV(tex->getUAV().get(), float4(0.f)); dict[key] = tex; }
+        // Write test values to diagnostic textures so we can verify the
+        // pipeline (VisCache → ColorMapPass → output) works end-to-end.
+        // Downstream RT passes can't write diagnostics yet (RT linker issue),
+        // so the VisCache compute pass writes uniform test data directly.
+        // TODO: Replace with a compute pass that reads G-Buffer + hash table
+        //       and writes real per-pixel diagnostic data.
+        auto testAndExpose = [&](ref<Texture>& tex, const char* key, float4 val) {
+            if (tex) { pCtx->clearUAV(tex->getUAV().get(), val); dict[key] = tex; }
         };
-        clearAndExpose(diagTex,           "vhfDiag");
-        clearAndExpose(diagErrorTex,      "vhfDiagError");
-        clearAndExpose(diagCompositeTex,  "vhfDiagComposite");
-        clearAndExpose(diagComposite2Tex, "vhfDiagComposite2");
-
-        // Ratio + noise: cleared per frame (downstream passes write updated values)
-        clearAndExpose(raySavedRatioTex,  "vhfRaySavedRatio");
-        clearAndExpose(noiseTex,          "vhfNoise");
+        float testPhase = float(mFrameCount % 120) / 120.f;  // cycle 0..1 over 120 frames
+        testAndExpose(diagTex,           "vhfDiag",           float4(0.7f, 0.1f, 2.f, testPhase));
+        testAndExpose(diagErrorTex,      "vhfDiagError",      float4(testPhase));
+        testAndExpose(diagCompositeTex,  "vhfDiagComposite",  float4(testPhase, 0.8f, 0.5f, 1.f));
+        testAndExpose(diagComposite2Tex, "vhfDiagComposite2", float4(testPhase, 0.8f, 0.7f, 1.f));
+        testAndExpose(raySavedRatioTex,  "vhfRaySavedRatio",  float4(0.6f));
+        testAndExpose(noiseTex,          "vhfNoise",          float4(testPhase * 0.25f));
 
         dict["vhfDiagEnabled"] = (diagTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);
@@ -426,6 +488,7 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gNumLevels"]     = mParams.numLevels;
     vars["VisCacheParams"]["gCellCoarse"]    = mParams.cellCoarse;
     vars["VisCacheParams"]["gCellFine"]      = mParams.cellFine;
+    vars["VisCacheParams"]["gEnableJitter"]  = mParams.enableVisCacheJitter ? 1u : 0u;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
@@ -520,6 +583,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("C: Warp reduction",       mParams.enableVisCacheWarpReduction);
         g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
+        g.checkbox("F: Jitter-before-quantize", mParams.enableVisCacheJitter);
     }
 
     widget.separator();

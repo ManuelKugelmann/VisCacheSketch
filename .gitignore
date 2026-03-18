@@ -33,8 +33,8 @@ captures/
 Falcor/Source/RenderPasses/VisCache/
 Falcor/Source/RenderPasses/ReSTIRPTPass/
 
-# Downloaded release (use scripts/download_release.bat)
-release/
+# Runtime directory (build output or downloaded release)
+runtime/
 
 # Downloaded test scenes (use scripts/download_scenes.sh)
 media/

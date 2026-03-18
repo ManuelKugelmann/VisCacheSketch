@@ -131,12 +131,24 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
     mGBufferAdjustShadingNormals = dict.getValue(Falcor::kRenderPassGBufferAdjustShadingNormals, false);
 
     // Read VisCache resources from upstream VisCache pass (if connected).
-    // Both hash table buffer and params cbuffer must be present.
+    // The hash table buffer and per-member params must be present.
     bool wasAvailable = mVisCacheAvailable;
     bool wasVisCheck = mVisCacheVisibilityCheck;
     mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
-    mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
-    mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr);
+    mVisCacheAvailable = (mpVHFTable != nullptr &&
+        dict.keyExists("vhfParam_tableCapacity"));
+    if (mVisCacheAvailable)
+    {
+        mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
+        mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+        mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
+        mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
+        mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
+        mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
+        mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
+        mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
+        mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+    }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
     if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck) recreatePrograms();
@@ -150,19 +162,11 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         visCacheDefines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         mpRTXDI->setExtraDefines(visCacheDefines);
     }
-    if (mVisCacheAvailable)
-    {
-        auto vhfTable = mpVHFTable;
-        auto vhfParams = mpVHFParamsCB;
-        mpRTXDI->setExtraBindings([vhfTable, vhfParams](const ShaderVar& rootVar) {
-            rootVar["gVHFTable"]      = vhfTable;
-            rootVar["VisCacheParams"] = vhfParams;
-        });
-    }
-    else
-    {
-        mpRTXDI->setExtraBindings(nullptr);
-    }
+    // NOTE: VisCache resources are bound in finalShading() directly, not via
+    // mpRTXDI->setExtraBindings(). RTXDI's internal passes (presample, candidate
+    // generation, spatiotemporal resampling) don't import VisCache shaders, so
+    // binding gVHFTable/VisCacheParams to them would fail. Only FinalShading
+    // imports VisCacheRTXDI.slang and needs the bindings.
 
     mpRTXDI->beginFrame(pRenderContext, mFrameDim);
 
@@ -300,11 +304,19 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     mpRTXDI->bindShaderData(rootVar);
 
     // Bind VisCache GPU resources when available.
-    // Uses the whole params cbuffer exported by the VisCache pass.
+    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't support whole-buffer cbuffer binding.
     if (mVisCacheAvailable)
     {
-        rootVar["gVHFTable"]      = mpVHFTable;
-        rootVar["VisCacheParams"] = mpVHFParamsCB;
+        rootVar["gVHFTable"] = mpVHFTable;
+        rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
+        rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
+        rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
+        rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
+        rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
+        rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
+        rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
+        rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
+        rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
     }
 
     auto var = rootVar["gFinalShading"];

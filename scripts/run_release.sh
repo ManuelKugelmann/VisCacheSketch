@@ -15,8 +15,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/version.sh" "launch" 2>/dev/null || true
-RELEASE_DIR="${ROOT_DIR}/release"
-MEDIA_DIR="${ROOT_DIR}/release/media"
+RUNTIME_DIR="${ROOT_DIR}/runtime"
+MEDIA_DIR="${ROOT_DIR}/runtime/media"
 REPO="ManuelKugelmann/VisCacheSketch"
 SCENE="VeachAjar"
 RENDERER="restirpt"
@@ -120,12 +120,12 @@ fi
 # ---------------------------------------------------------------------------
 # Sync shaders, scripts, data from source to release/
 # ---------------------------------------------------------------------------
-bash "${ROOT_DIR}/.scripts/sync_to_release.sh"
+bash "${ROOT_DIR}/.scripts/sync_to_runtime.sh"
 
 # ---------------------------------------------------------------------------
 # Check Mogwai.exe exists
 # ---------------------------------------------------------------------------
-if [ ! -f "$RELEASE_DIR/Mogwai.exe" ]; then
+if [ ! -f "$RUNTIME_DIR/Mogwai.exe" ]; then
     echo "[launch] Mogwai.exe not found -- no release downloaded."
     echo "[launch] Run scripts/download_release.sh first, or build from source."
     echo "[launch] Releases: https://github.com/${REPO}/releases"
@@ -134,7 +134,7 @@ fi
 
 # Resolve scene path
 case "$SCENE" in
-    VeachAjar)  SCENE_FILE="$RELEASE_DIR/data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene" ;;
+    VeachAjar)  SCENE_FILE="$RUNTIME_DIR/data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene" ;;
     Bistro)     SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
     Sponza)     SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
     Arcade)     SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
@@ -152,7 +152,7 @@ if [ ! -f "$SCENE_FILE" ]; then
     exit 1
 fi
 
-SCRIPT_PATH="$RELEASE_DIR/scripts/VisCache/$GRAPH_SCRIPT"
+SCRIPT_PATH="$RUNTIME_DIR/scripts/VisCache/$GRAPH_SCRIPT"
 if [ ! -f "$SCRIPT_PATH" ]; then
     echo "[launch] ERROR: Graph script not found: $SCRIPT_PATH"
     echo "[launch] Check that scripts were deployed to release/scripts/VisCache/"
@@ -161,4 +161,4 @@ fi
 
 echo "[launch] Starting Mogwai with $SCENE (renderer: $RENDERER)..."
 export FALCOR_MEDIA_FOLDERS="$MEDIA_DIR"
-"$RELEASE_DIR/Mogwai.exe" --script "$SCRIPT_PATH" --scene "$SCENE_FILE"
+"$RUNTIME_DIR/Mogwai.exe" --script "$SCRIPT_PATH" --scene "$SCENE_FILE"
