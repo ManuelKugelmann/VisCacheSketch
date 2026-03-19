@@ -160,6 +160,7 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
     bool wasDirDist = mVisCacheDirDistAddr;
     mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
     if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
+        || mVisCacheDirDistAddr != wasDirDist) recreatePrograms();
 
     // Propagate VisCache defines and resource bindings to RTXDI's internal passes
     // (testCandidateVisibility, spatial/temporal resampling) so the bridge callbacks

@@ -163,7 +163,9 @@
       "Bash(build.bat --skip-setup --target CudaInterop)",
       "Bash(C:/Projects/VisCacheSketch/build.bat --skip-setup --target CudaInterop)",
       "Bash(ffprobe -v quiet -show_streams \"runtime/captures/ladder/00_pos_only_CornellBox/pos_only.VisCache.vcVarMaturityMu.1024.exr\")",
-      "Bash(ffprobe -v quiet -show_streams runtime/captures/ladder/00_pos_pos_canonical_CornellBox/pos_pos_canonical.VisCache.vcVarMaturityMu.1024.exr)"
+      "Bash(ffprobe -v quiet -show_streams runtime/captures/ladder/00_pos_pos_canonical_CornellBox/pos_pos_canonical.VisCache.vcVarMaturityMu.1024.exr)",
+      "Bash(Falcor/tools/.packman/cmake/bin/cmake.exe --build Falcor/build/windows-vs2022 --config Release --target VisCachePass PathTracer MinimalPathTracer RTXDIPass ReSTIRPTPass Mogwai)",
+      "Bash(do echo:*)"
     ],
     "deny": []
   }

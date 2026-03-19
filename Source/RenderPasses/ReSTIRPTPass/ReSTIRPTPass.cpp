@@ -1551,7 +1551,7 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVisCacheVisibilityCheck != wasVisCheck ||
             mVisCacheLightSelection != wasLightSel ||
             mVisCacheJitter != wasJitter ||
-            mVisCacheDirDistAddr != wasDirDist ||
+            mVisCacheDirDistAddr != wasDirDist)
             mRecompile = true;
     }
 

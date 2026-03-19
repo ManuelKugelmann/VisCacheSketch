@@ -184,6 +184,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         bool wasDirDist = mVisCacheDirDistAddr;
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
+            || mVisCacheDirDistAddr != wasDirDist)
             mTracer.pVars = nullptr;  // force recompile on toggle
     }
 
