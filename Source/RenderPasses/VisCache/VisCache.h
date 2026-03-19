@@ -71,7 +71,7 @@ public:
         float    angularBFine;    ///< direction finest cell (auto-derived)
         float    distBCoarse;     ///< distance coarsest cell (world units, dirdist)
         float    distBFine;       ///< distance finest cell (auto-derived)
-        uint32_t _pad[1];
+        uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
     };
     static_assert(sizeof(GPUParams) == 64, "GPUParams must match VisCacheParams cbuffer (64 bytes)");
 
@@ -93,6 +93,7 @@ public:
         float    cellBCoarse     = 20.0f;       ///< posB coarsest cell (world units, pos×pos modes)
         float    angularBCoarse  = 90.0f;       ///< direction coarsest cell (degrees, dirdist mode)
         float    distBCoarse     = 10.0f;       ///< distance coarsest cell (world units, dirdist mode)
+        uint32_t diagAccumWindow = 128u;        ///< EMA window for accumulated diagnostics (0 = all frames)
         bool     autoTuneCells   = true;        ///< Auto-derive cellACoarse from scene bounds
 
         // --- Decay (host-only, not uploaded to GPU params cbuffer) ---

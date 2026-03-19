@@ -1231,6 +1231,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
             mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
+            mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
@@ -1432,6 +1433,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.

@@ -98,7 +98,12 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     {
         float4 prev = gVCDiag[pixel];
         float count = prev.a + 1.f;
-        float alpha = 1.f / min(count, 128.f);
+        // Soft EMA: fixed alpha from the start so newest samples don't dominate.
+        // alpha = 2/(window+1) is the standard EMA smoothing factor.
+        // With window=0 (all frames): alpha = 1/count (equal-weight running average).
+        float alpha = (gDiagAccumWindow > 0u)
+            ? 2.f / (float(gDiagAccumWindow) + 1.f)
+            : 1.f / count;
         float4 curr = float4(
             saturate(diagVar * 4.f) + grey,
             saturate(float(g.N) / float(gBootThreshold)) + grey,

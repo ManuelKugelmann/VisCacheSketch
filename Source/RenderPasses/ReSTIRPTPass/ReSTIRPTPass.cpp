@@ -1533,6 +1533,7 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
             mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
+            mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
         }
 
         mVisCacheVisibilityCheck  = mVisCacheAvailable &&
@@ -1796,6 +1797,7 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
     // separate cbuffer needed. VisCacheParams is already bound above
@@ -1890,6 +1892,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());

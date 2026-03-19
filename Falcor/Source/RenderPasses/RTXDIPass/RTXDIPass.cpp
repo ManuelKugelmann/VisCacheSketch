@@ -154,6 +154,7 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
         mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
         mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
+        mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
     }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
@@ -335,6 +336,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
     auto var = rootVar["gFinalShading"];

@@ -188,7 +188,7 @@ cbuffer VisCacheParams
     float  gAngularBFine;    ///< direction finest cell size (auto-derived)
     float  gDistBCoarse;     ///< distance coarsest cell size (world units, dirdist mode)
     float  gDistBFine;       ///< distance finest cell size (auto-derived)
-    uint   _pad0;
+    uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
 };
 
 // ---------------------------------------------------------------------------
