@@ -1227,7 +1227,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
             mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
             mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
-            mVCParams.addrDistScale = dict.getValue<float>("vhfParam_addrDistScale");
+            mVCParams.addrBDistScale = dict.getValue<float>("vhfParam_addrBDistScale");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
@@ -1426,7 +1426,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         var["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        var["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
+        var["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.

@@ -185,7 +185,7 @@ cbuffer VisCacheParams
     float  gCellFine;        ///< Finest level cell size (world units)
     uint   gEnableJitter;    ///< Unused at runtime; jitter gate is USE_VISCACHE_JITTER define
     float  gAddrBScale;      ///< Angular/posB scale: dirdist angular projection = cellCoarse * scale, asymmetric cellB = cellCoarse * scale
-    float  gAddrDistScale;   ///< Distance scale (dirdist only): distance bin = cellCoarse * scale. Very large = all dists collapse.
+    float  gAddrBDistScale;   ///< Distance scale (dirdist only): distance bin = cellCoarse * scale. Very large = all dists collapse.
     uint   _pad0;            ///< Explicit padding — HLSL reflects cbuffers at 16-byte row granularity
 };
 
@@ -335,10 +335,10 @@ float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
     // Two independent quantization controls:
     //   gAddrBScale  → angular resolution: project dir at this many cellCoarse units.
     //                  More = finer angular bins. Very small = all dirs collapse (pos-only).
-    //   gAddrDistScale → distance resolution: bin distances at this many cellCoarse units.
+    //   gAddrBDistScale → distance resolution: bin distances at this many cellCoarse units.
     //                  More = coarser distance bins. Very large = all dists collapse.
     float angularDist = gCellCoarse * gAddrBScale;
-    float distCell    = gCellCoarse * gAddrDistScale;
+    float distCell    = gCellCoarse * gAddrBDistScale;
     float distQ       = floor(dist / distCell) * distCell;
     return posA + normalize(dir) * (angularDist + distQ);
 #else

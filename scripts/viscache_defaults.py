@@ -20,6 +20,6 @@ VISCACHE_DEFAULTS = {
     "enableVisCacheDirDistAddr":    False,
     "enableVisCacheAsymmetricAddr": False,
     "addrBScale":                   4.0,
-    "addrDistScale":                8.0,
+    "addrBDistScale":                8.0,
     "enableDiagnostics":            True,
 }

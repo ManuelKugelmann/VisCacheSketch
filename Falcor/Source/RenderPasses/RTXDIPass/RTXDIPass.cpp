@@ -149,7 +149,7 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
         mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
         mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
-        mVCParams.addrDistScale = dict.getValue<float>("vhfParam_addrDistScale");
+        mVCParams.addrBDistScale = dict.getValue<float>("vhfParam_addrBDistScale");
     }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
@@ -331,7 +331,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
+        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
     }
 
     auto var = rootVar["gFinalShading"];

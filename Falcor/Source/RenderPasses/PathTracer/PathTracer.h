@@ -216,7 +216,7 @@ private:
     // Cached cbuffer values — bound per-member because Falcor 8 ParameterBlock
     // doesn't support whole-buffer cbuffer binding.
     struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
-             uint32_t numLevels=0; float cellCoarse=0, cellFine=0; uint32_t enableJitter=1; float addrBScale=4.f; float addrDistScale=8.f; } mVCParams;
+             uint32_t numLevels=0; float cellCoarse=0, cellFine=0; uint32_t enableJitter=1; float addrBScale=4.f; float addrBDistScale=8.f; } mVCParams;
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.

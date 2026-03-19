@@ -153,7 +153,9 @@
       "Bash(do cp:*)",
       "Bash(GRAPH_SCRIPT=scripts/VisCache/MinimalPathTracer_Graph.py GALLERY_DIR=C:/Projects/VisCacheSketch/.tests SCENE_FILE=../scenes/Sponza.pyscene WARMUP_FRAMES=64 CAPTURE_NAME=sponza ./Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py)",
       "Bash(SCENE_FILE=\"../scenes/CornellBox.pyscene\" VISCACHE_DIRDIST=1 ./Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder00_Bare.py)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(do)",
+      "Bash(sed -i 's/addrDistScale/addrBDistScale/g' \"$f\")"
     ],
     "deny": []
   }

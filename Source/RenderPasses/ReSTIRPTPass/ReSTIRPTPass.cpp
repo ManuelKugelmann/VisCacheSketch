@@ -1528,7 +1528,7 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
             mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
             mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
-            mVCParams.addrDistScale = dict.getValue<float>("vhfParam_addrDistScale");
+            mVCParams.addrBDistScale = dict.getValue<float>("vhfParam_addrBDistScale");
         }
 
         mVisCacheVisibilityCheck  = mVisCacheAvailable &&
@@ -1790,7 +1790,7 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
+        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
     // separate cbuffer needed. VisCacheParams is already bound above
@@ -1880,7 +1880,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
+        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
