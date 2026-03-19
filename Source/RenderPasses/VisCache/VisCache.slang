@@ -309,15 +309,16 @@ float2 octEncode(float3 n)
 }
 
 /// Quantize a direction into an int3 key: (dirBinX, dirBinY, distBin).
-/// angularRes: bins per octahedral axis (1 = ~4 bins total, 4 = ~64 bins).
-/// dist + distCellSize: distance quantization (use dist=0, distCellSize=1 for IBL/infinite).
-int3 vhfQuantizeDirection(float3 dir, float angularRes, float dist, float distCellSize)
+/// Grid-scaling convention: larger cell = coarser = fewer bins (matches spatial cells).
+/// angularCellSize: cell size in octahedral [-1,1]² space.
+///   >= 2.0 = single bin (position-only), 0.5 = ~16 bins, 0.1 = ~400 bins.
+/// distCellSize: distance cell size in world units.
+///   >= 100.0 = single distance bucket (effectively no distance discrimination).
+int3 vhfQuantizeDirection(float3 dir, float angularCellSize, float dist, float distCellSize)
 {
     float2 oct = octEncode(dir);
-    // angularRes < 0.5 → all directions map to bin 0 (position-only).
-    // angularRes = 1 → 4 bins (2×2), = 2 → 16 bins (4×4), = 4 → 64 bins (8×8).
-    int2 dirBin = int2(floor(oct * angularRes));
-    int distBin = int(floor(dist / max(distCellSize, 1e-6f)));
+    int2 dirBin = int2(floor(oct / max(angularCellSize, 0.01f)));
+    int distBin = int(floor(dist / max(distCellSize, 0.01f)));
     return int3(dirBin.x, dirBin.y, distBin);
 }
 
@@ -421,8 +422,12 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
         float3 edge = posB - posA;
         float dist = length(edge);
         float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
-        float distCell = gCellCoarse * max(gAddrBDistScale, 1.f);
-        qb = vhfQuantizeDirection(dir, gAddrBScale, dist, distCell);
+        // gAddrBScale = angular cell size in degrees (90 = ~4 bins, 45 = ~16, 10 = ~300).
+        // Convert to octahedral cell size: octCell = degrees / 90.
+        // gAddrBDistScale = distance cell size multiplier on cellCoarse.
+        float angularCellOct = gAddrBScale / 90.f;
+        float distCell = gCellCoarse * max(gAddrBDistScale, 0.01f);
+        qb = vhfQuantizeDirection(dir, angularCellOct, dist, distCell);
     }
 
 #elif USE_VISCACHE_ASYMMETRIC_ADDRESSING

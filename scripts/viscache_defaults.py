@@ -19,7 +19,7 @@ VISCACHE_DEFAULTS = {
     "enableVisCacheJitter":         True,
     "enableVisCacheDirDistAddr":    False,
     "enableVisCacheAsymmetricAddr": False,
-    "addrBScale":                   4.0,
-    "addrBDistScale":                8.0,
+    "addrBScale":                   45.0,   # angular cell size in degrees (dirdist mode)
+    "addrBDistScale":                8.0,    # distance cell size multiplier on cellCoarse
     "enableDiagnostics":            True,
 }

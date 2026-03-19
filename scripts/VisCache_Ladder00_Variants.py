@@ -40,20 +40,20 @@ VARIANTS = [
     ("pos_only", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 0.1,         # <0.5 → single direction bin (all dirs collapse)
-        "addrBDistScale": 1000.0,  # single dist bucket → position-only
+        "addrBScale": 360.0,       # >= 180° → single direction bin (position-only)
+        "addrBDistScale": 1000.0,  # huge distance cell → single dist bucket
     }),
     ("pos_dir", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 2.0,         # 2 bins/axis → ~16 direction bins (coarse)
+        "addrBScale": 45.0,        # 45° per bin → ~16 direction bins
         "addrBDistScale": 1000.0,  # single dist bucket
     }),
     ("pos_dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 2.0,         # coarse angular bins
-        "addrBDistScale": 4.0,     # coarse dist bins
+        "addrBScale": 45.0,        # 45° angular bins
+        "addrBDistScale": 4.0,     # 4× cellCoarse distance bins
     }),
 ]
 

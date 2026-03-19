@@ -103,7 +103,7 @@ public:
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
         bool     enableVisCacheAsymmetricAddr = false; ///< H: Non-canonical pos×pos (separate A/B resolution)
-        float    addrBScale                = 4.f;   ///< posB/angular scale: dirdist angular projection, asymmetric cellB
+        float    addrBScale                = 45.f;  ///< angular cell size in degrees (dirdist), posB cell scale (asymmetric)
         float    addrBDistScale             = 8.f;   ///< distance scale (dirdist only): distBin = cellCoarse * scale
     };
 
