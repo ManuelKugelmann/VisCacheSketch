@@ -91,7 +91,7 @@ The 2006 thesis used spatial hashing — inspired by [ODE][r-ode] (Open Dynamics
 **Variance-driven adaptive sampling — trace rate from cache quality.**
 The 2006 thesis coupled variance to trace rate. [Rath et al. 2022][r-rath] (EARS) uses efficiency-aware RR/splitting for path continuation. [Stotko et al. 2025][r-stotko] (MrHash) independently couples variance to spatial resolution in a flat hash (TSDF domain).
 
-The above is a non-exhaustive selection — there is likely more related work that independently arrived at similar ideas.
+The above is a non-exhaustive selection — there is likely more related work that independently arrived at similar ideas. The 2006 thesis was an unpublished German-language diploma thesis with no online abstract or indexed metadata, making independent rediscovery the expected outcome rather than a citation gap.
 
 [r-n2lmc]: https://arxiv.org/abs/2412.04634
 [r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
