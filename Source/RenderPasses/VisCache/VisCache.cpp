@@ -453,17 +453,22 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // Clear and expose per-frame diagnostic textures via dictionary.
-        // Downstream RT passes write to these inline during tracing (PixelStats pattern).
+        // Per-frame snapshot textures: cleared each frame, overwritten by RT passes.
         auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
             if (tex) { pCtx->clearUAV(tex->getUAV().get(), float4(0.f)); dict[key] = tex; }
         };
-        clearAndExpose(diagTex,           "vhfDiag");
         clearAndExpose(diagErrorTex,      "vhfDiagError");
         clearAndExpose(varMatLevelTex,  "vhfVarMaturityLevel");
         clearAndExpose(varMatMuTex, "vhfVarMaturityMu");
-        clearAndExpose(raySavedRatioTex,  "vhfRaySavedRatio");
-        clearAndExpose(noiseTex,          "vhfNoise");
+
+        // Accumulated textures: NOT cleared per frame — running averages.
+        // diagTex accumulates (avg mu, avg var, sample count) across frames.
+        auto exposeOnly = [&](ref<Texture>& tex, const char* key) {
+            if (tex) dict[key] = tex;
+        };
+        exposeOnly(diagTex,           "vhfDiag");
+        exposeOnly(raySavedRatioTex,  "vhfRaySavedRatio");
+        exposeOnly(noiseTex,          "vhfNoise");
 
         dict["vhfDiagEnabled"] = (diagTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);

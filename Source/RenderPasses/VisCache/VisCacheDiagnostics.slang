@@ -75,7 +75,8 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     // Cold miss indicator: A=0 means true cold miss (no hash entry), A=1 means data exists.
     float coldMissAlpha = noEntry ? 0.f : 1.f;
 
-    // VarMaturityMu: R=variance, G=maturity, B=mu, A=cold miss — cache quality
+    // --- Snapshot composites (overwritten each frame — last stochastic sample) ---
+    // VarMaturityMu: R=variance, G=maturity, B=mu — cache quality snapshot
     gVCVarMaturityMu[pixel] = float4(
         saturate(diagVar * 4.f) + grey,                             // R: variance [0,0.25]→[0,1]
         saturate(float(g.N) / float(gBootThreshold)) + grey,       // G: maturity [0,1]
@@ -83,13 +84,24 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         coldMissAlpha                                                // A: 0=cold miss, 1=has data
     );
 
-    // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level, A=cold miss — hash health
+    // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level — hash health snapshot
     gVCVarMaturityLevel[pixel] = float4(
         saturate(float(g.probeSteps) / float(kMaxProbe)) + grey,   // R: probe steps [0,maxProbe]→[0,1]
         saturate(float(g.N) / float(gBootThreshold * 8u)) + grey,  // G: sample count [0,8*boot]→[0,1]
         float(g.level + 1) / max(float(gNumLevels), 1.f) + grey,  // B: LOD level [0,N]→[0,1]
         coldMissAlpha                                                // A: 0=cold miss, 1=has data
     );
+
+    // --- Accumulated averaging (persists across frames — running mean) ---
+    // gVCDiag used as accumulator: R=avg mu, G=avg variance, B=sample count (for EMA alpha)
+    {
+        float4 prev = gVCDiag[pixel];
+        float count = prev.b + 1.f;            // increment per-pixel sample counter
+        float alpha = 1.f / count;              // equal-weight running average
+        float avgMu  = lerp(prev.r, g.mu, alpha);
+        float avgVar = lerp(prev.g, diagVar, alpha);
+        gVCDiag[pixel] = float4(avgMu, avgVar, count, noEntry ? 0.f : 1.f);
+    }
 
     // --- Accumulate ray savings ratio (persistent across frames) ---
     // No atomics needed: each pixel is processed by exactly one thread,
