@@ -86,13 +86,13 @@ The individual ideas in the 2006 thesis — control variates, Russian roulette, 
 [Szécsi et al. 2003][r-szecsi] and [Szirmay-Kalos et al. 2005][r-szirmay] preceded the 2006 thesis (see [History](#history)). More recently, [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC) use a related approach — their MLMC residual estimator shares the cached-estimate-plus-unbiased-correction structure, framed as two-level Monte Carlo with an MIS-based termination heuristic.
 
 **Visibility Caching.**
-The idea of caching visibility to reduce shadow rays predates 2006 — [Ward 1991][r-ward] used heuristic ordering to skip predictable shadow rays. Independent work arrived at the idea through different paths: [Popov et al. 2013][r-popov] an adaptive octree for offline rendering, [Guo et al. 2020][r-guo] (NEE++) per-voxel-pair visibility caching, [SHaRC (Benyoub et al. 2024)][r-sharc] a world-space radiance hash (RTX SDK), and [Bokšanský & Meister 2025][r-boksansky] a neural visibility cache.
+The idea of caching visibility to reduce shadow rays predates 2006 — [Ward 1991][r-ward] used heuristic ordering to skip predictable shadow rays. Independent work arrived at the idea through different paths: [Popov et al. 2013][r-popov] an adaptive octree for offline rendering, [Guo et al. 2020][r-guo] (NEE++) per-voxel-pair visibility caching, [SHaRC (Benyoub et al. 2024)][r-sharc] a world-space radiance hash (RTX SDK), [Bokšanský & Meister 2025][r-boksansky] a neural visibility cache, and [Tokuyoshi 2024][r-tokuyoshi] efficient visibility reuse across spatiotemporal neighbors in ReSTIR. [Zhang, Lin et al. 2025][r-zhang25] avoid shadow rays entirely for most lights via ReSTIR-selected shadow maps. [Conner et al. 2025][r-megalights] (MegaLights, Unreal Engine 5) trace a fixed budget of shadow rays per pixel via stochastic light importance sampling.
 
 **Spatial Hashing in rendering.**
 Spatial hashing was independently adopted in rendering by [Binder et al. 2018][r-binder] (path-space filtering), [Gautron 2020][r-gautron20]/[2021][r-gautron21] (ambient occlusion), [Müller et al. 2022][r-muller] (Instant NGP — multi-resolution hash encoding, backbone of [Bokšanský & Meister 2025][r-boksansky] and [Dereviannykh et al. 2024][r-n2lmc]), and [SHaRC (Benyoub et al. 2024)][r-sharc] (world-space spatial hash, RTX SDK).
 
 **Variance-driven adaptive sampling.**
-[Rath et al. 2022][r-rath] (EARS) uses efficiency-aware RR/splitting for path continuation. [Stotko et al. 2025][r-stotko] (MrHash) independently couples variance to spatial resolution in a flat hash (TSDF domain).
+[Vorba and Křivánek 2016][r-adrrs] (ADRRS) precompute an adjoint importance function to set per-event RR/splitting weight windows. [Rath et al. 2022][r-rath] (EARS) uses efficiency-aware RR/splitting for path continuation; [Meyer et al. 2024][r-mars] (MARS) generalize to per-technique sample counts. [Jin et al. 2025][r-nrrs] (NRRS) pioneer neural networks with hash-grid encoding for learning RR factors in wavefront path tracing. [Stotko et al. 2025][r-stotko] (MrHash) independently couples variance to spatial resolution in a flat hash (TSDF domain). All operate on path continuation decisions, not shadow ray gating — our work is orthogonal.
 
 [r-n2lmc]: https://arxiv.org/abs/2412.04634
 [r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
@@ -116,11 +116,17 @@ Spatial hashing was independently adopted in rendering by [Binder et al. 2018][r
 | [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
 | [Stotko et al. 2025 (MrHash)][r-stotko] | Variance-driven resolution in flat hash (TSDF domain) |
+| [Vorba and Křivánek 2016 (ADRRS)][r-adrrs] | Adjoint-driven RR/splitting weight windows for path continuation |
 | [Rath et al. 2022 (EARS)][r-rath] | Efficiency-aware RR/splitting for path continuation |
+| [Meyer et al. 2024 (MARS)][r-mars] | Per-technique sample allocation via RR/splitting |
+| [Jin et al. 2025 (NRRS)][r-nrrs] | Neural RR factors with hash-grid encoding for wavefront path tracing |
 | [Guo et al. 2020 (NEE++)][r-guo] | Voxel-to-voxel visibility probability caching |
 | [Popov et al. 2013][r-popov] | Adaptive quantization visibility caching (offline) |
 | [Benyoub et al. 2024 (SHaRC)][r-sharc] | Spatial Hash Radiance Cache — world-space hash, roughness-gated LoD (RTX SDK) |
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
+| [Tokuyoshi 2024][r-tokuyoshi] | Efficient visibility reuse across spatiotemporal neighbors in ReSTIR |
+| [Zhang, Lin et al. 2025 (ReSTIR Shadow Maps)][r-zhang25] | ReSTIR-selected shadow maps — avoids shadow rays for most lights |
+| [Conner et al. 2025 (MegaLights)][r-megalights] | Fixed-budget stochastic direct lighting in Unreal Engine 5 |
 | [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
 | [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Neural visibility cache for light selection |
 | [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | MLMC residual shares cached-estimate + correction structure (but framed as MLMC, not CV; BTH is MIS-based, not variance-driven RR), multi-level hash encodings |
@@ -142,6 +148,12 @@ Spatial hashing was independently adopted in rendering by [Binder et al. 2018][r
 [r-falcor]: https://github.com/NVIDIAGameWorks/Falcor
 [r-muller]: https://doi.org/10.1145/3528223.3530127
 [r-boksansky]: https://jcgt.org/published/0014/02/01/
+[r-tokuyoshi]: https://doi.org/10.1145/3641233.3664320
+[r-zhang25]: https://doi.org/10.1111/cgf.70059
+[r-megalights]: https://advances.realtimerendering.com/s2025/content/MegaLights_Stochastic_Direct_Lighting_2025.pdf
+[r-adrrs]: https://doi.org/10.1145/2897824.2925912
+[r-mars]: https://doi.org/10.1145/3687923
+[r-nrrs]: https://arxiv.org/abs/2510.07868
 [r-knuth]: https://doi.org/10.1007/978-3-642-56592-2
 [r-hammersley]: https://doi.org/10.1007/978-94-009-5819-7
 [r-aldous]: https://doi.org/10.1007/BF01208571
