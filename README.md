@@ -74,7 +74,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection (independently by [Bokšanský & Meister 2025][r-boksansky] with neural cache)
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
 
-### What was in [Kugelmann 2006][r-kugelmann] and was independently developed
+### What was in [Kugelmann 2006][r-kugelmann] and re-developed in the meantime
 
 **Control variate + variance-driven Russian Roulette (CV+VRRR).**
 Using a cached prediction as control variate and letting variance drive the RR survival probability is a pure Monte Carlo variance reduction technique, independent of data structure. [Szécsi et al. 2003][r-szecsi] formalized the non-zero termination estimate for rendering (CV with fixed RR probability). [Szirmay-Kalos et al. 2005][r-szirmay] added variance-driven RR using a scene-global radiance estimate. The 2006 thesis independently rediscovered the same CV+VRRR math; the overlap with Szécsi and Szirmay-Kalos was found late in the writing process. More recently, [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC) use an MLMC residual estimator that is structurally equivalent to CV+VRRR.
