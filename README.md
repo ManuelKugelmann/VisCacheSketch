@@ -71,7 +71,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
 - **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko]
 - **GPU implementation** — built on NVIDIA Falcor 8.0 [Kallweit et al. 2022][r-falcor]
-- **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection (also by [Bokšanský & Meister 2025][r-boksansky])
+- **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection like [Bokšanský & Meister 2025][r-boksansky]
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
 
 #### ReSTIR integration
