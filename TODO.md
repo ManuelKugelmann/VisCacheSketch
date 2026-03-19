@@ -53,7 +53,11 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
   query position and reading multiple nearby cells within the same level. Averages out
   cell-boundary artifacts and effectively interpolates mu across neighbors. Trades extra
   lookups per query for smoother estimates without polluting write statistics.
-  Compare with write-time coarse→fine blending above — may be complementary or alternative.
+  Ablation question: jitter-on-write (current ablation F) vs jitter-on-read vs both.
+  Current jitter-before-quantize randomizes cell assignment at write time. Jittered
+  multi-sample read randomizes at lookup time instead (or additionally). Need A/B/AB
+  ablation to determine which provides more benefit — they address different artifacts
+  (write jitter: cell-boundary banding; read jitter: cell-boundary discontinuities in mu).
 
 ---
 
