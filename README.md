@@ -111,19 +111,19 @@ Spatial hashing was independently adopted in rendering by [Binder et al. 2018][r
 | [Szécsi et al. 2003][r-szecsi] | Non-zero termination estimate for rendering (CV, fixed RR probability) |
 | [Szirmay-Kalos et al. 2005][r-szirmay] | Variance-driven splitting/RR for path tracing |
 | [Teschner et al. 2003][r-teschner] | Spatial hashing for collision detection — foundational technique |
-| [Smith 2001–2004 (ODE)][r-ode] | `dHashSpace` broad-phase collision via spatial hashing; inspiration for spatial hashing in 2006 thesis |
+| [Smith 2001–2004 (ODE)][r-ode] | Broad-phase collision via spatial hashing; inspiration for spatial hashing in 2006 thesis |
 | [Binder et al. 2018][r-binder] | Spatial hashing, jitter-quantize, fingerprint collision detection |
 | [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21] | LOD in hash key, lock-free GPU hash updates |
 | [Jarzynski & Olano 2020 (JCGT)][r-jarzynski] | PCG3D hash function |
-| [Stotko et al. 2025 (MrHash)][r-stotko] | Parallels — variance-driven resolution in flat hash (TSDF domain) |
+| [Stotko et al. 2025 (MrHash)][r-stotko] | Variance-driven resolution in flat hash (TSDF domain) |
 | [Rath et al. 2022 (EARS)][r-rath] | Efficiency-aware RR/splitting for path continuation |
 | [Guo et al. 2020 (NEE++)][r-guo] | Voxel-to-voxel visibility probability caching |
 | [Popov et al. 2013][r-popov] | Adaptive quantization visibility caching (offline) |
 | [Benyoub et al. 2024 (SHaRC)][r-sharc] | Spatial Hash Radiance Cache — world-space hash, roughness-gated LoD (RTX SDK) |
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
 | [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
-| [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
-| [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | Parallels — MLMC residual shares cached-estimate + correction structure (but framed as MLMC, not CV; BTH is MIS-based, not variance-driven RR), multi-level hash encodings |
+| [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Neural visibility cache for light selection |
+| [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | MLMC residual shares cached-estimate + correction structure (but framed as MLMC, not CV; BTH is MIS-based, not variance-driven RR), multi-level hash encodings |
 | [Müller et al. 2022 (Instant NGP)][r-muller] | Multi-resolution hash encoding — spatial hashing for neural graphics; backbone of Bokšanský 2025 and Dereviannykh 2024 |
 | [Kallweit et al. 2022 (Falcor)][r-falcor] | GPU rendering framework used as implementation base |
 
