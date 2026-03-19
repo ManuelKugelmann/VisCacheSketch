@@ -24,7 +24,7 @@
  *     spends capacity on shadow boundaries where it matters most.
  *
  *   GEOMETRIC CELL SIZE INTERPOLATION: Level cell sizes are geometrically
- *     spaced between gCellCoarse and gCellFine. Geometric (not linear)
+ *     spaced between coarse and fine per dimension. Geometric (not linear)
  *     spacing gives each level roughly the same number of populated cells.
  *
  *   JITTER-BEFORE-QUANTIZE: Adding position-dependent jitter before
@@ -64,17 +64,14 @@
 #endif
 
 // Addressing modes (compile-time, mutually exclusive):
-//   Default (neither set):       Canonical pos×pos — same cell size for both endpoints, lexicographic swap.
-//   USE_VISCACHE_DIRDIST_ADDRESSING=1:  Dir+dist — posB from direction+distance, configurable via gAddrBScale.
-//                                       gAddrBScale controls distance quantization: distCell = cellCoarse * gAddrBScale.
-//                                       Very large gAddrBScale → position-only (all dirs collapse).
-//   USE_VISCACHE_ASYMMETRIC_ADDRESSING=1: Non-canonical pos×pos — separate cell size for posB, no swap.
-//                                        posB cell size = cellCoarse * gAddrBScale (coarser B = fewer posB cells).
+//   Default (neither set):       Canonical pos x pos — same cell size for both endpoints, lexicographic swap.
+//   USE_VISCACHE_DIRDIST_ADDRESSING=1:  Dir+dist — posB from direction+distance, per-dimension cascade.
+//                                       gAngularBCoarse/Fine control angular quantization.
+//                                       gDistBCoarse/Fine control distance quantization.
+//   Neither set + cellBCoarse == cellACoarse: Canonical pos x pos with lexicographic swap.
+//   Neither set + cellBCoarse != cellACoarse: Asymmetric pos x pos, no swap (auto-derived).
 #ifndef USE_VISCACHE_DIRDIST_ADDRESSING
 #define USE_VISCACHE_DIRDIST_ADDRESSING 0
-#endif
-#ifndef USE_VISCACHE_ASYMMETRIC_ADDRESSING
-#define USE_VISCACHE_ASYMMETRIC_ADDRESSING 0
 #endif
 
 // ===========================================================================
@@ -169,9 +166,9 @@ struct VHFResult
 //     (coarse/mid/fine). More levels give finer spatial adaptation but
 //     use more table capacity per endpoint pair. Must be >= 1.
 //
-//   gCellCoarse / gCellFine:  World-space cell sizes for the coarsest and
-//     finest levels. Intermediate levels are geometrically interpolated.
-//     Auto-derived from scene bounds when autoTuneCells is enabled.
+//   Per-dimension coarse/fine pairs (cellA, cellB, angularB, distB):
+//     Coarse = coarsest level cell size, fine = finest (auto-derived).
+//     Intermediate levels are geometrically interpolated.
 // ---------------------------------------------------------------------------
 cbuffer VisCacheParams
 {
@@ -342,7 +339,7 @@ static const float kIBLAngularCell = 0.785f;  ///< ~45 degrees for endpoint mode
 
 float3 vhfEncodeDirection(float3 dir)
 {
-    float marker = gCellCoarse / kIBLAngularCell;
+    float marker = gCellACoarse / kIBLAngularCell;
     return dir * marker;
 }
 
@@ -410,13 +407,20 @@ float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 // Canonical quantization: quantize both endpoints and lexicographic-swap
 // so that V(A,B) and V(B,A) always produce the same (qa, qb) pair.
 //
-// In endpoint mode: canonicalization halves the table pressure since
-// V(A,B) = V(B,A) for any pair of surface points.
+// Canonicalization: in pos×pos mode, if cellA == cellB (same resolution for
+// both endpoints), V(A,B) = V(B,A) so we lexicographic-swap to halve table
+// pressure. If cellA != cellB, endpoints have different resolutions — no swap.
+// In dirdist mode: direction is inherently asymmetric — never canonicalize.
 //
-// In dir+dist mode: NO canonicalization — direction from A toward the light
-// is not the same as direction from the light toward A, so the keys are
-// inherently asymmetric.
+// The canonicalize flag is constant per frame (depends only on coarse values),
+// so it's checked once outside the per-level loop by the caller.
 // ---------------------------------------------------------------------------
+
+// Precompute canonicalization flag — constant for all levels in a frame.
+#if !USE_VISCACHE_DIRDIST_ADDRESSING
+static const bool kCanonicalize = (gCellACoarse == gCellBCoarse);
+#endif
+
 void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
                      out int3 qa, out int3 qb)
 {
@@ -424,28 +428,26 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
 
 #if USE_VISCACHE_DIRDIST_ADDRESSING
     // Dir+dist: 2D octahedral direction bins + distance bin.
-    // Per-level angular and distance cell sizes from the LOD cascade.
     {
         float3 edge = posB - posA;
         float dist = length(edge);
         float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
-        float angCellDeg = vhfAngularSize(lvl);
-        float angCellOct = angCellDeg / 90.f;
+        float angCellOct = vhfAngularSize(lvl) / 90.f;
         float distCell   = vhfDistSize(lvl);
         qb = vhfQuantizeDirection(dir, angCellOct, dist, distCell);
     }
-
-#elif USE_VISCACHE_ASYMMETRIC_ADDRESSING
-    // Non-canonical pos×pos: posB at its own cell size from the B cascade.
+#else
+    // Pos×pos: quantize posB at its own cell size from the B cascade.
     float cellB = vhfCellSizeB(lvl);
     qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl);
 
-#else
-    // Canonical pos×pos (default): both endpoints at same cell size.
-    qb = jitterQuantize(posB, cellSizeA, 0xBBu ^ lvl);
-    if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
+    // Canonicalize only when A and B have the same resolution.
+    if (kCanonicalize)
     {
-        int3 tmp = qa; qa = qb; qb = tmp;
+        if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
+        {
+            int3 tmp = qa; qa = qb; qb = tmp;
+        }
     }
 #endif
 }

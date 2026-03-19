@@ -1524,11 +1524,15 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
             mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
             mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
-            mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
-            mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
-            mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
-            mVCParams.addrBDistScale = dict.getValue<float>("vhfParam_addrBDistScale");
+            mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
+            mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
+            mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
+            mVCParams.cellBFine      = dict.getValue<float>("vhfParam_cellBFine");
+            mVCParams.angularBCoarse = dict.getValue<float>("vhfParam_angularBCoarse");
+            mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
+            mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
+            mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
         }
 
         mVisCacheVisibilityCheck  = mVisCacheAvailable &&
@@ -1540,8 +1544,6 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             || dict.getValue<bool>("vhfEnableJitter");  // default ON
         bool wasDirDist = mVisCacheDirDistAddr;
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-        bool wasAsymmetric = mVisCacheAsymmetricAddr;
-        mVisCacheAsymmetricAddr = mVisCacheAvailable && dict.keyExists("vhfEnableAsymmetricAddr") && dict.getValue<bool>("vhfEnableAsymmetricAddr");
 
         // Recompile only when a flag actually changes — avoids unnecessary
         // shader recompilation on frames where the dict values are stable.
@@ -1550,7 +1552,6 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVisCacheLightSelection != wasLightSel ||
             mVisCacheJitter != wasJitter ||
             mVisCacheDirDistAddr != wasDirDist ||
-            mVisCacheAsymmetricAddr != wasAsymmetric)
             mRecompile = true;
     }
 
@@ -1786,11 +1787,15 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
         rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
-        rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
-        rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
-        rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
+        rootVar["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
+        rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
+        rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
+        rootVar["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
+        rootVar["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
+        rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
+        rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
     // separate cbuffer needed. VisCacheParams is already bound above
@@ -1876,11 +1881,15 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
         rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
-        rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
-        rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
-        rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
+        rootVar["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
+        rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
+        rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
+        rootVar["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
+        rootVar["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
+        rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
+        rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1958,7 +1967,6 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    defines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", owner.mVisCacheAsymmetricAddr ? "1" : "0");
     defines.add("USE_LOCAL_CVRRR", owner.mLocalCVRRR ? "1" : "0");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).

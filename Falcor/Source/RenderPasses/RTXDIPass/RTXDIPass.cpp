@@ -139,26 +139,27 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         dict.keyExists("vhfParam_tableCapacity"));
     if (mVisCacheAvailable)
     {
-        mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
-        mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
-        mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
-        mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
-        mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
-        mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
-        mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
-        mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
-        mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
-        mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
-        mVCParams.addrBDistScale = dict.getValue<float>("vhfParam_addrBDistScale");
+        mVCParams.tableCapacity  = dict.getValue<uint32_t>("vhfParam_tableCapacity");
+        mVCParams.bootThreshold  = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+        mVCParams.varThreshold   = dict.getValue<float>("vhfParam_varThreshold");
+        mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
+        mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
+        mVCParams.numLevels      = dict.getValue<uint32_t>("vhfParam_numLevels");
+        mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+        mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
+        mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
+        mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
+        mVCParams.cellBFine      = dict.getValue<float>("vhfParam_cellBFine");
+        mVCParams.angularBCoarse = dict.getValue<float>("vhfParam_angularBCoarse");
+        mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
+        mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
+        mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
     }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
     bool wasDirDist = mVisCacheDirDistAddr;
     mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-    bool wasAsymmetric = mVisCacheAsymmetricAddr;
-    mVisCacheAsymmetricAddr = mVisCacheAvailable && dict.keyExists("vhfEnableAsymmetricAddr") && dict.getValue<bool>("vhfEnableAsymmetricAddr");
     if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-        || mVisCacheDirDistAddr != wasDirDist || mVisCacheAsymmetricAddr != wasAsymmetric) recreatePrograms();
 
     // Propagate VisCache defines and resource bindings to RTXDI's internal passes
     // (testCandidateVisibility, spatial/temporal resampling) so the bridge callbacks
@@ -168,7 +169,6 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         visCacheDefines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         visCacheDefines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         visCacheDefines.add("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-        visCacheDefines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
         mpRTXDI->setExtraDefines(visCacheDefines);
     }
     // NOTE: VisCache resources are bound in finalShading() directly, not via
@@ -295,7 +295,6 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         defines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         defines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-        defines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
         defines.add(getValidResourceDefines(kOutputChannels, renderData));
 
         mpFinalShadingPass = ComputePass::create(mpDevice, desc, defines, true);
@@ -306,7 +305,6 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     mpFinalShadingPass->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-    mpFinalShadingPass->addDefine("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
@@ -321,17 +319,21 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     if (mVisCacheAvailable)
     {
         rootVar["gVHFTable"] = mpVHFTable;
-        rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
-        rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
-        rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
-        rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
-        rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
-        rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
-        rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
-        rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
-        rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
+        rootVar["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
+        rootVar["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
+        rootVar["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
+        rootVar["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
+        rootVar["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
+        rootVar["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
+        rootVar["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
+        rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
+        rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
+        rootVar["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
+        rootVar["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
+        rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
+        rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
     }
 
     auto var = rootVar["gFinalShading"];

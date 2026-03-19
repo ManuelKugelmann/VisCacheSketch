@@ -19,8 +19,7 @@ scene_name = os.path.splitext(os.path.basename(scene_file))[0]
 # Shared base config: 1 level, no jitter, all features off, always trace
 BASE = {
     "numLevels": 1,
-    "cellCoarse": 0.06,
-    "cellFine": 0.06,
+    "cellACoarse": 0.06,
     "autoTuneCells": False,
     "bootThreshold": 4,
     "pMin": 1.0,
@@ -35,25 +34,24 @@ VARIANTS = [
     ("pos_pos_canonical", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "enableVisCacheAsymmetricAddr": False,
     }),
     ("pos_only", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 360.0,       # >= 180° → single direction bin (position-only)
-        "addrBDistScale": 1000.0,  # huge distance cell → single dist bucket
+        "angularBCoarse": 360.0,   # >= 180 deg → single direction bin (position-only)
+        "distBCoarse": 1000.0,     # huge distance cell → single dist bucket
     }),
     ("pos_dir", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 45.0,        # 45° per bin → ~16 direction bins
-        "addrBDistScale": 1000.0,  # single dist bucket
+        "angularBCoarse": 45.0,    # 45 deg per bin → ~16 direction bins
+        "distBCoarse": 1000.0,     # single dist bucket
     }),
     ("pos_dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 45.0,        # 45° angular bins
-        "addrBDistScale": 4.0,     # 4× cellCoarse distance bins
+        "angularBCoarse": 45.0,    # 45 deg angular bins
+        "distBCoarse": 0.24,       # 4x cellACoarse distance bins
     }),
 ]
 

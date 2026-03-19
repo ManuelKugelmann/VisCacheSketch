@@ -1211,30 +1211,32 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasJitter = mVisCacheJitter;
         bool wasDirDist = mVisCacheDirDistAddr;
-        bool wasAsymmetric = mVisCacheAsymmetricAddr;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr &&
             dict.keyExists("vhfParam_tableCapacity"));
         if (mVisCacheAvailable)
         {
-            mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
-            mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
-            mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
-            mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
-            mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
-            mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
-            mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
-            mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
-            mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
-            mVCParams.addrBDistScale = dict.getValue<float>("vhfParam_addrBDistScale");
+            mVCParams.tableCapacity  = dict.getValue<uint32_t>("vhfParam_tableCapacity");
+            mVCParams.bootThreshold  = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+            mVCParams.varThreshold   = dict.getValue<float>("vhfParam_varThreshold");
+            mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
+            mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
+            mVCParams.numLevels      = dict.getValue<uint32_t>("vhfParam_numLevels");
+            mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
+            mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
+            mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
+            mVCParams.cellBFine      = dict.getValue<float>("vhfParam_cellBFine");
+            mVCParams.angularBCoarse = dict.getValue<float>("vhfParam_angularBCoarse");
+            mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
+            mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
+            mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
             || dict.getValue<bool>("vhfEnableJitter");  // default ON
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-        mVisCacheAsymmetricAddr = mVisCacheAvailable && dict.keyExists("vhfEnableAsymmetricAddr") && dict.getValue<bool>("vhfEnableAsymmetricAddr");
 
         // Diagnostic textures — bound at root var like PixelStats so all RT stages
         // can write per-pixel heatmap data inline during tracing.
@@ -1263,11 +1265,9 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheJitter != wasJitter || mVisCacheDirDistAddr != wasDirDist
-            || mVisCacheAsymmetricAddr != wasAsymmetric
             || mVisCacheDiagnostics != wasDiag)
         {
             logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} asymmetricAddr={} diag={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheAsymmetricAddr, mVisCacheDiagnostics);
             mRecompile = true;
         }
     }
@@ -1416,17 +1416,21 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     if (mVisCacheAvailable)
     {
         var["gVHFTable"] = mpVHFTable;
-        var["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
-        var["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
-        var["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
-        var["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
-        var["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
-        var["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        var["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
-        var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
-        var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
-        var["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        var["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
+        var["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
+        var["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
+        var["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
+        var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
+        var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
+        var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
+        var["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        var["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
+        var["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
+        var["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
+        var["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
+        var["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
+        var["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
+        var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
@@ -1538,7 +1542,6 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    defines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", owner.mVisCacheAsymmetricAddr ? "1" : "0");
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
 
     // Scene-specific configuration.

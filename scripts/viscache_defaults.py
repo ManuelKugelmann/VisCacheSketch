@@ -9,7 +9,10 @@ VISCACHE_DEFAULTS = {
     "decayPeriod":     300,       # auto-tuned by PI controller
     "decayPeriodMax":  600,
     "numLevels":       8,
-    # cellCoarse/cellFine omitted — auto-tuned from scene bounds (L0 ≈ sceneDiameter/10)
+    # cellACoarse omitted — auto-tuned from scene bounds
+    "cellBCoarse":      20.0,   # posB coarsest cell (world units)
+    "angularBCoarse":   90.0,   # direction coarsest cell (degrees, dirdist mode)
+    "distBCoarse":      10.0,   # distance coarsest cell (world units, dirdist mode)
     "enableVisCacheVisibilityCheck":   True,
     "enableVisCacheLightSelection": True,
     "enableVisCacheWarpReduction":  True,
@@ -18,8 +21,5 @@ VISCACHE_DEFAULTS = {
     "enableVisCachePressureEvict":  True,
     "enableVisCacheJitter":         True,
     "enableVisCacheDirDistAddr":    False,
-    "enableVisCacheAsymmetricAddr": False,
-    "addrBScale":                   45.0,   # angular cell size in degrees (dirdist mode)
-    "addrBDistScale":                8.0,    # distance cell size multiplier on cellCoarse
     "enableDiagnostics":            True,
 }

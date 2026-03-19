@@ -35,7 +35,7 @@ Implies: `USE_VISCACHE_VISIBILITYCHECK` => `USE_VISCACHE` (host logic ensures th
 
 ## GPU Resources
 
-### VisCacheParams cbuffer (32 bytes)
+### VisCacheParams cbuffer (64 bytes)
 
 ```
 uint  tableCapacity     Power-of-two entry count
@@ -44,8 +44,16 @@ float varThreshold      Bernoulli variance gate for write depth
 float pMin              Min RR survival probability
 float fireflyBudget     Contribution scale for adaptive pMin
 uint  numLevels         Number of LOD levels in cascade
-float cellCoarse        Coarsest level cell size (world units)
-float cellFine          Finest level cell size (world units)
+uint  enableJitter      Jitter-before-quantize toggle
+float cellACoarse       posA coarsest cell (world units)
+float cellAFine         posA finest cell (auto-derived)
+float cellBCoarse       posB coarsest cell (world units, pos x pos modes)
+float cellBFine         posB finest cell (auto-derived)
+float angularBCoarse    direction coarsest cell (degrees, dirdist mode)
+float angularBFine      direction finest cell (auto-derived)
+float distBCoarse       distance coarsest cell (world units, dirdist mode)
+float distBFine         distance finest cell (auto-derived)
+uint  _pad[1]
 ```
 
 ### Hash Table

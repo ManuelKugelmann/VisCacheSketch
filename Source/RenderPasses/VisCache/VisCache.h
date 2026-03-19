@@ -110,7 +110,6 @@ public:
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
-        bool     enableVisCacheAsymmetricAddr = false; ///< H: Non-canonical pos×pos (separate A/B resolution)
     };
 
     const Params& getParams() const { return mParams; }
@@ -120,7 +119,7 @@ public:
 private:
 
     void allocateBuffers();
-    void autoTuneCellSizes();    ///< Derive cellCoarse/cellFine from scene bounds + camera
+    void autoTuneCellSizes();    ///< Derive cellACoarse (+ cellBCoarse, distBCoarse) from scene bounds
     void runDecayPass(RenderContext* pCtx);
     void readbackStats(RenderContext* pCtx);
     void autoTuneDecayPeriod();
@@ -140,7 +139,7 @@ private:
     // ------------------------------------------------------------------
     Params   mParams;
     ref<Scene> mpScene;          ///< Current scene (for bounds + camera)
-    bool     mAutoTuneCells = true;  ///< Auto-derive cellCoarse/cellFine from scene
+    bool     mAutoTuneCells = true;  ///< Auto-derive cellACoarse/cellBCoarse/distBCoarse from scene
     uint32_t mFrameCount = 0u;
 
     /// Readback stats (GPU → staging → CPU, ~4 frame latency).

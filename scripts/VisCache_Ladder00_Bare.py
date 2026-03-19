@@ -21,23 +21,18 @@ scene_name = os.path.splitext(os.path.basename(scene_file))[0]
 # Override defaults for bare minimum config
 overrides = {
     "numLevels": 1,
-    "cellCoarse": 0.06,      # ~6cm cells — compromise between resolution and maturity
-    "cellFine": 0.06,
+    "cellACoarse": 0.06,     # ~6cm cells — compromise between resolution and maturity
     "autoTuneCells": False,
     "bootThreshold": 4,      # low threshold — mature quickly for visualization
     "pMin": 1.0,             # always trace — no RR skipping
     "enableVisCacheJitter": False,
     "enableVisCacheDirDistAddr": False,
-    "enableVisCacheAsymmetricAddr": True,
     "enableVisCacheVarianceGate": False,
     "enableVisCacheWarpReduction": False,
     "enableVisCacheDecay": False,
     "enableVisCachePressureEvict": False,
 }
-
-if overrides.get("enableVisCacheAsymmetricAddr", False):
-    addr_mode = "asymmetric"
-elif overrides.get("enableVisCacheDirDistAddr", False):
+if overrides.get("enableVisCacheDirDistAddr", False):
     addr_mode = "pointXdirdist"
 else:
     addr_mode = "pointXpoint"
