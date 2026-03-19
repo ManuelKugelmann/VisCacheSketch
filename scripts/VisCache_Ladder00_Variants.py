@@ -40,13 +40,13 @@ VARIANTS = [
     ("pos_only", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 0.001,       # near-zero angular projection → all dirs collapse
-        "addrBDistScale": 1000.0,  # huge dist bins → all dists collapse
+        "addrBScale": 0.5,         # <1 → single direction bin (all dirs collapse)
+        "addrBDistScale": 1000.0,  # single dist bucket → position-only
     }),
     ("pos_dir", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 2.0,         # coarse angular bins (~30° per bin)
+        "addrBScale": 2.0,         # 2 bins/axis → ~16 direction bins (coarse)
         "addrBDistScale": 1000.0,  # single dist bucket
     }),
     ("pos_dir_dist", {

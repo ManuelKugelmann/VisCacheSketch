@@ -290,39 +290,46 @@ uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint salt)
 }
 
 // ===========================================================================
-// IBL DIRECTION ENCODING
+// DIRECTIONAL ENCODING — shared by IBL and dirdist addressing
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Environment map and directional lights have no finite endpoint B. We encode
-// the direction as a "position at infinity" by scaling the unit direction
-// vector by a marker magnitude derived from gCellCoarse.
-//
-// The marker is chosen so that quantizing (dir * marker) at the coarsest
-// cell size produces angular bins of roughly kIBLAngularCell radians (~45°,
-// i.e. octants). This is coarse but meaningful: "is this octant of
-// directions occluded from this spatial region?" Finer LOD levels refine
-// the angular resolution proportionally via the geometric cascade.
-//
-// Why octants (45°) rather than finer bins:
-//   - Coarser bins accumulate samples faster → quicker convergence
-//   - Environment map visibility tends to be spatially smooth at large scales
-//   - Finer levels (if needed) automatically refine the angular resolution
-//   - Very fine angular bins at the coarsest level would rarely see the same
-//     cell pair twice, making the cache useless for IBL
-//
-// The marker magnitude is: gCellCoarse / kIBLAngularCell
-//   → floor(dir * marker / cellCoarse) ≈ floor(dir / kIBLAngularCell)
+// Octahedral direction encoding: maps unit sphere → [−1,1]² near-uniformly.
+// Used for both IBL direction encoding and dirdist addressing to quantize
+// directions as 2D bins independently of spatial cell size.
+// Reference: Meyer et al. 2010, "On Floating-Point Normal Vectors"
 // ---------------------------------------------------------------------------
-static const float kIBLAngularCell = 0.785f;  ///< ~45 degrees in radians (octant-level bins)
+float2 octEncode(float3 n)
+{
+    float s = abs(n.x) + abs(n.y) + abs(n.z);
+    float2 o = n.xy / max(s, 1e-7f);
+    if (n.z < 0.f)
+        o = (1.f - abs(o.yx)) * float2(o.x >= 0.f ? 1.f : -1.f, o.y >= 0.f ? 1.f : -1.f);
+    return o;  // in [−1, 1]²
+}
 
-/// Encode a normalized direction as a position for VisCache lookups.
-/// Use this as posB when querying visibility toward an env map or
-/// directional light (no finite endpoint).
-///
-/// Example:
-///   float3 vcPosB = vhfEncodeDirection(ray.dir);
-///   VHFGateResult g = vhfGateDeterministic(ray.origin, vcPosB, luminance(Lr));
+/// Quantize a direction into an int3 key: (dirBinX, dirBinY, distBin).
+/// angularRes: bins per octahedral axis (1 = ~4 bins total, 4 = ~64 bins).
+/// dist + distCellSize: distance quantization (use dist=0, distCellSize=1 for IBL/infinite).
+int3 vhfQuantizeDirection(float3 dir, float angularRes, float dist, float distCellSize)
+{
+    float2 oct = octEncode(dir);
+    int2 dirBin = int2(floor(oct * max(angularRes, 0.5f)));
+    int distBin = int(floor(dist / max(distCellSize, 1e-6f)));
+    return int3(dirBin.x, dirBin.y, distBin);
+}
+
+// ---------------------------------------------------------------------------
+// IBL direction encoding: for env maps and directional lights (infinite distance).
+// Returns a posB that, when passed to vhfQuantizePair, produces directional bins.
+// Uses octahedral mapping with coarse angular resolution (~4 bins = octant level).
+//
+// In dirdist mode: IBL is handled by vhfQuantizeDirection in vhfQuantizePair
+// with distBin = 0 (infinite). In endpoint mode: this function encodes
+// direction as a far-away position for spatial quantization.
+// ---------------------------------------------------------------------------
+static const float kIBLAngularCell = 0.785f;  ///< ~45 degrees for endpoint mode fallback
+
 float3 vhfEncodeDirection(float3 dir)
 {
     float marker = gCellCoarse / kIBLAngularCell;
@@ -384,21 +391,9 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 // ---------------------------------------------------------------------------
 float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 {
-#if USE_VISCACHE_DIRDIST_ADDRESSING
-    // Dir+dist: encode direction + distance as a virtual posB.
-    // Two independent quantization controls:
-    //   gAddrBScale  → angular resolution: project dir at this many cellCoarse units.
-    //                  More = finer angular bins. Very small = all dirs collapse (pos-only).
-    //   gAddrBDistScale → distance resolution: bin distances at this many cellCoarse units.
-    //                  More = coarser distance bins. Very large = all dists collapse.
-    float angularDist = gCellCoarse * gAddrBScale;
-    float distCell    = gCellCoarse * gAddrBDistScale;
-    float distQ       = floor(dist / distCell) * distCell;
-    return posA + normalize(dir) * (angularDist + distQ);
-#else
-    // Endpoint mode (canonical or asymmetric) — posB is the light/target position.
+    // Endpoint mode (canonical, asymmetric, or dirdist) — posB is the light position.
+    // In dirdist mode, vhfQuantizePair handles direction encoding directly.
     return posA + dir * dist;
-#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -418,9 +413,15 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
     qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
 
 #if USE_VISCACHE_DIRDIST_ADDRESSING
-    // Dir+dist: posB already encodes direction+distance (from vhfAddressPosB).
-    // Quantize at same cell size. Inherently asymmetric — no canonicalization.
-    qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
+    // Dir+dist: 2D octahedral direction bins + distance bin.
+    // Inherently asymmetric — no canonicalization.
+    {
+        float3 edge = posB - posA;
+        float dist = length(edge);
+        float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
+        float distCell = gCellCoarse * max(gAddrBDistScale, 1.f);
+        qb = vhfQuantizeDirection(dir, gAddrBScale, dist, distCell);
+    }
 
 #elif USE_VISCACHE_ASYMMETRIC_ADDRESSING
     // Non-canonical pos×pos: posB quantized at separate (coarser) cell size.
