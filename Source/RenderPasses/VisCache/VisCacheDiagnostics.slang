@@ -68,7 +68,7 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
 
         gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,   // R: qa hash
                                  float(hB.x & 0xFFu) / 255.f,   // G: qb hash
-                                 0.f,                             // B: unused
+                                 noEntry ? 0.f : 1.f,            // B: cold miss (0=miss, 1=data)
                                  1.f);
     }
 

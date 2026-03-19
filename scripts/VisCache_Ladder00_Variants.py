@@ -71,20 +71,19 @@ def postprocess(captureDir):
     for exr in glob.glob(os.path.join(captureDir, "*.exr")):
         base = os.path.basename(exr)
         if "vcDiag." in base:
-            ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out(captureDir, "cellhash_posA")])
-            ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out(captureDir, "cellhash_posB")])
+            ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out(captureDir, "cellhash_qa")])
+            ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out(captureDir, "cellhash_qb")])
+            ffrun(["-i", exr, "-vf", "extractplanes=b", "-pix_fmt", "gray", out(captureDir, "coldmiss")])
         elif "VarMaturityMu" in base:
             ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "quality_var_maturity_mu")])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "quality__variance")])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "quality__maturity")])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "quality__mu")])
-            ffrun(["-i", exr, "-vf", "extractplanes=a", "-pix_fmt", "gray", out(captureDir, "quality__coldmiss")])
         elif "VarMaturityLevel" in base:
             ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "health_probe_count_level")])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "health__probesteps")])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "health__samplecount")])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "health__level")])
-            ffrun(["-i", exr, "-vf", "extractplanes=a", "-pix_fmt", "gray", out(captureDir, "health__coldmiss")])
 
 for (variant_name, overrides) in VARIANTS:
     captureDir = f"captures/ladder/00_{variant_name}_{scene_name}"

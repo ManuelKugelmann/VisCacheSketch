@@ -162,7 +162,8 @@
       "Bash(\"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc\" --list-gpu-arch)",
       "Bash(build.bat --skip-setup --target CudaInterop)",
       "Bash(C:/Projects/VisCacheSketch/build.bat --skip-setup --target CudaInterop)",
-      "Bash(ffprobe -v quiet -show_streams \"runtime/captures/ladder/00_pos_only_CornellBox/pos_only.VisCache.vcVarMaturityMu.1024.exr\")"
+      "Bash(ffprobe -v quiet -show_streams \"runtime/captures/ladder/00_pos_only_CornellBox/pos_only.VisCache.vcVarMaturityMu.1024.exr\")",
+      "Bash(ffprobe -v quiet -show_streams runtime/captures/ladder/00_pos_pos_canonical_CornellBox/pos_pos_canonical.VisCache.vcVarMaturityMu.1024.exr)"
     ],
     "deny": []
   }
