@@ -24,7 +24,7 @@ sceneBuilder.addCamera(camera)
 
 # Sun — harsh midday through the open roof
 sun = DirectionalLight('Sun')
-sun.intensity = float3(80.0, 72.0, 60.0)
+sun.intensity = float3(53.0, 48.0, 40.0)
 sun.direction = float3(0.1, -1.0, 0.05)
 sceneBuilder.addLight(sun)
 

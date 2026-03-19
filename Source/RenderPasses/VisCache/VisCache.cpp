@@ -519,7 +519,7 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gCellFine"]      = mParams.cellFine;
     vars["VisCacheParams"]["gEnableJitter"]  = mParams.enableVisCacheJitter ? 1u : 0u;
     vars["VisCacheParams"]["gAddrBScale"]   = mParams.addrBScale;
-    vars["VisCacheParams"]["gAddrDistScale"] = mParams.addrBDistScale;
+    vars["VisCacheParams"]["gAddrBDistScale"] = mParams.addrBDistScale;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }

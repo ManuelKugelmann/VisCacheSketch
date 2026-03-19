@@ -1426,7 +1426,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         var["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        var["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
+        var["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.

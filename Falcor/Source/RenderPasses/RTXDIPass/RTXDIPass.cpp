@@ -331,7 +331,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
+        rootVar["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
     }
 
     auto var = rootVar["gFinalShading"];

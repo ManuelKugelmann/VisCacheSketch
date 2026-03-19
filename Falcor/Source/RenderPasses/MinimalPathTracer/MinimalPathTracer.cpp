@@ -247,7 +247,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
         var["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
-        var["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrBDistScale;
+        var["VisCacheParams"]["gAddrBDistScale"] = mVCParams.addrBDistScale;
     }
 
     // Get dimensions of ray dispatch.
