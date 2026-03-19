@@ -369,7 +369,10 @@ float3 vhfEncodeDirection(float3 dir)
 // ---------------------------------------------------------------------------
 int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 {
-    int3 baseIdx = int3(floor(pos / cellSize));
+    // Offset by half cell so grid boundaries are at ±0.5*cellSize, ±1.5*cellSize, etc.
+    // instead of at 0, ±cellSize, ±2*cellSize. This prevents sign-boundary splits
+    // where floor() of small negative values jumps to -1 (e.g., floor(-0.001/1000) = -1).
+    int3 baseIdx = int3(floor(pos / cellSize + 0.5f));
 #if USE_VISCACHE_JITTER
     uint3 r = pcg3d(uint3(baseIdx) ^ seed);
     float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
