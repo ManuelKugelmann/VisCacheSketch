@@ -53,13 +53,13 @@ else:
 
 The **Bernoulli structure** of binary visibility makes this easy: The same scalar µ gives both the cached estimate and the variance.
 
-The variance signal drives two reinforcing mechanisms:
+The variance signal drives two reinforcing mechanisms simultaneously (**coupled dual adaptation**):
 1. **Correction rate** — variance steers the number of samples via RR
-2. **Spatial resolution** — sample count and variance determine which resolution levels of the cache get writes
+2. **Spatial resolution** — variance gates which resolution levels of the cache get writes
 
 High-variance regions trace more often *and* at finer spatial resolution.
 Low-variance regions trace rarely and only update the coarse level.
-This self-regulating behaviour makes the system practical without per-scene tuning.
+This one-signal-two-decisions coupling is what makes the cache self-regulating without per-scene tuning.
 
 The cache is algorithm-agnostic — it operates on pairwise (point, point) → {0,1} queries regardless of the rendering algorithm generating them.
 
