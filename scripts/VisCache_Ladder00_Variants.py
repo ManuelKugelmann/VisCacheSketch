@@ -34,6 +34,7 @@ VARIANTS = [
     ("pos_pos_canonical", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
+        "cellBCoarse": 0.06,       # same as cellACoarse for true canonical
     }),
     ("pos_only_dirdist", {
         **BASE,
