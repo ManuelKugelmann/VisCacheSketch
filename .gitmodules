@@ -22,3 +22,6 @@
 [submodule "refs/NVlabs_conditional_ReSTIR"]
 	path = refs/NVlabs_conditional_ReSTIR
 	url = https://github.com/NVlabs/conditional-restir-prototype
+[submodule "refs/NVIDIA-RTX_SHARC"]
+	path = refs/NVIDIA-RTX_SHARC
+	url = https://github.com/NVIDIA-RTX/SHARC.git
