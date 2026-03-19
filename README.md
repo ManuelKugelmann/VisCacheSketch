@@ -80,16 +80,16 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 Using a cached prediction as control variate and letting variance drive the RR survival probability is a pure Monte Carlo variance reduction technique, independent of data structure. [Szécsi et al. 2003][r-szecsi] formalized the non-zero termination estimate for rendering (CV with fixed RR probability). [Szirmay-Kalos et al. 2005][r-szirmay] added variance-driven RR using a scene-global radiance estimate. The 2006 thesis independently rediscovered the same CV+VRRR math. In the meantime, [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC) also arrived at a structurally equivalent formulation — their MLMC residual estimator is CV+VRRR — without citing Szécsi or Szirmay-Kalos.
 
 **Localized per-point cache as CV estimation source.**
-What makes CV+VRRR *effective* is per-point spatial predictions rather than Szirmay-Kalos’s scene-global constant. [Guo et al. 2020][r-guo] (NEE++) independently arrived at per-voxel-pair visibility caching. Skipping predictable shadow rays predates 2006 — [Ward 1991][r-ward] used heuristic ordering, though not a spatial cache.
+What makes CV+VRRR *effective* is per-point spatial predictions rather than Szirmay-Kalos’s scene-global constant. [Ward 1991][r-ward] already used heuristic ordering to skip predictable shadow rays, though not a spatial cache. [Guo et al. 2020][r-guo] (NEE++) independently arrived at per-voxel-pair visibility caching.
 
 **Visibility caching — caching visibility to skip shadow rays.**
-The general concept predates 2006 ([Ward 1991][r-ward] — heuristic ordering). Independent work arrived at the idea through different data structures: [SHaRC (Benyoub et al. 2024)][r-sharc] uses a world-space radiance hash with roughness-gated LoD (RTX SDK), [Guo et al. 2020][r-guo] (NEE++) a dense per-voxel-pair matrix, [Bokšanský & Meister 2025][r-boksansky] a neural visibility cache, and [Popov et al. 2013][r-popov] an adaptive octree for offline rendering (<2% rays).
+The general concept predates 2006 ([Ward 1991][r-ward] — heuristic ordering). Independent work arrived at the idea through different data structures: [Popov et al. 2013][r-popov] an adaptive octree for offline rendering (<2% rays), [Guo et al. 2020][r-guo] (NEE++) a dense per-voxel-pair matrix, [SHaRC (Benyoub et al. 2024)][r-sharc] a world-space radiance hash with roughness-gated LoD (RTX SDK), and [Bokšanský & Meister 2025][r-boksansky] a neural visibility cache.
 
 **Spatial hash map against the curse of dimensionality.**
-The 2006 thesis used spatial hashing — inspired by [ODE][r-ode] (Open Dynamics Engine) — for compact pairwise storage but did not describe it as a contribution. The technique was independently adopted in rendering by [Binder et al. 2018][r-binder] (path-space filtering), [Gautron 2020][r-gautron20]/[2021][r-gautron21] (ambient occlusion), [SHaRC (Benyoub et al. 2024)][r-sharc] (world-space spatial hash, RTX SDK), [Bokšanský & Meister 2025][r-boksansky] (Instant-NGP backbone), and [Dereviannykh et al. 2024][r-n2lmc] (world-space multi-level hash encodings). By contrast, NEE++ used a dense D³×D³ matrix and hit the dimensionality wall.
+The 2006 thesis used spatial hashing — inspired by [ODE][r-ode] (Open Dynamics Engine) — for compact pairwise storage but did not describe it as a contribution. The technique was independently adopted in rendering by [Binder et al. 2018][r-binder] (path-space filtering), [Gautron 2020][r-gautron20]/[2021][r-gautron21] (ambient occlusion), [Müller et al. 2022][r-muller] (Instant NGP — multi-resolution hash encoding, the backbone behind [Bokšanský & Meister 2025][r-boksansky] and [Dereviannykh et al. 2024][r-n2lmc]), and [SHaRC (Benyoub et al. 2024)][r-sharc] (world-space spatial hash, RTX SDK). By contrast, [Guo et al. 2020][r-guo] (NEE++) used a dense D³×D³ matrix and hit the dimensionality wall.
 
 **Variance-driven adaptive sampling — trace rate from cache quality.**
-The 2006 thesis coupled variance to trace rate. [Stotko et al. 2025][r-stotko] (MrHash) independently couples variance to spatial resolution in a flat hash (TSDF domain). [Rath et al. 2022][r-rath] (EARS) uses efficiency-aware RR/splitting for path continuation.
+The 2006 thesis coupled variance to trace rate. [Rath et al. 2022][r-rath] (EARS) uses efficiency-aware RR/splitting for path continuation. [Stotko et al. 2025][r-stotko] (MrHash) independently couples variance to spatial resolution in a flat hash (TSDF domain).
 
 [r-n2lmc]: https://arxiv.org/abs/2412.04634
 [r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
@@ -125,6 +125,7 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 | [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
 | [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
 | [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | Parallels — MLMC residual ↔ CV+VRRR, BTH read-gating ↔ lookup cascade, multi-level hash encodings |
+| [Müller et al. 2022 (Instant NGP)][r-muller] | Multi-resolution hash encoding — spatial hashing for neural graphics; backbone of Bokšanský 2025 and Dereviannykh 2024 |
 | [Kallweit et al. 2022 (Falcor)][r-falcor] | GPU rendering framework used as implementation base |
 
 [r-kugelmann]: docs/references/Kugelmann2006_ThesisMK.pdf
@@ -140,6 +141,7 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 [r-lin]: https://doi.org/10.1145/3528223.3530158
 [r-bitterli]: https://doi.org/10.1145/3386569.3392382
 [r-falcor]: https://github.com/NVIDIAGameWorks/Falcor
+[r-muller]: https://doi.org/10.1145/3528223.3530127
 [r-boksansky]: https://jcgt.org/published/0014/02/01/
 
 ---
