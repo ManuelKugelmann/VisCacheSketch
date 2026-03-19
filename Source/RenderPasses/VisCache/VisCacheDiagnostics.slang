@@ -92,15 +92,25 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         coldMissAlpha                                                // A: 0=cold miss, 1=has data
     );
 
-    // --- Accumulated averaging (persists across frames — running mean) ---
-    // gVCDiag used as accumulator: R=avg mu, G=avg variance, B=sample count (for EMA alpha)
+    // --- Accumulated EMA (persists across frames — exponential moving average) ---
+    // Same channel layout as snapshot: R=var, G=maturity, B=mu, A=cold miss.
+    // EMA alpha = 1/min(count, 128) → converges to 128-frame sliding window.
     {
         float4 prev = gVCDiag[pixel];
-        float count = prev.b + 1.f;            // increment per-pixel sample counter
-        float alpha = 1.f / count;              // equal-weight running average
-        float avgMu  = lerp(prev.r, g.mu, alpha);
-        float avgVar = lerp(prev.g, diagVar, alpha);
-        gVCDiag[pixel] = float4(avgMu, avgVar, count, noEntry ? 0.f : 1.f);
+        float count = prev.a + 1.f;
+        float alpha = 1.f / min(count, 128.f);
+        float4 curr = float4(
+            saturate(diagVar * 4.f) + grey,
+            saturate(float(g.N) / float(gBootThreshold)) + grey,
+            g.mu + grey,
+            count
+        );
+        gVCDiag[pixel] = float4(
+            lerp(prev.r, curr.r, alpha),
+            lerp(prev.g, curr.g, alpha),
+            lerp(prev.b, curr.b, alpha),
+            count
+        );
     }
 
     // --- Accumulate ray savings ratio (persistent across frames) ---

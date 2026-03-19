@@ -75,11 +75,11 @@ def postprocess(captureDir):
     for exr in glob.glob(os.path.join(captureDir, "*.exr")):
         base = os.path.basename(exr)
         if "vcDiag." in base:
-            # Accumulated averages: R=avg mu, G=avg variance, B=cold miss
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_mu_var_miss")])
-            ffrun(["-i", exr, "-vf", "extractplanes=r", "-pix_fmt", "gray", out(captureDir, "accum__avg_mu")])
-            ffrun(["-i", exr, "-vf", "extractplanes=g", "-pix_fmt", "gray", out(captureDir, "accum__avg_var")])
-            ffrun(["-i", exr, "-vf", "extractplanes=b", "-pix_fmt", "gray", out(captureDir, "accum__coldmiss")])
+            # Accumulated EMA: R=var, G=maturity, B=mu (same layout as snap)
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_var_maturity_mu")])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__variance")])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__maturity")])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum__mu")])
         elif "VarMaturityMu" in base:
             ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_var_maturity_mu")])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__variance")])
