@@ -245,18 +245,22 @@ uint3 pcg3d(uint3 v)
 // Returns 6 hash values; callers typically XOR-fold to the needed width.
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// PCG8D: 8-dimensional hash for cache entry addressing.
-// Inputs: qa.xyz (3) + qb.xyz (3) + LOD level (1) + salt (1).
+// pcgHash: 9-dimensional hash for cache entry addressing.
+// Inputs: qa.xyz (3) + qb.xyz (3) + lvlA (1) + lvlB (1) + salt (1) = 9.
 //
-// Salt differentiates address from fingerprint hashes without relying on
-// additive offsets that could interact with coordinate values.
-// Level is a first-class dimension rather than being mixed into qb.z.
+// qa/qb: quantized endpoint coordinates (6D spatial key).
+// lvlA/lvlB: independent LOD levels for each endpoint (currently synced,
+//   lvlB reserved for future independent A/B level control).
+// salt: differentiates address from fingerprint without coordinate offsets.
 //
-// Extends Jarzynski & Olano's PCG cross-mixing to 8 components:
-// two rounds of circular neighbor products + XOR-shift.
-// Returns XOR-folded uint result for compact output.
+// Extends Jarzynski & Olano's PCG cross-mixing to 9 components.
+// Two rounds of circular neighbor products + XOR-shift.
+// Returns XOR-folded uint.
+//
+// 9 is odd, which breaks perfect circular symmetry — acceptable since the
+// inputs ARE asymmetric (positions vs levels vs salt).
 // ---------------------------------------------------------------------------
-uint pcg8d(int3 qa, int3 qb, uint lvl, uint salt)
+uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint salt)
 {
     // Linear congruential step per component
     uint a = uint(qa.x) * 1664525u + 1013904223u;
@@ -265,23 +269,24 @@ uint pcg8d(int3 qa, int3 qb, uint lvl, uint salt)
     uint d = uint(qb.x) * 1664525u + 1013904223u;
     uint e = uint(qb.y) * 1664525u + 1013904223u;
     uint f = uint(qb.z) * 1664525u + 1013904223u;
-    uint g = lvl         * 1664525u + 1013904223u;
-    uint h = salt        * 1664525u + 1013904223u;
+    uint g = lvlA        * 1664525u + 1013904223u;
+    uint h = lvlB        * 1664525u + 1013904223u;
+    uint i = salt        * 1664525u + 1013904223u;
 
     // Round 1: circular cross-mix
-    a += b * h;  b += c * a;  c += d * b;  d += e * c;
-    e += f * d;  f += g * e;  g += h * f;  h += a * g;
+    a += b * i;  b += c * a;  c += d * b;  d += e * c;
+    e += f * d;  f += g * e;  g += h * f;  h += i * g;  i += a * h;
 
     // XOR-shift
-    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;  d ^= d >> 16u;
-    e ^= e >> 16u;  f ^= f >> 16u;  g ^= g >> 16u;  h ^= h >> 16u;
+    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;
+    d ^= d >> 16u;  e ^= e >> 16u;  f ^= f >> 16u;
+    g ^= g >> 16u;  h ^= h >> 16u;  i ^= i >> 16u;
 
     // Round 2: circular cross-mix
-    a += b * h;  b += c * a;  c += d * b;  d += e * c;
-    e += f * d;  f += g * e;  g += h * f;  h += a * g;
+    a += b * i;  b += c * a;  c += d * b;  d += e * c;
+    e += f * d;  f += g * e;  g += h * f;  h += i * g;  i += a * h;
 
-    // XOR-fold to single uint
-    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h;
+    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i;
 }
 
 // ===========================================================================
@@ -457,12 +462,12 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
-    return pcg8d(qa, qb, lvl, 0x12345678u) & (gTableCapacity - 1u);
+    return pcgHash(qa, qb, lvl, lvl, 0x12345678u) & (gTableCapacity - 1u);
 }
 
 uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 {
-    return pcg8d(qa, qb, lvl, 0xDEADBEEFu);
+    return pcgHash(qa, qb, lvl, lvl, 0xDEADBEEFu);
 }
 
 // ===========================================================================
