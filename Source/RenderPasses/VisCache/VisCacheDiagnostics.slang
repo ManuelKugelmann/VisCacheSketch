@@ -57,18 +57,17 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     float grey = noEntry ? 0.3f : 0.f;
     float diagVar = noEntry ? 0.f : g.var;
 
-    // --- gVCDiag: R=posA cell hash, G=posB cell hash ---
+    // --- gVCDiag: R=qa hash, G=qb hash — actual quantized keys used by the cache ---
     {
         float cs = vhfCellSize(0);
+        int3 qa, qb;
+        vhfQuantizePair(posA, posB, cs, 0u, qa, qb);
 
-        int3 cellA = int3(floor(posA / cs));
-        uint3 hA = pcg3d(uint3(cellA));
+        uint3 hA = pcg3d(uint3(qa));
+        uint3 hB = pcg3d(uint3(qb));
 
-        int3 cellB = int3(floor(posB / cs));
-        uint3 hB = pcg3d(uint3(cellB));
-
-        gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,   // R: posA cell hash
-                                 float(hB.x & 0xFFu) / 255.f,   // G: posB cell hash
+        gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,   // R: qa hash
+                                 float(hB.x & 0xFFu) / 255.f,   // G: qb hash
                                  0.f,                             // B: unused
                                  1.f);
     }
