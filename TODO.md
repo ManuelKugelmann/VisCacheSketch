@@ -30,14 +30,22 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Cell sizes at non-standard scene scales (0.5m close-up, 100m city flyover)
 - [ ] Symmetric cells for GI revalidation — measure error before changing constants
 - [ ] Camera-adaptive cell sizing (FoV + CoC) — future work, document only
-- [ ] Warm-start level refinement: seed fine-level entries from coarse-level mu on first insert.
-  `vhfInsert()` already walks coarse→fine for the variance write gate — carry `prevMu`/`prevTotal`
-  through the loop and widen the initial `delta` when claiming a new slot (`origFp == 0`).
-  Zero extra lookups, zero extra atomics. Inspired by SHaRC's `SHARC_BLEND_ADJACENT_LEVELS`
-  (adjacent-level blending on camera move), but adapted: VisCache's LOD is fixed (not
-  camera-distance-based), so the analogue is cold-start acceleration at finer levels.
-  Caveat: coarse mu may be wrong for specific fine cells (e.g., coarse mu=0.8 but fine cell
-  is deep shadow mu=0.0) — keep seed count small (cap ~4–8) so real samples dominate quickly.
+- [ ] Warm-start level refinement: gate descent on coarse maturity, seed fine levels on creation.
+  Inspired by SHaRC's `SHARC_BLEND_ADJACENT_LEVELS` (adjacent-level blending on camera move),
+  adapted for VisCache's fixed LOD (not camera-distance-based).
+  Design (two rules in `vhfInsert`'s existing coarse→fine loop):
+  1. **Don't descend** to level N+1 while level N is below `bootThreshold`. Coarse must
+     earn trust before fine levels exist at all — saves table capacity and atomics.
+  2. **Seed on creation**: when descending past a mature level and claiming a new fine-level
+     slot (`origFp == 0`), seed it with 75% of `bootThreshold` samples at the parent's mu.
+     `seedN = 0.75 * bootThreshold`, `seedVis = round(prevMu * seedN)`.
+     Fine level starts near-mature — needs only ~25% real samples to cross threshold.
+  Implementation: carry `prevMu`/`prevTotal` through loop (already in registers from
+  the coarse level's `InterlockedAdd` return). Zero extra lookups, zero extra atomics —
+  just a wider initial `delta` and an early `break` when coarse is immature.
+  Caveat: coarse mu may be wrong for specific fine cells (e.g., coarse mu=0.8 but fine
+  cell is deep shadow). The 25% real-sample gap lets ground truth override quickly, and
+  decay periodically resets if the seed was far off.
 
 ---
 
