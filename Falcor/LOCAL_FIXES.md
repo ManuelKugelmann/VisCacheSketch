@@ -138,20 +138,27 @@ type `EmissiveLightSampler` which is a compile-time typedef).
 
 ---
 
-## 5. CudaInterop: suppress C4100 and LNK4098 warnings on MSVC
+## 5. CudaInterop: fix CUDA 12.9 build + suppress LNK4098 on MSVC
 
 **File:** `Source/Samples/CudaInterop/CMakeLists.txt`
 
-CUDA separable compilation generates device-link registration files
-(`tmpxft_*_CudaInterop.device-link.reg.c`) with an unused
-`prelinked_fatbinc` parameter, triggering MSVC warning C4100. The CUDA
-runtime also statically links LIBCMT, conflicting with Falcor's dynamic
-CRT (MSVCRT), producing linker warning LNK4098.
+Two issues:
 
-**Fix:** Added MSVC-only compile/link options:
+1. **CUDA 12.9 build failure:** A bare `target_compile_options(... /wd4100)`
+   passes `/wd4100` directly to nvcc. CUDA 12.9's nvcc is stricter and
+   misinterprets the MSVC flag as a filename, causing:
+   `nvcc fatal: A single input file is required for a non-link phase when an outputfile is specified`
+
+2. **LNK4098 warning:** CUDA runtime statically links LIBCMT, conflicting
+   with Falcor's dynamic CRT (MSVCRT).
+
+**Fix:** Use generator expressions to route `/wd4100` correctly per language:
 
 ```cmake
-target_compile_options(CudaInterop PRIVATE /wd4100)
+target_compile_options(CudaInterop PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:/wd4100>
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/wd4100>
+)
 target_link_options(CudaInterop PRIVATE /NODEFAULTLIB:LIBCMT)
 ```
 
