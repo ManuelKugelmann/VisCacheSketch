@@ -244,44 +244,44 @@ uint3 pcg3d(uint3 v)
 //
 // Returns 6 hash values; callers typically XOR-fold to the needed width.
 // ---------------------------------------------------------------------------
-struct uint6 { uint a, b, c, d, e, f; };
-
-uint6 pcg6d(int3 qa, int3 qb)
+// ---------------------------------------------------------------------------
+// PCG8D: 8-dimensional hash for cache entry addressing.
+// Inputs: qa.xyz (3) + qb.xyz (3) + LOD level (1) + salt (1).
+//
+// Salt differentiates address from fingerprint hashes without relying on
+// additive offsets that could interact with coordinate values.
+// Level is a first-class dimension rather than being mixed into qb.z.
+//
+// Extends Jarzynski & Olano's PCG cross-mixing to 8 components:
+// two rounds of circular neighbor products + XOR-shift.
+// Returns XOR-folded uint result for compact output.
+// ---------------------------------------------------------------------------
+uint pcg8d(int3 qa, int3 qb, uint lvl, uint salt)
 {
-    uint6 v;
-    // Linear congruential step (same constants as PCG3D, per component)
-    v.a = uint(qa.x) * 1664525u + 1013904223u;
-    v.b = uint(qa.y) * 1664525u + 1013904223u;
-    v.c = uint(qa.z) * 1664525u + 1013904223u;
-    v.d = uint(qb.x) * 1664525u + 1013904223u;
-    v.e = uint(qb.y) * 1664525u + 1013904223u;
-    v.f = uint(qb.z) * 1664525u + 1013904223u;
+    // Linear congruential step per component
+    uint a = uint(qa.x) * 1664525u + 1013904223u;
+    uint b = uint(qa.y) * 1664525u + 1013904223u;
+    uint c = uint(qa.z) * 1664525u + 1013904223u;
+    uint d = uint(qb.x) * 1664525u + 1013904223u;
+    uint e = uint(qb.y) * 1664525u + 1013904223u;
+    uint f = uint(qb.z) * 1664525u + 1013904223u;
+    uint g = lvl         * 1664525u + 1013904223u;
+    uint h = salt        * 1664525u + 1013904223u;
 
-    // Round 1: cross-mix (each component += product of two neighbors)
-    v.a += v.b * v.f;
-    v.b += v.c * v.a;
-    v.c += v.d * v.b;
-    v.d += v.e * v.c;
-    v.e += v.f * v.d;
-    v.f += v.a * v.e;
+    // Round 1: circular cross-mix
+    a += b * h;  b += c * a;  c += d * b;  d += e * c;
+    e += f * d;  f += g * e;  g += h * f;  h += a * g;
 
     // XOR-shift
-    v.a ^= v.a >> 16u;
-    v.b ^= v.b >> 16u;
-    v.c ^= v.c >> 16u;
-    v.d ^= v.d >> 16u;
-    v.e ^= v.e >> 16u;
-    v.f ^= v.f >> 16u;
+    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;  d ^= d >> 16u;
+    e ^= e >> 16u;  f ^= f >> 16u;  g ^= g >> 16u;  h ^= h >> 16u;
 
-    // Round 2: cross-mix again
-    v.a += v.b * v.f;
-    v.b += v.c * v.a;
-    v.c += v.d * v.b;
-    v.d += v.e * v.c;
-    v.e += v.f * v.d;
-    v.f += v.a * v.e;
+    // Round 2: circular cross-mix
+    a += b * h;  b += c * a;  c += d * b;  d += e * c;
+    e += f * d;  f += g * e;  g += h * f;  h += a * g;
 
-    return v;
+    // XOR-fold to single uint
+    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h;
 }
 
 // ===========================================================================
@@ -457,19 +457,12 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
-    // Mix level into qb.z before hashing so different LOD levels produce
-    // independent addresses from the same spatial cell pair.
-    int3 qbL = int3(qb.x, qb.y, qb.z + int(lvl * 0x9e3779b9u));
-    uint6 h = pcg6d(qa, qbL);
-    return (h.a ^ h.b ^ h.c ^ h.d ^ h.e ^ h.f) & (gTableCapacity - 1u);
+    return pcg8d(qa, qb, lvl, 0x12345678u) & (gTableCapacity - 1u);
 }
 
 uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 {
-    // Different level mixing constant for statistical independence from address.
-    int3 qbL = int3(qb.x + 7, qb.y + 13, qb.z + int(lvl * 0xdeadbeefu));
-    uint6 h = pcg6d(qa, qbL);
-    return h.a ^ h.b ^ h.c ^ h.d ^ h.e ^ h.f;
+    return pcg8d(qa, qb, lvl, 0xDEADBEEFu);
 }
 
 // ===========================================================================
