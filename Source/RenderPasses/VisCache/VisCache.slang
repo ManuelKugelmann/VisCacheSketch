@@ -181,30 +181,37 @@ cbuffer VisCacheParams
     float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
-    float  gCellCoarse;      ///< Coarsest level cell size (world units)
-    float  gCellFine;        ///< Finest level cell size (world units)
     uint   gEnableJitter;    ///< Unused at runtime; jitter gate is USE_VISCACHE_JITTER define
-    float  gAddrBScale;      ///< Angular/posB scale: dirdist angular projection = cellCoarse * scale, asymmetric cellB = cellCoarse * scale
-    float  gAddrBDistScale;   ///< Distance scale (dirdist only): distance bin = cellCoarse * scale. Very large = all dists collapse.
-    uint   _pad0;            ///< Explicit padding — HLSL reflects cbuffers at 16-byte row granularity
+    // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
+    float  gCellACoarse;     ///< posA coarsest cell size (world units, auto-tuned from scene)
+    float  gCellAFine;       ///< posA finest cell size (auto-derived from coarse + numLevels)
+    float  gCellBCoarse;     ///< posB coarsest cell size (world units, pos×pos modes)
+    float  gCellBFine;       ///< posB finest cell size (auto-derived)
+    float  gAngularBCoarse;  ///< direction coarsest cell size (degrees, dirdist mode)
+    float  gAngularBFine;    ///< direction finest cell size (auto-derived)
+    float  gDistBCoarse;     ///< distance coarsest cell size (world units, dirdist mode)
+    float  gDistBFine;       ///< distance finest cell size (auto-derived)
+    uint   _pad0;
 };
 
 // ---------------------------------------------------------------------------
-// vhfCellSize: geometric interpolation from coarsest to finest cell size.
-//
-// t = 0 → gCellCoarse (coarsest level)
-// t = 1 → gCellFine   (finest level)
-// Intermediate levels are geometrically spaced: each level's cell size is
-// the geometric mean of its neighbors. This gives roughly equal spatial
-// coverage per level.
-//
-// When numLevels == 1, t = 0 → returns gCellCoarse (the single level).
+// Geometric interpolation from coarsest to finest cell size per dimension.
+// t = 0 → coarse (level 0), t = 1 → fine (level N-1).
+// When numLevels == 1, returns coarse.
 // ---------------------------------------------------------------------------
-float vhfCellSize(int lvl)
+float vhfInterp(float coarse, float fine, int lvl)
 {
     float t = (gNumLevels <= 1u) ? 0.f : float(lvl) / float(gNumLevels - 1u);
-    return gCellCoarse * exp(t * log(gCellFine / gCellCoarse));
+    return coarse * exp(t * log(max(fine, 1e-6f) / max(coarse, 1e-6f)));
 }
+
+float vhfCellSizeA(int lvl)     { return vhfInterp(gCellACoarse,    gCellAFine,    lvl); }
+float vhfCellSizeB(int lvl)     { return vhfInterp(gCellBCoarse,    gCellBFine,    lvl); }
+float vhfAngularSize(int lvl)   { return vhfInterp(gAngularBCoarse, gAngularBFine, lvl); }
+float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse,    gDistBFine,    lvl); }
+
+// Backward compat — used by jitter, deterministic xi, diagnostics
+float vhfCellSize(int lvl)      { return vhfCellSizeA(lvl); }
 
 /// The hash table — RWStructuredBuffer so all threads can read and atomically
 /// update entries concurrently. Bound by the host via dict["vhfTable"].
@@ -410,37 +417,32 @@ float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 // is not the same as direction from the light toward A, so the keys are
 // inherently asymmetric.
 // ---------------------------------------------------------------------------
-void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
+void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
                      out int3 qa, out int3 qb)
 {
-    qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
+    qa = jitterQuantize(posA, cellSizeA, 0xAAu ^ lvl);
 
 #if USE_VISCACHE_DIRDIST_ADDRESSING
     // Dir+dist: 2D octahedral direction bins + distance bin.
-    // Inherently asymmetric — no canonicalization.
+    // Per-level angular and distance cell sizes from the LOD cascade.
     {
         float3 edge = posB - posA;
         float dist = length(edge);
         float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
-        // gAddrBScale = angular cell size in degrees (90 = ~4 bins, 45 = ~16, 10 = ~300).
-        // Convert to octahedral cell size: octCell = degrees / 90.
-        // gAddrBDistScale = distance cell size multiplier on cellCoarse.
-        float angularCellOct = gAddrBScale / 90.f;
-        float distCell = gCellCoarse * max(gAddrBDistScale, 0.01f);
-        qb = vhfQuantizeDirection(dir, angularCellOct, dist, distCell);
+        float angCellDeg = vhfAngularSize(lvl);
+        float angCellOct = angCellDeg / 90.f;
+        float distCell   = vhfDistSize(lvl);
+        qb = vhfQuantizeDirection(dir, angCellOct, dist, distCell);
     }
 
 #elif USE_VISCACHE_ASYMMETRIC_ADDRESSING
-    // Non-canonical pos×pos: posB quantized at separate (coarser) cell size.
-    // Fewer posB cells → better sample accumulation for scattered light positions.
-    // No canonicalization — posA and posB have different resolutions.
-    float cellB = cellSize * gAddrBScale;
+    // Non-canonical pos×pos: posB at its own cell size from the B cascade.
+    float cellB = vhfCellSizeB(lvl);
     qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl);
 
 #else
     // Canonical pos×pos (default): both endpoints at same cell size.
-    // Lexicographic swap ensures V(A,B) == V(B,A) share the same entry.
-    qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
+    qb = jitterQuantize(posB, cellSizeA, 0xBBu ^ lvl);
     if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
     {
         int3 tmp = qa; qa = qb; qb = tmp;

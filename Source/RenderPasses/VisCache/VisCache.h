@@ -62,14 +62,18 @@ public:
         float    pMin;
         float    fireflyBudget;
         uint32_t numLevels;
-        float    cellCoarse;
-        float    cellFine;
         uint32_t enableJitter;
-        float    addrBScale;      ///< Angular/posB scale (dirdist: angular projection, asymmetric: cellB)
-        float    addrBDistScale;   ///< Distance scale (dirdist only)
-        uint32_t _pad[1];         ///< HLSL cbuffers are reflected at 16-byte row granularity
+        float    cellACoarse;     ///< posA coarsest cell (world units)
+        float    cellAFine;       ///< posA finest cell (auto-derived)
+        float    cellBCoarse;     ///< posB coarsest cell (pos×pos modes)
+        float    cellBFine;       ///< posB finest cell (auto-derived)
+        float    angularBCoarse;  ///< direction coarsest cell (degrees, dirdist)
+        float    angularBFine;    ///< direction finest cell (auto-derived)
+        float    distBCoarse;     ///< distance coarsest cell (world units, dirdist)
+        float    distBFine;       ///< distance finest cell (auto-derived)
+        uint32_t _pad[1];
     };
-    static_assert(sizeof(GPUParams) == 48, "GPUParams must match VisCacheParams cbuffer (48 bytes, 16-byte aligned)");
+    static_assert(sizeof(GPUParams) == 64, "GPUParams must match VisCacheParams cbuffer (64 bytes)");
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
     /// ablation toggles). Feature and ablation toggles are exported via InternalDictionary
@@ -82,10 +86,14 @@ public:
         float    varThreshold    = 0.10f;       ///< Bernoulli variance gate for cascaded write depth
         float    pMin            = 0.05f;       ///< Min RR survival probability (floor for CV+RRR)
         float    fireflyBudget   = 0.05f;       ///< Contribution luminance scale for adaptive pMin
-        uint32_t numLevels       = 3u;          ///< Number of LOD levels in the cascade (1..16)
-        float    cellCoarse      = 10.0f;       ///< Coarsest level cell size (world units, or auto-derived)
-        float    cellFine        = 0.16f;       ///< Finest level cell size (world units, or auto-derived)
-        bool     autoTuneCells   = true;        ///< Auto-derive cellCoarse/cellFine from scene bounds
+        uint32_t numLevels       = 8u;          ///< Number of LOD levels in the cascade (1..16)
+
+        // --- Per-dimension coarse cell sizes (fine auto-derived from coarse + numLevels) ---
+        float    cellACoarse     = 10.0f;       ///< posA coarsest cell (world units, auto-tuned from scene)
+        float    cellBCoarse     = 20.0f;       ///< posB coarsest cell (world units, pos×pos modes)
+        float    angularBCoarse  = 90.0f;       ///< direction coarsest cell (degrees, dirdist mode)
+        float    distBCoarse     = 10.0f;       ///< distance coarsest cell (world units, dirdist mode)
+        bool     autoTuneCells   = true;        ///< Auto-derive cellACoarse from scene bounds
 
         // --- Decay (host-only, not uploaded to GPU params cbuffer) ---
         uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=disabled)
@@ -103,8 +111,6 @@ public:
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
         bool     enableVisCacheAsymmetricAddr = false; ///< H: Non-canonical pos×pos (separate A/B resolution)
-        float    addrBScale                = 45.f;  ///< angular cell size in degrees (dirdist), posB cell scale (asymmetric)
-        float    addrBDistScale             = 8.f;   ///< distance scale (dirdist only): distBin = cellCoarse * scale
     };
 
     const Params& getParams() const { return mParams; }
