@@ -44,7 +44,7 @@ VARIANTS = [
     ("pos_only_largeB", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 1000.0,     # huge B cell → all light positions collapse to one cell
+        "cellBCoarse": 10000.0,    # huge B cell → all light positions collapse to one cell
     }),
     ("pos_dir", {
         **BASE,
