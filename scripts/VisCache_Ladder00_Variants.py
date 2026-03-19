@@ -35,11 +35,16 @@ VARIANTS = [
         **BASE,
         "enableVisCacheDirDistAddr": False,
     }),
-    ("pos_only", {
+    ("pos_only_dirdist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "angularBCoarse": 360.0,   # >= 180 deg → single direction bin (position-only)
-        "distBCoarse": 1000.0,     # huge distance cell → single dist bucket
+        "angularBCoarse": 360.0,   # >= 180 deg → single direction bin
+        "distBCoarse": 1000.0,     # single dist bucket
+    }),
+    ("pos_only_largeB", {
+        **BASE,
+        "enableVisCacheDirDistAddr": False,
+        "cellBCoarse": 1000.0,     # huge B cell → all light positions collapse to one cell
     }),
     ("pos_dir", {
         **BASE,

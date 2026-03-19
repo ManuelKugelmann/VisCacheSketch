@@ -320,8 +320,11 @@ float2 octEncode(float3 n)
 ///   >= 100.0 = single distance bucket (effectively no distance discrimination).
 int3 vhfQuantizeDirection(float3 dir, float angularCellSize, float dist, float distCellSize)
 {
-    float2 oct = octEncode(dir);
-    int2 dirBin = int2(floor(oct / max(angularCellSize, 0.01f)));
+    // Shift octahedral coords from [-1,1] to [0,2] before quantizing so
+    // floor() doesn't create an extra bin at the negative boundary.
+    float2 oct = octEncode(dir) + 1.f;  // now in [0, 2]
+    float angCell = max(angularCellSize, 0.01f);
+    int2 dirBin = int2(floor(oct / angCell));
     int distBin = int(floor(dist / max(distCellSize, 0.01f)));
     return int3(dirBin.x, dirBin.y, distBin);
 }
