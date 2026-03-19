@@ -618,7 +618,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
         g.checkbox("H: Asymmetric pos×pos addressing", mParams.enableVisCacheAsymmetricAddr);
         g.var("Addr B scale", mParams.addrBScale, 1.0f, 1000.0f, 1.0f);
-        g.var("Addr dist scale", mParams.addrBDistScale, 1.0f, 1000.0f, 1.0f);
+        g.var("Addr B dist scale", mParams.addrBDistScale, 1.0f, 1000.0f, 1.0f);
     }
 
     widget.separator();
