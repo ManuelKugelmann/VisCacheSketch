@@ -235,6 +235,55 @@ uint3 pcg3d(uint3 v)
     return v;
 }
 
+// ---------------------------------------------------------------------------
+// PCG6D: 6-dimensional hash for endpoint pairs (qa, qb).
+// Extends the Jarzynski & Olano PCG pattern to 6 components so all 6
+// quantized coordinates contribute independently — no information loss
+// from XOR reduction. Each component is cross-mixed with products of
+// pairs from the other 5 components (circular neighbor pattern).
+//
+// Returns 6 hash values; callers typically XOR-fold to the needed width.
+// ---------------------------------------------------------------------------
+struct uint6 { uint a, b, c, d, e, f; };
+
+uint6 pcg6d(int3 qa, int3 qb)
+{
+    uint6 v;
+    // Linear congruential step (same constants as PCG3D, per component)
+    v.a = uint(qa.x) * 1664525u + 1013904223u;
+    v.b = uint(qa.y) * 1664525u + 1013904223u;
+    v.c = uint(qa.z) * 1664525u + 1013904223u;
+    v.d = uint(qb.x) * 1664525u + 1013904223u;
+    v.e = uint(qb.y) * 1664525u + 1013904223u;
+    v.f = uint(qb.z) * 1664525u + 1013904223u;
+
+    // Round 1: cross-mix (each component += product of two neighbors)
+    v.a += v.b * v.f;
+    v.b += v.c * v.a;
+    v.c += v.d * v.b;
+    v.d += v.e * v.c;
+    v.e += v.f * v.d;
+    v.f += v.a * v.e;
+
+    // XOR-shift
+    v.a ^= v.a >> 16u;
+    v.b ^= v.b >> 16u;
+    v.c ^= v.c >> 16u;
+    v.d ^= v.d >> 16u;
+    v.e ^= v.e >> 16u;
+    v.f ^= v.f >> 16u;
+
+    // Round 2: cross-mix again
+    v.a += v.b * v.f;
+    v.b += v.c * v.a;
+    v.c += v.d * v.b;
+    v.d += v.e * v.c;
+    v.e += v.f * v.d;
+    v.f += v.a * v.e;
+
+    return v;
+}
+
 // ===========================================================================
 // IBL DIRECTION ENCODING
 // ===========================================================================
@@ -408,22 +457,19 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
-    uint3 h = pcg3d(uint3(
-        uint(qa.x) ^ uint(qb.x),
-        uint(qa.y) ^ uint(qb.y),
-        (uint(qa.z) ^ uint(qb.z)) + lvl * 0x9e3779b9u
-    ));
-    return (h.x ^ h.y ^ h.z) & (gTableCapacity - 1u);
+    // Mix level into qb.z before hashing so different LOD levels produce
+    // independent addresses from the same spatial cell pair.
+    int3 qbL = int3(qb.x, qb.y, qb.z + int(lvl * 0x9e3779b9u));
+    uint6 h = pcg6d(qa, qbL);
+    return (h.a ^ h.b ^ h.c ^ h.d ^ h.e ^ h.f) & (gTableCapacity - 1u);
 }
 
 uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 {
-    uint3 h = pcg3d(uint3(
-        (uint(qa.x) ^ uint(qb.x)) + 7u,
-        (uint(qa.y) ^ uint(qb.y)) + 13u,
-        (uint(qa.z) ^ uint(qb.z)) + lvl * 0xdeadbeefu
-    ));
-    return h.x ^ h.y ^ h.z;
+    // Different level mixing constant for statistical independence from address.
+    int3 qbL = int3(qb.x + 7, qb.y + 13, qb.z + int(lvl * 0xdeadbeefu));
+    uint6 h = pcg6d(qa, qbL);
+    return h.a ^ h.b ^ h.c ^ h.d ^ h.e ^ h.f;
 }
 
 // ===========================================================================
