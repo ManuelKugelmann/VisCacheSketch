@@ -1267,7 +1267,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             || mVisCacheJitter != wasJitter || mVisCacheDirDistAddr != wasDirDist
             || mVisCacheDiagnostics != wasDiag)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} asymmetricAddr={} diag={}",
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} diag={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheDiagnostics);
             mRecompile = true;
         }
     }
