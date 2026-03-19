@@ -48,6 +48,12 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
   just a wider initial `delta` and an early `break` when coarse is immature.
   Tuning: blend count and the gap to `bootThreshold` need empirical tuning — too high
   locks in wrong coarse mu, too low provides no benefit over cold start.
+- [ ] Jittered multi-sample read: blend on read by sampling multiple neighboring cells.
+  Instead of blending coarse→fine at write time, blend at lookup time by jittering the
+  query position and reading multiple nearby cells within the same level. Averages out
+  cell-boundary artifacts and effectively interpolates mu across neighbors. Trades extra
+  lookups per query for smoother estimates without polluting write statistics.
+  Compare with write-time coarse→fine blending above — may be complementary or alternative.
 
 ---
 
