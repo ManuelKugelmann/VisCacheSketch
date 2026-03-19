@@ -77,7 +77,7 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 ### What was in [Kugelmann 2006][r-kugelmann] and re-developed in the meantime
 
 **Control variate + variance-driven Russian Roulette (CV+VRRR).**
-Using a cached prediction as control variate and letting variance drive the RR survival probability is a pure Monte Carlo variance reduction technique, independent of data structure. [Szécsi et al. 2003][r-szecsi] formalized the non-zero termination estimate for rendering (CV with fixed RR probability). [Szirmay-Kalos et al. 2005][r-szirmay] added variance-driven RR using a scene-global radiance estimate. The 2006 thesis independently rediscovered the same CV+VRRR math. In the meantime, [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC) also arrived at a structurally equivalent formulation — their MLMC residual estimator is CV+VRRR — without citing Szécsi or Szirmay-Kalos.
+Using a cached prediction as control variate and letting variance drive the RR survival probability is a pure Monte Carlo variance reduction technique, independent of data structure. [Szécsi et al. 2003][r-szecsi] formalized the non-zero termination estimate for rendering (CV with fixed RR probability). [Szirmay-Kalos et al. 2005][r-szirmay] added variance-driven RR using a scene-global radiance estimate. The 2006 thesis independently rediscovered the same CV+VRRR math. [Dereviannykh et al. 2024][r-n2lmc] (Neural Two-Level MC) use a related but distinct approach — their MLMC residual estimator shares the cached-estimate-plus-unbiased-correction structure, but frames it as two-level Monte Carlo rather than a control variate, and their Balanced Termination Heuristic is MIS-based rather than variance-driven RR.
 
 **Localized per-point cache as CV estimation source.**
 What makes CV+VRRR *effective* is per-point spatial predictions rather than Szirmay-Kalos’s scene-global constant. [Ward 1991][r-ward] already used heuristic ordering to skip predictable shadow rays, though not a spatial cache. [Guo et al. 2020][r-guo] (NEE++) independently arrived at per-voxel-pair visibility caching.
@@ -90,6 +90,8 @@ The 2006 thesis used spatial hashing — inspired by [ODE][r-ode] (Open Dynamics
 
 **Variance-driven adaptive sampling — trace rate from cache quality.**
 The 2006 thesis coupled variance to trace rate. [Rath et al. 2022][r-rath] (EARS) uses efficiency-aware RR/splitting for path continuation. [Stotko et al. 2025][r-stotko] (MrHash) independently couples variance to spatial resolution in a flat hash (TSDF domain).
+
+The above is a non-exhaustive selection — there is likely more related work that independently arrived at similar ideas.
 
 [r-n2lmc]: https://arxiv.org/abs/2412.04634
 [r-ward]: https://doi.org/10.1007/978-3-642-77145-8_2
@@ -124,7 +126,7 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 | [Lin et al. 2022 (GRIS/ReSTIR_PT)][r-lin] | Baseline for GI revalidation |
 | [Bitterli et al. 2020 (ReSTIR DI)][r-bitterli] | Spatiotemporal reservoir resampling for direct lighting; integration target |
 | [Bokšanský & Meister 2025 (JCGT)][r-boksansky] | Parallels — neural visibility cache for light selection |
-| [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | Parallels — MLMC residual ↔ CV+VRRR, BTH read-gating ↔ lookup cascade, multi-level hash encodings |
+| [Dereviannykh et al. 2024 (Neural Two-Level MC)][r-n2lmc] | Parallels — MLMC residual shares cached-estimate + correction structure (but framed as MLMC, not CV; BTH is MIS-based, not variance-driven RR), multi-level hash encodings |
 | [Müller et al. 2022 (Instant NGP)][r-muller] | Multi-resolution hash encoding — spatial hashing for neural graphics; backbone of Bokšanský 2025 and Dereviannykh 2024 |
 | [Kallweit et al. 2022 (Falcor)][r-falcor] | GPU rendering framework used as implementation base |
 
