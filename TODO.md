@@ -30,24 +30,24 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Cell sizes at non-standard scene scales (0.5m close-up, 100m city flyover)
 - [ ] Symmetric cells for GI revalidation — measure error before changing constants
 - [ ] Camera-adaptive cell sizing (FoV + CoC) — future work, document only
-- [ ] Warm-start level refinement: gate descent on coarse usability, seed fine levels on creation.
-  Inspired by SHaRC's `SHARC_BLEND_ADJACENT_LEVELS` (adjacent-level blending on camera move),
-  adapted for VisCache's fixed LOD (not camera-distance-based).
+- [ ] Coarse-to-fine blending: gate descent on coarse usability, blend coarse data into new fine entries.
+  Inspired by SHaRC's `SHARC_BLEND_ADJACENT_LEVELS` (blends data between adjacent levels on
+  camera move), adapted for VisCache's fixed LOD (not camera-distance-based).
   Design (two rules in `vhfInsert`'s existing coarse→fine loop):
   1. **Don't descend** to level N+1 while level N is below `bootThreshold`. Coarse must
      have enough samples to provide a usable direction before fine levels exist at all —
      saves table capacity and atomics.
-  2. **Seed on creation**: when descending past a usable coarse level and claiming a new
-     fine-level slot (`origFp == 0`), seed it with a small prior from the parent's mu.
-     Seed count should be low — coarse mu can be substantially wrong for a specific fine
-     cell (e.g., coarse mu=0.8 but fine cell is deep shadow mu=0.0). The fine level still
-     needs significant real samples to refine away from the seed and become trustworthy.
-     The seed just avoids a completely cold start, not a near-mature one.
+  2. **Blend on creation**: when descending past a usable coarse level and claiming a new
+     fine-level slot (`origFp == 0`), blend a small amount of coarse-level data into the
+     new entry's initial counts. Blend count should be low — coarse mu can be substantially
+     wrong for a specific fine cell (e.g., coarse mu=0.8 but fine cell is deep shadow
+     mu=0.0). The fine level still needs significant real samples to refine past the
+     blended prior and become trustworthy.
   Implementation: carry `prevMu`/`prevTotal` through loop (already in registers from
   the coarse level's `InterlockedAdd` return). Zero extra lookups, zero extra atomics —
   just a wider initial `delta` and an early `break` when coarse is immature.
-  Tuning: seed count and the gap to `bootThreshold` need empirical tuning — too high a
-  seed locks in wrong coarse mu, too low provides no benefit over cold start.
+  Tuning: blend count and the gap to `bootThreshold` need empirical tuning — too high
+  locks in wrong coarse mu, too low provides no benefit over cold start.
 
 ---
 
