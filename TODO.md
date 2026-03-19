@@ -30,6 +30,14 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Cell sizes at non-standard scene scales (0.5m close-up, 100m city flyover)
 - [ ] Symmetric cells for GI revalidation — measure error before changing constants
 - [ ] Camera-adaptive cell sizing (FoV + CoC) — future work, document only
+- [ ] Warm-start level refinement: seed fine-level entries from coarse-level mu on first insert.
+  `vhfInsert()` already walks coarse→fine for the variance write gate — carry `prevMu`/`prevTotal`
+  through the loop and widen the initial `delta` when claiming a new slot (`origFp == 0`).
+  Zero extra lookups, zero extra atomics. Inspired by SHaRC's `SHARC_BLEND_ADJACENT_LEVELS`
+  (adjacent-level blending on camera move), but adapted: VisCache's LOD is fixed (not
+  camera-distance-based), so the analogue is cold-start acceleration at finer levels.
+  Caveat: coarse mu may be wrong for specific fine cells (e.g., coarse mu=0.8 but fine cell
+  is deep shadow mu=0.0) — keep seed count small (cap ~4–8) so real samples dominate quickly.
 
 ---
 
