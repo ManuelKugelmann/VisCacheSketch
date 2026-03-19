@@ -40,7 +40,7 @@ VARIANTS = [
     ("pos_only", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "addrBScale": 0.5,         # <1 → single direction bin (all dirs collapse)
+        "addrBScale": 0.1,         # <0.5 → single direction bin (all dirs collapse)
         "addrBDistScale": 1000.0,  # single dist bucket → position-only
     }),
     ("pos_dir", {

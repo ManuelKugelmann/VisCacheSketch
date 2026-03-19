@@ -314,7 +314,9 @@ float2 octEncode(float3 n)
 int3 vhfQuantizeDirection(float3 dir, float angularRes, float dist, float distCellSize)
 {
     float2 oct = octEncode(dir);
-    int2 dirBin = int2(floor(oct * max(angularRes, 0.5f)));
+    // angularRes < 0.5 → all directions map to bin 0 (position-only).
+    // angularRes = 1 → 4 bins (2×2), = 2 → 16 bins (4×4), = 4 → 64 bins (8×8).
+    int2 dirBin = int2(floor(oct * angularRes));
     int distBin = int(floor(dist / max(distCellSize, 1e-6f)));
     return int3(dirBin.x, dirBin.y, distBin);
 }
