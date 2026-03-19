@@ -18,6 +18,8 @@ VISCACHE_DEFAULTS = {
     "enableVisCachePressureEvict":  True,
     "enableVisCacheJitter":         True,
     "enableVisCacheDirDistAddr":    False,
-    "enableVisCachePosOnlyAddr":    False,
+    "enableVisCacheAsymmetricAddr": False,
+    "addrBScale":                   4.0,
+    "addrDistScale":                8.0,
     "enableDiagnostics":            True,
 }

@@ -65,7 +65,9 @@ public:
         float    cellCoarse;
         float    cellFine;
         uint32_t enableJitter;
-        uint32_t _pad[3];  ///< HLSL cbuffers are reflected at 16-byte row granularity
+        float    addrBScale;      ///< Angular/posB scale (dirdist: angular projection, asymmetric: cellB)
+        float    addrDistScale;   ///< Distance scale (dirdist only)
+        uint32_t _pad[1];         ///< HLSL cbuffers are reflected at 16-byte row granularity
     };
     static_assert(sizeof(GPUParams) == 48, "GPUParams must match VisCacheParams cbuffer (48 bytes, 16-byte aligned)");
 
@@ -99,8 +101,10 @@ public:
         bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
-        bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (vs endpoint pairs)
-        bool     enableVisCachePosOnlyAddr  = false; ///< H: Position-only addressing (all dirs collapsed)
+        bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
+        bool     enableVisCacheAsymmetricAddr = false; ///< H: Non-canonical pos×pos (separate A/B resolution)
+        float    addrBScale                = 4.f;   ///< posB/angular scale: dirdist angular projection, asymmetric cellB
+        float    addrDistScale             = 8.f;   ///< distance scale (dirdist only): distBin = cellCoarse * scale
     };
 
     const Params& getParams() const { return mParams; }

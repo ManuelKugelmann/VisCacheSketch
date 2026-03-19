@@ -28,15 +28,15 @@ overrides = {
     "pMin": 1.0,             # always trace — no RR skipping
     "enableVisCacheJitter": False,
     "enableVisCacheDirDistAddr": False,
-    "enableVisCachePosOnlyAddr": True,
+    "enableVisCacheAsymmetricAddr": True,
     "enableVisCacheVarianceGate": False,
     "enableVisCacheWarpReduction": False,
     "enableVisCacheDecay": False,
     "enableVisCachePressureEvict": False,
 }
 
-if overrides.get("enableVisCachePosOnlyAddr", False):
-    addr_mode = "pointOnly"
+if overrides.get("enableVisCacheAsymmetricAddr", False):
+    addr_mode = "asymmetric"
 elif overrides.get("enableVisCacheDirDistAddr", False):
     addr_mode = "pointXdirdist"
 else:

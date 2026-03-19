@@ -172,15 +172,17 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
             mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
             mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
             mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
+            mVCParams.addrDistScale = dict.getValue<float>("vhfParam_addrDistScale");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         bool wasDirDist = mVisCacheDirDistAddr;
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-        bool wasPosOnly = mVisCachePosOnlyAddr;
-        mVisCachePosOnlyAddr = mVisCacheAvailable && dict.keyExists("vhfEnablePosOnlyAddr") && dict.getValue<bool>("vhfEnablePosOnlyAddr");
+        bool wasAsymmetric = mVisCacheAsymmetricAddr;
+        mVisCacheAsymmetricAddr = mVisCacheAvailable && dict.keyExists("vhfEnableAsymmetricAddr") && dict.getValue<bool>("vhfEnableAsymmetricAddr");
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-            || mVisCacheDirDistAddr != wasDirDist || mVisCachePosOnlyAddr != wasPosOnly)
+            || mVisCacheDirDistAddr != wasDirDist || mVisCacheAsymmetricAddr != wasAsymmetric)
             mTracer.pVars = nullptr;  // force recompile on toggle
     }
 
@@ -196,7 +198,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
     mTracer.pProgram->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
     mTracer.pProgram->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
     mTracer.pProgram->addDefine("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-    mTracer.pProgram->addDefine("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
+    mTracer.pProgram->addDefine("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
@@ -244,6 +246,8 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         var["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
         var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
+        var["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
+        var["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
     }
 
     // Get dimensions of ray dispatch.

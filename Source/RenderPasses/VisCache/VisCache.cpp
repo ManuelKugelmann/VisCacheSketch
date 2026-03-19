@@ -69,7 +69,9 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
     if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
-    if (props.has("enableVisCachePosOnlyAddr"))     mParams.enableVisCachePosOnlyAddr     = props["enableVisCachePosOnlyAddr"];
+    if (props.has("enableVisCacheAsymmetricAddr"))   mParams.enableVisCacheAsymmetricAddr   = props["enableVisCacheAsymmetricAddr"];
+    if (props.has("addrBScale"))                    mParams.addrBScale                    = props["addrBScale"];
+    if (props.has("addrDistScale"))                 mParams.addrDistScale                 = props["addrDistScale"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -103,7 +105,9 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
     if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
-    if (props.has("enableVisCachePosOnlyAddr"))     mParams.enableVisCachePosOnlyAddr     = props["enableVisCachePosOnlyAddr"];
+    if (props.has("enableVisCacheAsymmetricAddr"))   mParams.enableVisCacheAsymmetricAddr   = props["enableVisCacheAsymmetricAddr"];
+    if (props.has("addrBScale"))                    mParams.addrBScale                    = props["addrBScale"];
+    if (props.has("addrDistScale"))                 mParams.addrDistScale                 = props["addrDistScale"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -133,7 +137,9 @@ Properties VisCache::getProperties() const
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
     p["enableVisCacheJitter"]          = mParams.enableVisCacheJitter;
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
-    p["enableVisCachePosOnlyAddr"]     = mParams.enableVisCachePosOnlyAddr;
+    p["enableVisCacheAsymmetricAddr"]  = mParams.enableVisCacheAsymmetricAddr;
+    p["addrBScale"]                    = mParams.addrBScale;
+    p["addrDistScale"]                 = mParams.addrDistScale;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -307,6 +313,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.cellCoarse    = mParams.cellCoarse;
     gpu.cellFine      = mParams.cellFine;
     gpu.enableJitter  = mParams.enableVisCacheJitter ? 1u : 0u;
+    gpu.addrBScale    = mParams.addrBScale;
+    gpu.addrDistScale = mParams.addrDistScale;
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
 
@@ -317,12 +325,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.tableCapacity, mParams.bootThreshold, mParams.varThreshold, mParams.pMin);
         logInfo("[VisCache] numLevels={} cellCoarse={:.2f} cellFine={:.3f} fireflyBudget={:.3f}",
                 mParams.numLevels, mParams.cellCoarse, mParams.cellFine, mParams.fireflyBudget);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitter={} dirDistAddr={} posOnlyAddr={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitter={} dirDistAddr={} asymmetricAddr={} addrBScale={:.1f} addrDistScale={:.1f}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
                 mParams.enableVisCacheJitter, mParams.enableVisCacheDirDistAddr,
-                mParams.enableVisCachePosOnlyAddr);
+                mParams.enableVisCacheAsymmetricAddr, mParams.addrBScale, mParams.addrDistScale);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -342,6 +350,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_cellCoarse"]    = mParams.cellCoarse;
     dict["vhfParam_cellFine"]      = mParams.cellFine;
     dict["vhfParam_enableJitter"]  = mParams.enableVisCacheJitter ? 1u : 0u;
+    dict["vhfParam_addrBScale"]    = mParams.addrBScale;
+    dict["vhfParam_addrDistScale"] = mParams.addrDistScale;
 
     // Feature + ablation toggles — downstream passes read these
     dict["vhfEnableVisibilityCheck"] = mParams.enableVisCacheVisibilityCheck;
@@ -352,7 +362,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
     dict["vhfEnableJitter"]          = mParams.enableVisCacheJitter;
     dict["vhfEnableDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
-    dict["vhfEnablePosOnlyAddr"]     = mParams.enableVisCachePosOnlyAddr;
+    dict["vhfEnableAsymmetricAddr"]  = mParams.enableVisCacheAsymmetricAddr;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -508,6 +518,8 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gCellCoarse"]    = mParams.cellCoarse;
     vars["VisCacheParams"]["gCellFine"]      = mParams.cellFine;
     vars["VisCacheParams"]["gEnableJitter"]  = mParams.enableVisCacheJitter ? 1u : 0u;
+    vars["VisCacheParams"]["gAddrBScale"]   = mParams.addrBScale;
+    vars["VisCacheParams"]["gAddrDistScale"] = mParams.addrDistScale;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
@@ -604,7 +616,9 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
         g.checkbox("F: Jitter-before-quantize", mParams.enableVisCacheJitter);
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
-        g.checkbox("H: Position-only addressing", mParams.enableVisCachePosOnlyAddr);
+        g.checkbox("H: Asymmetric pos×pos addressing", mParams.enableVisCacheAsymmetricAddr);
+        g.var("Addr B scale", mParams.addrBScale, 1.0f, 1000.0f, 1.0f);
+        g.var("Addr dist scale", mParams.addrDistScale, 1.0f, 1000.0f, 1.0f);
     }
 
     widget.separator();

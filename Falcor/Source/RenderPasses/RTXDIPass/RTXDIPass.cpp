@@ -148,15 +148,17 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
         mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
         mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+        mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
+        mVCParams.addrDistScale = dict.getValue<float>("vhfParam_addrDistScale");
     }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
     bool wasDirDist = mVisCacheDirDistAddr;
     mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-    bool wasPosOnly = mVisCachePosOnlyAddr;
-    mVisCachePosOnlyAddr = mVisCacheAvailable && dict.keyExists("vhfEnablePosOnlyAddr") && dict.getValue<bool>("vhfEnablePosOnlyAddr");
+    bool wasAsymmetric = mVisCacheAsymmetricAddr;
+    mVisCacheAsymmetricAddr = mVisCacheAvailable && dict.keyExists("vhfEnableAsymmetricAddr") && dict.getValue<bool>("vhfEnableAsymmetricAddr");
     if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-        || mVisCacheDirDistAddr != wasDirDist || mVisCachePosOnlyAddr != wasPosOnly) recreatePrograms();
+        || mVisCacheDirDistAddr != wasDirDist || mVisCacheAsymmetricAddr != wasAsymmetric) recreatePrograms();
 
     // Propagate VisCache defines and resource bindings to RTXDI's internal passes
     // (testCandidateVisibility, spatial/temporal resampling) so the bridge callbacks
@@ -166,7 +168,7 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         visCacheDefines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         visCacheDefines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         visCacheDefines.add("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-        visCacheDefines.add("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
+        visCacheDefines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
         mpRTXDI->setExtraDefines(visCacheDefines);
     }
     // NOTE: VisCache resources are bound in finalShading() directly, not via
@@ -293,7 +295,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         defines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         defines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-        defines.add("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
+        defines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
         defines.add(getValidResourceDefines(kOutputChannels, renderData));
 
         mpFinalShadingPass = ComputePass::create(mpDevice, desc, defines, true);
@@ -304,7 +306,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     mpFinalShadingPass->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
-    mpFinalShadingPass->addDefine("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
+    mpFinalShadingPass->addDefine("USE_VISCACHE_ASYMMETRIC_ADDRESSING", mVisCacheAsymmetricAddr ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.
@@ -328,6 +330,8 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
         rootVar["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         rootVar["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
+        rootVar["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
     }
 
     auto var = rootVar["gFinalShading"];

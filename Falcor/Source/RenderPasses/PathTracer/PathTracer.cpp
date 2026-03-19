@@ -1211,7 +1211,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasJitter = mVisCacheJitter;
         bool wasDirDist = mVisCacheDirDistAddr;
-        bool wasPosOnly = mVisCachePosOnlyAddr;
+        bool wasAsymmetric = mVisCacheAsymmetricAddr;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr &&
             dict.keyExists("vhfParam_tableCapacity"));
@@ -1226,13 +1226,15 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.cellCoarse    = dict.getValue<float>("vhfParam_cellCoarse");
             mVCParams.cellFine      = dict.getValue<float>("vhfParam_cellFine");
             mVCParams.enableJitter  = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.addrBScale    = dict.getValue<float>("vhfParam_addrBScale");
+            mVCParams.addrDistScale = dict.getValue<float>("vhfParam_addrDistScale");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
             || dict.getValue<bool>("vhfEnableJitter");  // default ON
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-        mVisCachePosOnlyAddr = mVisCacheAvailable && dict.keyExists("vhfEnablePosOnlyAddr") && dict.getValue<bool>("vhfEnablePosOnlyAddr");
+        mVisCacheAsymmetricAddr = mVisCacheAvailable && dict.keyExists("vhfEnableAsymmetricAddr") && dict.getValue<bool>("vhfEnableAsymmetricAddr");
 
         // Diagnostic textures — bound at root var like PixelStats so all RT stages
         // can write per-pixel heatmap data inline during tracing.
@@ -1261,11 +1263,11 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheJitter != wasJitter || mVisCacheDirDistAddr != wasDirDist
-            || mVisCachePosOnlyAddr != wasPosOnly
+            || mVisCacheAsymmetricAddr != wasAsymmetric
             || mVisCacheDiagnostics != wasDiag)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} posOnlyAddr={} diag={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCachePosOnlyAddr, mVisCacheDiagnostics);
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} asymmetricAddr={} diag={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheAsymmetricAddr, mVisCacheDiagnostics);
             mRecompile = true;
         }
     }
@@ -1423,6 +1425,8 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gCellCoarse"]    = mVCParams.cellCoarse;
         var["VisCacheParams"]["gCellFine"]      = mVCParams.cellFine;
         var["VisCacheParams"]["gEnableJitter"]  = mVCParams.enableJitter;
+        var["VisCacheParams"]["gAddrBScale"]   = mVCParams.addrBScale;
+        var["VisCacheParams"]["gAddrDistScale"] = mVCParams.addrDistScale;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
@@ -1534,7 +1538,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    defines.add("USE_VISCACHE_POSONLY_ADDRESSING", owner.mVisCachePosOnlyAddr ? "1" : "0");
+    defines.add("USE_VISCACHE_ASYMMETRIC_ADDRESSING", owner.mVisCacheAsymmetricAddr ? "1" : "0");
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
 
     // Scene-specific configuration.

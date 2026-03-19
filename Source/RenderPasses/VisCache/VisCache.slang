@@ -63,14 +63,18 @@
 #define USE_VISCACHE_JITTER 1
 #endif
 
-// Default addressing to endpoint mode (posB = light position).
-// Set USE_VISCACHE_DIRDIST_ADDRESSING=1 for dir+dist mode (better area light coverage).
-// Set USE_VISCACHE_POSONLY_ADDRESSING=1 for position-only (all dirs collapsed).
+// Addressing modes (compile-time, mutually exclusive):
+//   Default (neither set):       Canonical pos×pos — same cell size for both endpoints, lexicographic swap.
+//   USE_VISCACHE_DIRDIST_ADDRESSING=1:  Dir+dist — posB from direction+distance, configurable via gAddrBScale.
+//                                       gAddrBScale controls distance quantization: distCell = cellCoarse * gAddrBScale.
+//                                       Very large gAddrBScale → position-only (all dirs collapse).
+//   USE_VISCACHE_ASYMMETRIC_ADDRESSING=1: Non-canonical pos×pos — separate cell size for posB, no swap.
+//                                        posB cell size = cellCoarse * gAddrBScale (coarser B = fewer posB cells).
 #ifndef USE_VISCACHE_DIRDIST_ADDRESSING
 #define USE_VISCACHE_DIRDIST_ADDRESSING 0
 #endif
-#ifndef USE_VISCACHE_POSONLY_ADDRESSING
-#define USE_VISCACHE_POSONLY_ADDRESSING 0
+#ifndef USE_VISCACHE_ASYMMETRIC_ADDRESSING
+#define USE_VISCACHE_ASYMMETRIC_ADDRESSING 0
 #endif
 
 // ===========================================================================
@@ -180,9 +184,9 @@ cbuffer VisCacheParams
     float  gCellCoarse;      ///< Coarsest level cell size (world units)
     float  gCellFine;        ///< Finest level cell size (world units)
     uint   gEnableJitter;    ///< Unused at runtime; jitter gate is USE_VISCACHE_JITTER define
+    float  gAddrBScale;      ///< Angular/posB scale: dirdist angular projection = cellCoarse * scale, asymmetric cellB = cellCoarse * scale
+    float  gAddrDistScale;   ///< Distance scale (dirdist only): distance bin = cellCoarse * scale. Very large = all dists collapse.
     uint   _pad0;            ///< Explicit padding — HLSL reflects cbuffers at 16-byte row granularity
-    uint   _pad1;
-    uint   _pad2;
 };
 
 // ---------------------------------------------------------------------------
@@ -326,21 +330,19 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 // ---------------------------------------------------------------------------
 float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 {
-#if USE_VISCACHE_POSONLY_ADDRESSING
-    // Position-only: all rays from the same surface cell share one cache entry
-    // regardless of direction or distance. Tracks "overall visibility at this point".
-    // Returns origin (not posA) so that qb = (0,0,0) and the XOR in vhfAddr
-    // preserves posA's position info. If we returned posA, qa == qb → XOR = 0
-    // for all cells → degenerate hash collision.
-    return float3(0.f, 0.f, 0.f);
-#elif USE_VISCACHE_DIRDIST_ADDRESSING
-    // Coarse distance quantization: log-scale bins, 4× coarsest cell size.
-    // Groups nearby distances so near/far lights in same direction share entries.
-    float distCell = gCellCoarse * 4.f;
-    float distQ = max(floor(dist / distCell + 0.5f) * distCell, distCell);
-    return posA + dir * distQ;
+#if USE_VISCACHE_DIRDIST_ADDRESSING
+    // Dir+dist: encode direction + distance as a virtual posB.
+    // Two independent quantization controls:
+    //   gAddrBScale  → angular resolution: project dir at this many cellCoarse units.
+    //                  More = finer angular bins. Very small = all dirs collapse (pos-only).
+    //   gAddrDistScale → distance resolution: bin distances at this many cellCoarse units.
+    //                  More = coarser distance bins. Very large = all dists collapse.
+    float angularDist = gCellCoarse * gAddrBScale;
+    float distCell    = gCellCoarse * gAddrDistScale;
+    float distQ       = floor(dist / distCell) * distCell;
+    return posA + normalize(dir) * (angularDist + distQ);
 #else
-    // Exact endpoint — posB is the light/target position.
+    // Endpoint mode (canonical or asymmetric) — posB is the light/target position.
     return posA + dir * dist;
 #endif
 }
@@ -360,11 +362,23 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSize, uint lvl,
                      out int3 qa, out int3 qb)
 {
     qa = jitterQuantize(posA, cellSize, 0xAAu ^ lvl);
+
+#if USE_VISCACHE_DIRDIST_ADDRESSING
+    // Dir+dist: posB already encodes direction+distance (from vhfAddressPosB).
+    // Quantize at same cell size. Inherently asymmetric — no canonicalization.
     qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
 
-#if !USE_VISCACHE_DIRDIST_ADDRESSING
-    // Lexicographic sort ensures V(A,B) == V(B,A) map to same entry.
-    // Skipped in dir+dist mode where keys are asymmetric.
+#elif USE_VISCACHE_ASYMMETRIC_ADDRESSING
+    // Non-canonical pos×pos: posB quantized at separate (coarser) cell size.
+    // Fewer posB cells → better sample accumulation for scattered light positions.
+    // No canonicalization — posA and posB have different resolutions.
+    float cellB = cellSize * gAddrBScale;
+    qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl);
+
+#else
+    // Canonical pos×pos (default): both endpoints at same cell size.
+    // Lexicographic swap ensures V(A,B) == V(B,A) share the same entry.
+    qb = jitterQuantize(posB, cellSize, 0xBBu ^ lvl);
     if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
     {
         int3 tmp = qa; qa = qb; qb = tmp;
