@@ -74,6 +74,10 @@ The cache is algorithm-agnostic — it operates on pairwise (point, point) → {
 - **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection (independently by [Bokšanský & Meister 2025][r-boksansky] with neural cache)
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]
 
+#### ReSTIR integration
+
+The visibility cache plugs into two points of the ReSTIR pipeline. During **light selection**, the cached mean µ replaces the usual visibility assumption in the RIS target function, yielding µ-weighted candidate selection that steers samples toward actually visible lights. During **visibility revalidation**, the correction estimator replaces unconditional occlusion rays with variance-driven Russian Roulette, reducing shadow rays while maintaining equal quality. This offers a middle way between skipping revalidation completely (biased) and full revalidation (expensive). Instead of our visibility cache any other prediction of visibility, e.g. from ReSTIR reservoir data, can be used.
+
 ### What was in [Kugelmann 2006][r-kugelmann] and re-developed in the meantime
 
 **Control variate + variance-driven Russian Roulette (CV+VRRR).**
@@ -99,10 +103,6 @@ The above is a non-exhaustive selection — there is likely more related work th
 [r-rath]: https://doi.org/10.1145/3528223.3530168
 [r-guo]: https://doi.org/10.1111/cgf.14142
 [r-popov]: https://doi.org/10.1111/cgf.12166
-
-#### ReSTIR integration
-
-The visibility cache plugs into two points of the ReSTIR pipeline. During **light selection**, the cached mean µ replaces the usual visibility assumption in the RIS target function, yielding µ-weighted candidate selection that steers samples toward actually visible lights. During **visibility revalidation**, the correction estimator replaces unconditional occlusion rays with variance-driven Russian Roulette, reducing shadow rays while maintaining equal quality. This offers a middle way between skipping revalidation completely (biased) and full revalidation (expensive). Instead of our visibility cache any other prediction of visibility, e.g. from ReSTIR reservoir data, can be used.
 
 ---
 
