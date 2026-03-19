@@ -153,8 +153,10 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
     bool wasDirDist = mVisCacheDirDistAddr;
     mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
+    bool wasPosOnly = mVisCachePosOnlyAddr;
+    mVisCachePosOnlyAddr = mVisCacheAvailable && dict.keyExists("vhfEnablePosOnlyAddr") && dict.getValue<bool>("vhfEnablePosOnlyAddr");
     if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-        || mVisCacheDirDistAddr != wasDirDist) recreatePrograms();
+        || mVisCacheDirDistAddr != wasDirDist || mVisCachePosOnlyAddr != wasPosOnly) recreatePrograms();
 
     // Propagate VisCache defines and resource bindings to RTXDI's internal passes
     // (testCandidateVisibility, spatial/temporal resampling) so the bridge callbacks
@@ -164,6 +166,7 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         visCacheDefines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         visCacheDefines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         visCacheDefines.add("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
+        visCacheDefines.add("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
         mpRTXDI->setExtraDefines(visCacheDefines);
     }
     // NOTE: VisCache resources are bound in finalShading() directly, not via
@@ -290,6 +293,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         defines.add("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
         defines.add("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
         defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
+        defines.add("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
         defines.add(getValidResourceDefines(kOutputChannels, renderData));
 
         mpFinalShadingPass = ComputePass::create(mpDevice, desc, defines, true);
@@ -300,6 +304,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
     mpFinalShadingPass->addDefine("USE_VISCACHE", mVisCacheAvailable ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE_VISIBILITYCHECK", mVisCacheVisibilityCheck ? "1" : "0");
     mpFinalShadingPass->addDefine("USE_VISCACHE_DIRDIST_ADDRESSING", mVisCacheDirDistAddr ? "1" : "0");
+    mpFinalShadingPass->addDefine("USE_VISCACHE_POSONLY_ADDRESSING", mVisCachePosOnlyAddr ? "1" : "0");
 
     // For optional I/O resources, set 'is_valid_<name>' defines to inform the program of which ones it can access.
     // TODO: This should be moved to a more general mechanism using Slang.

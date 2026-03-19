@@ -1211,6 +1211,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasJitter = mVisCacheJitter;
         bool wasDirDist = mVisCacheDirDistAddr;
+        bool wasPosOnly = mVisCachePosOnlyAddr;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr &&
             dict.keyExists("vhfParam_tableCapacity"));
@@ -1231,6 +1232,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
             || dict.getValue<bool>("vhfEnableJitter");  // default ON
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
+        mVisCachePosOnlyAddr = mVisCacheAvailable && dict.keyExists("vhfEnablePosOnlyAddr") && dict.getValue<bool>("vhfEnablePosOnlyAddr");
 
         // Diagnostic textures — bound at root var like PixelStats so all RT stages
         // can write per-pixel heatmap data inline during tracing.
@@ -1259,10 +1261,11 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheJitter != wasJitter || mVisCacheDirDistAddr != wasDirDist
+            || mVisCachePosOnlyAddr != wasPosOnly
             || mVisCacheDiagnostics != wasDiag)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} diag={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheDiagnostics);
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} posOnlyAddr={} diag={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCachePosOnlyAddr, mVisCacheDiagnostics);
             mRecompile = true;
         }
     }
@@ -1531,6 +1534,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
+    defines.add("USE_VISCACHE_POSONLY_ADDRESSING", owner.mVisCachePosOnlyAddr ? "1" : "0");
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
 
     // Scene-specific configuration.

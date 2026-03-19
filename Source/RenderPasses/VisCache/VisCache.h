@@ -100,6 +100,7 @@ public:
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (vs endpoint pairs)
+        bool     enableVisCachePosOnlyAddr  = false; ///< H: Position-only addressing (all dirs collapsed)
     };
 
     const Params& getParams() const { return mParams; }

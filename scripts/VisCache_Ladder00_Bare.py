@@ -27,14 +27,20 @@ overrides = {
     "bootThreshold": 4,      # low threshold — mature quickly for visualization
     "pMin": 1.0,             # always trace — no RR skipping
     "enableVisCacheJitter": False,
-    "enableVisCacheDirDistAddr": True,
+    "enableVisCacheDirDistAddr": False,
+    "enableVisCachePosOnlyAddr": True,
     "enableVisCacheVarianceGate": False,
     "enableVisCacheWarpReduction": False,
     "enableVisCacheDecay": False,
     "enableVisCachePressureEvict": False,
 }
 
-addr_mode = "pointXdirdist" if overrides.get("enableVisCacheDirDistAddr", False) else "pointXpoint"
+if overrides.get("enableVisCachePosOnlyAddr", False):
+    addr_mode = "pointOnly"
+elif overrides.get("enableVisCacheDirDistAddr", False):
+    addr_mode = "pointXdirdist"
+else:
+    addr_mode = "pointXpoint"
 kCaptureDir = f"captures/ladder/00_{addr_mode}_{scene_name}"
 
 # Apply overrides

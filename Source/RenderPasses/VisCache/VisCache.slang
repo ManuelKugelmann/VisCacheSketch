@@ -65,8 +65,12 @@
 
 // Default addressing to endpoint mode (posB = light position).
 // Set USE_VISCACHE_DIRDIST_ADDRESSING=1 for dir+dist mode (better area light coverage).
+// Set USE_VISCACHE_POSONLY_ADDRESSING=1 for position-only (all dirs collapsed).
 #ifndef USE_VISCACHE_DIRDIST_ADDRESSING
 #define USE_VISCACHE_DIRDIST_ADDRESSING 0
+#endif
+#ifndef USE_VISCACHE_POSONLY_ADDRESSING
+#define USE_VISCACHE_POSONLY_ADDRESSING 0
 #endif
 
 // ===========================================================================
@@ -322,7 +326,14 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 // ---------------------------------------------------------------------------
 float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 {
-#if USE_VISCACHE_DIRDIST_ADDRESSING
+#if USE_VISCACHE_POSONLY_ADDRESSING
+    // Position-only: all rays from the same surface cell share one cache entry
+    // regardless of direction or distance. Tracks "overall visibility at this point".
+    // Returns origin (not posA) so that qb = (0,0,0) and the XOR in vhfAddr
+    // preserves posA's position info. If we returned posA, qa == qb → XOR = 0
+    // for all cells → degenerate hash collision.
+    return float3(0.f, 0.f, 0.f);
+#elif USE_VISCACHE_DIRDIST_ADDRESSING
     // Coarse distance quantization: log-scale bins, 4× coarsest cell size.
     // Groups nearby distances so near/far lights in same direction share entries.
     float distCell = gCellCoarse * 4.f;

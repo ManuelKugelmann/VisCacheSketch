@@ -103,4 +103,5 @@ private:
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
+    bool mVisCachePosOnlyAddr = false;      ///< H: position-only addressing (all dirs collapsed)
 };
