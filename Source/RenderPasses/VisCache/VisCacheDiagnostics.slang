@@ -92,30 +92,29 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         coldMissAlpha                                                // A: 0=cold miss, 1=has data
     );
 
-    // --- Accumulated EMA (persists across frames — exponential moving average) ---
-    // Same channel layout as snapshot: R=var, G=maturity, B=mu, A=cold miss.
-    // EMA alpha = 1/min(count, 128) → converges to 128-frame sliding window.
+    // --- Accumulated EMA (persists across frames) ---
+    // Same channel layout as snapshot: R=var, G=maturity, B=mu.
+    // A channel = valid sample count (cold misses NOT counted).
+    // Only updates when the gate found an actual entry — cold misses
+    // are excluded to avoid diluting shadows with default mu values.
     {
         float4 prev = gVCDiag[pixel];
-        float count = prev.a + 1.f;
-        // Soft EMA: fixed alpha from the start so newest samples don't dominate.
-        // alpha = 2/(window+1) is the standard EMA smoothing factor.
-        // With window=0 (all frames): alpha = 1/count (equal-weight running average).
-        float alpha = (gDiagAccumWindow > 0u)
-            ? 2.f / (float(gDiagAccumWindow) + 1.f)
-            : 1.f / count;
-        float4 curr = float4(
-            saturate(diagVar * 4.f) + grey,
-            saturate(float(g.N) / float(gBootThreshold)) + grey,
-            g.mu + grey,
-            count
-        );
-        gVCDiag[pixel] = float4(
-            lerp(prev.r, curr.r, alpha),
-            lerp(prev.g, curr.g, alpha),
-            lerp(prev.b, curr.b, alpha),
-            count
-        );
+
+        if (!noEntry)
+        {
+            float validCount = prev.a + 1.f;
+            float alpha = (gDiagAccumWindow > 0u)
+                ? 2.f / (float(gDiagAccumWindow) + 1.f)
+                : 1.f / validCount;
+            gVCDiag[pixel] = float4(
+                lerp(prev.r, saturate(diagVar * 4.f), alpha),   // R: avg variance
+                lerp(prev.g, saturate(float(g.N) / float(gBootThreshold)), alpha), // G: avg maturity
+                lerp(prev.b, g.mu, alpha),                       // B: avg mu (no grey offset)
+                validCount
+            );
+        }
+        // Cold miss: don't update EMA, don't increment count.
+        // The pixel retains its previous accumulated value.
     }
 
     // --- Accumulate ray savings ratio (persistent across frames) ---
