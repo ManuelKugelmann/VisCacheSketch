@@ -160,7 +160,8 @@
       "Bash(SCENE_FILE=\"../scenes/CornellBox.pyscene\" ./Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder00_Variants.py)",
       "Bash(\"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc\" --version 2>&1)",
       "Bash(\"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc\" --list-gpu-arch)",
-      "Bash(build.bat --skip-setup --target CudaInterop)"
+      "Bash(build.bat --skip-setup --target CudaInterop)",
+      "Bash(C:/Projects/VisCacheSketch/build.bat --skip-setup --target CudaInterop)"
     ],
     "deny": []
   }

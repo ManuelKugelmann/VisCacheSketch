@@ -57,44 +57,39 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     float grey = noEntry ? 0.3f : 0.f;
     float diagVar = noEntry ? 0.f : g.var;
 
-    // --- gVCDiag debug visualizations (uncomment ONE) ---
-    // Each variant writes a pseudo-random color per cell so boundaries are
-    // directly visible regardless of cache state.
+    // --- gVCDiag: R=posA cell hash, G=posB cell hash ---
     {
         float cs = vhfCellSize(0);
 
-        // posA cell hash — shows spatial quantization grid at shading point
         int3 cellA = int3(floor(posA / cs));
         uint3 hA = pcg3d(uint3(cellA));
-        gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,
-                                 float(hA.y & 0xFFu) / 255.f,
-                                 float(hA.z & 0xFFu) / 255.f, 1.f);
 
-        // posB cell hash — shows light-side quantization
-        // int3 cellB = int3(floor(posB / cs));
-        // uint3 hB = pcg3d(uint3(cellB));
-        // gVCDiag[pixel] = float4(float(hB.x & 0xFFu) / 255.f,
-        //                          float(hB.y & 0xFFu) / 255.f,
-        //                          float(hB.z & 0xFFu) / 255.f, 1.f);
+        int3 cellB = int3(floor(posB / cs));
+        uint3 hB = pcg3d(uint3(cellB));
 
-        // Normal diagnostic: mu, var, level, raySaved
-        // gVCDiag[pixel] = float4(g.mu, diagVar, float(g.level + 1), traced ? 0.f : 1.f);
+        gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,   // R: posA cell hash
+                                 float(hB.x & 0xFFu) / 255.f,   // G: posB cell hash
+                                 0.f,                             // B: unused
+                                 1.f);
     }
 
-    // VarMaturityMu: R=variance, G=maturity, B=mu — cache quality at a glance
+    // Cold miss indicator: A=0 means true cold miss (no hash entry), A=1 means data exists.
+    float coldMissAlpha = noEntry ? 0.f : 1.f;
+
+    // VarMaturityMu: R=variance, G=maturity, B=mu, A=cold miss — cache quality
     gVCVarMaturityMu[pixel] = float4(
         saturate(diagVar * 4.f) + grey,                             // R: variance [0,0.25]→[0,1]
         saturate(float(g.N) / float(gBootThreshold)) + grey,       // G: maturity [0,1]
         g.mu + grey,                                                // B: cached mu [0,1]
-        1.f
+        coldMissAlpha                                                // A: 0=cold miss, 1=has data
     );
 
-    // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level — hash table health
+    // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level, A=cold miss — hash health
     gVCVarMaturityLevel[pixel] = float4(
         saturate(float(g.probeSteps) / float(kMaxProbe)) + grey,   // R: probe steps [0,maxProbe]→[0,1]
-        saturate(float(g.N) / float(gBootThreshold * 8u)) + grey,   // G: sample count [0,8*boot]→[0,1]
+        saturate(float(g.N) / float(gBootThreshold * 8u)) + grey,  // G: sample count [0,8*boot]→[0,1]
         float(g.level + 1) / max(float(gNumLevels), 1.f) + grey,  // B: LOD level [0,N]→[0,1]
-        1.f
+        coldMissAlpha                                                // A: 0=cold miss, 1=has data
     );
 
     // --- Accumulate ray savings ratio (persistent across frames) ---
