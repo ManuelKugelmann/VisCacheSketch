@@ -92,7 +92,7 @@ def postprocess(captureDir):
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__level")])
 
 for (variant_name, overrides) in VARIANTS:
-    captureDir = f"captures/ladder/00_{variant_name}_{scene_name}"
+    captureDir = f"captures/ladder/00/{variant_name}_{scene_name}"
     print(f"\n[step00] ======== {variant_name} ({scene_name}) ========")
 
     saved = {}
