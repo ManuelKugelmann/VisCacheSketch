@@ -151,8 +151,8 @@ for (variant_name, overrides) in VARIANTS:
     print(f"[step00] Captured to {captureDir}/ ({tag})")
     postprocess(captureDir, f"{variant_name}_{tag}_")
 
-    # Delete raw Mogwai outputs (EXRs + heatmap PNGs), keep only our named PNGs
-    for f in glob.glob(os.path.join(captureDir, f"{variant_name}.*")):
+    # Delete raw EXRs, keep heatmap PNGs from Mogwai and our named PNGs
+    for f in glob.glob(os.path.join(captureDir, "*.exr")):
         os.remove(f)
 
     print(f"[step00] Post-processed.")
