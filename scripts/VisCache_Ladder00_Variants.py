@@ -14,6 +14,9 @@ from PathTracer_Graph import render_graph_PathTracer
 
 # Test configurations: (warmup, averaging) frame counts
 # Multiple runs per variant for convergence comparison
+kResX = 512
+kResY = 512
+
 FRAME_CONFIGS = [
     (0, 1),      # cold start, single frame
     (0, 8),      # cold start, 8 frames
@@ -120,7 +123,7 @@ def postprocess(captureDir, prefix):
         shutil.copy(png, out(captureDir, "accum_7_render", p))
         break
     for slot in ["accum_5__", "accum_6__", "output_5__", "output_6__", "output_7__"]:
-        ffrun(["-f", "lavfi", "-i", "color=black:s=1920x1080:d=1", "-frames:v", "1",
+        ffrun(["-f", "lavfi", "-i", f"color=black:s={kResX}x{kResY}:d=1", "-frames:v", "1",
                "-pix_fmt", "rgb24", out(captureDir, slot, p)])
 
 for (variant_name, overrides) in VARIANTS:
@@ -147,6 +150,7 @@ for (variant_name, overrides) in VARIANTS:
         # Limit to direct lighting only (primary hit NEE = 1 bounce, matches diagnostic guard)
         g.getPass("PathTracer").set_properties({"maxSurfaceBounces": 1})
         m.loadScene(scene_file)
+        m.resizeFrameBuffer(kResX, kResY)
 
         os.makedirs(captureDir, exist_ok=True)
         fc.outputDir = captureDir
