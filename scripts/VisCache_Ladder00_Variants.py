@@ -135,9 +135,9 @@ for (variant_name, overrides) in VARIANTS:
     for _ in range(kWarmupFrames):
         m.renderFrame()
 
-    # Reset accum textures for clean averaging window
-    vc = g.getPass("VisCache")
-    vc.resetAccum = True
+    # Reset accum textures for clean averaging window.
+    # Use graph pass properties API since direct attribute access isn't exposed.
+    g.getPass("VisCache").setProperties({"resetAccum": True})
 
     # Phase 2: averaging window (clean simple average from zero)
     for _ in range(kAveragingFrames):
