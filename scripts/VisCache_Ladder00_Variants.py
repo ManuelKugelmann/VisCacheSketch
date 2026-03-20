@@ -18,9 +18,7 @@ kResX = 512
 kResY = 512
 
 FRAME_CONFIGS = [
-    (0, 1),      # cold start, single frame
-    (0, 8),      # cold start, 8 frames
-    (8, 8),      # warm start, 8 frames averaging
+    (0, 1),      # single frame — raw first-sample snapshot
 ]
 scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
 scene_name = os.path.splitext(os.path.basename(scene_file))[0]
