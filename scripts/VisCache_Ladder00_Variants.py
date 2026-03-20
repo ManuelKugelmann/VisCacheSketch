@@ -144,6 +144,8 @@ for (variant_name, overrides) in VARIANTS:
                 del VISCACHE_DEFAULTS[k]
 
         m.addGraph(g)
+        # Limit to direct lighting only (primary hit NEE = 1 bounce, matches diagnostic guard)
+        g.getPass("PathTracer").set_properties({"maxSurfaceBounces": 1})
         m.loadScene(scene_file)
 
         os.makedirs(captureDir, exist_ok=True)

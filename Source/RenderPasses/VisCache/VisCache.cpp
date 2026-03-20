@@ -31,7 +31,7 @@ static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
 static const std::string kOutputNoise          = "vcNoise";
 
 static const ChannelList kDiagOutputChannels = {
-    { kOutputDiag,           "", "VisCache diagnostics (R=mu, G=var, B=level, A=raySaved)",  true, ResourceFormat::RGBA32Float },
+    { kOutputDiag,           "", "VisCache accumulated avg (R=var*4, G=maturity, B=mu, A=count)",  true, ResourceFormat::RGBA32Float },
     { kOutputDiagError,      "", "VisCache prediction error |mu - V|",                       true, ResourceFormat::R32Float },
     { kOutputVarMaturityLevel,  "", "VisCache var/maturity/level heatmap (R=var, G=maturity, B=level)",  true, ResourceFormat::RGBA32Float },
     { kOutputVarMaturityMu, "", "VisCache var/maturity/mu heatmap (R=var, G=maturity, B=mu)",     true, ResourceFormat::RGBA32Float },
@@ -462,13 +462,17 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // Per-frame snapshot textures: cleared each frame, overwritten by RT passes.
-        auto clearAndExpose = [&](ref<Texture>& tex, const char* key) {
-            if (tex) { pCtx->clearUAV(tex->getUAV().get(), float4(0.f)); dict[key] = tex; }
+        // Per-frame snapshot textures: NOT cleared here — the renderer overwrites
+        // every pixel during tracing. Clearing here would race with ColorMapPass
+        // (no ordering edge from renderer to heatmaps), causing them to show zeros.
+        // By not clearing, ColorMapPass reads previous-frame data (1-frame delay,
+        // visually correct once the cache is stable).
+        auto exposeSnapshot = [&](ref<Texture>& tex, const char* key) {
+            if (tex) dict[key] = tex;
         };
-        clearAndExpose(diagErrorTex,      "vhfDiagError");
-        clearAndExpose(varMatLevelTex,  "vhfVarMaturityLevel");
-        clearAndExpose(varMatMuTex, "vhfVarMaturityMu");
+        exposeSnapshot(diagErrorTex,      "vhfDiagError");
+        exposeSnapshot(varMatLevelTex,  "vhfVarMaturityLevel");
+        exposeSnapshot(varMatMuTex, "vhfVarMaturityMu");
 
         // Accumulated textures: NOT cleared per frame — running averages.
         // diagTex accumulates (avg mu, avg var, sample count) across frames.

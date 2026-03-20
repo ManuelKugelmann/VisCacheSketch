@@ -3,8 +3,7 @@
  *
  * Per-pixel diagnostic output for VisCache heatmap visualization.
  *
- * Per-frame outputs (cleared each frame, written by downstream passes):
- *   gVCDiag           (RGBA32Float) — R=cachedMu, G=variance, B=level, A=raySaved
+ * Per-frame outputs (written by downstream passes, NOT cleared per frame):
  *   gVCDiagError      (R32Float)    — |mu - V| prediction error (only when traced)
  *   gVCVarMaturityLevel  (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=level
  *   gVCVarMaturityMu (RGBA32Float) — pre-normalized RGB: R=var, G=maturity, B=mu
@@ -26,7 +25,7 @@
 import RenderPasses.VisCache.VisCache;
 
 // --- Per-frame outputs (cleared each frame) ---
-RWTexture2D<float4> gVCDiag;           ///< R=mu, G=var, B=level+1 (0=miss), A=raySaved
+RWTexture2D<float4> gVCDiag;           ///< Accumulated average: R=var*4, G=maturity, B=mu, A=sampleCount
 RWTexture2D<float>  gVCDiagError;      ///< |mu - V| prediction error
 RWTexture2D<float4> gVCVarMaturityLevel;  ///< Pre-normalized RGB (R=var, G=maturity, B=level)
 RWTexture2D<float4> gVCVarMaturityMu; ///< Pre-normalized RGB (R=var, G=maturity, B=mu)
