@@ -94,17 +94,17 @@ def postprocess(captureDir, prefix):
     for exr in glob.glob(os.path.join(captureDir, "*.exr")):
         base = os.path.basename(exr)
         if "vcDiag." in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_1_RGB", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_1_var_mat_mu", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_2_var", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_3_mat", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum_4_mu", p)])
         elif "VarMaturityMu" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_1_RGB", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_1_var_mat_mu", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_2_var", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_3_mat", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap_4_mu", p)])
         elif "VarMaturityLevel" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_5_probe_count_level", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_5_probe_samp_level", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_6_probesteps", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_7_samplecount", p)])
 
