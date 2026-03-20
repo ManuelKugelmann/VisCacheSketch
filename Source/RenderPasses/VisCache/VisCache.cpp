@@ -425,6 +425,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
                 mpNoiseTex          = makeR32F("VHF_Noise");
                 mResetAccum = true;  // accum textures need realloc too
+
+                // Clear snapshot textures on allocation so unwritten pixels
+                // (background, specular) start at zero instead of GPU garbage.
+                pCtx->clearUAV(mpVarMaturityLevelTex->getUAV().get(), float4(0.f));
+                pCtx->clearUAV(mpVarMaturityMuTex->getUAV().get(), float4(0.f));
+                pCtx->clearUAV(mpDiagErrorTex->getUAV().get(), float4(0.f));
             }
             if (!diagTex)           diagTex           = mpDiagTex;
             if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
@@ -456,6 +462,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 // so the averaging window starts fresh.
                 if (diagTex)
                     pCtx->clearUAV(diagTex->getUAV().get(), float4(0.f));
+                // Clear snapshot textures too so stale data from the previous
+                // warmup phase doesn't leak into the averaging window.
+                if (diagErrorTex)
+                    pCtx->clearUAV(diagErrorTex->getUAV().get(), float4(0.f));
+                if (varMatLevelTex)
+                    pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
+                if (varMatMuTex)
+                    pCtx->clearUAV(varMatMuTex->getUAV().get(), float4(0.f));
                 mResetAccum = false;
             }
             dict["vhfAccumSaved"] = mpAccumSaved;
