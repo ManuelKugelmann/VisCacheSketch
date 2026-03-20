@@ -58,6 +58,42 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
   multi-sample read randomizes at lookup time instead (or additionally). Need A/B/AB
   ablation to determine which provides more benefit — they address different artifacts
   (write jitter: cell-boundary banding; read jitter: cell-boundary discontinuities in mu).
+- [ ] WaveMatch coalesced reads: wave-level grouping already merges N writes to same cell
+  into 1 atomic (SM 6.5). Same grouping could coalesce reads — multiple pixels in a wave
+  querying the same coarse cell get a single lookup + broadcast. Free bandwidth savings at
+  coarse LODs where many pixels map to one cell. Evaluate: measure read divergence at L0
+  to see if coalescing provides meaningful savings.
+- [ ] Maturity gate / boot threshold unification: write-side maturity gate (stop accumulating
+  when SE is low) and read-side boot threshold (don't trust until N samples) are related but
+  NOT duals — read threshold should be lower than write threshold since we want to use cells
+  earlier than we stop writing to them. Explore: single adaptive threshold framework with
+  separate read/write offsets derived from the same variance signal, reducing from two
+  independent tuning knobs to one base + two offsets.
+- [ ] CV+RRR beyond visibility: the prediction-with-correction estimator E[μ + (V−μ)/p]
+  works for any cached mean, not just binary visibility. Applicable to cached irradiance
+  (radiance cache + correction rays), cached BRDF importance, cached path throughput for
+  ReSTIR resampling weights. The Bernoulli variance-for-free trick is visibility-specific,
+  but the CV structure transfers anywhere there's a stale mean estimate. Note: this
+  generalization was already explored in [Kugelmann 2006] experiment (2) for irradiance.
+- [ ] Symmetric canonicalization beyond visibility: V(A,B)=V(B,A) trick halves table pressure.
+  Same idea applies to any symmetric pairwise cache: mutual visibility between light clusters,
+  bidirectional form factors, reciprocal BSDF lobes.
+- [ ] Pressure-scaled eviction → ReSTIR reservoir management: graduated-threshold eviction
+  (deeper probe = easier to evict) could transfer to screen-space reservoir caches. Reservoirs
+  that took more probes to place could be marked lower-priority for resampling, naturally
+  prioritizing well-placed reservoirs.
+
+  Note on lazy decay on read (rejected): removing the background management pass and decaying
+  only on read would leave un-queried stale entries undecayed indefinitely — they never get
+  read or written, so they never decay, bloating the table with dead entries that block
+  eviction. The management pass is uniform over the table and very fast (simple stride over
+  flat array), so the savings from lazy decay don't justify the stale-entry problem.
+
+  Note on probe-depth as read-side confidence signal (rejected): probe depth in a double-hash
+  table is determined by collision patterns, not entry quality. High probe depth means the
+  slot was found after several collisions — this is random, not a meaningful quality signal.
+  Unlike eviction (where depth correlates with table pressure), weighting read results by
+  depth would add noise without useful information.
 
 ---
 
