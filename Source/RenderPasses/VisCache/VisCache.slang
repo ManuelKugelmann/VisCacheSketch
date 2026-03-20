@@ -471,6 +471,13 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
 //
 // Both use PCG3D for high-quality mixing of the 6 integer coordinates
 // (3 from each quantized endpoint).
+//
+// TODO: Consider posnormal_* addressing — hash (pos, normal) instead of
+//   (posA, posB). SHaRC uses a 3-bit octant normal in its hash key
+//   (HASH_GRID_USE_NORMALS); MK2006 thesis already used pos+normal
+//   bucketing for the visibility cache. This could improve cache
+//   utilisation for near-planar receivers with many different light
+//   directions (current pos×pos/dirdist modes collapse those).
 // ---------------------------------------------------------------------------
 uint vhfAddr(int3 qa, int3 qb, uint lvl)
 {
