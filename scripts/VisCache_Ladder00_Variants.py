@@ -43,7 +43,12 @@ VARIANTS = [
     ("pos_pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 0.06,       # same as cellA → canonical with fine posB
+        "cellBCoarse": 0.06,       # same as cellA → canonical
+    }),
+    ("pos_posB", {
+        **BASE,
+        "enableVisCacheDirDistAddr": False,
+        "cellBCoarse": 0.061,      # slightly different → NO canonicalization (test for swap asymmetry)
     }),
     ("pos_pos1", {
         **BASE,

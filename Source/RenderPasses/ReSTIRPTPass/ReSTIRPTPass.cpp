@@ -1670,6 +1670,30 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
     mpPixelStats->prepareProgram(pass->getProgram(), var);
     mpPixelDebug->prepareProgram(pass->getProgram(), var);
 
+    // Bind VisCache hash table at root var level (global-scope gVHFTable).
+    // PathReusePass and PathRetracePass already do this; tracePass needs it
+    // too when USE_VISCACHE_LIGHTSELECTION gates NEE shadow rays.
+    if (mVisCacheAvailable)
+    {
+        var["gVHFTable"] = mpVHFTable;
+        var["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
+        var["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
+        var["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
+        var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
+        var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
+        var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
+        var["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        var["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
+        var["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
+        var["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
+        var["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
+        var["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
+        var["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
+        var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
+    }
+
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
     var["CB"]["gSampleId"] = sampleID;
@@ -1797,7 +1821,7 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
+        rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
     // separate cbuffer needed. VisCacheParams is already bound above
@@ -1892,7 +1916,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
+        rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());

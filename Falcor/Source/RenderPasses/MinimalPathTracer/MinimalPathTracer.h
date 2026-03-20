@@ -101,7 +101,8 @@ private:
     struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
              uint32_t numLevels=0, enableJitter=1;
              float cellACoarse=0, cellAFine=0, cellBCoarse=0, cellBFine=0;
-             float angularBCoarse=0, angularBFine=0, distBCoarse=0, distBFine=0; } mVCParams;
+             float angularBCoarse=0, angularBFine=0, distBCoarse=0, distBFine=0;
+             uint32_t diagAccumWindow=128; } mVCParams;
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)

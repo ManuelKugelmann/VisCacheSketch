@@ -419,6 +419,19 @@ float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 // so it's checked once outside the per-level loop by the caller.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Hash-based canonicalization: sort endpoints by a quick scalar hash of their
+// quantized coordinates. This is position-independent — no coordinate-sign
+// sensitivity. The same pair always gets the same canonical form regardless
+// of where in the scene it is, eliminating the left/right asymmetry from
+// lexicographic comparison on raw (possibly negative) coordinates.
+// ---------------------------------------------------------------------------
+uint vhfCanonicalKey(int3 q)
+{
+    // Quick scalar hash for sort ordering (NOT the table address hash).
+    return uint(q.x) * 0x9e3779b9u ^ uint(q.y) * 0x517cc1b7u ^ uint(q.z) * 0x6c62272eu;
+}
+
 // Precompute canonicalization flag — constant for all levels in a frame.
 #if !USE_VISCACHE_DIRDIST_ADDRESSING
 static const bool kCanonicalize = (gCellACoarse == gCellBCoarse);
@@ -445,9 +458,10 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
     qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl);
 
     // Canonicalize only when A and B have the same resolution.
+    // Sort by scalar hash (not coordinates) for position-independent ordering.
     if (kCanonicalize)
     {
-        if (qa.x > qb.x || (qa.x == qb.x && (qa.y > qb.y || (qa.y == qb.y && qa.z > qb.z))))
+        if (vhfCanonicalKey(qa) > vhfCanonicalKey(qb))
         {
             int3 tmp = qa; qa = qb; qb = tmp;
         }
