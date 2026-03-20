@@ -233,3 +233,217 @@ captures/
 ## 5. Dependencies & Blockers
 
 **Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §15.
+
+---
+
+## 6. SHaRC (Spatial Hash Radiance Cache) — Falcor Integration Plan
+
+**Goal:** Add SHaRC as an optional upstream render pass (like VisCache), enabling early path
+termination via cached radiance. SHaRC and VisCache are complementary — SHaRC reduces bounce
+depth, VisCache reduces shadow rays per bounce. Both active simultaneously = compounded savings.
+
+**Reference:** `refs/NVIDIA-RTX_SHARC/` (v1.6.5, NVIDIA license)
+
+### 6.0 Architecture Comparison
+
+| Aspect | SHaRC | VisCache |
+|--------|-------|----------|
+| Caches | Radiance (float3) | Binary visibility |
+| Saves | Bounce depth (early path termination) | Shadow rays (RR skip) |
+| Hook point | After bounce N, before next bounce | Before shadow ray dispatch |
+| LOD | Camera-distance (log grid) | Variance-gated (fixed multilevel) |
+| Eviction | Stale-frame count (resolve pass) | Pressure-scaled + inline decay |
+| Passes | 3 separate (Update → Resolve → Query) | 2-phase inline (Gate → Commit) |
+| Entry size | 40 bytes (8 hash + 16 accum + 16 resolved) | 8 bytes |
+| Table default | 2^22 entries (~160 MiB) | 2^22 entries (~32 MiB) |
+| Hash function | Jenkins32, linear probe bucket-16 | PCG3D, double-hash with fingerprint |
+| Normal handling | 3-bit octant in hash key | None (endpoint-pair) |
+| LOD selection | Camera distance → log level | Variance gate → cascade depth |
+| Temporal | Stale frame counter + accumulation window | Inline overflow decay + background sweep |
+| Anti-firefly | Luminance-ratio clamping on write | Contribution-weighted pMin floor |
+
+### 6.1 Falcor Render Pass Design
+
+Create `Source/RenderPasses/SHaRC/` as an external plugin (same pattern as VisCache):
+
+```
+Source/RenderPasses/SHaRC/
+  SHaRC.cpp / .h          — RenderPass host: buffer creation, 3-pass dispatch, dict export
+  SHaRC.slang             — Slang port of SharcCommon.h + HashGridCommon.h
+  SHaRCTypes.slang        — Slang port of SharcTypes.h
+  CMakeLists.txt          — plugin build (target_copy_shaders)
+```
+
+**Three sub-passes** within one RenderPass::execute():
+1. **SHaRC Update** (RT dispatch, ~4% of pixels): sparse path trace, each hit calls
+   SharcUpdateHit → accumulates radiance into accumulation buffer via InterlockedAdd
+2. **SHaRC Resolve** (compute dispatch, 1 thread per entry): blends accumulation into
+   resolved buffer, handles stale eviction, adjacent-level blending
+3. **SHaRC Query** is NOT a separate pass — integrated into downstream renderer shaders
+   (same pattern as VisCache's vhfGate/vhfCommit)
+
+**Dict exports** (same pattern as VisCache):
+```
+dict["sharcHashEntries"]       RWStructuredBuffer<uint64_t>
+dict["sharcAccumulation"]      RWStructuredBuffer<SharcAccumulationData>
+dict["sharcResolved"]          RWStructuredBuffer<SharcPackedData>
+dict["sharcParamsCB"]          cbuffer SharcGridParams
+dict["sharcEnabled"]           bool
+```
+
+### 6.2 Slang Port of SHaRC Headers
+
+SHaRC headers are HLSL. Key porting tasks:
+- [ ] Port `HashGridCommon.h` → `SHaRCHashGrid.slang`
+  - `uint64_t` → Slang `uint64_t` (native support)
+  - `InterlockedCompareExchange` on uint64 → Slang interlocked ops (SM 6.6)
+  - `RWStructuredBuffer` macros → direct Slang buffer declarations
+  - Jenkins32 hash, log-grid level computation, spatial hash key encoding
+- [ ] Port `SharcCommon.h` → `SHaRC.slang`
+  - SharcUpdateHit/Miss, SharcGetCachedRadiance, SharcResolveEntry
+  - Anti-firefly filter, BLEND_ADJACENT_LEVELS, fade acceleration
+  - PROPAGATION_DEPTH backpropagation state
+- [ ] Port `SharcTypes.h` → `SHaRCTypes.slang`
+  - SharcAccumulationData, SharcPackedData (fp16x4 + uint packing)
+
+Alternative: `__target_intrinsic` shim to include HLSL directly — fragile, prefer clean port.
+
+### 6.3 Downstream Renderer Integration
+
+Same pattern as VisCache — dict read, defines, binding:
+
+**Compile-time defines:**
+| Define | Purpose |
+|--------|---------|
+| `USE_SHARC` | Hash table + resolved buffer available |
+| `USE_SHARC_QUERY` | Early path termination on bounce N≥2 |
+
+**Shader integration point** (in path tracer bounce loop):
+```slang
+import RenderPasses.SHaRC.SHaRC;
+
+// After bounce N (N >= 1, never primary hit):
+#if USE_SHARC_QUERY
+    float3 cachedRadiance;
+    if (SharcGetCachedRadiance(sharcParams, hitData, cachedRadiance, false))
+    {
+        // Early terminate: use cached radiance instead of continuing path
+        Lo += throughput * cachedRadiance;
+        break;
+    }
+#endif
+```
+
+**Per-renderer scope:**
+| Renderer | SHaRC integration point | Notes |
+|----------|------------------------|-------|
+| MinimalPathTracer | After first bounce | Simple loop, easy hook |
+| PathTracer | Inside multi-bounce loop | Standard integration |
+| ReSTIR PT | After reconnection vertex | Must not cache at reconnection point itself |
+| RTXDI | Not applicable | Single-bounce DI, no path to terminate |
+
+### 6.4 SHaRC Update Pass — Sparse Tracing
+
+The Update pass needs its own RT dispatch (separate from main render):
+- Select ~4% of pixels (random 1-in-25 per 5×5 block, different each frame)
+- Run full path tracer with SHaRC instrumentation:
+  - Reset throughput to 1.0 at each bounce (independent segments)
+  - Call SharcInit at path start
+  - Call SharcUpdateHit at each hit (returns false → terminate early via resampling)
+  - Call SharcSetThroughput after BSDF sampling
+  - Call SharcUpdateMiss on miss (env map)
+
+**Options for Update pass implementation:**
+1. **Dedicated RT shader** — cleanest, duplicates some path tracing logic
+2. **Reuse existing path tracer with SHARC_UPDATE define** — less duplication, more coupling
+3. **Compute shader with inline ray tracing** — avoids RT pipeline overhead for sparse work
+
+Option 1 is recommended for initial implementation. Can share BSDF/material evaluation
+modules with existing path tracers.
+
+### 6.5 SHaRC + VisCache Coexistence
+
+**Graph topology** (both active):
+```
+VisCache pass → SHaRC pass → Renderer pass
+     |              |              |
+     |              |              +-- reads VisCache dict (shadow rays)
+     |              |              +-- reads SHaRC dict (early termination)
+     |              |
+     |              +-- SHaRC Update sub-pass may also use VisCache
+     |                  for shadow rays during sparse tracing (optional,
+     |                  reduces Update cost too)
+     |
+     +-- independent, no dependency on SHaRC
+```
+
+**Key interaction:** SHaRC's Update pass traces shadow rays → can use VisCache to accelerate
+those too. This means the SHaRC Update shader should also import VisCache modules and bind
+VisCache resources. Compounded savings: fewer shadow rays in the Update pass AND fewer
+bounces in the main render.
+
+### 6.6 Tuning & Scene-Specific Parameters
+
+SHaRC parameters that need scene-scale calibration:
+| Parameter | SHaRC default | Notes |
+|-----------|--------------|-------|
+| `sceneScale` | scene-dependent | Controls voxel size; analogous to VisCache cellSize |
+| `logarithmBase` | 2.0 | LOD ratio between levels |
+| `levelBias` | 0 | Clamp finest level near camera |
+| `accumulationFrameNum` | 1–1024 | Temporal window; higher = better quality, slower response |
+| `staleFrameNumMax` | 8–1024 | Eviction aggressiveness |
+| `radianceScale` | 1e3 | Quantization for u32 atomic accumulation; scene-dependent |
+
+### 6.7 Ablation Matrix (SHaRC-specific)
+
+| Config | Description |
+|--------|-------------|
+| SHaRC only | Early termination, no VisCache |
+| VisCache only | Shadow ray skip, no SHaRC |
+| SHaRC + VisCache | Both active (compounded) |
+| SHaRC − adjacent blend | Disable BLEND_ADJACENT_LEVELS |
+| SHaRC − resampling | Disable cache resampling during Update |
+| SHaRC − anti-firefly | Disable luminance-ratio clamping |
+| SHaRC sparse rate | Vary 1%, 4%, 10% update pixel fraction |
+
+### 6.8 Implementation Order
+
+- [ ] Phase 1: Slang port of SHaRC headers (pure shader, no host code)
+  - Port HashGridCommon.h, SharcCommon.h, SharcTypes.h to Slang
+  - Unit test: compile-only validation
+- [ ] Phase 2: SHaRC RenderPass host (buffer creation, Resolve compute dispatch)
+  - Create SHaRC.cpp/h following VisCache pattern
+  - Implement Resolve pass (compute shader, easiest sub-pass)
+  - Dict export of buffers
+- [ ] Phase 3: SHaRC Update pass (sparse RT dispatch)
+  - Implement sparse pixel selection
+  - RT shader with SharcInit/UpdateHit/UpdateMiss/SetThroughput
+  - Use MinimalPathTracer as template (simplest bounce loop)
+- [ ] Phase 4: Query integration into MinimalPathTracer
+  - Add SharcGetCachedRadiance call after first bounce
+  - Verify early termination reduces average bounce depth
+  - Compare image quality vs reference
+- [ ] Phase 5: Query integration into PathTracer + ReSTIR PT
+  - PathTracer: standard multi-bounce hook
+  - ReSTIR PT: careful placement (not at reconnection vertex)
+- [ ] Phase 6: SHaRC + VisCache coexistence
+  - SHaRC Update pass reads VisCache dict for shadow rays
+  - Graph scripts with both passes
+  - Compounded savings measurement
+- [ ] Phase 7: Ablation captures
+  - SHaRC-only vs VisCache-only vs both
+  - Parameter sensitivity (sparse rate, stale frames, scene scale)
+
+### 6.9 Open Questions
+
+- [ ] SHaRC's camera-distance LOD vs VisCache's variance-gated LOD — could SHaRC benefit
+  from variance gating too? (radiance variance is not free like Bernoulli variance, would
+  need explicit variance tracking or proxy)
+- [ ] SHaRC uses separate accumulation + resolved buffers (40B/entry). Could a single-buffer
+  design work (like VisCache's 8B entries) using inline resolve? Radiance needs more bits
+  than binary visibility, so probably not without precision loss.
+- [ ] SHaRC's PROPAGATION_DEPTH backpropagation stores up to 4 vertices — register pressure
+  concern on some architectures. Profile on RTX 3090 vs 4090.
+- [ ] License: SHaRC is NVIDIA proprietary license. Clean Slang reimplementation from
+  published algorithm description (GDC 2024 talk + integration guide) preferred over
+  line-by-line port of copyrighted headers. Reference code is for understanding, not copying.
