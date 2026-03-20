@@ -72,25 +72,38 @@ def out(d, name, prefix=""):
     return os.path.join(d, f"{prefix}{name}.png")
 
 def postprocess(captureDir, prefix):
-    """prefix = variant name, e.g. 'pos_pos_canonical_'"""
+    """prefix = variant name, e.g. 'pos_pos_'
+    Output naming: 7 images per row, snap and accum align vertically.
+    Row 1 (accum): 1_RGB  2_variance  3_maturity  4_mu  5_pad  6_pad  7_render
+    Row 2 (snap):  1_RGB  2_variance  3_maturity  4_mu  5_probe  6_count  7_level
+    """
     p = prefix
     for exr in glob.glob(os.path.join(captureDir, "*.exr")):
         base = os.path.basename(exr)
         if "vcDiag." in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_var_maturity_mu", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__variance", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__maturity", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum__mu", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_1_RGB", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_2_variance", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_3_maturity", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum_4_mu", p)])
         elif "VarMaturityMu" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_var_maturity_mu", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__variance", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__maturity", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__mu", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_1_RGB", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_2_variance", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_3_maturity", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap_4_mu", p)])
         elif "VarMaturityLevel" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_probe_count_level", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__probesteps", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__samplecount", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__level", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_5_probe_count_level", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_6_probesteps", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_7_samplecount", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap_8_level", p)])
+    # Copy ToneMapper render as accum row slot 7
+    for png in glob.glob(os.path.join(captureDir, f"{prefix[:-1]}.ToneMapper.dst.*.png")):
+        import shutil
+        shutil.copy(png, out(captureDir, "accum_7_render", p))
+        break
+    # Pad accum slots 5-6 with empty black images (same size as render)
+    for slot in ["accum_5_pad", "accum_6_pad"]:
+        ffrun(["-f", "lavfi", "-i", "color=black:s=1920x1080:d=1", "-frames:v", "1",
+               "-pix_fmt", "rgb24", out(captureDir, slot, p)])
 
 for (variant_name, overrides) in VARIANTS:
     captureDir = f"captures/ladder/00/{scene_name}"
