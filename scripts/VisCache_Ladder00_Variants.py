@@ -143,7 +143,7 @@ for (variant_name, overrides) in VARIANTS:
                 saved[k] = VISCACHE_DEFAULTS[k]
             VISCACHE_DEFAULTS[k] = v
 
-        g = render_graph_PathTracer(viscache=True)
+        g = render_graph_PathTracer(viscache=True, maxBounces=1)
 
         for k, v in saved.items():
             VISCACHE_DEFAULTS[k] = v
@@ -152,8 +152,6 @@ for (variant_name, overrides) in VARIANTS:
                 del VISCACHE_DEFAULTS[k]
 
         m.addGraph(g)
-        # Limit to direct lighting only (primary hit NEE = 1 bounce, matches diagnostic guard)
-        g.getPass("PathTracer").set_properties({"maxSurfaceBounces": 1})
         m.loadScene(scene_file)
         m.resizeFrameBuffer(kResX, kResY)
 
@@ -177,7 +175,7 @@ for (variant_name, overrides) in VARIANTS:
         m.renderFrame()
 
         print(f"[step00] Captured ({tag})")
-        postprocess(captureDir, f"{variant_name}_{tag}_")
+        postprocess(captureDir, f"s_{warmup}_{averaging}_{variant_name}_")
 
         # Delete raw EXRs
         for f in glob.glob(os.path.join(captureDir, "*.exr")):

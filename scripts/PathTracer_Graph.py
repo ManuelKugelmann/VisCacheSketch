@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 
-def render_graph_PathTracer(viscache=False):
+def render_graph_PathTracer(viscache=False, maxBounces=3):
     """Build a PathTracer render graph.
 
     Args:
@@ -43,7 +43,7 @@ def render_graph_PathTracer(viscache=False):
     # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
     pt = createPass("PathTracer", {
         "samplesPerPixel":    1,
-        "maxSurfaceBounces":  3,
+        "maxSurfaceBounces":  maxBounces,
         "colorFormat":        "LogLuvHDR",
     })
     g.addPass(pt, "PathTracer")
