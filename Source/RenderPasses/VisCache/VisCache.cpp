@@ -452,6 +452,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 pCtx->clearUAV(mpAccumTotal->getUAV().get(), uint4(0u));
                 if (noiseTex)
                     pCtx->clearUAV(noiseTex->getUAV().get(), float4(0.f));
+                // Also clear the accumulated diagnostic texture (gVCDiag)
+                // so the averaging window starts fresh.
+                if (diagTex)
+                    pCtx->clearUAV(diagTex->getUAV().get(), float4(0.f));
                 mResetAccum = false;
             }
             dict["vhfAccumSaved"] = mpAccumSaved;

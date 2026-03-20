@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
 
-kWarmupFrames = 256
+kWarmupFrames = 128    # frames before accum window (cache populates, accum ignored)
+kAveragingFrames = 128 # frames in accum window (clean simple average)
 scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
 scene_name = os.path.splitext(os.path.basename(scene_file))[0]
 
@@ -130,16 +131,31 @@ for (variant_name, overrides) in VARIANTS:
     fc.outputDir = captureDir
     fc.baseFilename = variant_name
 
+    # Phase 1: warmup (cache populates, accum runs but will be cleared)
     for _ in range(kWarmupFrames):
+        m.renderFrame()
+
+    # Reset accum textures for clean averaging window
+    vc = g.getPass("VisCache")
+    vc.resetAccum = True
+
+    # Phase 2: averaging window (clean simple average from zero)
+    for _ in range(kAveragingFrames):
         m.renderFrame()
 
     fc.capture()
     m.renderFrame()
 
-    print(f"[step00] Captured to {captureDir}/")
-    postprocess(captureDir, f"{variant_name}_")
-    print(f"[step00] Post-processed.")
+    total = kWarmupFrames + kAveragingFrames
+    tag = f"w{kWarmupFrames}_a{kAveragingFrames}"
+    print(f"[step00] Captured to {captureDir}/ ({tag})")
+    postprocess(captureDir, f"{variant_name}_{tag}_")
 
+    # Delete raw Mogwai outputs (EXRs + heatmap PNGs), keep only our named PNGs
+    for f in glob.glob(os.path.join(captureDir, f"{variant_name}.*")):
+        os.remove(f)
+
+    print(f"[step00] Post-processed.")
     m.removeGraph(g)
 
 print(f"\n[step00] All {len(VARIANTS)} variants done.")
