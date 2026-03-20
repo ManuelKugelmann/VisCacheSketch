@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
 
-kWarmupFrames = 1024
+kWarmupFrames = 256
 scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
 scene_name = os.path.splitext(os.path.basename(scene_file))[0]
 
@@ -68,31 +68,32 @@ def ffrun(args):
     except Exception:
         return False
 
-def out(d, name):
-    return os.path.join(d, f"{name}.png")
+def out(d, name, prefix=""):
+    return os.path.join(d, f"{prefix}{name}.png")
 
-def postprocess(captureDir):
+def postprocess(captureDir, prefix):
+    """prefix = variant name, e.g. 'pos_pos_canonical_'"""
+    p = prefix
     for exr in glob.glob(os.path.join(captureDir, "*.exr")):
         base = os.path.basename(exr)
         if "vcDiag." in base:
-            # Accumulated EMA: R=var, G=maturity, B=mu (same layout as snap)
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_var_maturity_mu")])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__variance")])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__maturity")])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum__mu")])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_var_maturity_mu", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__variance", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum__maturity", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum__mu", p)])
         elif "VarMaturityMu" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_var_maturity_mu")])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__variance")])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__maturity")])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__mu")])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_var_maturity_mu", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__variance", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__maturity", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__mu", p)])
         elif "VarMaturityLevel" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_probe_count_level")])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__probesteps")])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__samplecount")])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__level")])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_probe_count_level", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__probesteps", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap__samplecount", p)])
+            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap__level", p)])
 
 for (variant_name, overrides) in VARIANTS:
-    captureDir = f"captures/ladder/00/{variant_name}_{scene_name}"
+    captureDir = f"captures/ladder/00/{scene_name}"
     print(f"\n[step00] ======== {variant_name} ({scene_name}) ========")
 
     saved = {}
@@ -123,7 +124,7 @@ for (variant_name, overrides) in VARIANTS:
     m.renderFrame()
 
     print(f"[step00] Captured to {captureDir}/")
-    postprocess(captureDir)
+    postprocess(captureDir, f"{variant_name}_")
     print(f"[step00] Post-processed.")
 
     m.removeGraph(g)
