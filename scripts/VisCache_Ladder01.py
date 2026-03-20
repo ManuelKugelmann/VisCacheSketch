@@ -20,5 +20,6 @@ run_variants(
         (8, 8),      # warm start, 8 frames averaging
     ],
     scene_file=scene_file,
+    mogwai_globals=globals(),
 )
 exit()

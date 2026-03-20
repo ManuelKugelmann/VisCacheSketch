@@ -17,5 +17,6 @@ run_variants(
     step_name="00",
     frame_configs=[(0, 1)],
     scene_file=scene_file,
+    mogwai_globals=globals(),
 )
 exit()

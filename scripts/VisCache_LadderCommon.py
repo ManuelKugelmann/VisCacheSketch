@@ -135,10 +135,18 @@ def postprocess(captureDir, prefix):
         ffrun(["-f", "lavfi", "-i", f"color=black:s={kResX}x{kResY}:d=1", "-frames:v", "1",
                "-pix_fmt", "rgb24", _out(captureDir, slot, p)])
 
-def run_variants(step_name, frame_configs, scene_file, variants=None, maxBounces=1):
-    """Run all variants × frame configs for a ladder step."""
+def run_variants(step_name, frame_configs, scene_file, variants=None, maxBounces=1, mogwai_globals=None):
+    """Run all variants × frame configs for a ladder step.
+    mogwai_globals: pass globals() from the Mogwai script to access m, fc, etc.
+    """
     if variants is None:
         variants = VARIANTS
+    # Get Mogwai builtins from caller's globals
+    g_dict = mogwai_globals or {}
+    m = g_dict.get('m')
+    fc = g_dict.get('fc')
+    if m is None or fc is None:
+        raise RuntimeError("run_variants needs mogwai_globals=globals() from a Mogwai script")
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
 
     for (variant_name, overrides) in variants:

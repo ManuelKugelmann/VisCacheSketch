@@ -167,7 +167,9 @@
       "Bash(Falcor/tools/.packman/cmake/bin/cmake.exe --build Falcor/build/windows-vs2022 --config Release --target VisCachePass PathTracer MinimalPathTracer RTXDIPass ReSTIRPTPass Mogwai)",
       "Bash(do echo:*)",
       "Bash(rm -rf runtime/captures/ladder/00/CornellBox)",
-      "Bash(SCENE_FILE=../scenes/CornellBox.pyscene ./Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder00_Variants.py)"
+      "Bash(SCENE_FILE=../scenes/CornellBox.pyscene ./Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder00_Variants.py)",
+      "Bash(rm -rf runtime/captures/ladder/00)",
+      "Bash(SCENE_FILE=../scenes/CornellBox.pyscene ./Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder00.py)"
     ],
     "deny": []
   }
