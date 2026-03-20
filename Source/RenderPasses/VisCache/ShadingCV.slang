@@ -197,10 +197,10 @@ float3 evalDirectLightingCV(ShadingData sd,
     {
         float V = traceShadowRay(sd.posW, lightPos);
         float w = vhfCommit(sd.posW, lightPos, V, g);
-        vcWriteDiag(pixel, g, true, V);
+        vcWriteDiag(pixel, g, true, V, sd.posW, lightPos);
         return C * w;
     }
-    vcWriteDiag(pixel, g, false, 0.f);
+    vcWriteDiag(pixel, g, false, 0.f, sd.posW, lightPos);
     return C * g.visWeight;
 }
 
@@ -216,10 +216,10 @@ float evalRevalidationCV(float3 P, float3 Q,
     {
         float V = traceShadowRay(P, Q);
         float w = vhfCommit(P, Q, V, g);
-        vcWriteDiag(pixel, g, true, V);
+        vcWriteDiag(pixel, g, true, V, P, Q);
         return w;
     }
-    vcWriteDiag(pixel, g, false, 0.f);
+    vcWriteDiag(pixel, g, false, 0.f, P, Q);
     return g.visWeight;
 }
 

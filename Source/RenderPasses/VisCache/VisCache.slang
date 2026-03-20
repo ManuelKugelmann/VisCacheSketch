@@ -482,7 +482,8 @@ uint vhfAddr(int3 qa, int3 qb, uint lvl)
 
 uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 {
-    return pcgHash(qa, qb, lvl, lvl, 0xDEADBEEFu);
+    uint fp = pcgHash(qa, qb, lvl, lvl, 0xDEADBEEFu);
+    return fp == 0u ? 1u : fp;  // Reserve 0 as empty-slot sentinel
 }
 
 // ===========================================================================
@@ -998,7 +999,15 @@ void vhfInsert(float3 posA, float3 posB, float V)
         //   origFp != fp: different cell pair claimed this slot — skip
         uint origFp;
         InterlockedCompareExchange(gVHFTable[slot].fingerprint, 0u, fp, origFp);
-        if (origFp != 0u && origFp != fp) continue;  // Slot claimed by different entry
+        if (origFp != 0u && origFp != fp)
+        {
+            // Evict: overwrite fingerprint and zero packed data.
+            // vhfFindSlot verified this entry had too few samples to keep
+            // (pressure-scaled eviction at probe depth >= kEvictStartStep).
+            uint dummy;
+            InterlockedExchange(gVHFTable[slot].fingerprint, fp, dummy);
+            InterlockedExchange(gVHFTable[slot].packed, 0u, dummy);
+        }
 
         // Atomically increment both vis_count (if visible) and total_count.
         // The packed format [vis:16|total:16] allows a single InterlockedAdd.

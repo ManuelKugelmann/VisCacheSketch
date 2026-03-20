@@ -67,9 +67,10 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
         uint addr = vhfAddr(qa, qb, uint(lvl));
 
         // Maturity gate: skip entries that already have enough samples.
-        // All lanes must agree on this decision for WaveMatch to work
-        // correctly (divergent control flow would break the bitmask).
-        if (vhfIsMature(addr, fp)) continue;
+        // Never skip the finest level — always keep it populated for
+        // maximum spatial resolution at shadow boundaries.
+        bool isFinestLevel = (lvl == int(gNumLevels) - 1);
+        if (!isFinestLevel && vhfIsMature(addr, fp)) continue;
 
         // SM 6.5 WaveMatch: identify which lanes in this warp target the
         // same hash table slot. Returns a 128-bit bitmask (uint4) where
@@ -90,7 +91,8 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
                           + countbits(match.z) + countbits(match.w);
 
             // Find or allocate a slot for this cell pair.
-            int wslot = vhfFindSlot(addr, fp, /*allowInsert=*/true);
+            uint _ps;
+            int wslot = vhfFindSlot(addr, fp, /*allowInsert=*/true, _ps);
             if (wslot >= 0)
             {
                 // Atomic CAS for fingerprint — same race protection as
@@ -98,7 +100,13 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
                 // claimed this slot with a different fingerprint.
                 uint origFp;
                 InterlockedCompareExchange(gVHFTable[wslot].fingerprint, 0u, fp, origFp);
-                if (origFp != 0u && origFp != fp) continue;
+                if (origFp != 0u && origFp != fp)
+                {
+                    // Evict: overwrite fingerprint and zero packed data.
+                    uint dummy;
+                    InterlockedExchange(gVHFTable[wslot].fingerprint, fp, dummy);
+                    InterlockedExchange(gVHFTable[wslot].packed, 0u, dummy);
+                }
 
                 // Single atomic add for the aggregated counts.
                 // This is where the coalescing pays off: instead of N
@@ -107,7 +115,19 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
                 uint delta = (visSum << 16u) | totalSum;
                 uint prev;
                 InterlockedAdd(gVHFTable[wslot].packed, delta, prev);
-                vhfOverflowDecay(wslot, prev + delta);
+                uint cur = vhfOverflowDecay(wslot, prev + delta);
+
+                // Cascaded variance gate: if this level is now converged,
+                // stop descending. Finer levels would produce the same mu.
+                uint totalCur = cur & 0xFFFFu;
+                if (totalCur >= gBootThreshold)
+                {
+                    uint visCur  = cur >> 16u;
+                    float muCur  = float(visCur) / float(totalCur);
+                    float varCur = muCur * (1.0f - muCur);
+                    if (varCur <= gVarThreshold)
+                        break;
+                }
             }
         }
     }

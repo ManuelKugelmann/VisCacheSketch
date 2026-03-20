@@ -57,21 +57,6 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     float grey = noEntry ? 0.3f : 0.f;
     float diagVar = noEntry ? 0.f : g.var;
 
-    // --- gVCDiag: R=qa hash, G=qb hash — actual quantized keys used by the cache ---
-    {
-        float cs = vhfCellSize(0);
-        int3 qa, qb;
-        vhfQuantizePair(posA, posB, cs, 0u, qa, qb);
-
-        uint3 hA = pcg3d(uint3(qa));
-        uint3 hB = pcg3d(uint3(qb));
-
-        gVCDiag[pixel] = float4(float(hA.x & 0xFFu) / 255.f,   // R: qa hash
-                                 float(hB.x & 0xFFu) / 255.f,   // G: qb hash
-                                 noEntry ? 0.f : 1.f,            // B: cold miss (0=miss, 1=data)
-                                 1.f);
-    }
-
     // Cold miss indicator: A=0 means true cold miss (no hash entry), A=1 means data exists.
     float coldMissAlpha = noEntry ? 0.f : 1.f;
 

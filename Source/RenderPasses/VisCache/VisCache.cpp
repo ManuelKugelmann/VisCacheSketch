@@ -486,8 +486,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // ----------------------------------------------------------------
     // Background decay sweep (1/decayPeriod of table per frame)
     // ----------------------------------------------------------------
-    if (mParams.enableVisCacheDecay && mParams.decayPeriod > 0 &&
-        (mFrameCount % mParams.decayPeriod) == 0u)
+    if (mParams.enableVisCacheDecay && mParams.decayPeriod > 0)
     {
         runDecayPass(pCtx);
     }
