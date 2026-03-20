@@ -31,33 +31,33 @@ BASE = {
 }
 
 VARIANTS = [
-    ("pos_pos_canonical", {
+    ("pos_pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 0.06,       # same as cellACoarse for true canonical
+        "cellBCoarse": 0.06,       # same as cellA → canonical with fine posB
     }),
-    ("pos_only_dirdist", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "angularBCoarse": 360.0,   # >= 180 deg → single direction bin
-        "distBCoarse": 1000.0,     # single dist bucket
-    }),
-    ("pos_only_largeB", {
+    ("pos_pos1", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 10000.0,    # huge B cell → all light positions collapse to one cell
+        "cellBCoarse": 10000.0,    # collapsed B → position-only via pos×pos
     }),
-    ("pos_dir", {
+    ("pos_dir1_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "angularBCoarse": 45.0,    # 45 deg per bin → ~16 direction bins
+        "angularBCoarse": 360.0,   # single direction bin
+        "distBCoarse": 1000.0,     # single dist bucket → position-only via dirdist
+    }),
+    ("pos_dir_dist1", {
+        **BASE,
+        "enableVisCacheDirDistAddr": True,
+        "angularBCoarse": 45.0,    # 45° angular bins
         "distBCoarse": 1000.0,     # single dist bucket
     }),
     ("pos_dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "angularBCoarse": 45.0,    # 45 deg angular bins
-        "distBCoarse": 0.24,       # 4x cellACoarse distance bins
+        "angularBCoarse": 45.0,    # 45° angular bins
+        "distBCoarse": 0.24,       # 4× cellA distance bins
     }),
 ]
 
