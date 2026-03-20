@@ -131,13 +131,15 @@ for (variant_name, overrides) in VARIANTS:
     fc.outputDir = captureDir
     fc.baseFilename = variant_name
 
-    # Render warmup + averaging frames.
-    # Accum starts from zero when the graph is first created (texture allocation
-    # triggers mResetAccum). So the accum averages over ALL rendered frames.
-    # warmup=0 → cold start (accum covers entire run).
-    # warmup>0 → accum includes warmup too (no mid-run reset available from Python).
-    totalFrames = kWarmupFrames + kAveragingFrames
-    for _ in range(totalFrames):
+    # Phase 1: warmup (cache populates, accum runs but will be reset)
+    for _ in range(kWarmupFrames):
+        m.renderFrame()
+
+    # Reset accum for clean averaging window (warm cache, fresh diagnostic)
+    g.getPass("VisCache").set_properties({"resetAccum": True})
+
+    # Phase 2: averaging window (simple average from zero over warm cache)
+    for _ in range(kAveragingFrames):
         m.renderFrame()
 
     fc.capture()

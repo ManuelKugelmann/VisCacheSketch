@@ -593,7 +593,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
 {
     VHFResult best;
     best.mu    = 0.5f;   // Default: uncertain (max variance)
-    best.var   = 1.0f;
+    best.var   = 0.125f; // Half of max Bernoulli variance (0.25/2)
     best.level = -1;
     best.probeSteps = 0u;
     best.N     = 0u;
@@ -651,7 +651,7 @@ VHFResult vhfLookupRaw(float3 posA, float3 posB)
 {
     VHFResult best;
     best.mu    = 0.5f;
-    best.var   = 0.5f;
+    best.var   = 0.125f; // Half of max Bernoulli variance (0.25/2)
     best.level = -1;
     best.N     = 0u;
     best.valid = false;
@@ -761,7 +761,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.visWeight   = 0.f;
         g.mu          = r.mu;     // immature mu if entry exists, 0.5 if no entry
         g.invP        = 1.f;
-        g.var         = r.var;    // immature var if entry exists, 0.5 if no entry
+        g.var         = r.var;    // immature var if entry exists, 0.125 if no entry
         g.level       = r.level;  // -1 if truly no entry, else immature level
         g.N           = r.N;      // 0 if no entry, else immature sample count
         g.probeSteps  = r.probeSteps;
