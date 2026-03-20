@@ -108,7 +108,7 @@ if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
     set "CMAKE=%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe"
 )
 
-set "PLUGIN_DIRS=%ROOT%Source\RenderPasses\VisCache;%ROOT%Source\RenderPasses\ReSTIRPTPass"
+set "PLUGIN_DIRS=%ROOT%Source\RenderPasses\VisCache;%ROOT%Source\RenderPasses\ReSTIRPTPass;%ROOT%Source\RenderPasses\SHaRCPass"
 echo [build] Configuring: %CMAKE% --preset %PRESET%
 "%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%" -DFALCOR_PLUGIN_DIRS="!PLUGIN_DIRS!" -DFALCOR_RUNTIME_OUTPUT_DIRECTORY="%ROOT%runtime"
 if errorlevel 1 (
