@@ -60,21 +60,23 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     float coldMissAlpha = noEntry ? 0.f : 1.f;
 
     // --- Snapshot composites (overwritten each frame — last stochastic sample) ---
-    // VarMaturityMu: R=variance, G=maturity, B=mu — cache quality snapshot
-    gVCVarMaturityMu[pixel] = float4(
-        saturate(diagVar * 4.f) + grey,                             // R: variance [0,0.25]→[0,1]
-        saturate(float(g.N) / float(gBootThreshold)) + grey,       // G: maturity [0,1]
-        g.mu + grey,                                                // B: cached mu [0,1]
-        coldMissAlpha                                                // A: 0=cold miss, 1=has data
-    );
+    // Cold misses excluded (stay at cleared 0) — cold miss coverage has its own diagnostic.
+    if (!noEntry)
+    {
+        gVCVarMaturityMu[pixel] = float4(
+            saturate(diagVar * 4.f),                                // R: variance [0,0.25]→[0,1]
+            saturate(float(g.N) / float(gBootThreshold)),           // G: maturity [0,1]
+            g.mu,                                                    // B: cached mu [0,1]
+            1.f
+        );
 
-    // VarMaturityLevel: R=probeSteps, G=sampleCount, B=level — hash health snapshot
-    gVCVarMaturityLevel[pixel] = float4(
-        saturate(float(g.probeSteps) / float(kMaxProbe)) + grey,   // R: probe steps [0,maxProbe]→[0,1]
-        saturate(float(g.N) / float(gBootThreshold * 8u)) + grey,  // G: sample count [0,8*boot]→[0,1]
-        float(g.level + 1) / max(float(gNumLevels), 1.f) + grey,  // B: LOD level [0,N]→[0,1]
-        coldMissAlpha                                                // A: 0=cold miss, 1=has data
-    );
+        gVCVarMaturityLevel[pixel] = float4(
+            saturate(float(g.probeSteps) / float(kMaxProbe)),       // R: probe steps [0,maxProbe]→[0,1]
+            saturate(float(g.N) / float(gBootThreshold * 8u)),      // G: sample count [0,8*boot]→[0,1]
+            float(g.level + 1) / max(float(gNumLevels), 1.f),      // B: LOD level [0,N]→[0,1]
+            1.f
+        );
+    }
 
     // --- Accumulated simple average (cleared by host between warmup and capture) ---
     // Same channel layout as snapshot: R=var, G=maturity, B=mu.
