@@ -24,19 +24,17 @@ static constexpr uint32_t kStatCount = 5u;
 
 // Diagnostic heatmap output channel names
 static const std::string kOutputDiag           = "vcDiag";
-static const std::string kOutputDiagError      = "vcDiagError";
 static const std::string kOutputVarMaturityLevel  = "vcVarMaturityLevel";
 static const std::string kOutputVarMaturityMu = "vcVarMaturityMu";
 static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
 static const std::string kOutputNoise          = "vcNoise";
 
 static const ChannelList kDiagOutputChannels = {
-    { kOutputDiag,           "", "VisCache accumulated avg (R=var*4, G=maturity, B=mu, A=count)",  true, ResourceFormat::RGBA32Float },
-    { kOutputDiagError,      "", "VisCache prediction error |mu - V|",                       true, ResourceFormat::R32Float },
-    { kOutputVarMaturityLevel,  "", "VisCache var/maturity/level heatmap (R=var, G=maturity, B=level)",  true, ResourceFormat::RGBA32Float },
-    { kOutputVarMaturityMu, "", "VisCache var/maturity/mu heatmap (R=var, G=maturity, B=mu)",     true, ResourceFormat::RGBA32Float },
-    { kOutputRaySavedRatio,  "", "Per-pixel ray savings ratio [0,1] (accumulated)",          true, ResourceFormat::R32Float },
-    { kOutputNoise,          "", "Per-pixel noise estimate (variance EMA)",                   true, ResourceFormat::R32Float },
+    { kOutputDiag,           "", "VisCache accumulated avg (R=var*4, G=maturity, B=mu, A=count)",          true, ResourceFormat::RGBA32Float },
+    { kOutputVarMaturityLevel,  "", "VisCache frame (R=probeSteps, G=sampleCount, B=level)",               true, ResourceFormat::RGBA32Float },
+    { kOutputVarMaturityMu, "", "VisCache frame (R=var*4, G=maturity, B=mu, A=coldmiss)",                  true, ResourceFormat::RGBA32Float },
+    { kOutputRaySavedRatio,  "", "Per-pixel ray traced ratio [0,1] (accumulated)",                         true, ResourceFormat::R32Float },
+    { kOutputNoise,          "", "Per-pixel noise estimate (variance EMA)",                                 true, ResourceFormat::R32Float },
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -196,6 +194,7 @@ void VisCache::allocateBuffers()
         /*createCounter=*/true
     );
     mpHashTable->setName("VHF_HashTable");
+    mClearHashTable = true;  // Must clear to empty-slot sentinel (fingerprint=0) before first use
 
     // GPU params constant buffer — exported via dict for downstream passes.
     mpParamsBuffer = mpDevice->createBuffer(
@@ -333,6 +332,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
 
+    // Clear hash table to empty-slot sentinel (fingerprint=0) on first use
+    // or after reallocation. GPU memory is NOT zeroed on allocation.
+    if (mClearHashTable)
+    {
+        pCtx->clearUAV(mpHashTable->getUAV().get(), uint4(0u));
+        mClearHashTable = false;
+    }
+
     auto& dict = renderData.getDictionary();
     dict["vhfTable"]    = mpHashTable;
     dict["vhfParamsCB"] = mpParamsBuffer;  // kept for backward compat; prefer per-member binding below
@@ -401,11 +408,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         };
 
         // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
-        ref<Texture> diagTex, diagErrorTex, varMatLevelTex, varMatMuTex;
+        ref<Texture> diagTex, varMatLevelTex, varMatMuTex;
         ref<Texture> raySavedRatioTex, noiseTex;
 
         if (auto p = renderData[kOutputDiag])           diagTex           = p->asTexture();
-        if (auto p = renderData[kOutputDiagError])      diagErrorTex      = p->asTexture();
         if (auto p = renderData[kOutputVarMaturityLevel])  varMatLevelTex  = p->asTexture();
         if (auto p = renderData[kOutputVarMaturityMu]) varMatMuTex = p->asTexture();
         if (auto p = renderData[kOutputRaySavedRatio])  raySavedRatioTex  = p->asTexture();
@@ -421,7 +427,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mpDiagTex           = makeRGBA("VHF_Diag");
                 mpVarMaturityLevelTex  = makeRGBA("VHF_VarMaturityLevel");
                 mpVarMaturityMuTex = makeRGBA("VHF_VarMaturityMu");
-                mpDiagErrorTex      = makeR32F("VHF_DiagError");
                 mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
                 mpNoiseTex          = makeR32F("VHF_Noise");
                 mResetAccum = true;  // accum textures need realloc too
@@ -430,10 +435,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 // (background, specular) start at zero instead of GPU garbage.
                 pCtx->clearUAV(mpVarMaturityLevelTex->getUAV().get(), float4(0.f));
                 pCtx->clearUAV(mpVarMaturityMuTex->getUAV().get(), float4(0.f));
-                pCtx->clearUAV(mpDiagErrorTex->getUAV().get(), float4(0.f));
             }
             if (!diagTex)           diagTex           = mpDiagTex;
-            if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
             if (!varMatLevelTex)  varMatLevelTex  = mpVarMaturityLevelTex;
             if (!varMatMuTex) varMatMuTex = mpVarMaturityMuTex;
             if (!raySavedRatioTex)  raySavedRatioTex  = mpRaySavedRatioTex;
@@ -464,8 +467,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                     pCtx->clearUAV(diagTex->getUAV().get(), float4(0.f));
                 // Clear snapshot textures too so stale data from the previous
                 // warmup phase doesn't leak into the averaging window.
-                if (diagErrorTex)
-                    pCtx->clearUAV(diagErrorTex->getUAV().get(), float4(0.f));
                 if (varMatLevelTex)
                     pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
                 if (varMatMuTex)
@@ -476,15 +477,17 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // Per-frame snapshot textures: NOT cleared here — the renderer overwrites
-        // every pixel during tracing. Clearing here would race with ColorMapPass
-        // (no ordering edge from renderer to heatmaps), causing them to show zeros.
-        // By not clearing, ColorMapPass reads previous-frame data (1-frame delay,
-        // visually correct once the cache is stable).
+        // Per-frame snapshot textures: cleared each frame so unwritten pixels
+        // (background, specular, cold-miss exclusions) show zero instead of
+        // stale data from previous frames.
+        if (varMatLevelTex)
+            pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
+        if (varMatMuTex)
+            pCtx->clearUAV(varMatMuTex->getUAV().get(), float4(0.f));
+
         auto exposeSnapshot = [&](ref<Texture>& tex, const char* key) {
             if (tex) dict[key] = tex;
         };
-        exposeSnapshot(diagErrorTex,      "vhfDiagError");
         exposeSnapshot(varMatLevelTex,  "vhfVarMaturityLevel");
         exposeSnapshot(varMatMuTex, "vhfVarMaturityMu");
 

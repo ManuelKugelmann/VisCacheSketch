@@ -83,25 +83,15 @@ def render_graph_PathTracer(viscache=False, maxBounces=3):
     # -------------------------------------------------------------------
     if viscache:
         # Mark diagnostic outputs (captured at end of frame, after all passes)
-        g.markOutput("VisCache.vcDiag")             # posA cell hash (debug) / raw diag data
-        g.markOutput("VisCache.vcVarMaturityLevel")
-        g.markOutput("VisCache.vcVarMaturityMu")
+        g.markOutput("VisCache.vcDiag")             # accumulated: R=var*4, G=maturity, B=mu, A=count
+        g.markOutput("VisCache.vcVarMaturityLevel") # frame: R=probeSteps, G=sampleCount, B=level
+        g.markOutput("VisCache.vcVarMaturityMu")    # frame: R=var*4, G=maturity, B=mu, A=coldmiss
+        g.markOutput("VisCache.vcRaySavedRatio")    # accumulated: ray traced ratio [0,1]
+        g.markOutput("VisCache.vcNoise")            # accumulated: noise estimate (variance EMA)
 
-        # Heatmaps: connect VisCache outputs to ColorMapPass.
-        # NOTE: These show previous-frame data because the render graph executes
-        # VisCache → ColorMapPass → PathTracer (no ordering edge from PT to heatmaps).
-        # After warmup the cache is stable so this is visually correct.
-        # TODO: Add a dedicated VisCacheDiagResolve pass that runs after PathTracer
-        #       to produce same-frame heatmaps.
-        heatErr = createPass("ColorMapPass", {
-            "colorMap": "Inferno",
-            "channel":  0,
-            "autoRange": True,
-        })
-        g.addPass(heatErr, "HeatmapError")
-        g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
-        g.markOutput("HeatmapError.output")
-
+        # Heatmaps via ColorMapPass — show previous-frame data (1-frame delay,
+        # no ordering edge from PathTracer to ColorMapPass). Kept for interactive
+        # use; ladder tests extract raw EXR channels instead.
         heatRayPct = createPass("ColorMapPass", {
             "colorMap": "Viridis",
             "channel":  0,

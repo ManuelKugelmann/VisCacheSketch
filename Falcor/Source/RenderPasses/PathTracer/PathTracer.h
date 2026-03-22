@@ -223,6 +223,6 @@ private:
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.
     bool mVisCacheDiagnostics = false;
-    ref<Texture> mpVCDiag, mpVCDiagError, mpVCVarMaturityLevel, mpVCVarMaturityMu;
+    ref<Texture> mpVCDiag, mpVCVarMaturityLevel, mpVCVarMaturityMu;
     ref<Texture> mpVCAccumSaved, mpVCAccumTotal, mpVCRaySavedRatio, mpVCNoise;
 };

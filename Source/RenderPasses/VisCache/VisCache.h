@@ -177,7 +177,6 @@ private:
 
     // Per-frame diag textures (cleared each frame)
     ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
-    ref<Texture>    mpDiagErrorTex;     ///< R32F: prediction error |mu - V|
     ref<Texture>    mpVarMaturityLevelTex; ///< RGBA32F: var/maturity/level heatmap (R=var, G=maturity, B=level)
     ref<Texture>    mpVarMaturityMuTex; ///< RGBA32F: var/maturity/mu heatmap (R=var, G=maturity, B=mu)
 
@@ -186,7 +185,8 @@ private:
     ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count
     ref<Texture>    mpRaySavedRatioTex; ///< R32Float: saved/total ratio
     ref<Texture>    mpNoiseTex;         ///< R32Float: noise estimate (variance EMA)
-    bool            mResetAccum = true; ///< Clear accum textures next frame
+    bool            mResetAccum = true;      ///< Clear accum textures next frame
+    bool            mClearHashTable = true;  ///< Clear hash table to empty sentinel
 
     uint2           mFrameDims = {0, 0};
 };

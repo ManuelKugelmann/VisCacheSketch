@@ -18,10 +18,9 @@ import RenderPasses.VisCache.VisCache;
 Texture2D<float4> gWorldPos;     ///< Surface world position (xyz) + hit flag (w > 0)
 
 // Diagnostic outputs (same textures as VisCacheDiagnostics.slang)
-RWTexture2D<float4> gVCDiag;           ///< R=mu, G=var, B=level+1, A=raySaved
-RWTexture2D<float>  gVCDiagError;      ///< Unused in deferred pass (no ground truth V)
-RWTexture2D<float4> gVCVarMaturityLevel;  ///< var/maturity/level heatmap (R=var, G=maturity, B=level)
-RWTexture2D<float4> gVCVarMaturityMu; ///< var/maturity/mu heatmap (R=var, G=maturity, B=mu)
+RWTexture2D<float4> gVCDiag;              ///< R=mu, G=var, B=level+1, A=raySaved
+RWTexture2D<float4> gVCVarMaturityLevel;  ///< R=probeSteps, G=sampleCount, B=level
+RWTexture2D<float4> gVCVarMaturityMu;     ///< R=var*4, G=maturity, B=mu, A=coldmiss
 RWTexture2D<uint>   gVCAccumSaved;     ///< Per-pixel saved ray count (not used here)
 RWTexture2D<uint>   gVCAccumTotal;     ///< Per-pixel total query count (not used here)
 RWTexture2D<float>  gVCRaySavedRatio;  ///< saved/total ratio
@@ -45,9 +44,8 @@ void csDiag(uint3 tid : SV_DispatchThreadID)
     if (posW.w == 0.f)
     {
         gVCDiag[pixel]           = float4(0.f);
-        gVCDiagError[pixel]      = 0.f;
-        gVCVarMaturityLevel[pixel]  = float4(0.f, 0.f, 0.f, 1.f);
-        gVCVarMaturityMu[pixel] = float4(0.f, 0.f, 0.f, 1.f);
+        gVCVarMaturityLevel[pixel]  = float4(0.f);
+        gVCVarMaturityMu[pixel] = float4(0.f, 0.f, 0.f, 1.f);  // A=1 = coldmiss (no surface)
         gVCRaySavedRatio[pixel]  = 0.f;
         gVCNoise[pixel]          = 0.f;
         return;
@@ -69,8 +67,6 @@ void csDiag(uint3 tid : SV_DispatchThreadID)
         float(r.level + 1),
         raySavedEst
     );
-
-    gVCDiagError[pixel] = 0.f;  // No ground truth V available in deferred pass
 
     gVCVarMaturityLevel[pixel] = float4(
         saturate(r.var * 4.f),                              // R: variance / 0.25

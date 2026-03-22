@@ -20,7 +20,7 @@ kResY = 512
 FRAME_CONFIGS = [
     (0, 1),      # single frame — raw first-sample snapshot
 ]
-scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
+scene_file = os.environ.get("SCENE_FILE", "media/scenes/CornellBox.pyscene")
 scene_name = os.path.splitext(os.path.basename(scene_file))[0]
 
 # Shared base config: 1 level, no jitter, all features off, always trace
@@ -84,20 +84,23 @@ def out(d, name, prefix=""):
     return os.path.join(d, f"{prefix}{name}.png")
 
 def postprocess(captureDir, prefix):
-    """7-column grid layout with variant prefix.
-    Row 1 (accum):  1_RGB  2_var  3_mat  4_mu  5__  6__  7_render
-    Row 2 (snap):   1_RGB  2_var  3_mat  4_mu  5_probe  6_count  7_level
-    Row 3 (output): 1_render  2_error  3_noise  4_raysaved  5__  6__  7__
+    """8-column grid layout with variant prefix.
+    Row 1 (accum):  1_RGB  2_var  3_mat  4_mu  5__  6__  7_render  8_coldmiss
+    Row 2 (snap):   1_RGB  2_var  3_mat  4_mu  5_probe  6_count  7_level  8_coldmiss
+    Row 3 (output): 1_render  2_error  3_noise  4_raysaved  5__  6__  7__  8__
     """
     import shutil
     p = prefix
     for exr in glob.glob(os.path.join(captureDir, "*.exr")):
         base = os.path.basename(exr)
-        if "vcDiag." in base:
+        if "vcDiag." in base and "vcDiagError" not in base:
             ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_1_var_mat_mu", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_2_var", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_3_mat", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum_4_mu", p)])
+        elif "vcDiagError" in base:
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_8_coldmiss", p)])
+            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_8_coldmiss", p)])
         elif "VarMaturityMu" in base:
             ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_1_var_mat_mu", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_2_var", p)])
@@ -108,7 +111,7 @@ def postprocess(captureDir, prefix):
             ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_6_probesteps", p)])
             ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_7_samplecount", p)])
 
-    # Row 3: Mogwai outputs — rename to remove "Heatmap" and add grid numbering
+    # Row 3: Mogwai outputs
     vn = prefix[:-1]  # variant name without trailing _
     renames = [
         (f"{vn}.ToneMapper.dst.",       "output_1_render"),
@@ -121,11 +124,12 @@ def postprocess(captureDir, prefix):
             shutil.copy(png, out(captureDir, newname, p))
             break
 
-    # Pad row 1 (accum 5-6) and row 3 (output 5-7) + accum 7 = render
+    # Render in accum row
     for png in glob.glob(os.path.join(captureDir, f"*ToneMapper.dst.*")):
         shutil.copy(png, out(captureDir, "accum_7_render", p))
         break
-    for slot in ["accum_5__", "accum_6__", "output_5__", "output_6__", "output_7__"]:
+    # Padding (8-column grid)
+    for slot in ["accum_5__", "accum_6__", "output_5__", "output_6__", "output_7__", "output_8__"]:
         ffrun(["-f", "lavfi", "-i", f"color=black:s={kResX}x{kResY}:d=1", "-frames:v", "1",
                "-pix_fmt", "rgb24", out(captureDir, slot, p)])
 

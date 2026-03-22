@@ -11,7 +11,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants
 
-scene_file = os.environ.get("SCENE_FILE", "media/Arcade/Arcade.pyscene")
+scene_file = os.environ.get("SCENE_FILE", "media/scenes/CornellBox.pyscene")
 
 run_variants(
     step_name="01",

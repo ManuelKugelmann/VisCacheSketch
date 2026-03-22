@@ -45,7 +45,7 @@ VARIANTS = [
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.06,
     }),
-    ("pos_posB", {
+    ("posA_posB", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.061,      # slightly different → no canonicalization
@@ -64,13 +64,13 @@ VARIANTS = [
     ("pos_dir_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "angularBCoarse": 45.0,
+        "angularBCoarse": 15.0,
         "distBCoarse": 1000.0,
     }),
     ("pos_dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
-        "angularBCoarse": 45.0,
+        "angularBCoarse": 15.0,
         "distBCoarse": 0.24,
     }),
 ]
@@ -88,71 +88,70 @@ def ffrun(args):
 def _out(d, name, prefix=""):
     return os.path.join(d, f"{prefix}{name}.png")
 
-def postprocess(captureDir, prefix):
-    """Extract named PNGs from EXR composites. Grid layout:
-    Row 1 (accum): var_mat_mu, var, mat, mu, pad, pad, render
-    Row 2 (snap):  var_mat_mu, var, mat, mu, probe_samp_level, probesteps, samplecount
-    Row 3 (output): render, error, noise, raysaved, pad, pad, pad
+def postprocess(captureDir, prefix, variant_name, resX=kResX, resY=kResY):
+    """Extract named PNGs from EXR composites and rename Mogwai outputs.
+    Filters by variant_name to avoid cross-variant contamination.
+
+    6-column grid:
+    Row 1 (accum): render, raystraced, noise, mean, variance, maturity
+    Row 2 (frame): probesteps, samplecount, coldmiss, mean, variance, maturity
     """
     p = prefix
-    for exr in glob.glob(os.path.join(captureDir, "*.exr")):
+    vn = variant_name
+
+    # --- EXR diagnostics (filter by variant name prefix) ---
+    for exr in glob.glob(os.path.join(captureDir, f"{vn}.*")):
         base = os.path.basename(exr)
-        if "vcDiag." in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", _out(captureDir, "accum_1_var_mat_mu", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", _out(captureDir, "accum_2_var", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", _out(captureDir, "accum_3_mat", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", _out(captureDir, "accum_4_mu", p)])
+        if not exr.endswith(".exr"):
+            continue
+        if "vcDiag." in base and "vcDiagError" not in base:
+            # vcDiag channels: R=var*4, G=maturity, B=mu
+            ffrun(["-i", exr, "-vf", "extractplanes=b,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "accum_4_mean", p)])
+            ffrun(["-i", exr, "-vf", "extractplanes=r,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "accum_5_variance", p)])
+            ffrun(["-i", exr, "-vf", "extractplanes=g,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "accum_6_maturity", p)])
         elif "VarMaturityMu" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", _out(captureDir, "snap_1_var_mat_mu", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", _out(captureDir, "snap_2_var", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", _out(captureDir, "snap_3_mat", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", _out(captureDir, "snap_4_mu", p)])
+            # VarMaturityMu channels: R=var*4, G=maturity, B=mu, A=coldmiss
+            ffrun(["-i", exr, "-vf", "extractplanes=a,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "frame_3_coldmiss", p)])
+            ffrun(["-i", exr, "-vf", "extractplanes=b,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "frame_4_mean", p)])
+            ffrun(["-i", exr, "-vf", "extractplanes=r,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "frame_5_variance", p)])
+            ffrun(["-i", exr, "-vf", "extractplanes=g,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "frame_6_maturity", p)])
         elif "VarMaturityLevel" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", _out(captureDir, "snap_5_probe_samp_level", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", _out(captureDir, "snap_6_probesteps", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", _out(captureDir, "snap_7_samplecount", p)])
+            # VarMaturityLevel channels: R=probeSteps, G=sampleCount, B=level
+            ffrun(["-i", exr, "-vf", "extractplanes=r,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "frame_1_probesteps", p)])
+            ffrun(["-i", exr, "-vf", "extractplanes=g,format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "frame_2_samplecount", p)])
+        elif "vcRaySavedRatio" in base:
+            ffrun(["-i", exr, "-vf", "format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "accum_2_raystraced", p)])
+        elif "vcNoise" in base:
+            ffrun(["-i", exr, "-vf", "format=gray,pseudocolor=preset=viridis", "-pix_fmt", "rgb24", _out(captureDir, "accum_3_noise", p)])
 
-    # Row 3: Mogwai outputs
-    vn = prefix.rstrip("_").rsplit("_", 1)[0] if "_s_" in prefix else prefix.rstrip("_")
-    # Find the variant's base capture name (before the frame tag)
-    parts = prefix.rstrip("_").split("_")
-    # The Mogwai base filename is the variant name (set as fc.baseFilename)
-    for pat, name in [("ToneMapper.dst.", "output_1_render"),
-                      ("Error.output.", "output_2_error"),
-                      ("Noise.output.", "output_3_noise"),
-                      ("RaySavedPct.output.", "output_4_raysaved")]:
-        for png in glob.glob(os.path.join(captureDir, f"*{pat}*")):
-            shutil.copy(png, _out(captureDir, name, p))
-            break
-
-    # Render in accum row
-    for png in glob.glob(os.path.join(captureDir, f"*ToneMapper.dst.*")):
-        shutil.copy(png, _out(captureDir, "accum_7_render", p))
+    # --- Move ToneMapper render to accum row ---
+    for src in glob.glob(os.path.join(captureDir, f"{vn}.ToneMapper.dst.*")):
+        shutil.move(src, _out(captureDir, "accum_1_render", p))
         break
 
-    # Padding
-    for slot in ["accum_5__", "accum_6__", "output_5__", "output_6__", "output_7__"]:
-        ffrun(["-f", "lavfi", "-i", f"color=black:s={kResX}x{kResY}:d=1", "-frames:v", "1",
-               "-pix_fmt", "rgb24", _out(captureDir, slot, p)])
+    # Delete all remaining Mogwai outputs (heatmaps broken due to 1-frame delay)
+    for src in glob.glob(os.path.join(captureDir, f"{vn}.Heatmap*")):
+        os.remove(src)
 
-def run_variants(step_name, frame_configs, scene_file, variants=None, maxBounces=1, mogwai_globals=None):
+def run_variants(step_name, frame_configs, scene_file, variants=None,
+                  maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None):
     """Run all variants × frame configs for a ladder step.
     mogwai_globals: pass globals() from the Mogwai script to access m, fc, etc.
     """
     if variants is None:
         variants = VARIANTS
-    # Get Mogwai builtins from caller's globals
     g_dict = mogwai_globals or {}
     m = g_dict.get('m')
     fc = g_dict.get('fc')
     if m is None or fc is None:
         raise RuntimeError("run_variants needs mogwai_globals=globals() from a Mogwai script")
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    res_tag = f"{resX}x{resY}"
 
     for (variant_name, overrides) in variants:
         for (warmup, averaging) in frame_configs:
             captureDir = f"captures/ladder/{step_name}/{scene_name}"
-            tag = f"s_{warmup}_{averaging}"
+            tag = f"s_{warmup}_{averaging}_{res_tag}"
             print(f"\n[{step_name}] ======== {variant_name} {tag} ({scene_name}) ========")
 
             saved = {}
@@ -171,7 +170,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None, maxBounces
 
             m.addGraph(g)
             m.loadScene(scene_file)
-            m.resizeFrameBuffer(kResX, kResY)
+            m.resizeFrameBuffer(resX, resY)
 
             os.makedirs(captureDir, exist_ok=True)
             fc.outputDir = captureDir
@@ -193,10 +192,12 @@ def run_variants(step_name, frame_configs, scene_file, variants=None, maxBounces
             m.renderFrame()
 
             print(f"[{step_name}] Captured ({tag})")
-            postprocess(captureDir, f"{tag}_{variant_name}_")
+            postprocess(captureDir, f"{tag}_{variant_name}_", variant_name, resX, resY)
 
-            # Delete raw EXRs
-            for f in glob.glob(os.path.join(captureDir, "*.exr")):
+            # Delete raw EXRs and leftover Mogwai PNGs for this variant
+            for f in glob.glob(os.path.join(captureDir, f"{variant_name}.*.exr")):
+                os.remove(f)
+            for f in glob.glob(os.path.join(captureDir, f"{variant_name}.*.png")):
                 os.remove(f)
 
             m.removeGraph(g)
