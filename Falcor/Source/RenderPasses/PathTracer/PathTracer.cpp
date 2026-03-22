@@ -1250,6 +1250,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         if (mVisCacheDiagnostics)
         {
             mpVCDiag           = getTex("vhfDiag");
+            mpVCDiagError      = getTex("vhfDiagError");
             mpVCVarMaturityLevel  = getTex("vhfVarMaturityLevel");
             mpVCVarMaturityMu = getTex("vhfVarMaturityMu");
             mpVCAccumSaved     = getTex("vhfAccumSaved");
@@ -1259,7 +1260,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         }
         else
         {
-            mpVCDiag = mpVCVarMaturityLevel = mpVCVarMaturityMu = nullptr;
+            mpVCDiag = mpVCDiagError = mpVCVarMaturityLevel = mpVCVarMaturityMu = nullptr;
             mpVCAccumSaved = mpVCAccumTotal = mpVCRaySavedRatio = mpVCNoise = nullptr;
         }
 
@@ -1440,6 +1441,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     if (mVisCacheDiagnostics)
     {
         if (mpVCDiag)           var["gVCDiag"]           = mpVCDiag;
+        if (mpVCDiagError)      var["gVCDiagError"]      = mpVCDiagError;
         if (mpVCVarMaturityLevel)  var["gVCVarMaturityLevel"]  = mpVCVarMaturityLevel;
         if (mpVCVarMaturityMu) var["gVCVarMaturityMu"] = mpVCVarMaturityMu;
         if (mpVCAccumSaved)     var["gVCAccumSaved"]     = mpVCAccumSaved;

@@ -24,6 +24,7 @@ static constexpr uint32_t kStatCount = 5u;
 
 // Diagnostic heatmap output channel names
 static const std::string kOutputDiag           = "vcDiag";
+static const std::string kOutputDiagError      = "vcDiagError";
 static const std::string kOutputVarMaturityLevel  = "vcVarMaturityLevel";
 static const std::string kOutputVarMaturityMu = "vcVarMaturityMu";
 static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
@@ -31,6 +32,7 @@ static const std::string kOutputNoise          = "vcNoise";
 
 static const ChannelList kDiagOutputChannels = {
     { kOutputDiag,           "", "VisCache accumulated avg (R=var*4, G=maturity, B=mu, A=count)",          true, ResourceFormat::RGBA32Float },
+    { kOutputDiagError,      "", "Deprecated (coldmiss now in VarMaturityMu.A)",                           true, ResourceFormat::R32Float },
     { kOutputVarMaturityLevel,  "", "VisCache frame (R=probeSteps, G=sampleCount, B=level)",               true, ResourceFormat::RGBA32Float },
     { kOutputVarMaturityMu, "", "VisCache frame (R=var*4, G=maturity, B=mu, A=coldmiss)",                  true, ResourceFormat::RGBA32Float },
     { kOutputRaySavedRatio,  "", "Per-pixel ray traced ratio [0,1] (accumulated)",                         true, ResourceFormat::R32Float },
@@ -334,11 +336,13 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 
     // Clear hash table to empty-slot sentinel (fingerprint=0) on first use
     // or after reallocation. GPU memory is NOT zeroed on allocation.
-    if (mClearHashTable)
-    {
-        pCtx->clearUAV(mpHashTable->getUAV().get(), uint4(0u));
-        mClearHashTable = false;
-    }
+    // TODO: Clear hash table to empty sentinel. clearUAV on StructuredBuffer
+    // may cause TDR on some drivers — needs investigation.
+    // if (mClearHashTable)
+    // {
+    //     pCtx->clearUAV(mpHashTable->getUAV().get(), uint4(0u));
+    //     mClearHashTable = false;
+    // }
 
     auto& dict = renderData.getDictionary();
     dict["vhfTable"]    = mpHashTable;
@@ -408,10 +412,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         };
 
         // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
-        ref<Texture> diagTex, varMatLevelTex, varMatMuTex;
+        ref<Texture> diagTex, diagErrorTex, varMatLevelTex, varMatMuTex;
         ref<Texture> raySavedRatioTex, noiseTex;
 
         if (auto p = renderData[kOutputDiag])           diagTex           = p->asTexture();
+        if (auto p = renderData[kOutputDiagError])      diagErrorTex      = p->asTexture();
         if (auto p = renderData[kOutputVarMaturityLevel])  varMatLevelTex  = p->asTexture();
         if (auto p = renderData[kOutputVarMaturityMu]) varMatMuTex = p->asTexture();
         if (auto p = renderData[kOutputRaySavedRatio])  raySavedRatioTex  = p->asTexture();
@@ -427,6 +432,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mpDiagTex           = makeRGBA("VHF_Diag");
                 mpVarMaturityLevelTex  = makeRGBA("VHF_VarMaturityLevel");
                 mpVarMaturityMuTex = makeRGBA("VHF_VarMaturityMu");
+                mpDiagErrorTex      = makeR32F("VHF_DiagError");
                 mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
                 mpNoiseTex          = makeR32F("VHF_Noise");
                 mResetAccum = true;  // accum textures need realloc too
@@ -437,6 +443,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 pCtx->clearUAV(mpVarMaturityMuTex->getUAV().get(), float4(0.f));
             }
             if (!diagTex)           diagTex           = mpDiagTex;
+            if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
             if (!varMatLevelTex)  varMatLevelTex  = mpVarMaturityLevelTex;
             if (!varMatMuTex) varMatMuTex = mpVarMaturityMuTex;
             if (!raySavedRatioTex)  raySavedRatioTex  = mpRaySavedRatioTex;
@@ -477,17 +484,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // Per-frame snapshot textures: cleared each frame so unwritten pixels
-        // (background, specular, cold-miss exclusions) show zero instead of
-        // stale data from previous frames.
-        if (varMatLevelTex)
-            pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
-        if (varMatMuTex)
-            pCtx->clearUAV(varMatMuTex->getUAV().get(), float4(0.f));
+        // TODO: Per-frame clearing temporarily disabled for TDR debugging.
+        // if (varMatLevelTex)
+        //     pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
+        // if (varMatMuTex)
+        //     pCtx->clearUAV(varMatMuTex->getUAV().get(), float4(0.f));
 
         auto exposeSnapshot = [&](ref<Texture>& tex, const char* key) {
             if (tex) dict[key] = tex;
         };
+        exposeSnapshot(diagErrorTex,      "vhfDiagError");
         exposeSnapshot(varMatLevelTex,  "vhfVarMaturityLevel");
         exposeSnapshot(varMatMuTex, "vhfVarMaturityMu");
 

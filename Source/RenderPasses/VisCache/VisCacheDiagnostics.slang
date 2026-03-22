@@ -26,6 +26,7 @@ import RenderPasses.VisCache.VisCache;
 
 // --- Per-frame outputs (cleared each frame) ---
 RWTexture2D<float4> gVCDiag;              ///< Accumulated average: R=var*4, G=maturity, B=mu, A=sampleCount
+RWTexture2D<float>  gVCDiagError;         ///< Deprecated — kept for DXR root signature compat
 RWTexture2D<float4> gVCVarMaturityLevel;  ///< R=probeSteps, G=sampleCount, B=level, A=unused
 RWTexture2D<float4> gVCVarMaturityMu;     ///< R=var*4, G=maturity, B=mu, A=coldmiss
 

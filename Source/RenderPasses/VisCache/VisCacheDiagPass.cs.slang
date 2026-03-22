@@ -19,6 +19,7 @@ Texture2D<float4> gWorldPos;     ///< Surface world position (xyz) + hit flag (w
 
 // Diagnostic outputs (same textures as VisCacheDiagnostics.slang)
 RWTexture2D<float4> gVCDiag;              ///< R=mu, G=var, B=level+1, A=raySaved
+RWTexture2D<float>  gVCDiagError;         ///< Deprecated — kept for root signature compat
 RWTexture2D<float4> gVCVarMaturityLevel;  ///< R=probeSteps, G=sampleCount, B=level
 RWTexture2D<float4> gVCVarMaturityMu;     ///< R=var*4, G=maturity, B=mu, A=coldmiss
 RWTexture2D<uint>   gVCAccumSaved;     ///< Per-pixel saved ray count (not used here)

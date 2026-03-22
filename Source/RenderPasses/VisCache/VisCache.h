@@ -179,6 +179,7 @@ private:
     ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
     ref<Texture>    mpVarMaturityLevelTex; ///< RGBA32F: var/maturity/level heatmap (R=var, G=maturity, B=level)
     ref<Texture>    mpVarMaturityMuTex; ///< RGBA32F: var/maturity/mu heatmap (R=var, G=maturity, B=mu)
+    ref<Texture>    mpDiagErrorTex;     ///< R32F: deprecated (coldmiss now in VarMaturityMu.A)
 
     // Accumulated textures (persistent across frames, cleared on reset)
     ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count
