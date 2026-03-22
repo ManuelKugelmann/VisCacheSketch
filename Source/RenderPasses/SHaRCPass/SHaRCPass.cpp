@@ -63,16 +63,25 @@ Properties SHaRCPass::getProperties() const
     return p;
 }
 
+// Input/output channel names
+static const std::string kInputWorldPos  = "worldPos";
+static const std::string kInputWorldNorm = "worldNorm";
+static const std::string kOutputColor    = "color";
+
 // ---------------------------------------------------------------------------
 RenderPassReflection SHaRCPass::reflect(const CompileData&)
 {
     RenderPassReflection r;
+    r.addInput(kInputWorldPos, "World position (xyz) + hit flag (w)").format(ResourceFormat::RGBA32Float).flags(RenderPassReflection::Field::Flags::Optional);
+    r.addInput(kInputWorldNorm, "World normal").format(ResourceFormat::RGBA32Float).flags(RenderPassReflection::Field::Flags::Optional);
+    r.addOutput(kOutputColor, "Debug visualization output").format(ResourceFormat::RGBA32Float);
     return r;
 }
 
 // ---------------------------------------------------------------------------
-void SHaRCPass::compile(RenderContext*, const CompileData&)
+void SHaRCPass::compile(RenderContext*, const CompileData& compileData)
 {
+    mFrameDims = compileData.defaultTexDims;
     allocateBuffers();
 
     // Resolve compute pass
@@ -83,6 +92,16 @@ void SHaRCPass::compile(RenderContext*, const CompileData&)
         DefineList defines;
         defines.add("SHARC_ENABLE_64_BIT_ATOMICS", "1");
         mpResolvePass = ComputePass::create(mpDevice, desc, defines);
+    }
+
+    // Debug visualization compute pass
+    {
+        ProgramDesc desc;
+        desc.addShaderLibrary("RenderPasses/SHaRCPass/SharcDebugVis.cs.slang")
+            .csEntry("csSharcDebugVis");
+        DefineList defines;
+        defines.add("SHARC_ENABLE_64_BIT_ATOMICS", "1");
+        mpDebugVisPass = ComputePass::create(mpDevice, desc, defines);
     }
 }
 
@@ -197,6 +216,37 @@ void SHaRCPass::execute(RenderContext* pCtx, const RenderData& renderData)
         mpResolvePass->execute(pCtx, numGroups, 1u, 1u);
     }
 
+    // ----------------------------------------------------------------
+    // Debug visualization: query cache at primary hit positions.
+    // Requires worldPos + worldNorm inputs (from GBufferRT).
+    // ----------------------------------------------------------------
+    auto pWorldPos  = renderData[kInputWorldPos];
+    auto pWorldNorm = renderData[kInputWorldNorm];
+    auto pOutput    = renderData[kOutputColor];
+
+    if (mpDebugVisPass && pWorldPos && pWorldNorm && pOutput)
+    {
+        auto vars = mpDebugVisPass->getRootVar();
+        vars["gWorldPos"]   = pWorldPos->asTexture();
+        vars["gWorldNorm"]  = pWorldNorm->asTexture();
+        vars["gOutput"]     = pOutput->asTexture();
+        vars["gHashEntries"] = mpHashEntries;
+        vars["gResolved"]   = mpResolved;
+
+        vars["SharcVisCB"]["cameraPosition"] = cameraPosition;
+        vars["SharcVisCB"]["logarithmBase"]  = 2.0f;
+        vars["SharcVisCB"]["sceneScale"]     = mParams.sceneScale;
+        vars["SharcVisCB"]["levelBias"]      = mParams.levelBias;
+        vars["SharcVisCB"]["frameDim"]       = mFrameDims;
+        vars["SharcVisCB"]["debugMode"]      = uint32_t(mDebugMode);
+        vars["SharcVisCB"]["exposureScale"]  = mExposureScale;
+        vars["SharcVisCB"]["capacity"]       = mParams.capacity;
+
+        uint32_t gx = (mFrameDims.x + 15u) / 16u;
+        uint32_t gy = (mFrameDims.y + 15u) / 16u;
+        mpDebugVisPass->execute(pCtx, gx, gy, 1u);
+    }
+
     mCameraPositionPrev = cameraPosition;
     mFrameCount++;
 }
@@ -216,4 +266,13 @@ void SHaRCPass::renderUI(Gui::Widgets& widget)
     widget.var("Stale frame max",   mParams.staleFrameNumMax,     1u, 1024u);
     widget.var("Level bias",        mParams.levelBias,            -5.0f, 5.0f, 0.5f);
     widget.checkbox("Anti-firefly filter", mParams.enableAntiFirefly);
+    widget.separator();
+
+    static const Gui::DropdownList kDebugModes = {
+        {uint32_t(DebugMode::CachedRadiance), "Cached Radiance"},
+        {uint32_t(DebugMode::HashGridColor),  "Hash Grid Coloring"},
+        {uint32_t(DebugMode::Occupancy),      "Occupancy"},
+    };
+    widget.dropdown("Debug vis", kDebugModes, reinterpret_cast<uint32_t&>(mDebugMode));
+    widget.var("Exposure scale", mExposureScale, 0.01f, 100.0f, 0.1f);
 }

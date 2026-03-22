@@ -66,6 +66,7 @@ private:
     ref<Buffer> mpLockBuffer;        ///< RWStructuredBuffer<uint> — spinlock fallback (if no 64-bit atomics)
 
     ref<ComputePass> mpResolvePass;
+    ref<ComputePass> mpDebugVisPass;
 
     // ------------------------------------------------------------------
     // State
@@ -74,4 +75,15 @@ private:
     ref<Scene>  mpScene;
     uint32_t    mFrameCount = 0u;
     float3      mCameraPositionPrev = float3(0.f);
+
+    // Debug visualization
+    enum class DebugMode : uint32_t
+    {
+        CachedRadiance = 0,
+        HashGridColor  = 1,
+        Occupancy      = 2,
+    };
+    DebugMode   mDebugMode = DebugMode::CachedRadiance;
+    float       mExposureScale = 1.0f;
+    uint2       mFrameDims = {0, 0};
 };

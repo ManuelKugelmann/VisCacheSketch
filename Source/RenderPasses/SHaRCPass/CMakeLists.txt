@@ -7,6 +7,7 @@ target_sources(SHaRCPass PRIVATE
     HashGridCommon.slang
     SharcCommon.slang
     SharcResolve.cs.slang
+    SharcDebugVis.cs.slang
 )
 
 target_copy_shaders(SHaRCPass RenderPasses/SHaRCPass)
