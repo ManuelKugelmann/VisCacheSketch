@@ -28,6 +28,8 @@
 
 - [Hammersley and Handscomb 1964] J. M. Hammersley and D. C. Handscomb. *Monte Carlo Methods*. Methuen, London, 1964.
 
+- [Jin et al. 2025] H. Jin, Z. Zeng, L. Belcour, and T. Müller. "NRRS: Neural Russian Roulette and Splitting." *arXiv:2510.07868*, 2025.
+
 - [Jarzynski & Olano 2020] M. Jarzynski and M. Olano. "Hash Functions for GPU Rendering." *JCGT*, 9(3):21–38, 2020.
 
 - [Kallweit et al. 2022] S. Kallweit, P. Clarberg, C. Kolb, T. Davidovič, K.-H. Yao, T. Foley, Y. He, L. Wu, L. Chen, T. Akenine-Möller, C. Wyman, C. Crassin, and N. Benty. "The Falcor Rendering Framework." 2022. [https://github.com/NVIDIAGameWorks/Falcor](https://github.com/NVIDIAGameWorks/Falcor)
@@ -68,6 +70,8 @@
 
 - [Talbot et al. 2005] J. Talbot, D. Cline, and P. Egbert. "Importance Resampling for Global Illumination." *Eurographics Symposium on Rendering*, pp. 139–146, 2005.
 
+- [Tokuyoshi 2024] Y. Tokuyoshi. "Efficient Visibility Reuse for Real-time ReSTIR." *ACM SIGGRAPH 2024 Talks*, Article 20, 2024.
+
 - [Teschner et al. 2003] M. Teschner et al. "Optimized Spatial Hashing for Collision Detection of Deformable Objects." *Proc. VMV*, pp. 47–54, 2003.
 
 - [Ulbrich et al. 2013] R. Ulbrich, J. Novák, H. Rehfeld, and C. Dachsbacher. "Progressive Visibility Caching for Fast Indirect Illumination." *Proc. VMV*, 2013.
@@ -77,5 +81,7 @@
 - [Ward 1991] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *2nd Eurographics Workshop on Rendering*, Barcelona, 1991. Published in *Photorealistic Rendering in Computer Graphics*, pp. 11–20, Springer-Verlag, 1994.
 
 - [Zeng et al. 2025] Z. Zeng et al. "ReSTIR Path Guiding." *ACM SIGGRAPH*, 2025.
+
+- [Zhang, Lin et al. 2025] S. Zhang, D. Lin, C. Wyman, and C. Yuksel. "Many-Light Rendering Using ReSTIR-Sampled Shadow Maps." *Computer Graphics Forum* (Eurographics), 44(2), 2025.
 
 - [Zhang et al. 2024] Y. Zhang et al. "Area ReSTIR: Re-Sampling for Real-Time Defocus and Antialiasing." *ACM SIGGRAPH*, 2024.

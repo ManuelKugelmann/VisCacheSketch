@@ -70,8 +70,10 @@ with two decades of hashing and GPU advances:
   each level's variance controls whether the next finer level is written.
   High-variance regions trace more *and* cascade to fine resolution;
   stable regions stop propagation early.
-  Stotko et al. [2025] independently developed the same principle
-  for TSDF hashing.
+  This dual coupling — one signal, two decisions —
+  is what makes the cache self-regulating without per-scene tuning.
+  Stotko et al. [2025] independently developed the same
+  variance-to-resolution principle for TSDF hashing.
   See Sec. 8.
 
 The cache is agnostic to its client algorithm.

@@ -166,6 +166,11 @@ Rath et al. [2022] (EARS) learn optimal RR/splitting factors
 during rendering via efficiency-aware iteration,
 provably converging to Bolin and Meyer's optimal factors;
 Meyer et al. [2024] (MARS) generalize this to per-technique sample counts.
+Jin et al. [2025] (NRRS) pioneer neural networks
+with multi-resolution hash-grid encoding
+to learn RR factors for wavefront path tracing,
+introducing a normalized RRS formulation with bounded path count
+for GPU-friendly execution.
 All operate on **path continuation** decisions (bounce-level RR/splitting),
 not on shadow ray gating.
 Our work is orthogonal:
@@ -232,3 +237,16 @@ skip revalidation (light leaks) vs. always retrace (expensive) —
 is what makes GI revalidation our strongest integration case (Sec. 9.3).
 Prediction-with-correction resolves this tradeoff:
 unbiased revalidation at near-biased-skip cost.
+
+Tokuyoshi [2024] addresses the same revalidation cost
+by reusing visibility from spatiotemporal neighbor samples,
+reducing shadow noise on contact shadows and edges
+without additional ray tracing.
+Zhang, Lin et al. [2025] avoid shadow rays entirely for most lights
+by computing full-resolution shadow maps
+for a ReSTIR-selected subset of lights,
+handling the remainder with imperfect shadow maps.
+Both are complementary to our approach:
+visibility reuse and shadow maps reduce *which* rays are traced,
+while prediction-with-correction reduces *whether* a ray is traced
+for a given query.

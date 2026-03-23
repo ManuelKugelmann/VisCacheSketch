@@ -18,7 +18,8 @@ and correct cached predictions stochastically
 so that the estimator remains unbiased regardless of cache quality.
 Position-seeded jitter provides an intrinsic box filter across cell boundaries,
 while variance derived from the Bernoulli mean alone
-drives both the correction rate and the write depth across levels.
+drives both the correction rate and the spatial write depth —
+a coupled dual adaptation that makes the cache self-regulating.
 The cache is algorithm-agnostic but pairs naturally with ReSTIR,
 whose spatial reuse funnels many pixels onto the same lights
 and therefore the same visibility queries.
