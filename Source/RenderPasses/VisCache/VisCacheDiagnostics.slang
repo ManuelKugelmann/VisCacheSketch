@@ -4,15 +4,15 @@
  * Per-pixel diagnostic output for VisCache heatmap visualization.
  *
  * Per-frame outputs (cleared each frame by host):
- *   gVCVarMaturityMu    (RGBA32Float) — R=var*4, G=maturity, B=mu, A=coldmiss
- *   gVCVarMaturityLevel (RGBA32Float) — R=probeSteps, G=sampleCount, B=level, A=unused
+ *   gVCFrameMeanVarMatSamplesRaw      (RGBA32Float) — R=variance*4, G=maturity, B=mean, A=samplesRaw
+ *   gVCFrameLevelProbesSamplesCold    (RGBA32Float) — R=level, G=probeSteps, B=samples, A=coldmiss
+ *   gVCFrameHashAHashBHashABRays      (RGBA32Float) — R=posAHash, G=posBHash, B=combinedHash, A=raysTraced
  *
  * Accumulated outputs (persistent across frames):
- *   gVCDiag           (RGBA32Float) — R=var*4, G=maturity, B=mu, A=sampleCount
+ *   gVCAccumMeanVarMatCount           (RGBA32Float) — R=variance*4, G=maturity, B=mean, A=sampleCount
+ *   gVCAccumRaysNoiseErrorCold        (RGBA32Float) — R=raysTraced, G=renderNoise, B=renderError, A=coldmiss
  *   gVCAccumSaved     (R32Uint)     — per-pixel count of saved rays
  *   gVCAccumTotal     (R32Uint)     — per-pixel count of total queries
- *   gVCRaySavedRatio  (R32Float)    — ray traced ratio [0,1]
- *   gVCNoise          (R32Float)    — noise estimate (variance EMA)
  *
  * Usage:
  *   Import this file in any pass that calls vhfGate/vhfCommit and bind
@@ -24,17 +24,16 @@
 
 import RenderPasses.VisCache.VisCache;
 
-// --- Per-frame outputs (cleared each frame) ---
-RWTexture2D<float4> gVCDiag;              ///< Accumulated average: R=var*4, G=maturity, B=mu, A=sampleCount
-RWTexture2D<float>  gVCDiagError;         ///< Deprecated — kept for DXR root signature compat
-RWTexture2D<float4> gVCVarMaturityLevel;  ///< R=probeSteps, G=sampleCount, B=level, A=unused
-RWTexture2D<float4> gVCVarMaturityMu;     ///< R=var*4, G=maturity, B=mu, A=coldmiss
+// --- Per-frame snapshot outputs (overwritten each frame) ---
+RWTexture2D<float4> gVCFrameMeanVarMatSamplesRaw;          ///< R=variance*4, G=maturity, B=mean, A=samplesRaw
+RWTexture2D<float4> gVCFrameLevelProbesSamplesCold;        ///< R=level, G=probeSteps, B=sampleCount, A=coldmiss
+RWTexture2D<float4> gVCFrameHashAHashBHashABRays;          ///< R=posAHash, G=posBHash, B=combinedHash, A=raysTraced
 
 // --- Accumulated outputs (persistent, NOT cleared per frame) ---
-RWTexture2D<uint>   gVCAccumSaved;     ///< Per-pixel saved ray count
-RWTexture2D<uint>   gVCAccumTotal;     ///< Per-pixel total query count
-RWTexture2D<float>  gVCRaySavedRatio;  ///< ray traced ratio: (total-saved)/total [0,1]
-RWTexture2D<float>  gVCNoise;          ///< Per-pixel noise EMA (variance)
+RWTexture2D<float4> gVCAccumMeanVarMatCount;               ///< R=variance*4, G=maturity, B=mean, A=count (online mean bookkeeping)
+RWTexture2D<float4> gVCAccumRaysNoiseErrorCold;            ///< R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
+RWTexture2D<uint>   gVCAccumSaved;                         ///< Internal: per-pixel saved ray count
+RWTexture2D<uint>   gVCAccumTotal;                         ///< Internal: per-pixel total query count
 
 /// Write per-pixel diagnostics after a vhfGate/vhfCommit sequence.
 /// @param pixel       Screen-space pixel coordinate.
@@ -48,34 +47,42 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     float diagVar = noEntry ? 0.f : g.var;
     float coldmiss = noEntry ? 1.f : 0.f;
 
-    // --- Snapshot composites (overwritten each frame — last stochastic sample) ---
-    // Cold misses: var/maturity/mu stay at cleared 0, but A=coldmiss is always written.
-    gVCVarMaturityMu[pixel] = float4(
-        noEntry ? 0.f : saturate(diagVar * 4.f),                    // R: variance [0,0.25]→[0,1]
+    // --- Per-frame snapshots (both written unconditionally, zeros for cold misses) ---
+    gVCFrameMeanVarMatSamplesRaw[pixel] = float4(
+        noEntry ? 0.f : saturate(diagVar * 4.f),                      // R: variance [0,0.25]→[0,1]
         noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold)), // G: maturity [0,1]
-        noEntry ? 0.f : g.mu,                                        // B: cached mu [0,1]
-        coldmiss                                                      // A: cold miss indicator
+        noEntry ? 0.f : g.mu,                                          // B: cached mu [0,1]
+        noEntry ? 0.f : float(g.N)                                     // A: raw sample count
     );
 
-    if (!noEntry)
+    gVCFrameLevelProbesSamplesCold[pixel] = float4(
+        noEntry ? 0.f : float(g.level + 1) / max(float(gNumLevels), 1.f),  // R: LOD level
+        noEntry ? 0.f : saturate(float(g.probeSteps) / float(kMaxProbe)),   // G: probe steps
+        noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold * 8u)),  // B: sample count
+        coldmiss                                                             // A: cold miss
+    );
+
+    // Hash vis + frame ray traced indicator
     {
-        gVCVarMaturityLevel[pixel] = float4(
-            saturate(float(g.probeSteps) / float(kMaxProbe)),       // R: probe steps [0,maxProbe]→[0,1]
-            saturate(float(g.N) / float(gBootThreshold * 8u)),      // G: sample count [0,8*boot]→[0,1]
-            float(g.level + 1) / max(float(gNumLevels), 1.f),      // B: LOD level [0,N]→[0,1]
-            1.f
+        uint posAHash = vhfCanonicalKey(g.qa);
+        uint posBHash = vhfCanonicalKey(g.qb);
+        gVCFrameHashAHashBHashABRays[pixel] = float4(
+            float(posAHash & 0xFFFFu) / 65535.f,                    // R: posA cell hash
+            float(posBHash & 0xFFFFu) / 65535.f,                    // G: posB cell hash
+            float((posAHash ^ posBHash) & 0xFFFFu) / 65535.f,      // B: combined hash
+            traced ? 1.f : 0.f                                       // A: frame ray traced (binary at bounce 0)
         );
     }
 
-    // --- Accumulated simple average (cleared by host between warmup and capture) ---
-    // Same channel layout as snapshot: R=var, G=maturity, B=mu.
-    // A = valid sample count. Cold misses excluded.
+    // --- Accumulated outputs (persistent across frames) ---
+
+    // Online mean: R=variance, G=maturity, B=mean, A=count.
     if (!noEntry)
     {
-        float4 prev = gVCDiag[pixel];
+        float4 prev = gVCAccumMeanVarMatCount[pixel];
         float count = prev.a + 1.f;
         float alpha = 1.f / count;
-        gVCDiag[pixel] = float4(
+        gVCAccumMeanVarMatCount[pixel] = float4(
             lerp(prev.r, saturate(diagVar * 4.f), alpha),
             lerp(prev.g, saturate(float(g.N) / float(gBootThreshold)), alpha),
             lerp(prev.b, g.mu, alpha),
@@ -83,17 +90,22 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         );
     }
 
-    // --- Accumulate ray savings ratio (persistent across frames) ---
+    // Ray counters + derived metrics
     uint saved = gVCAccumSaved[pixel] + (traced ? 0u : 1u);
     uint total = gVCAccumTotal[pixel] + 1u;
     gVCAccumSaved[pixel] = saved;
     gVCAccumTotal[pixel] = total;
-    gVCRaySavedRatio[pixel] = float(total - saved) / float(total);
 
-    // --- Noise estimate: EMA of cache variance ---
-    {
-        float ema = 1.f / float(min(total, 256u));
-        float oldNoise = gVCNoise[pixel];
-        gVCNoise[pixel] = lerp(oldNoise, g.var, ema);
-    }
+    float accumRaysTracedRatio = float(total - saved) / float(total);
+    float hitCount = gVCAccumMeanVarMatCount[pixel].a;
+    float accumColdmissRate = 1.f - hitCount / max(float(total), 1.f);
+
+    // Read previous accum values for G/B channels (renderNoise/renderError filled by host, preserved here)
+    float4 prevAccum = gVCAccumRaysNoiseErrorCold[pixel];
+    gVCAccumRaysNoiseErrorCold[pixel] = float4(
+        accumRaysTracedRatio,       // R: accumulated ray traced ratio [0,1]
+        prevAccum.g,                // G: renderNoise (filled by compute pass, preserved)
+        prevAccum.b,                // B: renderError (filled by post-process, preserved)
+        accumColdmissRate           // A: accumulated cold miss rate [0,1]
+    );
 }

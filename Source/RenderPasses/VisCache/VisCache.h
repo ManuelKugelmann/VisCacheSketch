@@ -22,8 +22,8 @@ using namespace Falcor;
 // Downstream passes write to these via dictionary-exposed textures.
 // Connect to ColorMapPass for visualization (channel R/G/B/A selects metric).
 // ---------------------------------------------------------------------------
-// vcDiag (RGBA32Float): R=cachedMu, G=variance, B=level+1(0=miss), A=raySaved
-// vcDiagError (R32Float): |mu - V| prediction error
+// vcAccumMeanVarMatCount (RGBA32F): R=variance*4, G=maturity, B=mean, A=count (accumulated avg)
+// vcAccumRaysNoiseErrorCold (RGBA32F): R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
 // ---------------------------------------------------------------------------
 
 class VisCache : public RenderPass
@@ -62,7 +62,7 @@ public:
         float    pMin;
         float    fireflyBudget;
         uint32_t numLevels;
-        uint32_t enableJitter;
+        uint32_t flags;           ///< Packed: bit 0 = jitter, bit 1 = adaptivePMin
         float    cellACoarse;     ///< posA coarsest cell (world units)
         float    cellAFine;       ///< posA finest cell (auto-derived)
         float    cellBCoarse;     ///< posB coarsest cell (pos×pos modes)
@@ -110,6 +110,7 @@ public:
         bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
         bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
+        bool     enableVisCacheAdaptivePMin   = true;  ///< H: Confidence-adaptive pMin (§8.1.1)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
     };
 
@@ -169,23 +170,21 @@ private:
         Variance        = 2,  ///< G channel — cache uncertainty [0,0.25]
         LODLevel        = 3,  ///< B channel — LOD level+1 (0=miss)
         RaySaved        = 4,  ///< A channel — 1=skipped, 0=traced
-        PredictionError = 5,  ///< |mu - V| from vcDiagError
     };
 
     bool            mEnableDiagnostics = false; ///< Master enable (auto-set by dropdown)
     DiagMode        mDiagMode = DiagMode::Off;  ///< Selected heatmap mode
 
     // Per-frame diag textures (cleared each frame)
-    ref<Texture>    mpDiagTex;           ///< RGBA32F: mu, var, level, raySaved
-    ref<Texture>    mpVarMaturityLevelTex; ///< RGBA32F: var/maturity/level heatmap (R=var, G=maturity, B=level)
-    ref<Texture>    mpVarMaturityMuTex; ///< RGBA32F: var/maturity/mu heatmap (R=var, G=maturity, B=mu)
-    ref<Texture>    mpDiagErrorTex;     ///< R32F: deprecated (coldmiss now in VarMaturityMu.A)
+    ref<Texture>    mpAccumMeanVarMatCountTex;   ///< RGBA32F accumulated: R=variance*4, G=maturity, B=mean, A=count (bookkeeping for online mean)
+    ref<Texture>    mpFrameMeanVarMatSamplesRawTex;   ///< RGBA32F frame: R=variance*4, G=maturity, B=mean, A=samplesRaw
+    ref<Texture>    mpFrameLevelProbesSamplesColdTex;   ///< RGBA32F frame: R=level, G=probeSteps, B=samples, A=coldmiss
+    ref<Texture>    mpFrameHashAHashBHashABRaysTex;   ///< RGBA32F frame: R=posAHash, G=posBHash, B=combinedHash, A=raysTraced
 
     // Accumulated textures (persistent across frames, cleared on reset)
     ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count
     ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count
-    ref<Texture>    mpRaySavedRatioTex; ///< R32Float: saved/total ratio
-    ref<Texture>    mpNoiseTex;         ///< R32Float: noise estimate (variance EMA)
+    ref<Texture>    mpAccumRaysNoiseErrorColdTex; ///< RGBA32Float: R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
     bool            mResetAccum = true;      ///< Clear accum textures next frame
     bool            mClearHashTable = true;  ///< Clear hash table to empty sentinel
 

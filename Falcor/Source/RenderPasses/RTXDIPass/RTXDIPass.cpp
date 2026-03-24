@@ -145,7 +145,7 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
         mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
         mVCParams.numLevels      = dict.getValue<uint32_t>("vhfParam_numLevels");
-        mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+        mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
         mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
         mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
         mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
@@ -327,7 +327,7 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
         rootVar["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
         rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
         rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
         rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;

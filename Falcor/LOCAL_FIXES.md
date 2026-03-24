@@ -318,3 +318,18 @@ rootVar["VisCacheParams"]["gBootThreshold"] = params.bootThreshold;
 ```
 The VisCache pass exports per-member values via `InternalDictionary` keys
 (`vhfParam_tableCapacity`, etc.) so downstream passes can read and bind them.
+
+---
+
+## 9. CMakeLists: FALCOR_FLAT_OUTPUT to skip $<CONFIG> subdirectory
+
+**File:** `CMakeLists.txt` (line 206)
+
+VS2022 multi-config builds append `/$<CONFIG>` (e.g. `/Release`) to the output
+directory, splitting binaries from scripts/data which deploy to the root. Setting
+`-DFALCOR_FLAT_OUTPUT=ON` skips the config suffix so all configs output directly
+to `FALCOR_RUNTIME_OUTPUT_DIRECTORY`.
+
+**Fix:** Guard the `$<CONFIG>` genex with `AND NOT FALCOR_FLAT_OUTPUT`.
+
+**Upstream status:** Enhancement for flat output layouts.

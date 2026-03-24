@@ -57,7 +57,7 @@ echo ========================================
 echo  Gallery: !PASS!/!TOTAL! captured to %GALLERY%
 if !HEATMAPS! gtr 0 (
     echo  VisCache stats: !HEATMAPS! variant^(s^) with heatmaps
-    echo  Heatmap outputs: HeatmapError, HeatmapRaySavedPct, HeatmapNoise
+    echo  Colormap outputs: vcRayTracedRatio, vcNoiseEstimate
 )
 echo ========================================
 if !FAIL! gtr 0 exit /b 1

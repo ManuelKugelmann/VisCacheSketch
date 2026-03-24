@@ -1524,7 +1524,7 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
             mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
             mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
             mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
             mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
             mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
@@ -1682,7 +1682,7 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
         var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
         var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
-        var["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        var["VisCacheParams"]["gFlags"]          = mVCParams.flags;
         var["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
         var["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
         var["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
@@ -1812,7 +1812,7 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
         rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
         rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
         rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
         rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
@@ -1907,7 +1907,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
         rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
         rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
         rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
         rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;

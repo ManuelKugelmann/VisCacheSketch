@@ -169,7 +169,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
             mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
             mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
             mVCParams.numLevels      = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
             mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
             mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
             mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
@@ -245,7 +245,7 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
         var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
         var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
-        var["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        var["VisCacheParams"]["gFlags"]          = mVCParams.flags;
         var["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
         var["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
         var["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;

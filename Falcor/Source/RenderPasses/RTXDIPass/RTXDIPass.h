@@ -88,7 +88,7 @@ private:
     // VisCache integration — hash table + per-member params from InternalDictionary.
     ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
     struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
-             uint32_t numLevels=0, enableJitter=1;
+             uint32_t numLevels=0, flags=1;
              float cellACoarse=0, cellAFine=0, cellBCoarse=0, cellBFine=0;
              float angularBCoarse=0, angularBFine=0, distBCoarse=0, distBFine=0;
              uint32_t diagAccumWindow=128; } mVCParams;

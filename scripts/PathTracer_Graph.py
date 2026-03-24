@@ -83,34 +83,11 @@ def render_graph_PathTracer(viscache=False, maxBounces=3):
     # -------------------------------------------------------------------
     if viscache:
         # Mark diagnostic outputs (captured at end of frame, after all passes)
-        g.markOutput("VisCache.vcDiag")             # accumulated: R=var*4, G=maturity, B=mu, A=count
-        g.markOutput("VisCache.vcVarMaturityLevel") # frame: R=probeSteps, G=sampleCount, B=level
-        g.markOutput("VisCache.vcVarMaturityMu")    # frame: R=var*4, G=maturity, B=mu, A=coldmiss
-        g.markOutput("VisCache.vcRaySavedRatio")    # accumulated: ray traced ratio [0,1]
-        g.markOutput("VisCache.vcNoise")            # accumulated: noise estimate (variance EMA)
-
-        # Heatmaps via ColorMapPass — show previous-frame data (1-frame delay,
-        # no ordering edge from PathTracer to ColorMapPass). Kept for interactive
-        # use; ladder tests extract raw EXR channels instead.
-        heatRayPct = createPass("ColorMapPass", {
-            "colorMap": "Viridis",
-            "channel":  0,
-            "autoRange": False,
-            "minValue":  0.0,
-            "maxValue":  1.0,
-        })
-        g.addPass(heatRayPct, "HeatmapRaySavedPct")
-        g.addEdge("VisCache.vcRaySavedRatio", "HeatmapRaySavedPct.input")
-        g.markOutput("HeatmapRaySavedPct.output")
-
-        heatNoise = createPass("ColorMapPass", {
-            "colorMap": "Inferno",
-            "channel":  0,
-            "autoRange": True,
-        })
-        g.addPass(heatNoise, "HeatmapNoise")
-        g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
-        g.markOutput("HeatmapNoise.output")
+        g.markOutput("VisCache.vcAccumMeanVarMatCount", TextureChannelFlags.RGBA)   # R=variance*4, G=maturity, B=mean, A=count
+        g.markOutput("VisCache.vcFrameMeanVarMatSamplesRaw", TextureChannelFlags.RGBA)  # R=variance*4, G=maturity, B=mean, A=samplesRaw
+        g.markOutput("VisCache.vcFrameLevelProbesSamplesCold", TextureChannelFlags.RGBA)  # R=level, G=probeSteps, B=samples, A=coldmiss
+        g.markOutput("VisCache.vcFrameHashAHashBHashABRays", TextureChannelFlags.RGBA)  # R=posAHash, G=posBHash, B=combinedHash, A=raysTraced
+        g.markOutput("VisCache.vcAccumRaysNoiseErrorCold", TextureChannelFlags.RGBA)  # R=raysTraced, G=renderNoise, B=renderError, A=coldmiss
 
     return g
 

@@ -1005,10 +1005,7 @@ target_include_directories(Falcor
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-set_target_properties(Falcor PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${FALCOR_RUNTIME_OUTPUT_DIRECTORY}
-    LIBRARY_OUTPUT_DIRECTORY ${FALCOR_LIBRARY_OUTPUT_DIRECTORY}
-)
+falcor_set_output_dirs(Falcor ${FALCOR_RUNTIME_OUTPUT_DIRECTORY})
 
 add_dependencies(Falcor packman_dependencies)
 

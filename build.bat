@@ -110,7 +110,7 @@ if exist "%FALCOR_ROOT%\tools\.packman\cmake\bin\cmake.exe" (
 
 set "PLUGIN_DIRS=%ROOT%Source\RenderPasses\VisCache;%ROOT%Source\RenderPasses\ReSTIRPTPass"
 echo [build] Configuring: %CMAKE% --preset %PRESET%
-"%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%" -DFALCOR_PLUGIN_DIRS="!PLUGIN_DIRS!" -DFALCOR_RUNTIME_OUTPUT_DIRECTORY="%ROOT%runtime"
+"%CMAKE%" --preset %PRESET% -S "%FALCOR_ROOT%" -DFALCOR_PLUGIN_DIRS="!PLUGIN_DIRS!" -DFALCOR_RUNTIME_OUTPUT_DIRECTORY="%ROOT%runtime" -DFALCOR_FLAT_OUTPUT=ON
 if errorlevel 1 (
     echo [build] ERROR: CMake configure failed!
     exit /b 1
@@ -166,9 +166,9 @@ if not exist "!BUILD_OUT!\Mogwai.exe" (
     goto :done
 )
 
-REM Build output goes directly to release/ via FALCOR_RUNTIME_OUTPUT_DIRECTORY.
-REM Shaders deployed by target_copy_shaders(), data by target_copy_data().
-echo [build] Build output is in %RUNTIME_DIR%\ (no copy needed)
+REM Sync shaders, scripts, data, and scenes from source to runtime.
+echo [build] Syncing shaders, scripts, data...
+bash "%ROOT%.scripts\sync_to_runtime.sh"
 
 :done
 echo.

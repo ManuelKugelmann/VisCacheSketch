@@ -198,10 +198,12 @@ if(NOT SETUP_CONFIGURATION_TYPES)
     endif()
 endif()
 
-set(FALCOR_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(FALCOR_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(NOT FALCOR_RUNTIME_OUTPUT_DIRECTORY)
+    set(FALCOR_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+set(FALCOR_LIBRARY_OUTPUT_DIRECTORY ${FALCOR_RUNTIME_OUTPUT_DIRECTORY})
 
-if(CMAKE_CONFIGURATION_TYPES)
+if(CMAKE_CONFIGURATION_TYPES AND NOT FALCOR_FLAT_OUTPUT)
     set(FALCOR_OUTPUT_DIRECTORY ${FALCOR_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>)
 else()
     set(FALCOR_OUTPUT_DIRECTORY ${FALCOR_RUNTIME_OUTPUT_DIRECTORY})
@@ -209,6 +211,24 @@ endif()
 
 set(FALCOR_SHADER_OUTPUT_DIRECTORY ${FALCOR_OUTPUT_DIRECTORY}/shaders)
 set(FALCOR_PLUGIN_OUTPUT_DIRECTORY ${FALCOR_OUTPUT_DIRECTORY}/plugins)
+
+# Helper: set output directory with per-config overrides when using flat output.
+# Without per-config properties, multi-config generators (VS) append /<CONFIG>.
+function(falcor_set_output_dirs target outdir)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${outdir}
+        LIBRARY_OUTPUT_DIRECTORY ${outdir}
+    )
+    if(FALCOR_FLAT_OUTPUT AND CMAKE_CONFIGURATION_TYPES)
+        foreach(cfg ${CMAKE_CONFIGURATION_TYPES})
+            string(TOUPPER ${cfg} CFG)
+            set_target_properties(${target} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY_${CFG} ${outdir}
+                LIBRARY_OUTPUT_DIRECTORY_${CFG} ${outdir}
+            )
+        endforeach()
+    endif()
+endfunction()
 
 # -----------------------------------------------------------------------------
 # External dependencies
@@ -328,7 +348,7 @@ function(add_falcor_executable target)
 
     target_link_libraries(${target} PRIVATE Falcor)
 
-    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${FALCOR_RUNTIME_OUTPUT_DIRECTORY})
+    falcor_set_output_dirs(${target} ${FALCOR_RUNTIME_OUTPUT_DIRECTORY})
 
     set_target_properties(${target} PROPERTIES VS_DEBUGGER_ENVIRONMENT "FALCOR_DEVMODE=1")
 endfunction()
@@ -346,12 +366,8 @@ function(add_plugin target)
 
     target_link_libraries(${target} PRIVATE Falcor)
 
-    set_target_properties(${target} PROPERTIES
-        PREFIX ""
-        RUNTIME_OUTPUT_DIRECTORY ${FALCOR_PLUGIN_OUTPUT_DIRECTORY}
-        LIBRARY_OUTPUT_DIRECTORY ${FALCOR_PLUGIN_OUTPUT_DIRECTORY}
-        INSTALL_RPATH "\$ORIGIN/../"
-    )
+    set_target_properties(${target} PROPERTIES PREFIX "" INSTALL_RPATH "\$ORIGIN/../")
+    falcor_set_output_dirs(${target} ${FALCOR_PLUGIN_OUTPUT_DIRECTORY})
 
     # Add target to global plugin target list.
     set_property(GLOBAL APPEND PROPERTY FALCOR_PLUGIN_TARGETS ${target})

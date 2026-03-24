@@ -178,7 +178,7 @@ cbuffer VisCacheParams
     float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
-    uint   gEnableJitter;    ///< Unused at runtime; jitter gate is USE_VISCACHE_JITTER define
+    uint   gFlags;           ///< Packed flags: bit 0 = jitter, bit 1 = adaptivePMin
     // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
     float  gCellACoarse;     ///< posA coarsest cell size (world units, auto-tuned from scene)
     float  gCellAFine;       ///< posA finest cell size (auto-derived from coarse + numLevels)
@@ -527,6 +527,10 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 // Tuning constants (compile-time, not runtime — these rarely need changing):
 // ---------------------------------------------------------------------------
 static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving up (controls worst-case lookup time)
+
+// --- gFlags bitfield constants ---
+static const uint kFlag_EnableJitter       = 1u << 0;
+static const uint kFlag_EnableAdaptivePMin = 1u << 1;
 static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict (lower = more aggressive eviction)
 static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive eviction at kEvictStartStep
 static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K of 65535 max)
@@ -749,6 +753,8 @@ struct VHFGateResult
     int   level;        ///< LOD level used, -1 = miss (diagnostics)
     uint  N;            ///< Total sample count at matched level (diagnostics)
     uint  probeSteps;   ///< Hash probe steps (diagnostics — collision pressure)
+    int3  qa;           ///< Quantized posA cell coords (diagnostics — hash grid vis)
+    int3  qb;           ///< Quantized posB cell coords (diagnostics — hash grid vis)
 };
 
 /// Phase 1: lookup + RR decision.
@@ -765,6 +771,9 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
 {
     VHFGateResult g;
     VHFResult r = vhfLookup(posA, posB);
+
+    // Quantize at coarsest level for hash grid visualization (diagnostics).
+    vhfQuantizePair(posA, posB, vhfCellSizeA(0), 0u, g.qa, g.qb);
 
     // No mature entry: must trace unconditionally.
     // invP = 1 means the commit weight is just V (no correction needed).
@@ -789,16 +798,27 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     //    (penumbrae) get p ≈ 1 (almost always trace). Low-variance entries
     //    (fully lit/shadowed) get low p (mostly skip).
     //
-    // 2. Firefly-aware floor: if the path contribution is high, raise pMin
+    // 2. Confidence-adaptive pMin: high-N + low-var cells get lower pMin floor.
+    //    log2 N-dependence limits max reduction to ~12x at counter saturation.
+    //    High-variance cells (penumbra) get no reduction regardless of N.
+    float pMinEff = gPMin;
+    if (gFlags & kFlag_EnableAdaptivePMin)
+    {
+        float nRatio    = float(r.N) / float(max(gBootThreshold, 1u));
+        float nFactor   = log2(max(nRatio, 1.f)) + 1.f;
+        float varFactor = 1.f - saturate(r.var / gVarThreshold);
+        float confidence = nFactor * varFactor;
+        pMinEff = gPMin / max(confidence, 1.f);
+    }
+
+    // 3. Firefly-aware floor: if the path contribution is high, raise pMin
     //    so the 1/p amplification doesn't create fireflies. The budget
     //    parameter controls how aggressively this kicks in.
-    float pFloor = gPMin;
+    float pFloor = pMinEff;
     if (contribLuminance > 0.f)
     {
-        // Worst-case residual: contribution * max(mu, 1-mu). If the cache
-        // is wrong, the error is at most this large.
         float contrib = contribLuminance * max(r.mu, 1.f - r.mu);
-        pFloor = clamp(contrib / gFireflyBudget, gPMin, 1.f);
+        pFloor = clamp(contrib / gFireflyBudget, pMinEff, 1.f);
     }
     float p = clamp(r.var / gVarThreshold, pFloor, 1.f);
 

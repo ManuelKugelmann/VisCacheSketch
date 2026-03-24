@@ -1222,7 +1222,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
             mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
             mVCParams.numLevels      = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.enableJitter   = dict.getValue<uint32_t>("vhfParam_enableJitter");
+            mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
             mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
             mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
             mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
@@ -1249,19 +1249,18 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         };
         if (mVisCacheDiagnostics)
         {
-            mpVCDiag           = getTex("vhfDiag");
-            mpVCDiagError      = getTex("vhfDiagError");
-            mpVCVarMaturityLevel  = getTex("vhfVarMaturityLevel");
-            mpVCVarMaturityMu = getTex("vhfVarMaturityMu");
+            mpVCAccumMeanVarMatCount   = getTex("vhfAccumMeanVarMatCount");
+            mpVCFrameMeanVarMatSamplesRaw   = getTex("vhfFrameMeanVarMatSamplesRaw");
+            mpVCFrameLevelProbesSamplesCold   = getTex("vhfFrameLevelProbesSamplesCold");
+            mpVCFrameHashAHashBHashABRays   = getTex("vhfFrameHashAHashBHashABRays");
             mpVCAccumSaved     = getTex("vhfAccumSaved");
             mpVCAccumTotal     = getTex("vhfAccumTotal");
-            mpVCRaySavedRatio  = getTex("vhfRaySavedRatio");
-            mpVCNoise          = getTex("vhfNoise");
+            mpVCAccumRaysNoiseErrorCold  = getTex("vhfAccumRaysNoiseErrorCold");
         }
         else
         {
-            mpVCDiag = mpVCDiagError = mpVCVarMaturityLevel = mpVCVarMaturityMu = nullptr;
-            mpVCAccumSaved = mpVCAccumTotal = mpVCRaySavedRatio = mpVCNoise = nullptr;
+            mpVCAccumMeanVarMatCount = mpVCFrameMeanVarMatSamplesRaw = mpVCFrameLevelProbesSamplesCold = mpVCFrameHashAHashBHashABRays = nullptr;
+            mpVCAccumSaved = mpVCAccumTotal = mpVCAccumRaysNoiseErrorCold = nullptr;
         }
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
@@ -1424,7 +1423,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
         var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
         var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
-        var["VisCacheParams"]["gEnableJitter"]   = mVCParams.enableJitter;
+        var["VisCacheParams"]["gFlags"]          = mVCParams.flags;
         var["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
         var["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
         var["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
@@ -1440,14 +1439,13 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     // Define is set in getDefines(); here we just bind the textures.
     if (mVisCacheDiagnostics)
     {
-        if (mpVCDiag)           var["gVCDiag"]           = mpVCDiag;
-        if (mpVCDiagError)      var["gVCDiagError"]      = mpVCDiagError;
-        if (mpVCVarMaturityLevel)  var["gVCVarMaturityLevel"]  = mpVCVarMaturityLevel;
-        if (mpVCVarMaturityMu) var["gVCVarMaturityMu"] = mpVCVarMaturityMu;
+        if (mpVCAccumMeanVarMatCount)   var["gVCAccumMeanVarMatCount"]   = mpVCAccumMeanVarMatCount;
+        if (mpVCFrameMeanVarMatSamplesRaw)   var["gVCFrameMeanVarMatSamplesRaw"]   = mpVCFrameMeanVarMatSamplesRaw;
+        if (mpVCFrameLevelProbesSamplesCold)   var["gVCFrameLevelProbesSamplesCold"]   = mpVCFrameLevelProbesSamplesCold;
+        if (mpVCFrameHashAHashBHashABRays)   var["gVCFrameHashAHashBHashABRays"]   = mpVCFrameHashAHashBHashABRays;
         if (mpVCAccumSaved)     var["gVCAccumSaved"]     = mpVCAccumSaved;
         if (mpVCAccumTotal)     var["gVCAccumTotal"]      = mpVCAccumTotal;
-        if (mpVCRaySavedRatio)  var["gVCRaySavedRatio"]  = mpVCRaySavedRatio;
-        if (mpVCNoise)          var["gVCNoise"]          = mpVCNoise;
+        if (mpVCAccumRaysNoiseErrorCold)  var["gVCAccumRaysNoiseErrorCold"]  = mpVCAccumRaysNoiseErrorCold;
     }
     // Full screen dispatch.
     mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));

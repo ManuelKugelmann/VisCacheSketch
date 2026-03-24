@@ -4,21 +4,21 @@
 # Usage: .scripts/mogwai-headed.sh <Graph-pattern> [scene.pyscene]
 #   Graph: graph script name or glob pattern (matched in scripts/VisCache/)
 #          If pattern matches multiple scripts, runs each sequentially.
-#   Scene: scene path relative to runtime/ (default: VeachAjar)
+#   Scene: scene path relative to runtime/ (default: CornellBox)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RUNTIME="$ROOT/runtime"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RUNTIME="$PROJECT_ROOT/runtime"
 
 PATTERN="${1:?Usage: mogwai-headed.sh <Graph-pattern> [scene]}"
-SCENE="${2:-data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene}"
+SCENE="${2:-media/scenes/CornellBox.pyscene}"
 
 cd "$RUNTIME"
 
 # Expand glob pattern against scripts/VisCache/
 shopt -s nullglob
-MATCHES=(scripts/VisCache/$PATTERN)
+MATCHES=("$RUNTIME/scripts/VisCache/"$PATTERN)
 shopt -u nullglob
 
 if [ ${#MATCHES[@]} -eq 0 ]; then
@@ -26,10 +26,11 @@ if [ ${#MATCHES[@]} -eq 0 ]; then
     exit 1
 fi
 
-for SCRIPT in "${MATCHES[@]}"; do
+for MATCH in "${MATCHES[@]}"; do
+    SCRIPT="${MATCH#$RUNTIME/}"
     NAME="$(basename "$SCRIPT")"
     echo "=== Running: $NAME ==="
-    ./Mogwai.exe \
+    "$RUNTIME/Mogwai.exe" \
         --script "$SCRIPT" \
         --scene "$SCENE"
 done

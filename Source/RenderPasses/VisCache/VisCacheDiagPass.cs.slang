@@ -13,19 +13,10 @@
  ***************************************************************************/
 
 import RenderPasses.VisCache.VisCache;
+import RenderPasses.VisCache.VisCacheDiagnostics; // Diagnostic texture declarations + vcWriteDiag
 
 // G-Buffer input
 Texture2D<float4> gWorldPos;     ///< Surface world position (xyz) + hit flag (w > 0)
-
-// Diagnostic outputs (same textures as VisCacheDiagnostics.slang)
-RWTexture2D<float4> gVCDiag;              ///< R=mu, G=var, B=level+1, A=raySaved
-RWTexture2D<float>  gVCDiagError;         ///< Deprecated — kept for root signature compat
-RWTexture2D<float4> gVCVarMaturityLevel;  ///< R=probeSteps, G=sampleCount, B=level
-RWTexture2D<float4> gVCVarMaturityMu;     ///< R=var*4, G=maturity, B=mu, A=coldmiss
-RWTexture2D<uint>   gVCAccumSaved;     ///< Per-pixel saved ray count (not used here)
-RWTexture2D<uint>   gVCAccumTotal;     ///< Per-pixel total query count (not used here)
-RWTexture2D<float>  gVCRaySavedRatio;  ///< saved/total ratio
-RWTexture2D<float>  gVCNoise;          ///< Cache variance at this pixel
 
 cbuffer DiagCB
 {
@@ -44,11 +35,10 @@ void csDiag(uint3 tid : SV_DispatchThreadID)
     // No surface hit — write zeros
     if (posW.w == 0.f)
     {
-        gVCDiag[pixel]           = float4(0.f);
-        gVCVarMaturityLevel[pixel]  = float4(0.f);
-        gVCVarMaturityMu[pixel] = float4(0.f, 0.f, 0.f, 1.f);  // A=1 = coldmiss (no surface)
-        gVCRaySavedRatio[pixel]  = 0.f;
-        gVCNoise[pixel]          = 0.f;
+        gVCAccumMeanVarMatCount[pixel]           = float4(0.f);
+        gVCFrameLevelProbesSamplesCold[pixel]  = float4(0.f);
+        gVCFrameMeanVarMatSamplesRaw[pixel] = float4(0.f, 0.f, 0.f, 0.f);
+        gVCAccumRaysNoiseErrorCold[pixel] = float4(0.f, 0.f, 0.f, 1.f);  // A=1 = coldmiss (no surface)
         return;
     }
 
@@ -62,27 +52,32 @@ void csDiag(uint3 tid : SV_DispatchThreadID)
     // Write per-pixel diagnostics from the lookup result.
     float raySavedEst = r.valid ? clamp(1.f - r.var / max(gVarThreshold, 0.01f), 0.f, 1.f) : 0.f;
 
-    gVCDiag[pixel] = float4(
+    gVCAccumMeanVarMatCount[pixel] = float4(
         r.mu,
         r.var,
         float(r.level + 1),
         raySavedEst
     );
 
-    gVCVarMaturityLevel[pixel] = float4(
-        saturate(r.var * 4.f),                              // R: variance / 0.25
-        r.valid ? saturate(float(r.N) / float(gBootThreshold)) : 0.f,  // G: maturity
-        float(r.level + 1) / float(gNumLevels),             // B: LOD level
-        1.f
+    gVCFrameLevelProbesSamplesCold[pixel] = float4(
+        float(r.level + 1) / float(gNumLevels),             // R: LOD level
+        0.f,                                                  // G: probe steps (not available in standalone query)
+        r.valid ? saturate(float(r.N) / float(gBootThreshold * 8u)) : 0.f,  // B: samples (normalized)
+        r.valid ? 0.f : 1.f                                   // A: coldmiss
     );
 
-    gVCVarMaturityMu[pixel] = float4(
+    gVCFrameMeanVarMatSamplesRaw[pixel] = float4(
         saturate(r.var * 4.f),
         r.valid ? saturate(float(r.N) / float(gBootThreshold)) : 0.f,
         r.mu,                                                // B: cached mu
-        1.f
+        float(r.N)                                            // A: raw sample count
     );
 
-    gVCRaySavedRatio[pixel] = raySavedEst;
-    gVCNoise[pixel]         = r.var;
+    float4 prevAccumRNEC = gVCAccumRaysNoiseErrorCold[pixel];
+    gVCAccumRaysNoiseErrorCold[pixel] = float4(
+        raySavedEst,                // R: ray traced ratio
+        prevAccumRNEC.g,            // G: renderNoise (preserved)
+        prevAccumRNEC.b,            // B: renderError (preserved)
+        r.valid ? 0.f : 1.f        // A: coldmiss
+    );
 }

@@ -6,11 +6,12 @@ VisCache_Ladder00_Variants.py — Step 0: Compare 4 addressing variants.
 3. pos_dir:           dirdist with coarse angular bins, single dist bucket
 4. pos_dir_dist:      dirdist with coarse angular + coarse dist bins
 """
-import os, sys, subprocess, glob
+import os, sys, glob
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
+from viscache_exr_split import split_diag_exrs
 
 # Test configurations: (warmup, averaging) frame counts
 # Multiple runs per variant for convergence comparison
@@ -73,65 +74,15 @@ VARIANTS = [
     }),
 ]
 
-def ffrun(args):
-    try:
-        subprocess.run(["ffmpeg", "-y"] + args, capture_output=True, timeout=10)
-        return True
-    except Exception:
-        return False
-
-def out(d, name, prefix=""):
-    return os.path.join(d, f"{prefix}{name}.png")
-
 def postprocess(captureDir, prefix):
-    """8-column grid layout with variant prefix.
-    Row 1 (accum):  1_RGB  2_var  3_mat  4_mu  5__  6__  7_render  8_coldmiss
-    Row 2 (snap):   1_RGB  2_var  3_mat  4_mu  5_probe  6_count  7_level  8_coldmiss
-    Row 3 (output): 1_render  2_error  3_noise  4_raysaved  5__  6__  7__  8__
-    """
+    """Split diagnostic EXRs into named viridis PNGs."""
+    split_diag_exrs(captureDir, prefix, sections=["basic"])
+
+    # Copy ToneMapper render
     import shutil
-    p = prefix
-    for exr in glob.glob(os.path.join(captureDir, "*.exr")):
-        base = os.path.basename(exr)
-        if "vcDiag." in base and "vcDiagError" not in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_1_var_mat_mu", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_2_var", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "accum_3_mat", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "accum_4_mu", p)])
-        elif "vcDiagError" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_8_coldmiss", p)])
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "accum_8_coldmiss", p)])
-        elif "VarMaturityMu" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_1_var_mat_mu", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_2_var", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_3_mat", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:g=0", "-pix_fmt", "rgb24", out(captureDir, "snap_4_mu", p)])
-        elif "VarMaturityLevel" in base:
-            ffrun(["-i", exr, "-pix_fmt", "rgb24", out(captureDir, "snap_5_probe_samp_level", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=g=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_6_probesteps", p)])
-            ffrun(["-i", exr, "-vf", "lutrgb=r=0:b=0", "-pix_fmt", "rgb24", out(captureDir, "snap_7_samplecount", p)])
-
-    # Row 3: Mogwai outputs
-    vn = prefix[:-1]  # variant name without trailing _
-    renames = [
-        (f"{vn}.ToneMapper.dst.",       "output_1_render"),
-        (f"{vn}.Error.output.",         "output_2_error"),
-        (f"{vn}.Noise.output.",         "output_3_noise"),
-        (f"{vn}.RaySavedPct.output.",   "output_4_raysaved"),
-    ]
-    for pattern, newname in renames:
-        for png in glob.glob(os.path.join(captureDir, f"*{pattern}*")):
-            shutil.copy(png, out(captureDir, newname, p))
-            break
-
-    # Render in accum row
     for png in glob.glob(os.path.join(captureDir, f"*ToneMapper.dst.*")):
-        shutil.copy(png, out(captureDir, "accum_7_render", p))
+        shutil.copy(png, os.path.join(captureDir, f"{prefix}accum_render.png"))
         break
-    # Padding (8-column grid)
-    for slot in ["accum_5__", "accum_6__", "output_5__", "output_6__", "output_7__", "output_8__"]:
-        ffrun(["-f", "lavfi", "-i", f"color=black:s={kResX}x{kResY}:d=1", "-frames:v", "1",
-               "-pix_fmt", "rgb24", out(captureDir, slot, p)])
 
 for (variant_name, overrides) in VARIANTS:
     for (warmup, averaging) in FRAME_CONFIGS:

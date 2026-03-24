@@ -63,7 +63,7 @@ m.loadScene(scene_file)
 
 # Configure frame capture (fc = Mogwai's FrameCapture extension)
 # fc.capture() captures ALL marked graph outputs — for VisCache variants this
-# includes HeatmapError, HeatmapRaySavedPct, HeatmapNoise, and composites.
+# includes diagnostic RGBA composites (AccumMeanVarMatCount, etc.).
 os.makedirs(gallery_dir, exist_ok=True)
 fc.outputDir = gallery_dir
 fc.baseFilename = capture_name
@@ -79,11 +79,11 @@ m.renderFrame()  # flush capture
 outputs = [capture_name]
 if is_viscache:
     outputs += [
-        f"{capture_name}.HeatmapError",
-        f"{capture_name}.HeatmapRaySavedPct",
-        f"{capture_name}.HeatmapNoise",
-        f"{capture_name}.vcVarMaturityLevel",
-        f"{capture_name}.vcVarMaturityMu",
+        f"{capture_name}.vcAccumMeanVarMatCount",
+        f"{capture_name}.vcFrameMeanVarMatSamplesRaw",
+        f"{capture_name}.vcFrameLevelProbesSamplesCold",
+        f"{capture_name}.vcFrameHashAHashBHashABRays",
+        f"{capture_name}.vcAccumRaysNoiseErrorCold",
     ]
 print(f"[capture] Done — captured {len(outputs)} output(s) to {gallery_dir}/")
 for o in outputs:

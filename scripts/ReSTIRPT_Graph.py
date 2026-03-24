@@ -155,41 +155,12 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     # captured at end of frame and show current-frame data.
     # -------------------------------------------------------------------
     if viscache:
-        # Prediction error |mu - V|
-        heatErr = createPass("ColorMapPass", {
-            "colorMap": "Inferno",
-            "channel":  0,
-            "autoRange": True,
-        })
-        g.addPass(heatErr, "HeatmapError")
-        g.addEdge("VisCache.vcDiagError", "HeatmapError.input")
-        g.markOutput("HeatmapError.output")
-
-        # Accumulated ray savings ratio → false-color
-        heatRayPct = createPass("ColorMapPass", {
-            "colorMap": "Viridis",
-            "channel":  0,
-            "autoRange": False,
-            "minValue":  0.0,
-            "maxValue":  1.0,
-        })
-        g.addPass(heatRayPct, "HeatmapRaySavedPct")
-        g.addEdge("VisCache.vcRaySavedRatio", "HeatmapRaySavedPct.input")
-        g.markOutput("HeatmapRaySavedPct.output")
-
-        # Noise estimate (cache variance EMA) → false-color
-        heatNoise = createPass("ColorMapPass", {
-            "colorMap": "Inferno",
-            "channel":  0,
-            "autoRange": True,
-        })
-        g.addPass(heatNoise, "HeatmapNoise")
-        g.addEdge("VisCache.vcNoise", "HeatmapNoise.input")
-        g.markOutput("HeatmapNoise.output")
-
-        # Var/maturity heatmaps — pre-normalized RGB
-        g.markOutput("VisCache.vcVarMaturityLevel")
-        g.markOutput("VisCache.vcVarMaturityMu")
+        # RGBA diagnostics — A channel carries data (count, samplesRaw, coldmiss)
+        g.markOutput("VisCache.vcAccumMeanVarMatCount", TextureChannelFlags.RGBA)
+        g.markOutput("VisCache.vcFrameMeanVarMatSamplesRaw", TextureChannelFlags.RGBA)
+        g.markOutput("VisCache.vcFrameLevelProbesSamplesCold", TextureChannelFlags.RGBA)
+        g.markOutput("VisCache.vcFrameHashAHashBHashABRays", TextureChannelFlags.RGBA)
+        g.markOutput("VisCache.vcAccumRaysNoiseErrorCold", TextureChannelFlags.RGBA)
 
     return g
 

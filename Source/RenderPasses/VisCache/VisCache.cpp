@@ -23,20 +23,18 @@ static constexpr size_t kEntrySize = 8u;
 static constexpr uint32_t kStatCount = 5u;
 
 // Diagnostic heatmap output channel names
-static const std::string kOutputDiag           = "vcDiag";
-static const std::string kOutputDiagError      = "vcDiagError";
-static const std::string kOutputVarMaturityLevel  = "vcVarMaturityLevel";
-static const std::string kOutputVarMaturityMu = "vcVarMaturityMu";
-static const std::string kOutputRaySavedRatio  = "vcRaySavedRatio";
-static const std::string kOutputNoise          = "vcNoise";
+static const std::string kOutputAccumMeanVarMatCount  = "vcAccumMeanVarMatCount";
+static const std::string kOutputFrameMeanVarMatSamplesRaw  = "vcFrameMeanVarMatSamplesRaw";
+static const std::string kOutputFrameLevelProbesSamplesCold  = "vcFrameLevelProbesSamplesCold";
+static const std::string kOutputFrameHashAHashBHashABRays  = "vcFrameHashAHashBHashABRays";
+static const std::string kOutputAccumRaysNoiseErrorCold  = "vcAccumRaysNoiseErrorCold";
 
 static const ChannelList kDiagOutputChannels = {
-    { kOutputDiag,           "", "VisCache accumulated avg (R=var*4, G=maturity, B=mu, A=count)",          true, ResourceFormat::RGBA32Float },
-    { kOutputDiagError,      "", "Deprecated (coldmiss now in VarMaturityMu.A)",                           true, ResourceFormat::R32Float },
-    { kOutputVarMaturityLevel,  "", "VisCache frame (R=probeSteps, G=sampleCount, B=level)",               true, ResourceFormat::RGBA32Float },
-    { kOutputVarMaturityMu, "", "VisCache frame (R=var*4, G=maturity, B=mu, A=coldmiss)",                  true, ResourceFormat::RGBA32Float },
-    { kOutputRaySavedRatio,  "", "Per-pixel ray traced ratio [0,1] (accumulated)",                         true, ResourceFormat::R32Float },
-    { kOutputNoise,          "", "Per-pixel noise estimate (variance EMA)",                                 true, ResourceFormat::R32Float },
+    { kOutputAccumMeanVarMatCount,  "", "Accumulated avg (R=variance*4, G=maturity, B=mean, A=count)",    true, ResourceFormat::RGBA32Float },
+    { kOutputFrameMeanVarMatSamplesRaw,  "", "Frame (R=variance*4, G=maturity, B=mean, A=samplesRaw)",   true, ResourceFormat::RGBA32Float },
+    { kOutputFrameLevelProbesSamplesCold,  "", "Frame (R=level, G=probeSteps, B=samples, A=coldmiss)",  true, ResourceFormat::RGBA32Float },
+    { kOutputFrameHashAHashBHashABRays,  "", "Hash grid vis (R=posAHash, G=posBHash, B=combinedHash, A=raysTraced)",  true, ResourceFormat::RGBA32Float },
+    { kOutputAccumRaysNoiseErrorCold,  "", "Accumulated (R=raysTraced, G=renderNoise, B=renderError, A=coldmiss)",  true, ResourceFormat::RGBA32Float },
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -71,6 +69,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
     if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
+    if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
@@ -107,6 +106,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
     if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
+    if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
@@ -139,6 +139,7 @@ Properties VisCache::getProperties() const
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
     p["enableVisCacheJitter"]          = mParams.enableVisCacheJitter;
+    p["enableVisCacheAdaptivePMin"]    = mParams.enableVisCacheAdaptivePMin;
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
@@ -303,7 +304,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.pMin           = mParams.pMin;
     gpu.fireflyBudget  = mParams.fireflyBudget;
     gpu.numLevels      = mParams.numLevels;
-    gpu.enableJitter   = mParams.enableVisCacheJitter ? 1u : 0u;
+    gpu.flags          = (mParams.enableVisCacheJitter ? 1u : 0u)
+                       | (mParams.enableVisCacheAdaptivePMin ? 2u : 0u);
     gpu.cellACoarse    = mParams.cellACoarse;
     gpu.cellAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.cellACoarse, mParams.numLevels) : mParams.cellACoarse;
     gpu.cellBCoarse    = mParams.cellBCoarse;
@@ -325,11 +327,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         logInfo("[VisCache] cellB: coarse={:.4f} fine={:.4f}", gpu.cellBCoarse, gpu.cellBFine);
         logInfo("[VisCache] angularB: coarse={:.1f}{} fine={:.1f}{}", gpu.angularBCoarse, "\xC2\xB0", gpu.angularBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitter={} dirDistAddr={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitter={} adaptPMin={} dirDistAddr={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
-                mParams.enableVisCacheJitter, mParams.enableVisCacheDirDistAddr);
+                mParams.enableVisCacheJitter, mParams.enableVisCacheAdaptivePMin,
+                mParams.enableVisCacheDirDistAddr);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -357,6 +360,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_fireflyBudget"]  = mParams.fireflyBudget;
     dict["vhfParam_numLevels"]      = mParams.numLevels;
     dict["vhfParam_enableJitter"]   = mParams.enableVisCacheJitter ? 1u : 0u;
+    dict["vhfParam_flags"]         = gpu.flags;
     dict["vhfParam_cellACoarse"]    = gpu.cellACoarse;
     dict["vhfParam_cellAFine"]      = gpu.cellAFine;
     dict["vhfParam_cellBCoarse"]    = gpu.cellBCoarse;
@@ -396,13 +400,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             t->setName(name);
             return t;
         };
-        auto makeR32F = [&](const char* name) {
-            auto t = mpDevice->createTexture2D(
-                mFrameDims.x, mFrameDims.y, ResourceFormat::R32Float, 1, 1,
-                nullptr, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
-            t->setName(name);
-            return t;
-        };
         auto makeR32U = [&](const char* name) {
             auto t = mpDevice->createTexture2D(
                 mFrameDims.x, mFrameDims.y, ResourceFormat::R32Uint, 1, 1,
@@ -412,42 +409,40 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         };
 
         // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
-        ref<Texture> diagTex, diagErrorTex, varMatLevelTex, varMatMuTex;
-        ref<Texture> raySavedRatioTex, noiseTex;
+        ref<Texture> accumMeanVarMatCountTex, frameMeanVarMatSamplesRawTex, frameLevelProbesSamplesColdTex, frameHashTex;
+        ref<Texture> accumRaysNoiseErrorColdTex;
 
-        if (auto p = renderData[kOutputDiag])           diagTex           = p->asTexture();
-        if (auto p = renderData[kOutputDiagError])      diagErrorTex      = p->asTexture();
-        if (auto p = renderData[kOutputVarMaturityLevel])  varMatLevelTex  = p->asTexture();
-        if (auto p = renderData[kOutputVarMaturityMu]) varMatMuTex = p->asTexture();
-        if (auto p = renderData[kOutputRaySavedRatio])  raySavedRatioTex  = p->asTexture();
-        if (auto p = renderData[kOutputNoise])          noiseTex          = p->asTexture();
+        if (auto p = renderData[kOutputAccumMeanVarMatCount])  accumMeanVarMatCountTex  = p->asTexture();
+        if (auto p = renderData[kOutputFrameMeanVarMatSamplesRaw])  frameMeanVarMatSamplesRawTex  = p->asTexture();
+        if (auto p = renderData[kOutputFrameLevelProbesSamplesCold])  frameLevelProbesSamplesColdTex  = p->asTexture();
+        if (auto p = renderData[kOutputFrameHashAHashBHashABRays])  frameHashTex  = p->asTexture();
+        if (auto p = renderData[kOutputAccumRaysNoiseErrorCold])  accumRaysNoiseErrorColdTex  = p->asTexture();
 
         bool needInternal = mEnableDiagnostics && mFrameDims.x > 0 && mFrameDims.y > 0;
         if (needInternal)
         {
-            bool needRealloc = !mpDiagTex || mpDiagTex->getWidth() != mFrameDims.x
-                                          || mpDiagTex->getHeight() != mFrameDims.y;
+            bool needRealloc = !mpAccumMeanVarMatCountTex || mpAccumMeanVarMatCountTex->getWidth() != mFrameDims.x
+                                                     || mpAccumMeanVarMatCountTex->getHeight() != mFrameDims.y;
             if (needRealloc)
             {
-                mpDiagTex           = makeRGBA("VHF_Diag");
-                mpVarMaturityLevelTex  = makeRGBA("VHF_VarMaturityLevel");
-                mpVarMaturityMuTex = makeRGBA("VHF_VarMaturityMu");
-                mpDiagErrorTex      = makeR32F("VHF_DiagError");
-                mpRaySavedRatioTex  = makeR32F("VHF_RaySavedRatio");
-                mpNoiseTex          = makeR32F("VHF_Noise");
+                mpAccumMeanVarMatCountTex   = makeRGBA("VC_AccumMeanVarMatCount");
+                mpFrameMeanVarMatSamplesRawTex   = makeRGBA("VC_FrameMeanVarMatSamplesRaw");
+                mpFrameLevelProbesSamplesColdTex   = makeRGBA("VC_FrameLevelProbesSamplesCold");
+                mpFrameHashAHashBHashABRaysTex   = makeRGBA("VC_FrameHashAHashBHashABRays");
+                mpAccumRaysNoiseErrorColdTex   = makeRGBA("VC_AccumRaysNoiseErrorCold");
                 mResetAccum = true;  // accum textures need realloc too
 
                 // Clear snapshot textures on allocation so unwritten pixels
                 // (background, specular) start at zero instead of GPU garbage.
-                pCtx->clearUAV(mpVarMaturityLevelTex->getUAV().get(), float4(0.f));
-                pCtx->clearUAV(mpVarMaturityMuTex->getUAV().get(), float4(0.f));
+                pCtx->clearUAV(mpFrameMeanVarMatSamplesRawTex->getUAV().get(), float4(0.f));
+                pCtx->clearUAV(mpFrameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f));
+                pCtx->clearUAV(mpFrameHashAHashBHashABRaysTex->getUAV().get(), float4(0.f));
             }
-            if (!diagTex)           diagTex           = mpDiagTex;
-            if (!diagErrorTex)      diagErrorTex      = mpDiagErrorTex;
-            if (!varMatLevelTex)  varMatLevelTex  = mpVarMaturityLevelTex;
-            if (!varMatMuTex) varMatMuTex = mpVarMaturityMuTex;
-            if (!raySavedRatioTex)  raySavedRatioTex  = mpRaySavedRatioTex;
-            if (!noiseTex)          noiseTex          = mpNoiseTex;
+            if (!accumMeanVarMatCountTex)  accumMeanVarMatCountTex  = mpAccumMeanVarMatCountTex;
+            if (!frameMeanVarMatSamplesRawTex)  frameMeanVarMatSamplesRawTex  = mpFrameMeanVarMatSamplesRawTex;
+            if (!frameLevelProbesSamplesColdTex)  frameLevelProbesSamplesColdTex  = mpFrameLevelProbesSamplesColdTex;
+            if (!frameHashTex)  frameHashTex  = mpFrameHashAHashBHashABRaysTex;
+            if (!accumRaysNoiseErrorColdTex)  accumRaysNoiseErrorColdTex  = mpAccumRaysNoiseErrorColdTex;
         }
 
         // --- Accumulated textures (persistent, only cleared on reset) ---
@@ -466,47 +461,38 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             {
                 pCtx->clearUAV(mpAccumSaved->getUAV().get(), uint4(0u));
                 pCtx->clearUAV(mpAccumTotal->getUAV().get(), uint4(0u));
-                if (noiseTex)
-                    pCtx->clearUAV(noiseTex->getUAV().get(), float4(0.f));
-                // Also clear the accumulated diagnostic texture (gVCDiag)
-                // so the averaging window starts fresh.
-                if (diagTex)
-                    pCtx->clearUAV(diagTex->getUAV().get(), float4(0.f));
+                // Clear accumulated diagnostic textures so the
+                // averaging window starts fresh.
+                if (accumMeanVarMatCountTex)
+                    pCtx->clearUAV(accumMeanVarMatCountTex->getUAV().get(), float4(0.f));
+                if (accumRaysNoiseErrorColdTex)
+                    pCtx->clearUAV(accumRaysNoiseErrorColdTex->getUAV().get(), float4(0.f));
                 // Clear snapshot textures too so stale data from the previous
                 // warmup phase doesn't leak into the averaging window.
-                if (varMatLevelTex)
-                    pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
-                if (varMatMuTex)
-                    pCtx->clearUAV(varMatMuTex->getUAV().get(), float4(0.f));
+                if (frameMeanVarMatSamplesRawTex)
+                    pCtx->clearUAV(frameMeanVarMatSamplesRawTex->getUAV().get(), float4(0.f));
+                if (frameLevelProbesSamplesColdTex)
+                    pCtx->clearUAV(frameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f));
+                if (frameHashTex)
+                    pCtx->clearUAV(frameHashTex->getUAV().get(), float4(0.f));
                 mResetAccum = false;
             }
             dict["vhfAccumSaved"] = mpAccumSaved;
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
 
-        // TODO: Per-frame clearing temporarily disabled for TDR debugging.
-        // if (varMatLevelTex)
-        //     pCtx->clearUAV(varMatLevelTex->getUAV().get(), float4(0.f));
-        // if (varMatMuTex)
-        //     pCtx->clearUAV(varMatMuTex->getUAV().get(), float4(0.f));
-
-        auto exposeSnapshot = [&](ref<Texture>& tex, const char* key) {
+        auto expose = [&](ref<Texture>& tex, const char* key) {
             if (tex) dict[key] = tex;
         };
-        exposeSnapshot(diagErrorTex,      "vhfDiagError");
-        exposeSnapshot(varMatLevelTex,  "vhfVarMaturityLevel");
-        exposeSnapshot(varMatMuTex, "vhfVarMaturityMu");
+        // Per-frame snapshots
+        expose(frameMeanVarMatSamplesRawTex,  "vhfFrameMeanVarMatSamplesRaw");
+        expose(frameLevelProbesSamplesColdTex,  "vhfFrameLevelProbesSamplesCold");
+        expose(frameHashTex,  "vhfFrameHashAHashBHashABRays");
+        // Accumulated (NOT cleared per frame — running averages)
+        expose(accumMeanVarMatCountTex,  "vhfAccumMeanVarMatCount");
+        expose(accumRaysNoiseErrorColdTex,  "vhfAccumRaysNoiseErrorCold");
 
-        // Accumulated textures: NOT cleared per frame — running averages.
-        // diagTex accumulates (avg mu, avg var, sample count) across frames.
-        auto exposeOnly = [&](ref<Texture>& tex, const char* key) {
-            if (tex) dict[key] = tex;
-        };
-        exposeOnly(diagTex,           "vhfDiag");
-        exposeOnly(raySavedRatioTex,  "vhfRaySavedRatio");
-        exposeOnly(noiseTex,          "vhfNoise");
-
-        dict["vhfDiagEnabled"] = (diagTex != nullptr);
+        dict["vhfDiagEnabled"] = (accumMeanVarMatCountTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);
     }
 
@@ -559,7 +545,8 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gPMin"]           = mParams.pMin;
     vars["VisCacheParams"]["gFireflyBudget"]  = mParams.fireflyBudget;
     vars["VisCacheParams"]["gNumLevels"]      = N;
-    vars["VisCacheParams"]["gEnableJitter"]   = mParams.enableVisCacheJitter ? 1u : 0u;
+    vars["VisCacheParams"]["gFlags"]          = (mParams.enableVisCacheJitter ? 1u : 0u)
+                                                | (mParams.enableVisCacheAdaptivePMin ? 2u : 0u);
     vars["VisCacheParams"]["gCellACoarse"]    = mParams.cellACoarse;
     vars["VisCacheParams"]["gCellAFine"]      = (N > 1) ? deriveFine(mParams.cellACoarse, N) : mParams.cellACoarse;
     vars["VisCacheParams"]["gCellBCoarse"]    = mParams.cellBCoarse;
@@ -684,7 +671,6 @@ void VisCache::renderUI(Gui::Widgets& widget)
         {uint32_t(DiagMode::Variance),        "Variance (uncertainty)"},
         {uint32_t(DiagMode::LODLevel),        "LOD Level"},
         {uint32_t(DiagMode::RaySaved),        "Ray Saved"},
-        {uint32_t(DiagMode::PredictionError), "Prediction Error |mu-V|"},
     };
     widget.dropdown("Heatmap", kHeatmapModes, reinterpret_cast<uint32_t&>(mDiagMode));
     mEnableDiagnostics = (mDiagMode != DiagMode::Off);
