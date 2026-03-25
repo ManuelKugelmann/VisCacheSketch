@@ -6,7 +6,7 @@
 
 **Shadow Ray Reduction using a Filtered Adaptive Multi-Level Hash Cache**
 
-**[Paper draft](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
+**[Paper draft](https://ManuelKugelmann.github.io/VisCache/paper.html)** | **[2006 Diplomarbeit (PDF)](docs/references/Kugelmann2006_ThesisMK.pdf)**
 
 **Author:** Manuel Kugelmann
 **Status:** Implementation in progress. Paper draft in progress.
