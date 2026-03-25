@@ -184,6 +184,78 @@ Canonicalization would require restriction
 to the diagonal (lvlA = lvlB) or
 symmetric level assignment.
 
+**Sentinel traces for dynamic scene detection.**
+The Pmin floor (Sec. 8) already forces ~5% of pixels
+to trace unconditionally, paying the ray cost regardless of cache state.
+Currently these traces feed into the normal update pipeline,
+slowly shifting μ.
+A zero-cost extension: Pmin-forced traces bypass the maturity gate (Sec. 5),
+always writing their result even to mature entries.
+This turns the existing 5% always-trace budget
+into an implicit change detector —
+if the scene changes and a mature entry becomes stale,
+Pmin traces correct it at a rate of Pmin × frame_rate
+(~3 updates/second per cell at 60 fps),
+without needing explicit invalidation logic
+or a separate probe pass.
+Combined with inline overflow decay (Sec. 6),
+which keeps total counts bounded so new observations shift μ quickly,
+this provides O(1)-second response to local scene changes
+while leaving stable regions at full maturity.
+The current background decay (Sec. 6) becomes a global safety net
+rather than the primary change-response mechanism.
+
+**Interpolatable visibility field.**
+Each occupied cell is a noisy sample of a continuous visibility field V(a,b),
+located at the cell's effective center,
+with known value (μ) and known uncertainty (μ(1−μ)/n).
+Reframing the hash table as a set of scattered spatial samples
+opens the path to explicit interpolation at lookup time:
+query K neighboring cells and blend by distance and confidence,
+e.g. w_i = n_i / (1 + d_i² / cell_size²).
+At coarse levels (L0, 10 m cells),
+discrete jumps at cell boundaries are large
+and neighbors are likely populated —
+interpolation over 8 cube-corner neighbors
+costs ~8 hash lookups (~100 ALU + 8 cache lines),
+trivial compared to a shadow ray.
+At fine levels (L2, 16 cm cells),
+the current position-seeded jitter (Sec. 4.2)
+already provides sufficient stochastic smoothing at near-pixel scale.
+A practical rule: interpolate at coarse levels, jitter-filter at fine levels.
+The interpolated L0 μ has lower variance than any single cell's μ,
+so the variance-gated cascade stops earlier,
+potentially saving fine-level lookups.
+This reframes the cache from a discrete lookup structure
+to a sparse spatial reconstruction of the visibility field
+from noisy Bernoulli observations —
+prediction-with-correction then maintains reconstruction quality
+by tracing where reconstruction uncertainty is high.
+
+**Double jitter: grid jitter + point jitter.**
+The current position-seeded jitter (Sec. 4.2) smooths cell boundary transitions
+but leaves the grid itself regular —
+cell centers remain on a uniform axis-aligned lattice.
+A two-stage jitter separates two independent jobs:
+(1) *grid jitter* displaces each cell's effective center
+by a deterministic hash of its quantized coordinates,
+breaking axis-aligned regularity
+so that scene features (walls, floors)
+do not systematically align with cell boundaries;
+(2) *point jitter* (the existing position-seeded jitter)
+provides the boundary box filter independently.
+Neither stage alone achieves both properties:
+grid jitter without point jitter recreates Binder et al.'s [2018] sharp boundary steps
+at irregularly placed boundaries;
+point jitter without grid jitter leaves axis-aligned grid structure.
+Double jitter is particularly beneficial
+for the interpolatable-field extension above:
+on a regular lattice, neighboring cell centers are maximally correlated
+and interpolation degenerates toward trilinear on a grid;
+with grid jitter, cell centers form a quasi-random sample set,
+giving more independent information per neighbor
+and reducing interpolation variance.
+
 **Multi-lookup smoothing and inter-level interpolation.**
 Currently each query performs a single coarse-to-fine cascade
 and returns the best matching entry.
