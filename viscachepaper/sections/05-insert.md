@@ -6,6 +6,8 @@ Two gates control the coarse-to-fine cascade L0..N-1:
 
 2. **Cascaded variance gate** (after write): if this level's post-increment variance falls below τ, stop — finer levels would agree. During bootstrap (insufficient samples), variance is above τ by construction, so all levels fill unconditionally.
 
+The variance-gated cascade implicitly discovers the local *visibility correlation length* — the spatial scale below which visibility is effectively constant. A level converges when its cell size is at or below this scale; the cascade stops because finer levels would see the same value. No explicit correlation estimation is needed; the Bernoulli variance signal is a sufficient proxy, and the system adapts automatically to the actual visibility field rather than to a model of it.
+
 Both-endpoint jitter is in the addressing step (Sec. 4). Single InterlockedAdd on packed uint ensures counters stay in sync; the post-increment value is used directly for the variance check, avoiding a separate lookup.
 
 **Algorithm 1: Maturity + Variance-Gated Insert**
