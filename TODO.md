@@ -169,3 +169,46 @@ captures/
 ## 5. Dependencies & Blockers
 
 **Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §15.
+
+---
+
+## 6. Future Work / Paper Extensions (from review session 2026-03-26)
+
+### 6.1 Sentinel Traces for Dynamic Scenes
+- [ ] Pmin-forced traces bypass maturity gate when |V − μ| > sentinel_threshold (default 0.5, tuneable)
+- [ ] Agreeing sentinels respect maturity gate — only disagreement triggers forced write
+- [ ] Combined with inline overflow decay, gives O(1)-second response to local scene changes
+- [ ] Background decay becomes global safety net, not primary change-response mechanism
+- [ ] Written up in Sec. 14 future work
+
+### 6.2 Distance-Bin Monotonicity Cascade (pos_dir_dist addressing)
+- [ ] Exploit geometric monotonicity: μ(P, D, d_near) ≥ μ(P, D, d_far)
+- [ ] Multi-write across distance bins on trace: V=0 propagates to all farther bins, V=1 propagates to all nearer bins
+- [ ] Variance gate on propagation: stop when target bin already agrees
+- [ ] Closest-hit shadow rays give d_occ → fill entire distance column from one trace (V=1 below d_occ, V=0 above)
+- [ ] Closest-hit for sentinel traces only (5% budget, already paying full cost)
+- [ ] Add to Sec. 14 future work
+
+### 6.3 Interpolatable Visibility Field
+- [ ] Reframe hash table as scattered spatial samples of continuous V(a,b) field
+- [ ] Explicit neighbor interpolation at coarse levels (L0): 8 cube-corner lookups, blend by distance + confidence
+- [ ] Jitter-filter only at fine levels (L2): near-pixel scale, denoiser handles it
+- [ ] Interpolated L0 μ has lower variance → cascade stops earlier
+- [ ] Written up in Sec. 14 future work
+
+### 6.4 Double Jitter (Grid Jitter + Point Jitter)
+- [ ] Stage 1: grid jitter displaces cell centers by hash(quantized_coords), breaks axis-aligned regularity
+- [ ] Stage 2: point jitter (existing position-seeded), provides boundary box filter
+- [ ] Improves sample independence for interpolation (quasi-random cell centers vs. regular lattice)
+- [ ] Written up in Sec. 14 future work
+
+### 6.5 Visibility Correlation Length
+- [x] Add terminology to Sec. 5 — variance-gated cascade discovers correlation length implicitly
+- [ ] Consider adding to Sec. 4 discussion of cache key justification (pre-empts "under-justified" critique)
+
+### 6.6 Paper Sections Status
+- [x] Sec. 5: added correlation length paragraph
+- [x] Sec. 14: added sentinel traces future work
+- [x] Sec. 14: added interpolatable visibility field future work
+- [x] Sec. 14: added double jitter future work
+- [ ] Sec. 14: add distance-bin monotonicity cascade future work
