@@ -206,9 +206,52 @@ captures/
 - [x] Add terminology to Sec. 5 — variance-gated cascade discovers correlation length implicitly
 - [ ] Consider adding to Sec. 4 discussion of cache key justification (pre-empts "under-justified" critique)
 
-### 6.6 Paper Sections Status
+### 6.6 Position+Normal × Direction+Distance Addressing (primary mode)
+- [x] Reframe Sec. 4 around pos_normal × dir_dist as primary addressing mode
+- [x] Normal disambiguates thin geometry/corners — free geometric info
+- [x] Direction enables angular LOD (variance-gatable refinement axis)
+- [x] Distance monotonicity enables free multi-write (geometric invariant, not LOD)
+- [x] pos×pos remains as secondary mode for symmetric GI revalidation with canonicalization
+- [x] Updated: abstract, introduction, Sec. 3, Sec. 4, Sec. 14, README
+
+### 6.7 Three-State Cascade (Bootstrap / Useable / Mature)
+- [x] Separate τ_useable (gUseableThreshold, default 8) from τ_mature (gMatureThreshold, default 32 at μ=0.5)
+- [x] τ_useable: min samples before children may be written (low — rough μ suffices as parent CV)
+- [x] τ_mature: stop writing to this entry (high — SE-based, scales with variance)
+- [x] τ_var (gVarThreshold): variance gate for cascade propagation
+- [x] Child entries inherit parent μ at reduced weight (right-shift by 3 = 1/8 of parent count)
+- [x] Written up in Sec. 5
+- [ ] Implementation: add gUseableThreshold to cbuffer and VisCache.h
+- [ ] Implementation: inherit parent μ on first child insert (reduced-weight seeding)
+
+### 6.8 2D LOD Cascade (Spatial × Angular)
+- [x] Two independent LOD axes: spatial cell size and angular bin size
+- [x] Diagonal-first exploration: (0,0)→(1,1)→(2,2), same cost as 1D
+- [x] Off-diagonal probing at terminal level: +2 lookups to determine which axis needs refinement
+- [x] max_diff=1 constraint: |spatial_lvl − angular_lvl| ≤ 1 prevents axis divergence
+- [x] Three-state cascade applies per (s,a) pair: child starts when parent is useable, not mature
+- [x] Written up in Sec. 14 future work
+- [ ] Implementation: 2D level index in hash key (spatial_lvl, angular_lvl)
+- [ ] Implementation: diagonal cascade with off-diagonal probe at terminal level
+- [ ] Ablation: diagonal-only vs diagonal+probe vs full 2D grid
+
+### 6.9 Distance-Bin Multi-Write Implementation
+- [x] Design written up in Sec. 4.1 and Sec. 14
+- [ ] Implementation: propagate V=0 to farther bins from d_hit on insert
+- [ ] Implementation: propagate V=1 to nearer bins from d_query on insert
+- [ ] Implementation: read CommittedRayT() from any-hit result in ShadingCV.slang
+- [ ] Variance gate on propagation targets: skip bins that already agree
+
+### 6.10 Paper Sections Status
+- [x] Sec. 4: restructured around pos_normal × dir_dist as primary mode
+- [x] Sec. 5: three-state cascade with named thresholds (τ_useable, τ_mature, τ_var)
 - [x] Sec. 5: added correlation length paragraph
+- [x] Sec. 14: added 2D diagonal LOD cascade future work
 - [x] Sec. 14: added sentinel traces future work
 - [x] Sec. 14: added interpolatable visibility field future work
 - [x] Sec. 14: added double jitter future work
-- [x] Sec. 14: add distance-bin propagation future work (geometric invariant, not LOD)
+- [x] Sec. 14: added distance-bin multi-write future work
+- [x] Sec. 14: shortened independent-per-endpoint LOD (subsumed by 2D cascade)
+- [x] Abstract: updated with pos_normal × dir_dist key decomposition
+- [x] Introduction: new first contribution bullet for addressing
+- [x] README: new addressing section + updated key additions list
