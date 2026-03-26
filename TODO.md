@@ -31,7 +31,7 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Camera-adaptive cell sizing (FoV + CoC) — future work, document only
 
 ### 1.3 New Feature Implementation (paper describes, code missing)
-- [ ] **CRITICAL** Normal in hash key — paper Sec. 4.1; code has no normal component (6D key: qa, qb only)
+- [ ] **CRITICAL** Uncollapse normal dimension — paper Sec. 4.1; current code is pos_norm1__* (normal collapsed); need pos_norm__* (normal active)
 - [ ] **CRITICAL** τ_useable / three-state cascade — paper Sec. 5; code has two-gate model only
 - [ ] **CRITICAL** Child inherits parent μ at reduced weight — paper Sec. 5; no parent-to-child seeding
 - [ ] **HIGH** Distance-bin multi-write — paper Sec. 4.1; code writes single bin, no CommittedRayT()
@@ -71,9 +71,9 @@ Run: `./scripts/run_paper_experiments.sh` (or individual scripts below)
 **New feature ablations (once implemented):**
 
 _Addressing mode (Sec. 4.1):_
-- [ ] pos__pos vs pos_norm__dir_dist — full primary mode vs legacy; measures normal + angular LOD + distance propagation combined
-- [ ] pos__dir_dist vs pos_norm__dir_dist — isolates normal contribution
-- [ ] pos_norm__dir_dist1 vs pos_norm__dir_dist — isolates distance bins
+- [ ] pos_norm1__dir_dist vs pos_norm__dir_dist — isolates normal contribution (uncollapsing norm)
+- [ ] pos_norm__dir_dist1 vs pos_norm__dir_dist — isolates distance bins (uncollapsing dist)
+- [ ] pos_norm1__pos vs pos_norm__dir_dist — full primary mode vs pos×pos legacy; measures all three (normal + angular + distance)
 - [ ] Thin geometry stress test (Bistro window frames, plant leaves) — normal disambiguation is critical here
 
 _Three-state cascade (Sec. 5):_
@@ -185,22 +185,24 @@ _Goal: one Bistro profiling number to unblock §13 Results._
 **Unblocks:** §13 Results, abstract numbers, paper submission draft.
 **No code changes needed** — this is measurement only.
 
-### Phase 1: Normal in hash key (CRITICAL paper→code gap)
-_Goal: implement the paper's primary addressing mode._
+### Phase 1: Uncollapse normal dimension (CRITICAL paper→code gap)
+_Goal: implement the paper's primary addressing mode by uncollapsing norm1 → norm._
 ```
-[1.1] Add normal quantization to vhfQuantizePair()  ~2 days
+[1.1] Add normal quantization to vhfQuantizePair()     ~2 days
       - Octahedral mapping of shading normal
       - Concatenate into qa alongside position
-      - Hash key becomes 9D: pos(3) + normal(2-3) + dir(2) + dist(1) + level
-[1.2] Add gNormalCellSize parameter (angular bin for normal)
+      - Hash key: pos(3) + norm(2-3) + dir(2) + dist(1) + level
+      - gNormalCellSize parameter (angular bin for normal)
       - Coarse default (e.g. 45°) — normals rarely need fine bins
-[1.3] Ladder test: pos×dirdist vs pos_normal×dirdist
+      - norm1 = collapsed to single bucket (gNormalCellSize=360°)
+        must reproduce existing pos_norm1__* behavior exactly
+[1.2] Ladder test: pos_norm1__dir_dist vs pos_norm__dir_dist
       - CornellBox (no thin geometry — should be equivalent)
-      - Bistro (thin walls, corners — normal should help)
-[1.4] Fill in Table 1b angular/distance defaults     ~1 hr
+      - Bistro (thin walls, corners — normal should help)    ~1 day
+[1.3] Fill in Table 1b angular/distance defaults            ~1 hr
 ```
 **Unblocks:** addressing mode ablations (§2.1).
-**Risk:** low — additive change to existing quantization path.
+**Risk:** low — additive change; norm1 (360°) is a no-op that preserves existing behavior.
 
 ### Phase 2: Three-state cascade (CRITICAL paper→code gap)
 _Goal: implement τ_useable gate and parent→child inheritance._
@@ -312,19 +314,23 @@ All run via `.scripts/mogwai-headless.sh`. Default scene: CornellBox (procedural
 Systematic sweep of all addressing combinations. Each variant runs 1 warmup + 1 capture frame.
 Extends `VisCache_LadderCommon.py` VARIANTS list. Diagnostic grid per variant.
 
+Naming: `A__B` separates endpoints, `_` separates dimensions within. `1` suffix = collapsed.
+`pos__*` variants are shorthand for `pos_norm1__*` (normal collapsed to single bucket).
+Adding normal is just "uncollapsing" the norm dimension — not a separate addressing mode.
+
 ```
-Variant                Endpoint A         Endpoint B            Key dimensions  Notes
-─────────────────────────────────────────────────────────────────────────────────────
-pos__pos               pos                pos (same cell)       6D              same cell size for both endpoints
-pos__pos1              pos                pos (collapsed)       3D              position-only baseline
-pos__dir1_dist1        pos                dir(360°)+dist(1km)   3D              ≈ position-only via dirdist
-pos__dir_dist1         pos                dir(5°)+dist(1km)     5D              angular bins, no distance
-pos__dir_dist          pos                dir(5°)+dist(0.24)    6D              angular + distance bins
-─── new (requires Phase 1 implementation) ──────────────────────────────────────────
-pos_norm__dir1_dist1   pos+normal         dir(360°)+dist(1km)   5D              normal only, no dir/dist
-pos_norm__dir_dist1    pos+normal         dir(5°)+dist(1km)     7D              normal + angular, no dist
-pos_norm__dir_dist     pos+normal         dir(5°)+dist(0.24)    8D              full primary mode (paper)
-pos_norm__pos          pos+normal         pos (same cell)       8D              normal + pos×pos hybrid
+Variant                  Endpoint A         Endpoint B            Key dims  Notes
+──────────────────────────────────────────────────────────────────────────────────────
+pos_norm1__pos1          pos (norm=1)       pos (collapsed)       3D        position-only baseline
+pos_norm1__dir1_dist1    pos (norm=1)       dir(360°)+dist(1km)   3D        ≈ position-only via dirdist
+pos_norm1__pos           pos (norm=1)       pos (same cell)       6D        pos×pos, no normal
+pos_norm1__dir_dist1     pos (norm=1)       dir(5°)+dist(1km)     5D        angular bins, no distance
+pos_norm1__dir_dist      pos (norm=1)       dir(5°)+dist(0.24)    6D        angular + distance bins
+─── normal uncollapsed (requires Phase 1 implementation) ─────────────────────────────
+pos_norm__dir1_dist1     pos+normal         dir(360°)+dist(1km)   5D        normal only, no dir/dist
+pos_norm__dir_dist1      pos+normal         dir(5°)+dist(1km)     7D        normal + angular, no dist
+pos_norm__dir_dist       pos+normal         dir(5°)+dist(0.24)    8D        full primary mode (paper)
+pos_norm__pos            pos+normal         pos (same cell)       8D        normal + pos×pos hybrid
 ```
 
 **Pass criteria per variant:**
