@@ -168,9 +168,191 @@ captures/
 
 ---
 
-## 5. Dependencies & Blockers
+## 5. Implementation Roadmap
 
-**Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §13 Results.
+Ordered by dependency chain: each phase builds on the previous.
+Paper can be ahead of code, but submission requires measured data from Phase 3+.
+
+### Phase 0: Baseline (current state → first data point)
+_Goal: one Bistro profiling number to unblock §13 Results._
+```
+[0.1] Build + smoke test on RTX 4090               ~1 day
+[0.2] Download Bistro + Sponza                      ~30 min
+[0.3] Run existing ablation scripts (pos×pos + dirdist modes)
+      Capture: rays/px, frame time, MSE vs reference ~1 day
+[0.4] Fill in ##% placeholders in abstract + §13    ~1 hr
+```
+**Unblocks:** §13 Results, abstract numbers, paper submission draft.
+**No code changes needed** — this is measurement only.
+
+### Phase 1: Normal in hash key (CRITICAL paper→code gap)
+_Goal: implement the paper's primary addressing mode._
+```
+[1.1] Add normal quantization to vhfQuantizePair()  ~2 days
+      - Octahedral mapping of shading normal
+      - Concatenate into qa alongside position
+      - Hash key becomes 9D: pos(3) + normal(2-3) + dir(2) + dist(1) + level
+[1.2] Add gNormalCellSize parameter (angular bin for normal)
+      - Coarse default (e.g. 45°) — normals rarely need fine bins
+[1.3] Ladder test: pos×dirdist vs pos_normal×dirdist
+      - CornellBox (no thin geometry — should be equivalent)
+      - Bistro (thin walls, corners — normal should help)
+[1.4] Fill in Table 1b angular/distance defaults     ~1 hr
+```
+**Unblocks:** addressing mode ablations (§2.1).
+**Risk:** low — additive change to existing quantization path.
+
+### Phase 2: Three-state cascade (CRITICAL paper→code gap)
+_Goal: implement τ_useable gate and parent→child inheritance._
+```
+[2.1] Add gUseableThreshold to cbuffer/VisCache.h   ~0.5 day
+      - Default 8; insert path checks cur.total < tau_useable → break
+[2.2] Parent→child μ inheritance                     ~1 day
+      - On first child insert (empty slot), seed with parent's
+        packed >> 3 (1/8 of parent counts)
+      - Requires reading parent entry before child CAS
+[2.3] Ladder test: two-gate vs three-gate cascade
+      - Measure frames-to-convergence at L1/L2       ~1 day
+[2.4] τ_useable sweep: 4, 8, 16, 32
+      - Find minimum viable parent quality
+```
+**Unblocks:** cascade ablations (§2.1), τ_useable parameter default.
+**Risk:** medium — parent read adds one extra memory access per insert.
+
+### Phase 3: Distance-bin multi-write (HIGH paper→code gap)
+_Goal: exploit distance monotonicity for free propagation._
+```
+[3.1] Read CommittedRayT() in ShadingCV.slang        ~0.5 day
+      - Available from any-hit; pass d_hit to insert path
+[3.2] Modify vhfInsert to propagate across bins      ~1 day
+      - V=0: write to all bins with d_max >= d_hit
+      - V=1: write to all bins with d_max <= d_query
+      - Variance gate: skip bins that already agree
+[3.3] Add distance_scale parameter to cbuffer        ~0.5 day
+      - d_max(l) = cell_size(l) × distance_scale
+      - Default: sweep 1, 5, 10, 20 to find sweet spot
+[3.4] Ablation: single-bin vs multi-write
+      - Measure cache fill rate, convergence speed    ~1 day
+```
+**Unblocks:** distance ablations (§2.1), distance_scale default.
+**Risk:** low — additive loop in insert path.
+
+### Phase 4: Code→paper sync + existing feature ablation
+_Goal: document undocumented code features, run full ablation matrix._
+```
+[4.1] Write up confidence-adaptive pMin in Sec. 8    ~0.5 day
+[4.2] Write up deterministic xi in Sec. 8 or 9       ~0.5 day
+[4.3] Run full existing ablation matrix (-A through -E,
+      finest-only, coarsest-only, no-cache)           ~2 days
+[4.4] Run new feature ablations (Phases 1-3)          ~2 days
+[4.5] Fill in all remaining ## placeholders in paper  ~1 day
+```
+**Unblocks:** paper submission.
+
+### Phase 5: ReSTIR GI integration (CRITICAL for GI numbers)
+_Goal: demonstrate GI revalidation savings._
+```
+[5.1] Port DQLin/ReSTIR_PT into Falcor fork          ~5 days
+[5.2] Verify baseline: k=5 traces/px, FLIP < 0.01    ~1 day
+[5.3] Enable VisCache on revalidation path            ~1 day
+[5.4] Measure: traces/px → ~0.5-1.0 at steady state  ~1 day
+[5.5] Fill in GI ##% placeholder in abstract          ~1 hr
+```
+**Unblocks:** GI results in §13, full paper submission.
+**Risk:** high — DQLin port is the largest single task.
+
+### Phase 6: Sentinel traces (future work → implementation)
+_Goal: fast dynamic scene response without blind decay._
+```
+[6.1] Add sentinel_threshold parameter                ~0.5 day
+[6.2] Pmin path: if |V - μ| > threshold, bypass maturity gate
+[6.3] Dynamic scene stress test: animated Bistro      ~1 day
+[6.4] Compare: blind decay only vs sentinels + decay  ~1 day
+```
+**Unblocks:** sentinel ablation, dynamic scene results.
+**Risk:** low — small change to existing Pmin code path.
+
+### Phase 7: 2D LOD cascade (future work → implementation)
+_Goal: independent spatial × angular refinement._
+```
+[7.1] Encode (spatial_lvl, angular_lvl) in hash key   ~1 day
+[7.2] Diagonal-first cascade with off-diagonal probe  ~2 days
+[7.3] max_diff constraint                             ~0.5 day
+[7.4] Ablation: 1D vs diagonal-only vs diagonal+probe ~2 days
+```
+**Unblocks:** 2D cascade ablation.
+**Risk:** medium — changes cascade logic throughout insert+lookup.
+
+### Summary timeline
+
+| Phase | Effort | Blocks |
+|---|---|---|
+| 0. Baseline measurement | ~2 days | Abstract ##%, §13 draft |
+| 1. Normal in key | ~3 days | Addressing ablation |
+| 2. Three-state cascade | ~3 days | Cascade ablation |
+| 3. Distance multi-write | ~3 days | Distance ablation |
+| 4. Sync + ablation run | ~6 days | Paper submission draft |
+| 5. ReSTIR GI port | ~8 days | GI numbers |
+| 6. Sentinels | ~3 days | Dynamic scene results |
+| 7. 2D LOD cascade | ~6 days | Angular LOD results |
+
+**Minimum viable submission:** Phases 0–4 (~17 days).
+**Full submission with GI:** Phases 0–5 (~25 days).
+Phases 6–7 are post-submission extensions.
+
+---
+
+## 5b. Feature Test Ladder
+
+Each feature gets a dedicated ladder step that validates functionality before ablation.
+Steps are ordered to match the implementation roadmap phases.
+All run via `.scripts/mogwai-headless.sh` on CornellBox (procedural, no download).
+
+```
+Ladder Step    Feature                          Pass Criteria
+──────────────────────────────────────────────────────────────────────
+L00            Baseline pos×dirdist (existing)  Diagnostic grid renders, no crash
+L01            Normal in key (Phase 1)          pos_normal×dirdist diagnostic differs
+                                                from pos×dirdist on thin-geometry scene;
+                                                identical on CornellBox (no thin geo)
+L02            τ_useable gate (Phase 2)         L1 populates earlier than with τ_mature-only:
+                                                compare frame# at which L1 total > 0
+L03            Parent→child inheritance (P2)    L1 entry starts with nonzero vis/total
+                                                on first frame (inherited from L0)
+L04            Distance multi-write (Phase 3)   After 1 trace at d=5m with V=0:
+                                                bins [0,10m] and [0,∞) also show V=0 count;
+                                                bin [0,1m] unchanged
+L05            CommittedRayT() propagation (P3) d_hit diagnostic channel is nonzero
+                                                for occluded rays
+L06            Sentinel bypass (Phase 6)        After scene change (light move):
+                                                mature entry with |V-μ|>0.5 gets
+                                                updated within 1/Pmin frames
+L07            2D cascade diagonal (Phase 7)    Entries at (1,1) and (2,2) populated;
+                                                off-diagonal (2,1) or (1,2) only populated
+                                                when diagonal terminal has high variance
+L08            Confidence-adaptive pMin (P4)    Compare firefly count: adaptive < fixed
+L09            Deterministic xi (P4)            Temporal variance of cached-path output:
+                                                deterministic < random across 10 frames
+```
+
+**Ladder script naming:** `scripts/VisCache_Ladder<NN>_<Feature>.py`
+- L00: `VisCache_Ladder00_Baseline.py` (existing L00 covers this)
+- L01: `VisCache_Ladder01_Normal.py`
+- L02: `VisCache_Ladder02_Useable.py`
+- L03: `VisCache_Ladder03_Inherit.py`
+- L04–L05: `VisCache_Ladder04_DistMultiWrite.py`
+- L06: `VisCache_Ladder06_Sentinel.py`
+- L07: `VisCache_Ladder07_2DLOD.py`
+- L08–L09: `VisCache_Ladder08_CodeFeatures.py`
+
+Each step captures diagnostic EXR + extracts channels via `viscache_exr.py`.
+Pass/fail is visual (diagnostic grid) + numeric (counter assertions in Python).
+
+---
+
+## 5c. Dependencies & Blockers
+
+**Critical path:** Phase 0 (measure) → Phases 1-3 (implement paper features) → Phase 4 (ablate) → Phase 5 (GI port) → submit.
 
 ---
 
@@ -188,13 +370,8 @@ captures/
 - [ ] max_diff — paper Sec. 14 says default 1 but no parameter exists
 - [ ] n_useable inheritance weight — paper says right-shift by 3 (1/8) but no parameter exists
 
-### Paper internal discrepancies
-- [ ] Sec. 3.2 Table 1 caption still says "enabling canonicalization (Sec. 4.5)" — should be Sec. 4.6
-- [ ] Sec. 3.2 "Two addressing modes" paragraph references Sec. 4.6 — verify cross-refs
-- [ ] Sec. 7 Algorithm 2 uses `w_min` and `tau` — should use named τ_var
-- [ ] Sec. 8 Algorithm 3 uses `tau` — should use τ_var
-- [ ] Sec. 10 Algorithm 4 uses `threshold` — should use named parameter (τ_reval or similar)
-- [ ] Sec. 4.4 says two LOD dimensions but Sec. 3.2 Table 1 only shows spatial — add angular bin sizes
+### Paper internal discrepancies (all fixed 2026-03-26)
+All cross-refs, threshold naming, and Table 1b added. No remaining discrepancies.
 
 ---
 
