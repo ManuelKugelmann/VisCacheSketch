@@ -52,14 +52,17 @@ del /q "%BUILD_DIR%\CMakeCache.txt"
 if exist "%BUILD_DIR%\CMakeFiles" rmdir /s /q "%BUILD_DIR%\CMakeFiles"
 
 REM ---------------------------------------------------------------------------
-REM 2. CMake Configure
+REM 2. CMake Configure (with FALCOR_PLUGIN_DIRS for external plugins)
 REM ---------------------------------------------------------------------------
 :configure
+for %%I in ("%FALCOR_DIR%\..") do set "VISCACHE_ROOT=%%~fI"
+set "PLUGIN_DIRS=%VISCACHE_ROOT%\Source\RenderPasses\VisCache;%VISCACHE_ROOT%\Source\RenderPasses\ReSTIRPTPass"
 echo [build] Configuring: %CMAKE% --preset %PRESET%
+echo [build] Plugin dirs: %PLUGIN_DIRS%
 if "%USE_SCCACHE%"=="1" (
-    "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+    "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%" -DFALCOR_PLUGIN_DIRS="%PLUGIN_DIRS%" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 ) else (
-    "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%"
+    "%CMAKE%" --preset %PRESET% -S "%FALCOR_DIR%" -DFALCOR_PLUGIN_DIRS="%PLUGIN_DIRS%"
 )
 if errorlevel 1 (
     echo [build] ERROR: CMake configure failed!
