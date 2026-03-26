@@ -115,9 +115,9 @@ else
     echo "[scenes] TestScenes already exists, skipping"
 fi
 # Copy CornellBox pyscene from repo if missing
-if [ -d "$MEDIA_DIR/TestScenes" ] && [ ! -f "$MEDIA_DIR/TestScenes/CornellBox.pyscene" ] && [ -f "$SCENES_DIR/CornellBox.pyscene" ]; then
-    cp "$SCENES_DIR/CornellBox.pyscene" "$MEDIA_DIR/TestScenes/CornellBox.pyscene"
-    echo "[scenes] Copied CornellBox.pyscene from scenes/"
+if [ -d "$MEDIA_DIR/TestScenes" ] && [ ! -f "$MEDIA_DIR/TestScenes/CornellBox_1AreaLight.pyscene" ] && [ -f "$SCENES_DIR/CornellBox_1AreaLight.pyscene" ]; then
+    cp "$SCENES_DIR/CornellBox_1AreaLight.pyscene" "$MEDIA_DIR/TestScenes/CornellBox_1AreaLight.pyscene"
+    echo "[scenes] Copied CornellBox_1AreaLight.pyscene from scenes/"
 fi
 
 # ---------------------------------------------------------------------------

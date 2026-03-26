@@ -22,7 +22,7 @@ ABLATION_CONFIGS = [
     ("minus_C",      {"enableVisCacheWarpReduction": False}),
     ("minus_D",      {"enableVisCacheDecay":         False}),
     ("minus_E",      {"enableVisCachePressureEvict": False}),
-    ("minus_F",      {"enableVisCacheJitter":        False}),
+    ("minus_F",      {"enableVisCacheJitterA": False, "enableVisCacheJitterB": False}),
     ("single_level", {"numLevels": 1}),
     ("no_cache",     {"enableVisCacheVisibilityCheck": False, "enableVisCacheLightSelection": False}),
 ]

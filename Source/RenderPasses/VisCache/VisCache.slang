@@ -178,7 +178,7 @@ cbuffer VisCacheParams
     float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
-    uint   gFlags;           ///< Packed flags: bit 0 = jitter, bit 1 = adaptivePMin
+    uint   gFlags;           ///< Packed flags: bit 0 = jitterA, bit 1 = jitterB, bit 2 = adaptivePMin
     // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
     float  gCellACoarse;     ///< posA coarsest cell size (world units, auto-tuned from scene)
     float  gCellAFine;       ///< posA finest cell size (auto-derived from coarse + numLevels)
@@ -320,12 +320,12 @@ float2 octEncode(float3 n)
 ///   >= 100.0 = single distance bucket (effectively no distance discrimination).
 int3 vhfQuantizeDirection(float3 dir, float angularCellSize, float dist, float distCellSize)
 {
-    // Shift octahedral coords from [-1,1] to [0,2] before quantizing so
-    // floor() doesn't create an extra bin at the negative boundary.
+    // Octahedral coords shifted to [0,2] — always non-negative, round() safe.
+    // Distance is also always >= 0.
     float2 oct = octEncode(dir) + 1.f;  // now in [0, 2]
     float angCell = max(angularCellSize, 0.01f);
-    int2 dirBin = int2(floor(oct / angCell));
-    int distBin = int(floor(dist / max(distCellSize, 0.01f)));
+    int2 dirBin = int2(round(oct / angCell));
+    int distBin = int(round(dist / max(distCellSize, 0.01f)));
     return int3(dirBin.x, dirBin.y, distBin);
 }
 
@@ -353,30 +353,50 @@ float3 vhfEncodeDirection(float3 dir)
 // ---------------------------------------------------------------------------
 // Jitter-before-quantize [Binder et al. 2018]:
 //
-// Naive floor(pos / cellSize) creates systematic aliasing at cell boundaries:
+// Naive round(pos / cellSize) creates systematic aliasing at cell boundaries:
 // two points epsilon apart can map to different cells. This causes visual
 // banding in shadows.
 //
 // Solution: add position-dependent random jitter (±0.5 cells) before
-// quantizing. The jitter is derived from the base cell index via pcg3d,
-// so it's deterministic — the same world position always maps to the same
-// cell, regardless of when or how often it's queried.
+// quantizing. Two jitter modes:
+//
+//   Default (raw-pos jitter): jitter derived from raw float position bits.
+//     Each position gets independent jitter → stochastic/soft cell boundaries.
+//     Neighboring positions near a boundary have a chance of landing in either
+//     cell, effectively low-pass filtering the grid assignment.
+//
+//   Ablation F2 (Binder-style): jitter derived from quantized cell index.
+//     All positions in the same cell get identical jitter → grid shifts
+//     uniformly → hard boundaries at new positions. [Binder et al. 2018]
+//     Set USE_VISCACHE_JITTER_BINDER=1 to select this mode.
 //
 // The seed parameter allows different jitter for posA vs posB (using
 // 0xAA vs 0xBB), preventing systematic correlation between endpoints.
 // The level index is XORed into the seed so different LOD levels get
 // independent jitter patterns.
 // ---------------------------------------------------------------------------
-int3 jitterQuantize(float3 pos, float cellSize, uint seed)
-{
-    int3 baseIdx = int3(floor(pos / cellSize));
-#if USE_VISCACHE_JITTER
-    uint3 r = pcg3d(uint3(baseIdx) ^ seed);
-    float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
-    return int3(floor((pos + jitter * cellSize) / cellSize));
-#else
-    return baseIdx;  // Ablation F: naive floor quantization (cell-boundary aliasing)
+#ifndef USE_VISCACHE_JITTER_BINDER
+#define USE_VISCACHE_JITTER_BINDER 0
 #endif
+
+int3 jitterQuantize(float3 pos, float cellSize, uint seed, bool enableJitter)
+{
+    int3 baseIdx = int3(round(pos / cellSize));
+#if USE_VISCACHE_JITTER
+    if (enableJitter)
+    {
+#if USE_VISCACHE_JITTER_BINDER
+        // Ablation F2: Binder-style — jitter from quantized cell index.
+        uint3 r = pcg3d(uint3(baseIdx) ^ seed);
+#else
+        // Default: raw-pos jitter — jitter from position float bits.
+        uint3 r = pcg3d(asuint(pos) ^ seed);
+#endif
+        float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
+        return int3(round((pos + jitter * cellSize) / cellSize));
+    }
+#endif
+    return baseIdx;
 }
 
 // ===========================================================================
@@ -426,10 +446,20 @@ float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 // of where in the scene it is, eliminating the left/right asymmetry from
 // lexicographic comparison on raw (possibly negative) coordinates.
 // ---------------------------------------------------------------------------
-uint vhfCanonicalKey(int3 q)
+/// Scalar hash of quantized cell coords — for diagnostic visualization only.
+uint vhfCellHash(int3 q)
 {
-    // Quick scalar hash for sort ordering (NOT the table address hash).
     return uint(q.x) * 0x9e3779b9u ^ uint(q.y) * 0x517cc1b7u ^ uint(q.z) * 0x6c62272eu;
+}
+
+/// Lexicographic comparison for canonicalization: returns true if a < b.
+/// Collision-free — unlike scalar hash, distinct int3 values always get
+/// a deterministic ordering.
+bool vhfCanonicalLess(int3 a, int3 b)
+{
+    if (a.x != b.x) return a.x < b.x;
+    if (a.y != b.y) return a.y < b.y;
+    return a.z < b.z;
 }
 
 // Precompute canonicalization flag — constant for all levels in a frame.
@@ -438,9 +468,26 @@ static const bool kCanonicalize = (gCellACoarse == gCellBCoarse);
 #endif
 
 void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
-                     out int3 qa, out int3 qb)
+                     out int3 qa, out int3 qb, float3 normalA = float3(0.f))
 {
-    qa = jitterQuantize(posA, cellSizeA, 0xAAu ^ lvl);
+    bool jitterA = (gFlags & kFlag_EnableJitterA) != 0;
+    bool jitterB = (gFlags & kFlag_EnableJitterB) != 0;
+
+    qa = jitterQuantize(posA, cellSizeA, 0xAAu ^ lvl, jitterA);
+
+    // Normal addressing: octahedral-encode normalA and fold into qa hash.
+    // This splits cells by surface orientation — same position but different
+    // normals (e.g., floor vs wall at a corner) get separate cache entries.
+    if (gFlags & kFlag_EnableNormalAddr)
+    {
+        float2 oct = octEncode(normalA) + 1.f;  // [0, 2]
+        // Coarse normal bins: ~8 bins (45° per bin) — enough to separate
+        // floor/wall/ceiling without excessive subdivision.
+        int2 nBin = int2(floor(oct * 4.f));  // 4 = 8 bins across [0,2]
+        // XOR-fold into qa to change the hash without adding dimensions.
+        qa.x ^= nBin.x * 0x45D9F3Bu;
+        qa.y ^= nBin.y * 0xC3A5C85Cu;
+    }
 
 #if USE_VISCACHE_DIRDIST_ADDRESSING
     // Dir+dist: 2D octahedral direction bins + distance bin.
@@ -455,13 +502,13 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
 #else
     // Pos×pos: quantize posB at its own cell size from the B cascade.
     float cellB = vhfCellSizeB(lvl);
-    qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl);
+    qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl, jitterB);
 
     // Canonicalize only when A and B have the same resolution.
-    // Sort by scalar hash (not coordinates) for position-independent ordering.
+    // Lexicographic sort — collision-free, ensures V(A,B) == V(B,A).
     if (kCanonicalize)
     {
-        if (vhfCanonicalKey(qa) > vhfCanonicalKey(qb))
+        if (vhfCanonicalLess(qb, qa))
         {
             int3 tmp = qa; qa = qb; qb = tmp;
         }
@@ -529,8 +576,10 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
 static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving up (controls worst-case lookup time)
 
 // --- gFlags bitfield constants ---
-static const uint kFlag_EnableJitter       = 1u << 0;
-static const uint kFlag_EnableAdaptivePMin = 1u << 1;
+static const uint kFlag_EnableJitterA      = 1u << 0;
+static const uint kFlag_EnableJitterB      = 1u << 1;
+static const uint kFlag_EnableAdaptivePMin = 1u << 2;
+static const uint kFlag_EnableNormalAddr   = 1u << 3;
 static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict (lower = more aggressive eviction)
 static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive eviction at kEvictStartStep
 static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K of 65535 max)
@@ -608,7 +657,7 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert, out uint probeSteps)
 // Returns VHFResult with valid=false on cold miss (no mature entry at any
 // level), which tells the caller to trace unconditionally.
 // ---------------------------------------------------------------------------
-VHFResult vhfLookup(float3 posA, float3 posB)
+VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
 {
     VHFResult best;
     best.mu    = 0.5f;   // Default: uncertain (max variance)
@@ -622,7 +671,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
     {
         float cs = vhfCellSize(lvl);
         int3 qa, qb;
-        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
@@ -666,7 +715,7 @@ VHFResult vhfLookup(float3 posA, float3 posB)
 // bootThreshold. Returns the finest level that has ANY samples (total > 0).
 // Used by vcWriteDiag to show mu/level for immature entries.
 // ---------------------------------------------------------------------------
-VHFResult vhfLookupRaw(float3 posA, float3 posB)
+VHFResult vhfLookupRaw(float3 posA, float3 posB, float3 normalA = float3(0.f))
 {
     VHFResult best;
     best.mu    = 0.5f;
@@ -679,7 +728,7 @@ VHFResult vhfLookupRaw(float3 posA, float3 posB)
     {
         float cs = vhfCellSize(lvl);
         int3 qa, qb;
-        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
@@ -767,13 +816,36 @@ struct VHFGateResult
 ///   get higher p (more likely to trace) to prevent weight explosion.
 ///   Pass 0 to disable adaptive pMin and use the flat gPMin floor.
 VHFGateResult vhfGate(float3 posA, float3 posB,
-                       float xi, float contribLuminance = 0.f)
+                       float xi, float contribLuminance = 0.f,
+                       float3 normalA = float3(0.f))
 {
     VHFGateResult g;
-    VHFResult r = vhfLookup(posA, posB);
+    VHFResult r = vhfLookup(posA, posB, normalA);
 
     // Quantize at coarsest level for hash grid visualization (diagnostics).
-    vhfQuantizePair(posA, posB, vhfCellSizeA(0), 0u, g.qa, g.qb);
+    // Use pre-canonicalization order: qa=surface(posA), qb=light(posB).
+    // This keeps hashA showing structured surface-cell patterns and
+    // hashB showing per-sample light variation (noise).
+    {
+        bool jA = (gFlags & kFlag_EnableJitterA) != 0;
+        bool jB = (gFlags & kFlag_EnableJitterB) != 0;
+        g.qa = jitterQuantize(posA, vhfCellSizeA(0), 0xAAu, jA);
+        if (gFlags & kFlag_EnableNormalAddr)
+        {
+            float2 oct = octEncode(normalA) + 1.f;
+            int2 nBin = int2(floor(oct * 4.f));
+            g.qa.x ^= nBin.x * 0x45D9F3Bu;
+            g.qa.y ^= nBin.y * 0xC3A5C85Cu;
+        }
+#if USE_VISCACHE_DIRDIST_ADDRESSING
+        float3 edge = posB - posA;
+        float dist = length(edge);
+        float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
+        g.qb = vhfQuantizeDirection(dir, vhfAngularSize(0) / 90.f, dist, vhfDistSize(0));
+#else
+        g.qb = jitterQuantize(posB, vhfCellSizeB(0), 0xBBu, jB);
+#endif
+    }
 
     // No mature entry: must trace unconditionally.
     // invP = 1 means the commit weight is just V (no correction needed).
@@ -890,10 +962,11 @@ float vhfDeterministicXi(float3 posA, float3 posB)
 /// Preferred for shift mapping and MIS weight computation where temporal
 /// stability and reproducibility are required.
 VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
-                                    float contribLuminance = 0.f)
+                                    float contribLuminance = 0.f,
+                                    float3 normalA = float3(0.f))
 {
     float xi = vhfDeterministicXi(posA, posB);
-    return vhfGate(posA, posB, xi, contribLuminance);
+    return vhfGate(posA, posB, xi, contribLuminance, normalA);
 }
 
 // ===========================================================================
@@ -1002,7 +1075,7 @@ uint vhfOverflowDecay(int slot, uint cur)
 // thread already claimed the slot with a different fingerprint (race),
 // we skip the write to avoid corrupting that entry's statistics.
 // ---------------------------------------------------------------------------
-void vhfInsert(float3 posA, float3 posB, float V)
+void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
 {
     uint visVal = (V > 0.5f) ? 1u : 0u;  // Binarize: 1 = visible, 0 = occluded
 
@@ -1010,7 +1083,7 @@ void vhfInsert(float3 posA, float3 posB, float V)
     {
         float cs = vhfCellSize(lvl);
         int3 qa, qb;
-        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb);
+        vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
         uint fp   = vhfFingerprint(qa, qb, uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl));
@@ -1085,9 +1158,10 @@ void vhfInsert(float3 posA, float3 posB, float V)
 // The caller multiplies path contribution by w instead of V, getting the
 // same expected value but with potentially much lower variance.
 // ---------------------------------------------------------------------------
-float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g)
+float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g,
+                float3 normalA = float3(0.f))
 {
-    vhfInsert(posA, posB, V);
+    vhfInsert(posA, posB, V, normalA);
     return g.mu + (V - g.mu) * g.invP;
 }
 

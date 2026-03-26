@@ -64,9 +64,11 @@ interface IVisibilityQuery
         \param[in,out] sg Sample generator for RR coin flip.
         \return Unbiased CV+RRR visibility weight.
     */
-    [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg);
+    [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
+                                          float3 normalA = float3(0.f));
 #ifdef VISCACHE_DIAGNOSTICS
-    [mutating] float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel);
+    [mutating] float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
+                                               float3 normalA = float3(0.f));
 #endif
 #endif
 };
@@ -1026,10 +1028,10 @@ struct PathTracer
                     // Write diagnostics only for the primary hit's NEE ray (bounce 0).
                     // Later bounces use the non-diagnostic path to avoid overwriting.
                     float visWeight = (path.getVertexIndex() <= 1)
-                        ? vq.traceVisibilityRayCVDiag(ray, path.sg, path.getPixel())
-                        : vq.traceVisibilityRayCV(ray, path.sg);
+                        ? vq.traceVisibilityRayCVDiag(ray, path.sg, path.getPixel(), sd.N)
+                        : vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), sd.N);
 #else
-                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg);
+                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), sd.N);
 #endif
                     if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
 #else

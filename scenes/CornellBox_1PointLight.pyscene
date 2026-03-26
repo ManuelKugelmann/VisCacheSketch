@@ -1,8 +1,8 @@
-# CornellBoxPointLights5.pyscene — Cornell Box with 5 scattered point lights
+# CornellBoxPointLight.pyscene — Cornell Box with a single point light (no area light)
 #
 # Same geometry as CornellBox.pyscene but replaces the emissive ceiling quad
-# with five analytic point lights at different positions. Useful for baseline
-# testing / debugging with multiple overlapping shadow regions.
+# with an analytic point light. Useful for baseline testing / debugging where
+# emissive sampling is not desired.
 
 # Materials — perfectly diffuse walls (roughness=1)
 white = StandardMaterial('White')
@@ -208,23 +208,13 @@ for idx, (tx, ty, tz, rx, ry, rz, mid) in enumerate(poles):
     sceneBuilder.addMeshInstance(node, mid)
 
 # ---------------------------------------------------------------------------
-# 5 scattered point lights — varied positions and warm/cool tints for
-# overlapping shadow regions and multi-light debugging.
+# Single point light — centered at ceiling, warm white, matching area light
+# brightness approximately.
 # ---------------------------------------------------------------------------
-point_lights = [
-    # (name,              position,                      intensity)
-    ('CeilingCenter',     float3( 0.0,  1.90,  0.0),    float3(5.0, 4.0, 3.0)),    # warm white, top center
-    ('BackLeftHigh',      float3(-0.7,  1.70,  0.7),    float3(4.0, 3.5, 2.5)),    # warm, back-left corner
-    ('BackRightHigh',     float3( 0.7,  1.75,  0.6),    float3(3.0, 4.0, 5.0)),    # cool blue-ish, back-right
-    ('FrontLeftMid',      float3(-0.6,  1.20, -0.6),    float3(4.5, 3.0, 2.0)),    # warm orange, front-left mid-height
-    ('FrontRightLow',     float3( 0.5,  0.80, -0.5),    float3(3.5, 4.5, 3.5)),    # neutral green-ish, front-right low
-]
-
-for name, pos, intensity in point_lights:
-    light = PointLight(name)
-    light.intensity = intensity
-    light.position  = pos
-    sceneBuilder.addLight(light)
+light = PointLight('CeilingPoint')
+light.intensity = float3(20.0, 16.0, 12.0)
+light.position  = float3(0.0, 1.95, 0.0)
+sceneBuilder.addLight(light)
 
 # Camera
 camera = Camera('CornellBoxCam')

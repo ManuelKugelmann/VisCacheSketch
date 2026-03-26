@@ -1235,8 +1235,10 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
-        mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
-            || dict.getValue<bool>("vhfEnableJitter");  // default ON
+        {   bool jA = !dict.keyExists("vhfEnableJitterA") || dict.getValue<bool>("vhfEnableJitterA");
+            bool jB = !dict.keyExists("vhfEnableJitterB") || dict.getValue<bool>("vhfEnableJitterB");
+            mVisCacheJitter = !mVisCacheAvailable || jA || jB;
+        }
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
 
         // Diagnostic textures — bound at root var like PixelStats so all RT stages

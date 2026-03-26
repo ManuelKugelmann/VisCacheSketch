@@ -1,25 +1,78 @@
 """
-VisCache_Ladder02.py — Step 02: Multi-frame accumulation, all addressing variants.
+VisCache_Ladder02.py — Step 02: Coarser posA cell sizes.
 
-Tests convergence: cold start (8 frames) and warm start (8+8 frames).
-Compares accumulated diagnostics vs snapshots.
+Tests effect of larger posA cells on cache quality.
+x3 for most variants, x1.5 for pos_dir_dist1, unchanged for pos_pos1/pos_dir1_dist1.
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder02.py
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from VisCache_LadderCommon import run_variants
+from VisCache_LadderCommon import run_variants, BASE
 
-scene_file = os.environ.get("SCENE_FILE", "media/scenes/CornellBox.pyscene")
+scene_file = os.environ.get("SCENE_FILE", "media/scenes/CornellBox_1AreaLight.pyscene")
+res = int(os.environ.get("RES", "512"))
+
+CELL_A = BASE["cellACoarse"]  # 0.06
+
+VARIANTS_02 = [
+    ("pos_pos", {
+        **BASE,
+        "enableVisCacheDirDistAddr": False,
+        "cellACoarse": 0.12,
+        "cellBCoarse": 0.12,
+    }),
+    ("posA_posB", {
+        **BASE,
+        "enableVisCacheDirDistAddr": False,
+        "cellACoarse": 0.12,
+        "cellBCoarse": CELL_A * 6,
+    }),
+    ("pos_pos1", {
+        **BASE,
+        "enableVisCacheDirDistAddr": False,
+        "cellBCoarse": 10000.0,
+    }),
+    ("pos_dir1_dist1", {
+        **BASE,
+        "enableVisCacheDirDistAddr": True,
+        "angularBCoarse": 360.0,
+        "distBCoarse": 1000.0,
+    }),
+    ("pos_dir_dist1", {
+        **BASE,
+        "enableVisCacheDirDistAddr": True,
+        "cellACoarse": 0.12,
+        "angularBCoarse": 8.0,
+        "distBCoarse": 1000.0,
+    }),
+    ("pos_dir_dist", {
+        **BASE,
+        "enableVisCacheDirDistAddr": True,
+        "cellACoarse": 0.12,
+        "angularBCoarse": 8.0,
+        "distBCoarse": 0.24,
+    }),
+]
+
+# Ensure x32 baseline exists in step 00
+from VisCache_LadderCommon import run_baseline
+run_baseline(
+    step_name="00",
+    frame_configs=[(1, 1)],
+    scene_file=scene_file,
+    resX=res, resY=res,
+    extra_spp=[32],
+    mogwai_globals=globals(),
+)
 
 run_variants(
     step_name="02",
-    frame_configs=[
-        (0, 8),      # cold start, 8 frames
-        (8, 8),      # warm start, 8 frames averaging
-    ],
+    frame_configs=[(1, 1, 1), (1, 1, 32)],
     scene_file=scene_file,
+    variants=VARIANTS_02,
+    resX=res, resY=res,
     mogwai_globals=globals(),
 )
 exit()

@@ -7,7 +7,7 @@ Optionally adds VisCache for shadow gating (§11.2) when viscache=True.
 Good for quick visual checks, scene validation, and learning Falcor basics.
 
 Usage:
-    Mogwai.exe --script scripts/MinimalPathTracer_Graph.py --scene CornellBox.pyscene
+    Mogwai.exe --script scripts/MinimalPathTracer_Graph.py --scene CornellBox_1AreaLight.pyscene
 """
 
 import sys, os

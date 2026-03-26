@@ -111,7 +111,7 @@ for pass_name in ["DI", "GI", "PT"]:
 viscache_ablation_keys = {
     "enableVisCacheVarianceGate",
     "enableVisCacheWarpReduction", "enableVisCacheDecay",
-    "enableVisCachePressureEvict", "enableVisCacheJitter"
+    "enableVisCachePressureEvict", "enableVisCacheJitterA", "enableVisCacheJitterB"
 }
 check("VisCache ablation: 5 toggles (B–F) are property-accessible",
       len(viscache_ablation_keys) == 5,

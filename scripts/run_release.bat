@@ -144,7 +144,7 @@ if /i "%SCENE%"=="VeachAjar" set "SCENE_FILE=%RUNTIME_DIR%\data\ReSTIRPTPass\Vea
 if /i "%SCENE%"=="Bistro" set "SCENE_FILE=%MEDIA_DIR%\Bistro\BistroInterior.pyscene"
 if /i "%SCENE%"=="Sponza" set "SCENE_FILE=%MEDIA_DIR%\Sponza\Sponza.pyscene"
 if /i "%SCENE%"=="Arcade" set "SCENE_FILE=%MEDIA_DIR%\Arcade\Arcade.pyscene"
-if /i "%SCENE%"=="CornellBox" set "SCENE_FILE=%ROOT%\scenes\CornellBox.pyscene"
+if /i "%SCENE%"=="CornellBox" set "SCENE_FILE=%ROOT%\scenes\CornellBox_1AreaLight.pyscene"
 
 if "%SCENE_FILE%"=="" (
     echo [launch] Unknown scene: %SCENE%

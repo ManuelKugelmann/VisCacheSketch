@@ -80,10 +80,10 @@ if not exist "%MEDIA_DIR%\TestScenes" (
 )
 REM Copy CornellBox pyscene from repo if missing
 if exist "%MEDIA_DIR%\TestScenes" (
-    if not exist "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" (
-        if exist "%SCENES_DIR%\CornellBox.pyscene" (
-            copy /y "%SCENES_DIR%\CornellBox.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox.pyscene" >nul
-            echo [scenes] Copied CornellBox.pyscene from scenes\
+    if not exist "%MEDIA_DIR%\TestScenes\CornellBox_1AreaLight.pyscene" (
+        if exist "%SCENES_DIR%\CornellBox_1AreaLight.pyscene" (
+            copy /y "%SCENES_DIR%\CornellBox_1AreaLight.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox_1AreaLight.pyscene" >nul
+            echo [scenes] Copied CornellBox_1AreaLight.pyscene from scenes\
         )
     )
 )

@@ -22,10 +22,13 @@ with open(_graph_path, "r") as _f:
 # Build PathTracer graph with VisCache, jitter disabled to show cell structure.
 # Import VISCACHE_DEFAULTS and override jitter before graph creation.
 from viscache_defaults import VISCACHE_DEFAULTS
-_saved = VISCACHE_DEFAULTS["enableVisCacheJitter"]
-VISCACHE_DEFAULTS["enableVisCacheJitter"] = False
+_savedA = VISCACHE_DEFAULTS["enableVisCacheJitterA"]
+_savedB = VISCACHE_DEFAULTS["enableVisCacheJitterB"]
+VISCACHE_DEFAULTS["enableVisCacheJitterA"] = False
+VISCACHE_DEFAULTS["enableVisCacheJitterB"] = False
 g = render_graph_PathTracer(viscache=True)
-VISCACHE_DEFAULTS["enableVisCacheJitter"] = _saved  # restore
+VISCACHE_DEFAULTS["enableVisCacheJitterA"] = _savedA
+VISCACHE_DEFAULTS["enableVisCacheJitterB"] = _savedB
 
 m.addGraph(g)
 

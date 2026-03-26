@@ -1541,8 +1541,11 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mVisCacheLightSelection = mVisCacheAvailable &&
             dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
         bool wasJitter = mVisCacheJitter;
-        mVisCacheJitter = !mVisCacheAvailable || !dict.keyExists("vhfEnableJitter")
-            || dict.getValue<bool>("vhfEnableJitter");  // default ON
+        {   // Compile jitter code if either posA or posB jitter is enabled
+            bool jA = !dict.keyExists("vhfEnableJitterA") || dict.getValue<bool>("vhfEnableJitterA");
+            bool jB = !dict.keyExists("vhfEnableJitterB") || dict.getValue<bool>("vhfEnableJitterB");
+            mVisCacheJitter = !mVisCacheAvailable || jA || jB;
+        }
         bool wasDirDist = mVisCacheDirDistAddr;
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
 

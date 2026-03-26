@@ -138,7 +138,7 @@ case "$SCENE" in
     Bistro)     SCENE_FILE="$MEDIA_DIR/Bistro/BistroInterior.pyscene" ;;
     Sponza)     SCENE_FILE="$MEDIA_DIR/Sponza/Sponza.pyscene" ;;
     Arcade)     SCENE_FILE="$MEDIA_DIR/Arcade/Arcade.pyscene" ;;
-    CornellBox) SCENE_FILE="$ROOT_DIR/scenes/CornellBox.pyscene" ;;
+    CornellBox) SCENE_FILE="$ROOT_DIR/scenes/CornellBox_1AreaLight.pyscene" ;;
     *)
         echo "[launch] Unknown scene: $SCENE"
         echo "[launch] Available: VeachAjar, Bistro, Sponza, Arcade, CornellBox"

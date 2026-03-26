@@ -109,8 +109,10 @@ public:
         bool     enableVisCacheVarianceGate   = true;  ///< B: Bernoulli variance-gated write depth
         bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
-        bool     enableVisCacheJitter         = true;  ///< F: Jitter-before-quantize (§4.2)
+        bool     enableVisCacheJitterA        = true;  ///< F: Jitter-before-quantize posA (§4.2)
+        bool     enableVisCacheJitterB        = true;  ///< F: Jitter-before-quantize posB (§4.2)
         bool     enableVisCacheAdaptivePMin   = true;  ///< H: Confidence-adaptive pMin (§8.1.1)
+        bool     enableVisCacheNormalAddr     = false; ///< I: Normal-augmented addressing (posNorm)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
     };
 

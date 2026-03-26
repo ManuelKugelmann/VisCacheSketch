@@ -47,30 +47,33 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     float diagVar = noEntry ? 0.f : g.var;
     float coldmiss = noEntry ? 1.f : 0.f;
 
-    // --- Per-frame snapshots (both written unconditionally, zeros for cold misses) ---
-    gVCFrameMeanVarMatSamplesRaw[pixel] = float4(
-        noEntry ? 0.f : saturate(diagVar * 4.f),                      // R: variance [0,0.25]→[0,1]
-        noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold)), // G: maturity [0,1]
-        noEntry ? 0.f : g.mu,                                          // B: cached mu [0,1]
-        noEntry ? 0.f : float(g.N)                                     // A: raw sample count
-    );
-
-    gVCFrameLevelProbesSamplesCold[pixel] = float4(
-        noEntry ? 0.f : float(g.level + 1) / max(float(gNumLevels), 1.f),  // R: LOD level
-        noEntry ? 0.f : saturate(float(g.probeSteps) / float(kMaxProbe)),   // G: probe steps
-        noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold * 8u)),  // B: sample count
-        coldmiss                                                             // A: cold miss
-    );
-
-    // Hash vis + frame ray traced indicator
+    // --- Per-frame snapshots: bounce 0 only ---
+    // Detect first bounce via hash texture (cleared to 0, nonzero after first write).
+    bool firstBounce = (gVCFrameHashAHashBHashABRays[pixel].r == 0.f
+                     && gVCFrameHashAHashBHashABRays[pixel].g == 0.f);
+    if (firstBounce)
     {
-        uint posAHash = vhfCanonicalKey(g.qa);
-        uint posBHash = vhfCanonicalKey(g.qb);
+        gVCFrameMeanVarMatSamplesRaw[pixel] = float4(
+            noEntry ? 0.f : saturate(diagVar * 4.f),                      // R: variance [0,0.25]→[0,1]
+            noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold)), // G: maturity [0,1]
+            noEntry ? 0.f : g.mu,                                          // B: cached mu [0,1]
+            noEntry ? 0.f : float(g.N)                                     // A: raw sample count
+        );
+
+        gVCFrameLevelProbesSamplesCold[pixel] = float4(
+            noEntry ? 0.f : float(g.level + 1) / max(float(gNumLevels), 1.f),  // R: LOD level
+            noEntry ? 0.f : saturate(float(g.probeSteps) / float(kMaxProbe)),   // G: probe steps
+            noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold * 8u)),  // B: sample count
+            coldmiss                                                             // A: cold miss
+        );
+
+        uint posAHash = vhfCellHash(g.qa);
+        uint posBHash = vhfCellHash(g.qb);
         gVCFrameHashAHashBHashABRays[pixel] = float4(
             float(posAHash & 0xFFFFu) / 65535.f,                    // R: posA cell hash
             float(posBHash & 0xFFFFu) / 65535.f,                    // G: posB cell hash
             float((posAHash ^ posBHash) & 0xFFFFu) / 65535.f,      // B: combined hash
-            traced ? 1.f : 0.f                                       // A: frame ray traced (binary at bounce 0)
+            traced ? 1.f : 0.f                                       // A: ray traced this frame
         );
     }
 

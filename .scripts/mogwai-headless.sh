@@ -13,7 +13,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUNTIME="$PROJECT_ROOT/runtime"
 
 PATTERN="${1:?Usage: mogwai-headless.sh <Graph-pattern> [scene] [frames]}"
-SCENE="${2:-media/scenes/CornellBox.pyscene}"
+SCENE="${2:-media/scenes/CornellBox_1AreaLight.pyscene}"
 FRAMES="${3:-2}"
 
 cd "$RUNTIME"

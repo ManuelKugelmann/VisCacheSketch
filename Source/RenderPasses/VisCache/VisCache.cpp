@@ -68,8 +68,10 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
-    if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
+    if (props.has("enableVisCacheJitterA"))         mParams.enableVisCacheJitterA         = props["enableVisCacheJitterA"];
+    if (props.has("enableVisCacheJitterB"))         mParams.enableVisCacheJitterB         = props["enableVisCacheJitterB"];
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
+    if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
@@ -105,8 +107,10 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
-    if (props.has("enableVisCacheJitter"))          mParams.enableVisCacheJitter          = props["enableVisCacheJitter"];
+    if (props.has("enableVisCacheJitterA"))         mParams.enableVisCacheJitterA         = props["enableVisCacheJitterA"];
+    if (props.has("enableVisCacheJitterB"))         mParams.enableVisCacheJitterB         = props["enableVisCacheJitterB"];
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
+    if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
@@ -138,8 +142,10 @@ Properties VisCache::getProperties() const
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
-    p["enableVisCacheJitter"]          = mParams.enableVisCacheJitter;
+    p["enableVisCacheJitterA"]         = mParams.enableVisCacheJitterA;
+    p["enableVisCacheJitterB"]         = mParams.enableVisCacheJitterB;
     p["enableVisCacheAdaptivePMin"]    = mParams.enableVisCacheAdaptivePMin;
+    p["enableVisCacheNormalAddr"]     = mParams.enableVisCacheNormalAddr;
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
@@ -304,8 +310,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.pMin           = mParams.pMin;
     gpu.fireflyBudget  = mParams.fireflyBudget;
     gpu.numLevels      = mParams.numLevels;
-    gpu.flags          = (mParams.enableVisCacheJitter ? 1u : 0u)
-                       | (mParams.enableVisCacheAdaptivePMin ? 2u : 0u);
+    gpu.flags          = (mParams.enableVisCacheJitterA ? 1u : 0u)
+                       | (mParams.enableVisCacheJitterB ? 2u : 0u)
+                       | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
+                       | (mParams.enableVisCacheNormalAddr ? 8u : 0u);
     gpu.cellACoarse    = mParams.cellACoarse;
     gpu.cellAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.cellACoarse, mParams.numLevels) : mParams.cellACoarse;
     gpu.cellBCoarse    = mParams.cellBCoarse;
@@ -327,11 +335,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         logInfo("[VisCache] cellB: coarse={:.4f} fine={:.4f}", gpu.cellBCoarse, gpu.cellBFine);
         logInfo("[VisCache] angularB: coarse={:.1f}{} fine={:.1f}{}", gpu.angularBCoarse, "\xC2\xB0", gpu.angularBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitter={} adaptPMin={} dirDistAddr={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
-                mParams.enableVisCacheJitter, mParams.enableVisCacheAdaptivePMin,
+                mParams.enableVisCacheJitterA, mParams.enableVisCacheJitterB, mParams.enableVisCacheAdaptivePMin,
                 mParams.enableVisCacheDirDistAddr);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
@@ -359,7 +367,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_pMin"]           = mParams.pMin;
     dict["vhfParam_fireflyBudget"]  = mParams.fireflyBudget;
     dict["vhfParam_numLevels"]      = mParams.numLevels;
-    dict["vhfParam_enableJitter"]   = mParams.enableVisCacheJitter ? 1u : 0u;
+    dict["vhfParam_enableJitterA"]  = mParams.enableVisCacheJitterA ? 1u : 0u;
+    dict["vhfParam_enableJitterB"]  = mParams.enableVisCacheJitterB ? 1u : 0u;
     dict["vhfParam_flags"]         = gpu.flags;
     dict["vhfParam_cellACoarse"]    = gpu.cellACoarse;
     dict["vhfParam_cellAFine"]      = gpu.cellAFine;
@@ -378,7 +387,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
-    dict["vhfEnableJitter"]          = mParams.enableVisCacheJitter;
+    dict["vhfEnableJitterA"]         = mParams.enableVisCacheJitterA;
+    dict["vhfEnableJitterB"]         = mParams.enableVisCacheJitterB;
     dict["vhfEnableDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
@@ -433,9 +443,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mResetAccum = true;  // accum textures need realloc too
 
                 // Clear snapshot textures on allocation so unwritten pixels
-                // (background, specular) start at zero instead of GPU garbage.
+                // (background, specular) start at cold/zero instead of GPU garbage.
+                // FrameLevelProbesSamplesCold.A=1 marks unqueried pixels as coldmiss.
                 pCtx->clearUAV(mpFrameMeanVarMatSamplesRawTex->getUAV().get(), float4(0.f));
-                pCtx->clearUAV(mpFrameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f));
+                pCtx->clearUAV(mpFrameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f, 0.f, 0.f, 1.f));
                 pCtx->clearUAV(mpFrameHashAHashBHashABRaysTex->getUAV().get(), float4(0.f));
             }
             if (!accumMeanVarMatCountTex)  accumMeanVarMatCountTex  = mpAccumMeanVarMatCountTex;
@@ -472,7 +483,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 if (frameMeanVarMatSamplesRawTex)
                     pCtx->clearUAV(frameMeanVarMatSamplesRawTex->getUAV().get(), float4(0.f));
                 if (frameLevelProbesSamplesColdTex)
-                    pCtx->clearUAV(frameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f));
+                    pCtx->clearUAV(frameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f, 0.f, 0.f, 1.f));
                 if (frameHashTex)
                     pCtx->clearUAV(frameHashTex->getUAV().get(), float4(0.f));
                 mResetAccum = false;
@@ -480,6 +491,15 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             dict["vhfAccumSaved"] = mpAccumSaved;
             dict["vhfAccumTotal"] = mpAccumTotal;
         }
+
+        // Per-frame clear: frame textures must be zeroed every frame so the
+        // firstBounce detection (hash R+G==0) works and stale data doesn't persist.
+        if (frameMeanVarMatSamplesRawTex)
+            pCtx->clearUAV(frameMeanVarMatSamplesRawTex->getUAV().get(), float4(0.f));
+        if (frameLevelProbesSamplesColdTex)
+            pCtx->clearUAV(frameLevelProbesSamplesColdTex->getUAV().get(), float4(0.f, 0.f, 0.f, 1.f));
+        if (frameHashTex)
+            pCtx->clearUAV(frameHashTex->getUAV().get(), float4(0.f));
 
         auto expose = [&](ref<Texture>& tex, const char* key) {
             if (tex) dict[key] = tex;
@@ -545,8 +565,10 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gPMin"]           = mParams.pMin;
     vars["VisCacheParams"]["gFireflyBudget"]  = mParams.fireflyBudget;
     vars["VisCacheParams"]["gNumLevels"]      = N;
-    vars["VisCacheParams"]["gFlags"]          = (mParams.enableVisCacheJitter ? 1u : 0u)
-                                                | (mParams.enableVisCacheAdaptivePMin ? 2u : 0u);
+    vars["VisCacheParams"]["gFlags"]          = (mParams.enableVisCacheJitterA ? 1u : 0u)
+                                                | (mParams.enableVisCacheJitterB ? 2u : 0u)
+                                                | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
+                       | (mParams.enableVisCacheNormalAddr ? 8u : 0u);
     vars["VisCacheParams"]["gCellACoarse"]    = mParams.cellACoarse;
     vars["VisCacheParams"]["gCellAFine"]      = (N > 1) ? deriveFine(mParams.cellACoarse, N) : mParams.cellACoarse;
     vars["VisCacheParams"]["gCellBCoarse"]    = mParams.cellBCoarse;
@@ -659,7 +681,8 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("C: Warp reduction",       mParams.enableVisCacheWarpReduction);
         g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
-        g.checkbox("F: Jitter-before-quantize", mParams.enableVisCacheJitter);
+        g.checkbox("F: Jitter posA",  mParams.enableVisCacheJitterA);
+        g.checkbox("F: Jitter posB",  mParams.enableVisCacheJitterB);
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
     }
 

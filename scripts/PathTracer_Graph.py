@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 
-def render_graph_PathTracer(viscache=False, maxBounces=3):
+def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1):
     """Build a PathTracer render graph.
 
     Args:
@@ -42,7 +42,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3):
 
     # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
     pt = createPass("PathTracer", {
-        "samplesPerPixel":    1,
+        "samplesPerPixel":    samplesPerPixel,
         "maxSurfaceBounces":  maxBounces,
         "colorFormat":        "LogLuvHDR",
     })
@@ -70,6 +70,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3):
     g.addEdge("AccumulatePass.output", "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
+    g.markOutput("AccumulatePass.output")  # pre-tonemapper HDR (captured as EXR)
 
     # -------------------------------------------------------------------
     # VisCache diagnostic heatmaps (only when viscache=True)
