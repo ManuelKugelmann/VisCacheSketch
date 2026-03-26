@@ -210,8 +210,6 @@ but only coarse resolution on the light —
 the entry would live at (lvlA=2, lvlB=0) instead of (2, 2).
 The current 1D cascade is the diagonal of this N × N grid,
 so the extension is backward-compatible.
-Canonicalization requires restriction
-to the diagonal (lvlA = lvlB) or symmetric level assignment.
 
 **Distance-bin multi-write implementation.**
 The distance monotonicity described in Sec. 4.1

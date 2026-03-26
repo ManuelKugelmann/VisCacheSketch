@@ -41,16 +41,12 @@ BASE = {
 
 # Addressing variants — naming: A__B where __ separates endpoint A from B,
 # _ separates dimensions within an endpoint. "1" suffix = collapsed/single bucket.
+# All modes are inherently asymmetric (no canonicalization).
 VARIANTS = [
     ("pos__pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.06,
-    }),
-    ("posA__posB", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 0.12,       # 2x posA (0.06) → no canonicalization
     }),
     ("pos__pos1", {
         **BASE,

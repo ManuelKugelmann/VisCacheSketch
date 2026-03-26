@@ -115,8 +115,7 @@ Systematic verification of VisCache addressing modes and cache behavior. Scripts
 - **Step 00** (`VisCache_Ladder00.py`): Single frame with 1 warmup frame. Tests hash table insert/lookup + diagnostic pipeline across all addressing variants
 - **Step 01** (`VisCache_Ladder01.py`): Multi-frame accumulation. Tests cache convergence over time
 - **Variants** (defined in `VisCache_LadderCommon.py`):
-  - `pos__pos` — canonical pos×pos (cellA==cellB, hash-based canonicalization)
-  - `posA__posB` — asymmetric pos×pos (cellB slightly different, no canonicalization)
+  - `pos__pos` — pos×pos (same cell size for both endpoints)
   - `pos__pos1` — position-only (cellB collapsed to single bucket)
   - `pos__dir1_dist1` — dirdist path, both collapsed (equivalent to position-only)
   - `pos__dir_dist1` — dirdist with angular bins, distance collapsed

@@ -43,9 +43,8 @@ that a symmetric position × position key cannot:
 
 The alternative position × position addressing
 (both endpoints quantized as positions)
-remains available for symmetric queries (GI revalidation,
-where both endpoints are surface points and
-canonicalization V(A,B) = V(B,A) halves table pressure).
+remains available as a secondary mode for GI revalidation,
+where both endpoints are surface points (Sec. 4.6).
 But for the general case — direct lighting, IBL, area lights —
 position+normal × direction+distance is the primary mode
 because it exploits geometric information that is already available for free.
@@ -107,13 +106,21 @@ IBL samples and directional lights have no finite position;
 the direction+distance encoding handles them naturally
 (direction is finite, distance = ∞, mapping to the coarsest distance bin [0, ∞)).
 
-For symmetric queries where both endpoints are surface points —
+For queries where both endpoints are surface points —
 primarily GI revalidation (Sec. 9.3) —
-position × position addressing with bidirectional canonicalization
-(lexicographic swap merging V(P,Q) and V(Q,P))
-doubles effective cache utilization.
-This requires symmetric cell sizes
+position × position addressing is available as a secondary mode.
+This uses symmetric cell sizes
 and sacrifices the normal, angular, and distance dimensions.
 The two modes coexist in the same hash table via the level-in-key design;
 entries from different addressing modes use different key encodings
 and do not collide.
+
+Bidirectional canonicalization (lexicographic swap to merge V(A,B) and V(B,A))
+was considered but discarded:
+the surface normal on endpoint A makes the two endpoints inherently asymmetric —
+the normal at A differs from the normal at B —
+so canonical swapping would conflate entries with different local geometry.
+Even in position × position mode, where normal is not part of the key,
+the asymmetry persists because endpoint A is always the shading point
+(where normal matters for thin-geometry disambiguation)
+and endpoint B is the query target.

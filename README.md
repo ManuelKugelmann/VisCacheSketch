@@ -71,7 +71,7 @@ The hash key decomposes the visibility query into **shading point** (position + 
 - **Direction** enables angular LOD — coarse angular bins where visibility is smooth, fine bins at shadow edges
 - **Distance monotonicity** — if occluded at distance d, everything farther is also blocked; one any-hit ray (using the free `CommittedRayT()`) propagates V=0 to all farther distance bins at zero cost
 
-A secondary position × position mode with canonicalization V(A,B) = V(B,A) is available for symmetric GI revalidation queries. Both coexist in the same flat hash table.
+A secondary position × position mode is available for GI revalidation queries. Both modes coexist in the same flat hash table.
 
 ### Key additions beyond [Kugelmann 2006][r-kugelmann]
 

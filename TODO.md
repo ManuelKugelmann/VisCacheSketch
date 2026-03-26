@@ -315,8 +315,7 @@ Extends `VisCache_LadderCommon.py` VARIANTS list. Diagnostic grid per variant.
 ```
 Variant                Endpoint A         Endpoint B            Key dimensions  Notes
 ─────────────────────────────────────────────────────────────────────────────────────
-pos__pos               pos                pos (same cell)       6D              canonical (V(A,B)=V(B,A))
-posA__posB             pos                pos (2x cell)         6D              asymmetric, no canon.
+pos__pos               pos                pos (same cell)       6D              same cell size for both endpoints
 pos__pos1              pos                pos (collapsed)       3D              position-only baseline
 pos__dir1_dist1        pos                dir(360°)+dist(1km)   3D              ≈ position-only via dirdist
 pos__dir_dist1         pos                dir(5°)+dist(1km)     5D              angular bins, no distance

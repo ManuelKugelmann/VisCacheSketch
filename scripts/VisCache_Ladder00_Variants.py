@@ -2,12 +2,12 @@
 VisCache_Ladder00_Variants.py — Step 0: Compare addressing variants.
 
 Naming: A__B where __ separates endpoint A from B, _ separates dimensions within.
-1. pos__pos:         canonical endpoint pairs with lexicographic swap
-2. pos__posB:        asymmetric (slightly different cell size, no canonicalization)
-3. pos__pos1:        collapsed B → position-only via pos×pos
-4. pos__dir1_dist1:  dirdist with huge scales → all dirs+dists collapse
-5. pos__dir_dist1:   coarse angular bins, single dist bucket
-6. pos__dir_dist:    coarse angular + coarse dist bins
+All modes are inherently asymmetric (no canonicalization).
+1. pos__pos:         pos×pos with same cell size for both endpoints
+2. pos__pos1:        collapsed B → position-only via pos×pos
+3. pos__dir1_dist1:  dirdist with huge scales → all dirs+dists collapse
+4. pos__dir_dist1:   coarse angular bins, single dist bucket
+5. pos__dir_dist:    coarse angular + coarse dist bins
 """
 import os, sys, glob
 
@@ -45,12 +45,7 @@ VARIANTS = [
     ("pos__pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 0.06,       # same as cellA → canonical
-    }),
-    ("pos__posB", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "cellBCoarse": 0.061,      # slightly different → NO canonicalization (test for swap asymmetry)
+        "cellBCoarse": 0.06,       # same cell size as cellA
     }),
     ("pos__pos1", {
         **BASE,
