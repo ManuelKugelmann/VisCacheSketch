@@ -115,12 +115,13 @@ Systematic verification of VisCache addressing modes and cache behavior. Scripts
 - **Step 00** (`VisCache_Ladder00.py`): Single frame with 1 warmup frame. Tests hash table insert/lookup + diagnostic pipeline across all addressing variants
 - **Step 01** (`VisCache_Ladder01.py`): Multi-frame accumulation. Tests cache convergence over time
 - **Variants** (defined in `VisCache_LadderCommon.py`):
-  - `pos__pos` — pos×pos (same cell size for both endpoints)
-  - `pos__pos1` — position-only (cellB collapsed to single bucket)
-  - `pos__dir1_dist1` — dirdist path, both collapsed (equivalent to position-only)
-  - `pos__dir_dist1` — dirdist with angular bins, distance collapsed
-  - `pos__dir_dist` — dirdist with both angular + distance bins
-  - Naming: `A__B` separates endpoints, `_` separates dimensions within an endpoint
+  - `pos_norm1__pos1` — position-only (normal+B collapsed)
+  - `pos_norm1__dir1_dist1` — dirdist, both collapsed (≈ position-only)
+  - `pos_norm1__pos` — pos×pos (same cell, no normal)
+  - `pos_norm1__dir_dist1` — angular bins, distance collapsed
+  - `pos_norm1__dir_dist` — angular + distance bins
+  - `pos_norm__*` — normal-active variants (surface normal at A in hash key)
+  - Naming: `A__B` separates endpoints, `_` separates dims, `1` suffix = collapsed. `pos_norm1__*` = normal off, `pos_norm__*` = normal on
 - **Diagnostic output** (9-column viridis grid per variant, 2 rows):
   - Row 1 (accum): render, raysTraced, error, maturity, mean, variance, coldmiss, posAHash, noise
   - Row 2 (frame): level, raysTraced, sampleCount, maturity, mean, variance, coldmiss, posBHash, probeSteps

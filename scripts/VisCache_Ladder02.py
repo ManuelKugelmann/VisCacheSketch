@@ -17,39 +17,38 @@ res = int(os.environ.get("RES", "512"))
 CELL_A = BASE["cellACoarse"]  # 0.06
 
 VARIANTS_02 = [
-    ("pos_pos", {
+    ("pos_norm1__pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
+        "enableVisCacheNormalAddr": False,
         "cellACoarse": 0.12,
         "cellBCoarse": 0.12,
     }),
-    ("posA_posB", {
+    ("pos_norm1__pos1", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
-        "cellACoarse": 0.12,
-        "cellBCoarse": CELL_A * 6,
-    }),
-    ("pos_pos1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
+        "enableVisCacheNormalAddr": False,
         "cellBCoarse": 10000.0,
     }),
-    ("pos_dir1_dist1", {
+    ("pos_norm1__dir1_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
+        "enableVisCacheNormalAddr": False,
         "angularBCoarse": 360.0,
         "distBCoarse": 1000.0,
     }),
-    ("pos_dir_dist1", {
+    ("pos_norm1__dir_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
+        "enableVisCacheNormalAddr": False,
         "cellACoarse": 0.12,
         "angularBCoarse": 8.0,
         "distBCoarse": 1000.0,
     }),
-    ("pos_dir_dist", {
+    ("pos_norm1__dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
+        "enableVisCacheNormalAddr": False,
         "cellACoarse": 0.12,
         "angularBCoarse": 8.0,
         "distBCoarse": 0.24,

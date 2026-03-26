@@ -40,43 +40,38 @@ BASE = {
     "enableVisCachePressureEvict": False,
 }
 
-# Addressing variants (1 = collapsed/single bucket)
-# Naming: A__B — double underscore separates posA-side from posB-side addressing.
-# posNorm = posA + surface normal at A (octahedral-encoded, added to hash key).
+# Addressing variants — naming: A__B where __ separates endpoint A from B,
+# _ separates dimensions within an endpoint. "1" suffix = collapsed/single bucket.
+# All variants include the normal dimension — norm1 = collapsed (off), norm = active.
+# pos_norm1__* is the "no normal" baseline; pos_norm__* adds normal discrimination.
 VARIANTS = [
-    ("pos__pos", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": False,
-        "cellBCoarse": 0.06,
-    }),
-    ("posA__posB", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": False,
-        "cellBCoarse": 0.12,       # 2x posA (0.06) → no canonicalization
-    }),
-    ("pos__pos1", {
+    ("pos_norm1__pos1", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "enableVisCacheNormalAddr": False,
         "cellBCoarse": 10000.0,
     }),
-    ("pos__dir1_dist1", {
+    ("pos_norm1__dir1_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "enableVisCacheNormalAddr": False,
         "angularBCoarse": 360.0,
         "distBCoarse": 1000.0,
     }),
-    ("pos__dir_dist1", {
+    ("pos_norm1__pos", {
+        **BASE,
+        "enableVisCacheDirDistAddr": False,
+        "enableVisCacheNormalAddr": False,
+        "cellBCoarse": 0.06,
+    }),
+    ("pos_norm1__dir_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "enableVisCacheNormalAddr": False,
         "angularBCoarse": 5.0,
         "distBCoarse": 1000.0,
     }),
-    ("pos__dir_dist", {
+    ("pos_norm1__dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "enableVisCacheNormalAddr": False,
@@ -85,36 +80,24 @@ VARIANTS = [
     }),
 ]
 
-# posNorm variants: surface normal at A added to hash key.
-# No posNorm__pos — canonicalization impossible (normal not available for B).
+# Normal-active variants: surface normal at A added to hash key (octahedral, ~8 bins).
+# No pos_norm__pos — canonicalization impossible (normal not available for B).
 VARIANTS_NORM = [
-    ("posNorm__posB", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": True,
-        "cellBCoarse": 0.12,
-    }),
-    ("posNorm__pos1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": True,
-        "cellBCoarse": 10000.0,
-    }),
-    ("posNorm__dir1_dist1", {
+    ("pos_norm__dir1_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "enableVisCacheNormalAddr": True,
         "angularBCoarse": 360.0,
         "distBCoarse": 1000.0,
     }),
-    ("posNorm__dir_dist1", {
+    ("pos_norm__dir_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "enableVisCacheNormalAddr": True,
         "angularBCoarse": 5.0,
         "distBCoarse": 1000.0,
     }),
-    ("posNorm__dir_dist", {
+    ("pos_norm__dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "enableVisCacheNormalAddr": True,
@@ -236,17 +219,16 @@ def plot_rays_overview(step_name, all_stats):
     # collapsed/pos×1 family: diamond
     # dir+dist family: triangle
     VARIANT_STYLE = {
-        "pos__pos":        ("o", "#1f77b4"),  # blue
-        "posA__posB":      ("o", "#ff7f0e"),  # orange
-        "pos__pos1":       ("D", "#2ca02c"),  # green
-        "pos__dir1_dist1": ("D", "#d62728"),  # red
-        "pos__dir_dist1":  ("^", "#9467bd"),  # purple
-        "pos__dir_dist":   ("^", "#8c564b"),  # brown
-        "posNorm__posB":       ("o", "#17becf"),  # cyan
-        "posNorm__pos1":       ("D", "#bcbd22"),  # olive
-        "posNorm__dir1_dist1": ("D", "#e377c2"),  # pink
-        "posNorm__dir_dist1":  ("^", "#7f7f7f"),  # gray
-        "posNorm__dir_dist":   ("^", "#aec7e8"),  # light blue
+        # norm1 (collapsed normal) — solid markers
+        "pos_norm1__pos1":       ("D", "#2ca02c"),  # green diamond
+        "pos_norm1__dir1_dist1": ("D", "#d62728"),  # red diamond
+        "pos_norm1__pos":        ("o", "#1f77b4"),  # blue circle
+        "pos_norm1__dir_dist1":  ("^", "#9467bd"),  # purple triangle
+        "pos_norm1__dir_dist":   ("^", "#8c564b"),  # brown triangle
+        # norm (active normal) — open markers
+        "pos_norm__dir1_dist1":  ("D", "#e377c2"),  # pink diamond
+        "pos_norm__dir_dist1":   ("^", "#7f7f7f"),  # gray triangle
+        "pos_norm__dir_dist":    ("^", "#17becf"),  # cyan triangle
     }
     # Fallback for unknown variants
     _fallback_markers = ["s", "v", "P", "*", "X", "h"]
