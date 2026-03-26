@@ -94,7 +94,7 @@ class _MockGraph:
     def addEdge(self, src, dst):
         self.edges.append((src, dst))
 
-    def markOutput(self, name):
+    def markOutput(self, name, *args):
         self.outputs.append(name)
 
     def getPass(self, name):
@@ -141,6 +141,12 @@ class _MockFloat3:
         self.z = args[2] if len(args) > 2 else 0
 
 
+class _MockEnum:
+    """Mock for Falcor enums (TextureChannelFlags, etc.) — returns self for any attribute."""
+    def __getattr__(self, name):
+        return self
+
+
 def _make_mock_builtins():
     """Return dict of Falcor globals to inject into script execution."""
     return {
@@ -149,6 +155,7 @@ def _make_mock_builtins():
         "renderFrame": lambda: None,
         "m": _MockMogwai(),
         "float3": _MockFloat3,
+        "TextureChannelFlags": _MockEnum(),
     }
 
 
