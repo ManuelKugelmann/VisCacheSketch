@@ -7,10 +7,12 @@ corrects them stochastically via prediction-with-correction
 [Szécsi et al. 2003; Szirmay-Kalos et al. 2005; Kugelmann 2006]),
 and operates entirely lock-free on the GPU.
 The method is algorithm-agnostic:
-it operates on pairwise (point, point) → {0,1} queries
+it operates on pairwise visibility queries
 regardless of what generates them.
 
 The key additions, each built on specific prior work:
+
+- **Position+normal × direction+distance addressing.** The hash key decomposes the query into shading-point identity (position + surface normal) and query geometry (direction + distance), exploiting free geometric information that position × position keys cannot. Normal disambiguates thin geometry; direction provides an angular LOD axis; distance monotonicity enables free multi-write from a single any-hit ray.
 
 - **Robust hashing** (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020]). Position-seeded jitter replaces cell-index-seeded jitter, converting boundary artifacts from irreducible bias into reducible variance. The jitter is the filter — no explicit smoothing required.
 
@@ -161,28 +163,141 @@ it operates on pairwise (point, point) → {0,1} queries
 regardless of how those points were generated —
 whether by MCMC path guiding, ReSTIR, or any other sampler.
 
+**2D LOD cascade (spatial × angular).**
+The position+normal × direction+distance addressing (Sec. 4.1)
+has two independent LOD axes: spatial cell size and angular bin size.
+The full LOD grid is N × N (spatial\_lvl, angular\_lvl) pairs.
+We propose a diagonal-first exploration scheme:
+
+1. Walk the diagonal (0,0) → (1,1) → (2,2),
+   advancing both axes together.
+   Cost: N lookups — identical to the current 1D cascade.
+2. At the terminal diagonal level (k,k),
+   if variance is still high,
+   probe the two off-diagonal neighbors (k+1,k) and (k,k+1)
+   to determine which axis needs finer resolution.
+   Cost: +2 lookups.
+3. A max\_diff constraint (|spatial\_lvl − angular\_lvl| ≤ 1)
+   prevents the two axes from diverging too far.
+   A fine spatial cell with a coarse angular bin
+   (or vice versa) wastes the finer resolution
+   because the coarser axis dominates the variance.
+
+The three-state cascade (Sec. 5) applies to each (s, a) pair:
+a child entry (s+1, a+1) on the diagonal starts receiving writes
+once its parent (s, a) is useable (not necessarily mature).
+New child entries inherit the parent's μ as initial data
+at reduced weight (equivalent to a few decay steps),
+so the child starts with a reasonable control variate
+rather than bootstrapping from zero.
+The parent continues refining in parallel;
+writes stop only when the parent reaches maturity.
+
+Off-diagonal children follow the same rule:
+(k+1, k) starts when (k, k) is useable and spatial variance is high;
+(k, k+1) starts when (k, k) is useable and angular variance is high.
+The common case (both axes equally needed) stays on the diagonal
+at current cost; off-diagonal exploration only fires
+at the terminal level when the diagonal answer isn't sufficient.
+
 **Independent per-endpoint LOD.**
-The current design uses a shared level index —
-both endpoints are quantized at the same cell size,
-enabling canonicalization (Sec. 4.5).
-A natural extension is independent LOD per endpoint:
-replacing the 1D key `(qa, qb, lvl)` with a 2D key
+A further extension replaces the shared level index with a 2D key
 `(qa, qb, lvlA, lvlB)`,
 where each endpoint is quantized at its own level's cell size.
 A sharp shadow boundary from a large area light
 needs fine resolution on the shading point
 but only coarse resolution on the light —
 the entry would live at (lvlA=2, lvlB=0) instead of (2, 2).
-A 3-way split variance cascade
-(refine A, refine B, refine both)
-would determine which (lvlA, lvlB) pairs to populate,
-with coarse entries already established as mixed
-skipped on insert and left to decay for revalidation.
-The current 1D cascade is the diagonal of the N × N LOD grid,
+The current 1D cascade is the diagonal of this N × N grid,
 so the extension is backward-compatible.
-Canonicalization would require restriction
-to the diagonal (lvlA = lvlB) or
-symmetric level assignment.
+
+**Distance-bin multi-write implementation.**
+The distance monotonicity described in Sec. 4.1
+(V=0 at d implies V=0 at all d' > d)
+enables free propagation across distance bins on every trace.
+The current implementation writes only the queried distance bin;
+extending the insert path to propagate along the distance column
+— V=0 to all farther bins from d\_hit, V=1 to all nearer bins from d\_query —
+is a pure implementation task with no algorithmic risk.
+The variance gate applies to propagation targets:
+skip bins that already agree with the propagated value.
+
+**Sentinel traces for dynamic scene detection.**
+The Pmin floor (Sec. 8) already forces ~5% of pixels
+to trace unconditionally, paying the ray cost regardless of cache state.
+Currently these traces feed into the normal update pipeline,
+slowly shifting μ.
+A zero-cost extension: Pmin-forced traces that disagree
+with the cached estimate by more than a sentinel threshold
+(e.g. |V − μ| > 0.5, tuneable)
+bypass the maturity gate (Sec. 5),
+forcing a write even to mature entries.
+Agreeing sentinels respect the maturity gate as normal —
+only disagreement warrants overriding it.
+This turns the existing 5% always-trace budget
+into an implicit change detector —
+if the scene changes and a mature entry becomes stale,
+disagreeing Pmin traces correct it at a rate of Pmin × frame_rate
+(~3 updates/second per cell at 60 fps),
+without needing explicit invalidation logic
+or a separate probe pass.
+Combined with inline overflow decay (Sec. 6),
+which keeps total counts bounded so new observations shift μ quickly,
+this provides O(1)-second response to local scene changes
+while leaving stable regions at full maturity.
+The current background decay (Sec. 6) becomes a global safety net
+rather than the primary change-response mechanism.
+
+**Interpolatable visibility field.**
+Each occupied cell is a noisy sample of a continuous visibility field V(a,b),
+located at the cell's effective center,
+with known value (μ) and known uncertainty (μ(1−μ)/n).
+Reframing the hash table as a set of scattered spatial samples
+opens the path to explicit interpolation at lookup time:
+query K neighboring cells and blend by distance and confidence,
+e.g. w_i = n_i / (1 + d_i² / cell_size²).
+At coarse levels (L0, 10 m cells),
+discrete jumps at cell boundaries are large
+and neighbors are likely populated —
+interpolation over 8 cube-corner neighbors
+costs ~8 hash lookups (~100 ALU + 8 cache lines),
+trivial compared to a shadow ray.
+At fine levels (L2, 16 cm cells),
+the current position-seeded jitter (Sec. 4.2)
+already provides sufficient stochastic smoothing at near-pixel scale.
+A practical rule: interpolate at coarse levels, jitter-filter at fine levels.
+The interpolated L0 μ has lower variance than any single cell's μ,
+so the variance-gated cascade stops earlier,
+potentially saving fine-level lookups.
+This reframes the cache from a discrete lookup structure
+to a sparse spatial reconstruction of the visibility field
+from noisy Bernoulli observations —
+prediction-with-correction then maintains reconstruction quality
+by tracing where reconstruction uncertainty is high.
+
+**Double jitter: grid jitter + point jitter.**
+The current position-seeded jitter (Sec. 4.2) smooths cell boundary transitions
+but leaves the grid itself regular —
+cell centers remain on a uniform axis-aligned lattice.
+A two-stage jitter separates two independent jobs:
+(1) *grid jitter* displaces each cell's effective center
+by a deterministic hash of its quantized coordinates,
+breaking axis-aligned regularity
+so that scene features (walls, floors)
+do not systematically align with cell boundaries;
+(2) *point jitter* (the existing position-seeded jitter)
+provides the boundary box filter independently.
+Neither stage alone achieves both properties:
+grid jitter without point jitter recreates Binder et al.'s [2018] sharp boundary steps
+at irregularly placed boundaries;
+point jitter without grid jitter leaves axis-aligned grid structure.
+Double jitter is particularly beneficial
+for the interpolatable-field extension above:
+on a regular lattice, neighboring cell centers are maximally correlated
+and interpolation degenerates toward trilinear on a grid;
+with grid jitter, cell centers form a quasi-random sample set,
+giving more independent information per neighbor
+and reducing interpolation variance.
 
 **Multi-lookup smoothing and inter-level interpolation.**
 Currently each query performs a single coarse-to-fine cascade

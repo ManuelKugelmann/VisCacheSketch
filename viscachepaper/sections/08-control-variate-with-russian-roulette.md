@@ -35,7 +35,7 @@ r <- lookup(hit.pos, light.pos)
 if r = MISS then
   V <- trace(hit, light); insert(V)
   return analytic x V
-p_s <- clamp(r.var / tau, P_MIN, 1)
+p_s <- clamp(r.var / tau_var, P_MIN, 1)
 if random() < p_s then
   V <- trace(hit, light); insert(V)
   return analytic x (r.mean + (V - r.mean) / p_s)
@@ -164,7 +164,7 @@ is proportional to the local importance
 For a shadow ray,
 the "importance" is the shading contribution luminance(fs·Le·G) —
 exactly the quantity pfloor scales by.
-The variance-driven base probability p_s = var/τ
+The variance-driven base probability p_s = var/τ_var
 handles cache uncertainty;
 the contribution-weighted floor handles image importance.
 Together they approximate the efficiency-optimal strategy

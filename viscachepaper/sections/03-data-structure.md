@@ -17,7 +17,7 @@ V=1 adds 0x00010001; V=0 adds 0x00000001. Single InterlockedAdd — both counter
 
 ## 3.2 LOD Configuration
 
-N levels (default N=3) with LOD index encoded in the hash key (Sec. 4.3). Both endpoints use the same cell size per level — symmetric quantization. This enables bidirectional canonicalization (Sec. 4.5): lexicographic swap merges V(A,B) and V(B,A) into one entry, doubling effective cache utilization for symmetric queries. Cell sizes in world units; no scene bounds needed.
+N levels (default N=3) with LOD index encoded in the hash key (Sec. 4.4). The primary addressing mode (position+normal × direction+distance, Sec. 4.1) has two LOD dimensions: spatial cell size and angular bin size, both following geometric progressions from coarse to fine. Distance bins are not an LOD dimension — they exploit a geometric monotonicity invariant (Sec. 4.1). Cell sizes in world units; no scene bounds needed.
 
 Cell sizes follow a geometric progression from cell_coarse (L0) to cell_fine (L_{N-1}):
 
@@ -33,11 +33,19 @@ Three runtime cbuffer parameters control the LOD ramp: N (level count), cell_coa
 | L1 | ~1.26 m | ~14 |
 | L2 | 16 cm | ~1.7 |
 
-> **Table 1.** Symmetric cell sizes (N=3, cell_coarse=10 m, cell_fine=0.16 m). Both endpoints are quantized at the same cell size per level, enabling canonicalization (Sec. 4.5). Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. L2 is near-pixel at typical viewing distances; it populates only where the variance-gated cascade (Sec. 5) propagates past L1. All three parameters are scene-dependent tuning knobs — there are no universal correct values.
+> **Table 1.** Spatial cell sizes (N=3, cell_coarse=10 m, cell_fine=0.16 m). In the primary addressing mode (Sec. 4.1), these control the position quantization of the shading point. In the secondary position × position mode (Sec. 4.6), both endpoints use the same cell size. Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. L2 is near-pixel at typical viewing distances; it populates only where the variance-gated cascade (Sec. 5) propagates past L1. All parameters are scene-dependent tuning knobs — there are no universal correct values.
+
+| Level | Angular bin | Distance threshold |
+|---|---|---|
+| L0 | ##° | ∞ (directional only) |
+| L1 | ##° | ## m |
+| L2 | ##° | ## m |
+
+> **Table 1b.** Angular bin sizes and distance thresholds for the direction+distance dimensions of the primary addressing mode (Sec. 4.1). Angular bins follow a geometric progression from coarse (L0) to fine (L2). Distance thresholds are tied to spatial cell sizes via d_max(l) = cell_size(l) × distance_scale. The coarsest distance bin [0, ∞) collapses to direction-only addressing. All values are scene-dependent tuning knobs — placeholders (##) to be filled with measured defaults.
 
 Scenes at substantially different scales (tabletop close-ups, city-scale flyovers) would benefit from camera-adaptive cell sizing via FoV and circle of confusion — deferred to future work.
 
-**Why symmetric.** Both endpoints use the same cell size at each level. This is required for canonicalization (Sec. 4.5) and natural for GI revalidation (Sec. 9), where both endpoints are surface points. A future extension — independent per-endpoint LOD levels with a 2D key `(lvlA, lvlB)` — could allow each endpoint to be resolved at a different level (see Sec. 14, Future Work). In the current design, the variance-gated cascade (Sec. 5) determines which levels are written: coarse levels converge first, and propagation stops when variance drops below τ. A maturity gate (SE-based) skips entries with enough samples, and decay periodically revalidates.
+**Two addressing modes.** The primary mode — position+normal × direction+distance (Sec. 4.1) — exploits surface normal, angular structure, and distance monotonicity. A secondary position × position mode (Sec. 4.6) is available for GI revalidation where both endpoints are surface points. Both coexist in the same flat table. In the current design, the variance-gated cascade (Sec. 5) determines which levels are written: coarse levels converge first, and propagation stops when variance drops below τ_var. A maturity gate (SE-based) skips entries with enough samples, and decay periodically revalidates.
 
 **Why a flat hash, not a hierarchy.** Prior multilevel approaches — separate tables per level, octree subdivision [Popov et al. 2013], hierarchical cascade grids — add structural complexity: pointer management, multi-table eviction coordination, variable-depth traversal. A single flat table with level-in-key (Sec. 4.3) is simpler, has uniform access cost, and allows entries at all levels to compete for capacity under one eviction policy. This design emerged after experimenting with alternatives; the flat table consistently performed better for our access pattern (many parallel inserts/lookups with variable level mix).
 

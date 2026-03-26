@@ -11,13 +11,15 @@ for i <- 0 to K_NEIGHBORS do
   mu <- lookup(my_pos, Q).mean
   bound <- f_s * Lo * G(my_pos, Q)
   residual <- bound * max(mu, 1-mu)
-  p <- clamp(residual / threshold, P_MIN, 1)
+  p <- clamp(residual / tau_reval, P_MIN, 1)
   if random() < p then
     V <- trace(my_pos, Q); insert(my_pos, Q, V)
     V_est[i] <- mu + (V - mu) / p
   else
     V_est[i] <- mu
 ```
+
+where τ_reval (= gRevalThreshold) is the contribution-weighted revalidation threshold (default ##).
 
 ## 10.1 Path Sharing
 
