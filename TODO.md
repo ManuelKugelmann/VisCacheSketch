@@ -304,46 +304,64 @@ Phases 6–7 are post-submission extensions.
 
 ## 5b. Feature Test Ladder
 
-Each feature gets a dedicated ladder step that validates functionality before ablation.
-Steps are ordered to match the implementation roadmap phases.
-All run via `.scripts/mogwai-headless.sh` on CornellBox (procedural, no download).
+Each feature gets a dedicated ladder step. Steps are ordered by implementation phase.
+All run via `.scripts/mogwai-headless.sh`. Default scene: CornellBox (procedural).
+
+### L00: Addressing Mode Matrix (existing + new)
+
+Systematic sweep of all addressing combinations. Each variant runs 1 warmup + 1 capture frame.
+Extends `VisCache_LadderCommon.py` VARIANTS list. Diagnostic grid per variant.
+
+```
+Variant              Endpoint A         Endpoint B            Key dimensions  Notes
+─────────────────────────────────────────────────────────────────────────────────────
+pos_pos              pos                pos (same cell)       6D              canonical (V(A,B)=V(B,A))
+posA_posB            pos                pos (2x cell)         6D              asymmetric, no canon.
+pos_pos1             pos                pos (collapsed)       3D              position-only baseline
+pos_dir1_dist1       pos                dir(360°)+dist(1km)   3D              ≈ position-only via dirdist
+pos_dir_dist1        pos                dir(5°)+dist(1km)     5D              angular bins, no distance
+pos_dir_dist         pos                dir(5°)+dist(0.24)    6D              angular + distance bins
+─── new (requires Phase 1 implementation) ──────────────────────────────────────────
+posN_dir1_dist1      pos+normal         dir(360°)+dist(1km)   5D              normal only, no dir/dist
+posN_dir_dist1       pos+normal         dir(5°)+dist(1km)     7D              normal + angular, no dist
+posN_dir_dist        pos+normal         dir(5°)+dist(0.24)    8D              full primary mode (paper)
+posN_pos             pos+normal         pos (same cell)       8D              normal + pos×pos hybrid
+```
+
+**Pass criteria per variant:**
+- Diagnostic grid renders without crash
+- posAHash / posBHash channels show expected quantization patterns
+- Collapsed dimensions (1-suffixed) produce fewer unique cells than full versions
+- Normal variants differ from non-normal on Bistro thin geometry
+- Normal variants match non-normal on CornellBox (no thin geo, so normal adds nothing)
+
+**Script:** `scripts/VisCache_Ladder00.py` (extend existing) + new `VisCache_Ladder00_Normal.py`
+
+### L01–L09: Feature Validation
 
 ```
 Ladder Step    Feature                          Pass Criteria
 ──────────────────────────────────────────────────────────────────────
-L00            Baseline pos×dirdist (existing)  Diagnostic grid renders, no crash
-L01            Normal in key (Phase 1)          pos_normal×dirdist diagnostic differs
-                                                from pos×dirdist on thin-geometry scene;
-                                                identical on CornellBox (no thin geo)
-L02            τ_useable gate (Phase 2)         L1 populates earlier than with τ_mature-only:
-                                                compare frame# at which L1 total > 0
-L03            Parent→child inheritance (P2)    L1 entry starts with nonzero vis/total
-                                                on first frame (inherited from L0)
-L04            Distance multi-write (Phase 3)   After 1 trace at d=5m with V=0:
-                                                bins [0,10m] and [0,∞) also show V=0 count;
-                                                bin [0,1m] unchanged
-L05            CommittedRayT() propagation (P3) d_hit diagnostic channel is nonzero
-                                                for occluded rays
-L06            Sentinel bypass (Phase 6)        After scene change (light move):
-                                                mature entry with |V-μ|>0.5 gets
-                                                updated within 1/Pmin frames
-L07            2D cascade diagonal (Phase 7)    Entries at (1,1) and (2,2) populated;
-                                                off-diagonal (2,1) or (1,2) only populated
+L01            Distance bin isolation            pos_dir_dist shows different μ for
+                                                near vs far lights in same direction;
+                                                pos_dir_dist1 merges them (single bin)
+L02            Distance multi-write (Phase 3)   After V=0 trace at d=5m: farther bins
+                                                also show V=0 count; nearer bins unchanged
+L03            CommittedRayT() propagation (P3) d_hit diagnostic channel nonzero for V=0
+L04            τ_useable gate (Phase 2)         L1 populates earlier than τ_mature-only:
+                                                compare frame# where L1.total > 0
+L05            Parent→child inheritance (P2)    L1 entry nonzero vis/total on first frame
+                                                (inherited from L0)
+L06            Sentinel bypass (Phase 6)        After light move: mature entry with
+                                                |V-μ|>0.5 updated within 1/Pmin frames
+L07            2D cascade diagonal (Phase 7)    (1,1)/(2,2) populated; off-diagonal only
                                                 when diagonal terminal has high variance
-L08            Confidence-adaptive pMin (P4)    Compare firefly count: adaptive < fixed
-L09            Deterministic xi (P4)            Temporal variance of cached-path output:
-                                                deterministic < random across 10 frames
+L08            Confidence-adaptive pMin (P4)    Firefly count: adaptive < fixed
+L09            Deterministic xi (P4)            Temporal variance: deterministic < random
+                                                across 10 frames
 ```
 
 **Ladder script naming:** `scripts/VisCache_Ladder<NN>_<Feature>.py`
-- L00: `VisCache_Ladder00_Baseline.py` (existing L00 covers this)
-- L01: `VisCache_Ladder01_Normal.py`
-- L02: `VisCache_Ladder02_Useable.py`
-- L03: `VisCache_Ladder03_Inherit.py`
-- L04–L05: `VisCache_Ladder04_DistMultiWrite.py`
-- L06: `VisCache_Ladder06_Sentinel.py`
-- L07: `VisCache_Ladder07_2DLOD.py`
-- L08–L09: `VisCache_Ladder08_CodeFeatures.py`
 
 Each step captures diagnostic EXR + extracts channels via `viscache_exr.py`.
 Pass/fail is visual (diagnostic grid) + numeric (counter assertions in Python).
