@@ -11,6 +11,8 @@
 #   - Arcade (bundled with Falcor, copied from Falcor/media/)
 #   - Bistro (Amazon Lumberyard, NVIDIA ORCA)
 #   - Sponza (Crytek, NVIDIA ORCA)
+#   - Rungholt (McGuire CG Archive, medieval town ~260m)
+#   - Sun Temple (Epic Games / NVIDIA ORCA)
 #   - Cornell Box (bundled with Falcor test_scenes)
 
 set -euo pipefail
@@ -188,7 +190,67 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. VeachAjar — Bitterli's rendering resources, converted to OBJ by DQLin
+# 5. Rungholt (McGuire Computer Graphics Archive)
+#    Medieval town, ~6M triangles, ~260m world extent — scale test scene.
+#    Morgan McGuire, Computer Graphics Archive, July 2017.
+#    https://casual-effects.com/data/
+# ---------------------------------------------------------------------------
+RUNGHOLT_URL="https://casual-effects.com/g3d/data10/research/model/rungholt/rungholt.zip"
+
+if [ ! -d "$MEDIA_DIR/Rungholt" ]; then
+    echo ""
+    echo "[scenes] === Rungholt (McGuire CG Archive) ==="
+    echo "[scenes] Source: casual-effects.com/data (CC BY 3.0)"
+    echo "[scenes] Size: ~300 MB compressed (~6M triangles, medieval town)"
+    echo ""
+    read -rp "[scenes] Download Rungholt? [y/N] " yn
+    case "$yn" in
+        [Yy]*)
+            download_and_extract "Rungholt" "$RUNGHOLT_URL"
+            # Copy pyscene from repo if not already present
+            if [ ! -f "$MEDIA_DIR/Rungholt/Rungholt.pyscene" ] && [ -f "$SCENES_DIR/Rungholt.pyscene" ]; then
+                cp "$SCENES_DIR/Rungholt.pyscene" "$MEDIA_DIR/Rungholt/Rungholt.pyscene"
+                echo "[scenes] Copied Rungholt.pyscene from scenes/"
+            fi
+            ;;
+        *) echo "[scenes] Skipping Rungholt" ;;
+    esac
+else
+    echo "[scenes] Rungholt already exists, skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Sun Temple (Epic Games / NVIDIA ORCA)
+#    Temple complex, ~600K triangles — FBX format.
+#    Epic Games, Unreal Engine Sun Temple, NVIDIA ORCA, October 2017.
+#    https://developer.nvidia.com/ue4-sun-temple
+# ---------------------------------------------------------------------------
+SUNTEMPLE_URL="https://developer.nvidia.com/ue4-sun-temple"
+
+if [ ! -d "$MEDIA_DIR/SunTemple" ]; then
+    echo ""
+    echo "[scenes] === Sun Temple (Epic Games / NVIDIA ORCA) ==="
+    echo "[scenes] Source: developer.nvidia.com/orca (NVIDIA ORCA)"
+    echo "[scenes] Size: ~400 MB compressed (~600K triangles, temple complex)"
+    echo ""
+    read -rp "[scenes] Download Sun Temple? [y/N] " yn
+    case "$yn" in
+        [Yy]*)
+            download_and_extract "SunTemple" "$SUNTEMPLE_URL"
+            # Copy pyscene from repo if not already present
+            if [ ! -f "$MEDIA_DIR/SunTemple/SunTemple.pyscene" ] && [ -f "$SCENES_DIR/SunTemple.pyscene" ]; then
+                cp "$SCENES_DIR/SunTemple.pyscene" "$MEDIA_DIR/SunTemple/SunTemple.pyscene"
+                echo "[scenes] Copied SunTemple.pyscene from scenes/"
+            fi
+            ;;
+        *) echo "[scenes] Skipping Sun Temple" ;;
+    esac
+else
+    echo "[scenes] SunTemple already exists, skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# 7. VeachAjar — Bitterli's rendering resources, converted to OBJ by DQLin
 #    Original scene: https://benedikt-bitterli.me/resources/ (Tungsten/PLY)
 #    DQLin converted to OBJ + added teapot variants and animated door for
 #    the ReSTIR PT demo. We fetch from DQLin's repo (the only OBJ source).

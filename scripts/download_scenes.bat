@@ -200,7 +200,111 @@ if not exist "%MEDIA_DIR%\Sponza" (
 )
 
 REM ---------------------------------------------------------------------------
-REM 5. VeachAjar — Bitterli scene, DQLin OBJ conversion
+REM 5. Rungholt (McGuire Computer Graphics Archive)
+REM    Medieval town, ~6M triangles, ~260m world extent — scale test scene.
+REM    Morgan McGuire, Computer Graphics Archive, July 2017.
+REM ---------------------------------------------------------------------------
+:rungholt
+set "RUNGHOLT_URL=https://casual-effects.com/g3d/data10/research/model/rungholt/rungholt.zip"
+
+if not exist "%MEDIA_DIR%\Rungholt" (
+    echo.
+    echo [scenes] === Rungholt ^(McGuire CG Archive^) ===
+    echo [scenes] Source: casual-effects.com/data ^(CC BY 3.0^)
+    echo [scenes] Size: ~300 MB compressed ^(~6M triangles, medieval town^)
+    echo.
+    if "%AUTO_YES%"=="0" (
+        set /p "YN=[scenes] Download Rungholt? [y/N] "
+        if /i not "!YN!"=="y" (
+            echo [scenes] Skipping Rungholt
+            goto :suntemple
+        )
+    )
+    echo [scenes] Downloading Rungholt...
+    set "TMPZIP=%TEMP%\Rungholt_%RANDOM%.zip"
+    curl -fSL --progress-bar -o "!TMPZIP!" "%RUNGHOLT_URL%"
+    if errorlevel 1 (
+        echo [scenes] ERROR: Rungholt download failed.
+        goto :suntemple
+    )
+    echo [scenes] Extracting Rungholt...
+    mkdir "%MEDIA_DIR%\Rungholt" 2>nul
+    tar xf "!TMPZIP!" -C "%MEDIA_DIR%\Rungholt"
+    del "!TMPZIP!" 2>nul
+    REM Flatten: if zip produced a single subdirectory, move contents up
+    for /f "delims=" %%S in ('dir /b /ad "%MEDIA_DIR%\Rungholt" 2^>nul') do (
+        if exist "%MEDIA_DIR%\Rungholt\%%S\*" (
+            echo [scenes] Flattening %%S\ into Rungholt\
+            xcopy /E /I /Q /Y "%MEDIA_DIR%\Rungholt\%%S\*" "%MEDIA_DIR%\Rungholt\" >nul 2>nul
+            rmdir /S /Q "%MEDIA_DIR%\Rungholt\%%S" 2>nul
+        )
+    )
+    REM Copy pyscene from repo if not already present
+    if not exist "%MEDIA_DIR%\Rungholt\Rungholt.pyscene" (
+        if exist "%SCENES_DIR%\Rungholt.pyscene" (
+            copy /y "%SCENES_DIR%\Rungholt.pyscene" "%MEDIA_DIR%\Rungholt\Rungholt.pyscene" >nul
+            echo [scenes] Copied Rungholt.pyscene from scenes\
+        )
+    )
+    echo [scenes] Rungholt ready
+) else (
+    echo [scenes] Rungholt already exists, skipping
+)
+
+REM ---------------------------------------------------------------------------
+REM 6. Sun Temple (Epic Games / NVIDIA ORCA)
+REM    Temple complex, ~600K triangles — FBX format.
+REM    Epic Games, Unreal Engine Sun Temple, NVIDIA ORCA, October 2017.
+REM ---------------------------------------------------------------------------
+:suntemple
+set "SUNTEMPLE_URL=https://developer.nvidia.com/ue4-sun-temple"
+
+if not exist "%MEDIA_DIR%\SunTemple" (
+    echo.
+    echo [scenes] === Sun Temple ^(Epic Games / NVIDIA ORCA^) ===
+    echo [scenes] Source: developer.nvidia.com/orca ^(NVIDIA ORCA^)
+    echo [scenes] Size: ~400 MB compressed ^(~600K triangles, temple complex^)
+    echo.
+    if "%AUTO_YES%"=="0" (
+        set /p "YN=[scenes] Download Sun Temple? [y/N] "
+        if /i not "!YN!"=="y" (
+            echo [scenes] Skipping Sun Temple
+            goto :veachajar
+        )
+    )
+    echo [scenes] Downloading Sun Temple...
+    set "TMPZIP=%TEMP%\SunTemple_%RANDOM%.zip"
+    curl -fSL --progress-bar -o "!TMPZIP!" "%SUNTEMPLE_URL%"
+    if errorlevel 1 (
+        echo [scenes] ERROR: Sun Temple download failed.
+        goto :veachajar
+    )
+    echo [scenes] Extracting Sun Temple...
+    mkdir "%MEDIA_DIR%\SunTemple" 2>nul
+    tar xf "!TMPZIP!" -C "%MEDIA_DIR%\SunTemple"
+    del "!TMPZIP!" 2>nul
+    REM Flatten: if zip produced a single subdirectory, move contents up
+    for /f "delims=" %%S in ('dir /b /ad "%MEDIA_DIR%\SunTemple" 2^>nul') do (
+        if exist "%MEDIA_DIR%\SunTemple\%%S\*" (
+            echo [scenes] Flattening %%S\ into SunTemple\
+            xcopy /E /I /Q /Y "%MEDIA_DIR%\SunTemple\%%S\*" "%MEDIA_DIR%\SunTemple\" >nul 2>nul
+            rmdir /S /Q "%MEDIA_DIR%\SunTemple\%%S" 2>nul
+        )
+    )
+    REM Copy pyscene from repo if not already present
+    if not exist "%MEDIA_DIR%\SunTemple\SunTemple.pyscene" (
+        if exist "%SCENES_DIR%\SunTemple.pyscene" (
+            copy /y "%SCENES_DIR%\SunTemple.pyscene" "%MEDIA_DIR%\SunTemple\SunTemple.pyscene" >nul
+            echo [scenes] Copied SunTemple.pyscene from scenes\
+        )
+    )
+    echo [scenes] Sun Temple ready
+) else (
+    echo [scenes] SunTemple already exists, skipping
+)
+
+REM ---------------------------------------------------------------------------
+REM 7. VeachAjar — Bitterli scene, DQLin OBJ conversion
 REM    Requires git for sparse clone.
 REM ---------------------------------------------------------------------------
 :veachajar

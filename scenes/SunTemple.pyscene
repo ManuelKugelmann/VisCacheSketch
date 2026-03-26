@@ -1,0 +1,45 @@
+# SunTemple.pyscene — Epic Games Sun Temple (NVIDIA ORCA)
+# Large temple complex, ~600K triangles (FBX format).
+#
+# Download: scripts/download_scenes.sh (or .bat)
+# Source: Epic Games / NVIDIA ORCA, 2017
+#         https://developer.nvidia.com/ue4-sun-temple
+# License: NVIDIA ORCA (research use)
+
+import os
+_dir = os.path.dirname(os.path.abspath(__file__))
+_fbx = os.path.join(_dir, '..', 'runtime', 'media', 'SunTemple', 'SunTemple.fbx')
+if not os.path.exists(_fbx):
+    _fbx = 'SunTemple.fbx'
+sceneBuilder.importScene(_fbx)
+
+# Camera — approaching the temple entrance
+camera = Camera('VisCacheDefault')
+camera.position = float3(-5.0, 3.5, -15.0)
+camera.target   = float3(0.0, 4.0, 5.0)
+camera.up       = float3(0.0, 1.0, 0.0)
+camera.focalLength = 21.0
+camera.farPlane = 2000.0
+sceneBuilder.addCamera(camera)
+
+# Harsh tropical sun
+sun = DirectionalLight('Sun')
+sun.intensity = float3(10.0, 9.0, 7.0)
+sun.direction = float3(0.3, -0.9, 0.2)
+sceneBuilder.addLight(sun)
+
+# Warm bounce fill
+fill = DirectionalLight('Fill')
+fill.intensity = float3(0.8, 0.6, 0.4)
+fill.direction = float3(-0.5, -0.3, -0.8)
+sceneBuilder.addLight(fill)
+
+# Boost emissive materials (FBX defaults often too dim)
+for m in sceneBuilder.materials:
+    if m.emissive:
+        m.emissiveFactor = max(m.emissiveFactor, 100.0)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True
+settings.useEnvLight = True

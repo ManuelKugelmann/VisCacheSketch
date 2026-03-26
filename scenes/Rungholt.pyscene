@@ -1,0 +1,40 @@
+# Rungholt.pyscene — McGuire Computer Graphics Archive: Rungholt
+# Medieval town, ~6M triangles, ~260m extent (OBJ, world units = meters).
+#
+# Download: scripts/download_scenes.sh (or .bat)
+# Source: Morgan McGuire, Computer Graphics Archive, 2017
+#         https://casual-effects.com/data/
+# License: CC BY 3.0
+
+import os
+_dir = os.path.dirname(os.path.abspath(__file__))
+_obj = os.path.join(_dir, '..', 'runtime', 'media', 'Rungholt', 'rungholt.obj')
+if not os.path.exists(_obj):
+    _obj = 'rungholt.obj'
+sceneBuilder.importScene(_obj)
+
+# Camera — elevated view over the town rooftops
+camera = Camera('VisCacheDefault')
+camera.position = float3(-100.0, 40.0, -80.0)
+camera.target   = float3(50.0, 10.0, 60.0)
+camera.up       = float3(0.0, 1.0, 0.0)
+camera.focalLength = 24.0
+camera.farPlane = 2000.0
+sceneBuilder.addCamera(camera)
+
+# Afternoon sun — warm directional light
+sun = DirectionalLight('Sun')
+sun.intensity = float3(6.0, 5.2, 4.0)
+sun.direction = float3(0.5, -0.8, 0.3)
+sceneBuilder.addLight(sun)
+
+# Cool sky fill
+sky = DirectionalLight('SkyFill')
+sky.intensity = float3(0.6, 0.7, 1.0)
+sky.direction = float3(-0.2, -1.0, -0.1)
+sceneBuilder.addLight(sky)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True
+settings.useEnvLight = True

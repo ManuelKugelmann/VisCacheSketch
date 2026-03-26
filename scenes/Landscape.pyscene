@@ -1,0 +1,253 @@
+# Landscape.pyscene — Procedural castle on terrain (~2 km extent)
+#
+# Scale-agnosticism stress test for VisCache.
+# Scene diameter ~2000 units vs CornellBox ~2 units (1000x ratio).
+# All procedural — no external assets needed.
+
+import math
+
+# ---------------------------------------------------------------------------
+# Materials
+# ---------------------------------------------------------------------------
+grass = StandardMaterial('Grass')
+grass.baseColor = float4(0.22, 0.38, 0.12, 1.0)
+grass.roughness = 0.95
+grass.metallic = 0.0
+
+stone = StandardMaterial('Stone')
+stone.baseColor = float4(0.55, 0.52, 0.48, 1.0)
+stone.roughness = 0.85
+stone.metallic = 0.0
+
+dark_stone = StandardMaterial('DarkStone')
+dark_stone.baseColor = float4(0.35, 0.32, 0.30, 1.0)
+dark_stone.roughness = 0.9
+dark_stone.metallic = 0.0
+
+wood = StandardMaterial('Wood')
+wood.baseColor = float4(0.45, 0.30, 0.15, 1.0)
+wood.roughness = 0.8
+wood.metallic = 0.0
+
+red_roof = StandardMaterial('RedRoof')
+red_roof.baseColor = float4(0.6, 0.18, 0.12, 1.0)
+red_roof.roughness = 0.7
+red_roof.metallic = 0.0
+
+water_mat = StandardMaterial('Water')
+water_mat.baseColor = float4(0.15, 0.25, 0.35, 0.6)
+water_mat.roughness = 0.05
+water_mat.metallic = 0.0
+water_mat.specularTransmission = 0.5
+water_mat.indexOfRefraction = 1.33
+
+torch_mat = StandardMaterial('TorchFlame')
+torch_mat.baseColor = float4(1.0, 0.85, 0.4, 1.0)
+torch_mat.emissiveColor = float3(120.0, 80.0, 20.0)
+torch_mat.emissiveFactor = 1.0
+torch_mat.roughness = 1.0
+
+# ---------------------------------------------------------------------------
+# Shared meshes (instanced)
+# ---------------------------------------------------------------------------
+tower_mesh = TriangleMesh.createCube(float3(12.0, 30.0, 12.0))
+tower_mesh.name = 'TowerBlock'
+towerID = sceneBuilder.addTriangleMesh(tower_mesh, stone)
+
+battlement_mesh = TriangleMesh.createCube(float3(2.5, 3.0, 2.5))
+battlement_mesh.name = 'Battlement'
+battlementID = sceneBuilder.addTriangleMesh(battlement_mesh, dark_stone)
+
+roof_mesh = TriangleMesh.createCube(float3(14.0, 8.0, 14.0))
+roof_mesh.name = 'TowerRoof'
+roofID = sceneBuilder.addTriangleMesh(roof_mesh, red_roof)
+
+torch_sphere = TriangleMesh.createSphere(radius=0.8, segmentsU=12, segmentsV=12)
+torch_sphere.name = 'TorchFlame'
+torchID = sceneBuilder.addTriangleMesh(torch_sphere, torch_mat)
+
+# ---------------------------------------------------------------------------
+# Ground plane — 2 km x 2 km
+# ---------------------------------------------------------------------------
+ground = TriangleMesh.createQuad(size=float2(2000.0, 2000.0))
+ground.name = 'Terrain'
+groundID = sceneBuilder.addTriangleMesh(ground, grass)
+groundNode = sceneBuilder.addNode('Terrain', Transform(
+    rotationEulerDeg=float3(-90, 0, 0),
+))
+sceneBuilder.addMeshInstance(groundNode, groundID)
+
+# ---------------------------------------------------------------------------
+# River / moat (long thin quad at Y=0.1)
+# ---------------------------------------------------------------------------
+river = TriangleMesh.createQuad(size=float2(1600.0, 30.0))
+river.name = 'River'
+riverID = sceneBuilder.addTriangleMesh(river, water_mat)
+riverNode = sceneBuilder.addNode('River', Transform(
+    translation=float3(0.0, 0.1, 80.0),
+    rotationEulerDeg=float3(-90, 0, 0),
+))
+sceneBuilder.addMeshInstance(riverNode, riverID)
+
+# ---------------------------------------------------------------------------
+# Castle — centered at origin
+# ---------------------------------------------------------------------------
+WALL_H = 18.0
+WALL_T = 3.0
+
+# Curtain walls (4 sides of a ~80x80 courtyard)
+wall_specs = [
+    # (name, sizeX, sizeY, sizeZ, tx, ty, tz)
+    ('WallN', 86.0, WALL_H, WALL_T,   0.0,  WALL_H/2,  43.0),
+    ('WallS', 86.0, WALL_H, WALL_T,   0.0,  WALL_H/2, -43.0),
+    ('WallE', WALL_T, WALL_H, 86.0,   43.0, WALL_H/2,   0.0),
+    ('WallW', WALL_T, WALL_H, 86.0,  -43.0, WALL_H/2,   0.0),
+]
+for wname, sx, sy, sz, tx, ty, tz in wall_specs:
+    wm = TriangleMesh.createCube(float3(sx, sy, sz))
+    wm.name = wname
+    wmID = sceneBuilder.addTriangleMesh(wm, stone)
+    wn = sceneBuilder.addNode(wname, Transform(translation=float3(tx, ty, tz)))
+    sceneBuilder.addMeshInstance(wn, wmID)
+
+# Corner towers (4)
+tower_positions = [
+    ('TowerNE',  40.0, 15.0,  40.0),
+    ('TowerNW', -40.0, 15.0,  40.0),
+    ('TowerSE',  40.0, 15.0, -40.0),
+    ('TowerSW', -40.0, 15.0, -40.0),
+]
+for tname, tx, ty, tz in tower_positions:
+    tn = sceneBuilder.addNode(tname, Transform(translation=float3(tx, ty, tz)))
+    sceneBuilder.addMeshInstance(tn, towerID)
+    # Pointed roof (rotated 45 deg for diamond shape)
+    rn = sceneBuilder.addNode(tname + '_Roof', Transform(
+        translation=float3(tx, ty + 19.0, tz),
+        rotationEulerDeg=float3(0, 45, 0),
+        scaling=float3(1.0, 1.0, 1.0),
+    ))
+    sceneBuilder.addMeshInstance(rn, roofID)
+
+# Keep / great hall (central building)
+keep = TriangleMesh.createCube(float3(30.0, 25.0, 20.0))
+keep.name = 'Keep'
+keepID = sceneBuilder.addTriangleMesh(keep, dark_stone)
+keepNode = sceneBuilder.addNode('Keep', Transform(
+    translation=float3(0.0, 12.5, 10.0),
+))
+sceneBuilder.addMeshInstance(keepNode, keepID)
+
+keep_roof = TriangleMesh.createCube(float3(32.0, 6.0, 22.0))
+keep_roof.name = 'KeepRoof'
+keepRoofID = sceneBuilder.addTriangleMesh(keep_roof, red_roof)
+keepRoofNode = sceneBuilder.addNode('KeepRoof', Transform(
+    translation=float3(0.0, 28.0, 10.0),
+    rotationEulerDeg=float3(0, 0, 0),
+))
+sceneBuilder.addMeshInstance(keepRoofNode, keepRoofID)
+
+# Gatehouse (front/south wall opening)
+gatehouse = TriangleMesh.createCube(float3(14.0, 22.0, 8.0))
+gatehouse.name = 'Gatehouse'
+gatehouseID = sceneBuilder.addTriangleMesh(gatehouse, stone)
+gatehouseNode = sceneBuilder.addNode('Gatehouse', Transform(
+    translation=float3(0.0, 11.0, -43.0),
+))
+sceneBuilder.addMeshInstance(gatehouseNode, gatehouseID)
+
+# Battlements along walls (decorative crenellations)
+import random
+random.seed(137)
+for i in range(32):
+    angle = (i / 32.0) * 2.0 * math.pi
+    r = 44.0
+    bx = r * math.sin(angle)
+    bz = r * math.cos(angle)
+    bn = sceneBuilder.addNode(f'Battlement_{i}', Transform(
+        translation=float3(bx, WALL_H + 1.5, bz),
+    ))
+    sceneBuilder.addMeshInstance(bn, battlementID)
+
+# Torch flames on towers (emissive light sources)
+for tname, tx, ty, tz in tower_positions:
+    for side in [(-7, 20), (7, 20)]:
+        tn = sceneBuilder.addNode(f'Torch_{tname}_{side[0]}', Transform(
+            translation=float3(tx + side[0], float(side[1]), tz),
+        ))
+        sceneBuilder.addMeshInstance(tn, torchID)
+
+# ---------------------------------------------------------------------------
+# Distant landmarks (push scene bounds to ~2 km)
+# ---------------------------------------------------------------------------
+# Watchtower 800m north
+distNode = sceneBuilder.addNode('FarTower_N', Transform(
+    translation=float3(0.0, 20.0, 800.0),
+    scaling=float3(1.5, 2.0, 1.5),
+))
+sceneBuilder.addMeshInstance(distNode, towerID)
+
+# Ruins 700m south-west
+ruinNode = sceneBuilder.addNode('Ruin_SW', Transform(
+    translation=float3(-600.0, 10.0, -400.0),
+    scaling=float3(2.0, 0.6, 2.0),
+))
+sceneBuilder.addMeshInstance(ruinNode, towerID)
+
+# Monolith 900m east
+monolith = TriangleMesh.createCube(float3(4.0, 40.0, 4.0))
+monolith.name = 'Monolith'
+monolithID = sceneBuilder.addTriangleMesh(monolith, dark_stone)
+monolithNode = sceneBuilder.addNode('Monolith_E', Transform(
+    translation=float3(900.0, 20.0, 50.0),
+))
+sceneBuilder.addMeshInstance(monolithNode, monolithID)
+
+# Small shrine 500m south-east (sphere on a pedestal)
+pedestal = TriangleMesh.createCube(float3(6.0, 4.0, 6.0))
+pedestal.name = 'Pedestal'
+pedestalID = sceneBuilder.addTriangleMesh(pedestal, stone)
+pedestalNode = sceneBuilder.addNode('Shrine_SE_Base', Transform(
+    translation=float3(400.0, 2.0, -350.0),
+))
+sceneBuilder.addMeshInstance(pedestalNode, pedestalID)
+
+orb = TriangleMesh.createSphere(radius=2.5, segmentsU=24, segmentsV=24)
+orb.name = 'ShrineOrb'
+shiny_orb = StandardMaterial('ShrineOrb')
+shiny_orb.baseColor = float4(0.95, 0.93, 0.88, 1.0)
+shiny_orb.roughness = 0.05
+shiny_orb.metallic = 1.0
+orbID = sceneBuilder.addTriangleMesh(orb, shiny_orb)
+orbNode = sceneBuilder.addNode('Shrine_SE_Orb', Transform(
+    translation=float3(400.0, 6.5, -350.0),
+))
+sceneBuilder.addMeshInstance(orbNode, orbID)
+
+# ---------------------------------------------------------------------------
+# Lighting — afternoon sun + sky fill
+# ---------------------------------------------------------------------------
+sun = DirectionalLight('Sun')
+sun.intensity = float3(8.0, 7.0, 5.5)
+sun.direction = float3(0.4, -0.8, 0.3)
+sceneBuilder.addLight(sun)
+
+sky = DirectionalLight('SkyFill')
+sky.intensity = float3(0.8, 0.9, 1.2)
+sky.direction = float3(-0.2, -1.0, -0.1)
+sceneBuilder.addLight(sky)
+
+# ---------------------------------------------------------------------------
+# Camera — approach from south, castle fills middle ground, far tower visible
+# ---------------------------------------------------------------------------
+camera = Camera('LandscapeDefault')
+camera.position = float3(-20.0, 35.0, -180.0)
+camera.target   = float3(0.0, 15.0, 10.0)
+camera.up       = float3(0.0, 1.0, 0.0)
+camera.focalLength = 28.0
+camera.farPlane = 5000.0
+sceneBuilder.addCamera(camera)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = True
+settings.useEnvLight = True
