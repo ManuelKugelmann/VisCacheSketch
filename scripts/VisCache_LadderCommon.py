@@ -507,7 +507,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
 def run_baseline(step_name, frame_configs, scene_file,
                  maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None,
-                 gt_spp=4096, extra_spp=None):
+                 gt_spp=32768, extra_spp=None):
     """Run vanilla PathTracer (no VisCache) as baseline references.
     For each frame_config, renders baselines at 1 SPP, gt_spp, and any extra_spp values.
     For each frame_config, renders two baselines:
@@ -593,8 +593,13 @@ def run_baseline(step_name, frame_configs, scene_file,
                 shutil.copy2(src, hdr_out)
                 print(f"[{step_name}] Copied HDR {os.path.basename(hdr_out)} ({sz} bytes)")
 
-        # Raw Mogwai outputs left in place — step 00 wipes on next run
+            # Clean raw Mogwai outputs after copy
+            for f in glob.glob(os.path.join(captureDir, f"vanilla_x{spp}.*")):
+                try:
+                    os.remove(f)
+                except (PermissionError, OSError):
+                    pass
 
-        m.removeGraph(g)
+            m.removeGraph(g)
 
     print(f"\n[{step_name}] All done.")

@@ -27,7 +27,7 @@ run_baseline(
     frame_configs=[(1, 1)],   # same warmup+averaging as step 01
     scene_file=scene_file,
     resX=res, resY=res,
-    gt_spp=4096,              # ground truth at 4096 SPP per frame
+    gt_spp=32768,             # ground truth at 32768 SPP per frame
     mogwai_globals=globals(),
 )
 exit()
