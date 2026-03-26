@@ -39,36 +39,37 @@ BASE = {
     "enableVisCachePressureEvict": False,
 }
 
-# Addressing variants (1 = collapsed/single bucket)
+# Addressing variants — naming: A__B where __ separates endpoint A from B,
+# _ separates dimensions within an endpoint. "1" suffix = collapsed/single bucket.
 VARIANTS = [
-    ("pos_pos", {
+    ("pos__pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.06,
     }),
-    ("posA_posB", {
+    ("posA__posB", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.12,       # 2x posA (0.06) → no canonicalization
     }),
-    ("pos_pos1", {
+    ("pos__pos1", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 10000.0,
     }),
-    ("pos_dir1_dist1", {
+    ("pos__dir1_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "angularBCoarse": 360.0,
         "distBCoarse": 1000.0,
     }),
-    ("pos_dir_dist1", {
+    ("pos__dir_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "angularBCoarse": 5.0,
         "distBCoarse": 1000.0,
     }),
-    ("pos_dir_dist", {
+    ("pos__dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "angularBCoarse": 5.0,

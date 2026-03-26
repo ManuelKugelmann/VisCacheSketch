@@ -1,10 +1,13 @@
 """
-VisCache_Ladder00_Variants.py — Step 0: Compare 4 addressing variants.
+VisCache_Ladder00_Variants.py — Step 0: Compare addressing variants.
 
-1. pos_pos_canonical: default endpoint pairs with lexicographic swap
-2. pos_only:          dirdist with huge scales → all dirs+dists collapse
-3. pos_dir:           dirdist with coarse angular bins, single dist bucket
-4. pos_dir_dist:      dirdist with coarse angular + coarse dist bins
+Naming: A__B where __ separates endpoint A from B, _ separates dimensions within.
+1. pos__pos:         canonical endpoint pairs with lexicographic swap
+2. pos__posB:        asymmetric (slightly different cell size, no canonicalization)
+3. pos__pos1:        collapsed B → position-only via pos×pos
+4. pos__dir1_dist1:  dirdist with huge scales → all dirs+dists collapse
+5. pos__dir_dist1:   coarse angular bins, single dist bucket
+6. pos__dir_dist:    coarse angular + coarse dist bins
 """
 import os, sys, glob
 
@@ -39,34 +42,34 @@ BASE = {
 }
 
 VARIANTS = [
-    ("pos_pos", {
+    ("pos__pos", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.06,       # same as cellA → canonical
     }),
-    ("pos_posB", {
+    ("pos__posB", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 0.061,      # slightly different → NO canonicalization (test for swap asymmetry)
     }),
-    ("pos_pos1", {
+    ("pos__pos1", {
         **BASE,
         "enableVisCacheDirDistAddr": False,
         "cellBCoarse": 10000.0,    # collapsed B → position-only via pos×pos
     }),
-    ("pos_dir1_dist1", {
+    ("pos__dir1_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "angularBCoarse": 360.0,   # single direction bin
         "distBCoarse": 1000.0,     # single dist bucket → position-only via dirdist
     }),
-    ("pos_dir_dist1", {
+    ("pos__dir_dist1", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "angularBCoarse": 45.0,    # 45° angular bins
         "distBCoarse": 1000.0,     # single dist bucket
     }),
-    ("pos_dir_dist", {
+    ("pos__dir_dist", {
         **BASE,
         "enableVisCacheDirDistAddr": True,
         "angularBCoarse": 45.0,    # 45° angular bins

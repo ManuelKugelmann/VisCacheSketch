@@ -71,9 +71,9 @@ Run: `./scripts/run_paper_experiments.sh` (or individual scripts below)
 **New feature ablations (once implemented):**
 
 _Addressing mode (Sec. 4.1):_
-- [ ] pos×pos (current code) vs pos_normal×dir_dist (paper primary) — measures normal disambiguation + angular LOD + distance propagation combined
-- [ ] pos×dirdist (no normal) vs pos_normal×dirdist — isolates normal contribution
-- [ ] pos_normal×dir (no distance bins) vs pos_normal×dir_dist — isolates distance bins
+- [ ] pos__pos vs pos_norm__dir_dist — full primary mode vs legacy; measures normal + angular LOD + distance propagation combined
+- [ ] pos__dir_dist vs pos_norm__dir_dist — isolates normal contribution
+- [ ] pos_norm__dir_dist1 vs pos_norm__dir_dist — isolates distance bins
 - [ ] Thin geometry stress test (Bistro window frames, plant leaves) — normal disambiguation is critical here
 
 _Three-state cascade (Sec. 5):_
@@ -313,19 +313,19 @@ Systematic sweep of all addressing combinations. Each variant runs 1 warmup + 1 
 Extends `VisCache_LadderCommon.py` VARIANTS list. Diagnostic grid per variant.
 
 ```
-Variant              Endpoint A         Endpoint B            Key dimensions  Notes
+Variant                Endpoint A         Endpoint B            Key dimensions  Notes
 ─────────────────────────────────────────────────────────────────────────────────────
-pos_pos              pos                pos (same cell)       6D              canonical (V(A,B)=V(B,A))
-posA_posB            pos                pos (2x cell)         6D              asymmetric, no canon.
-pos_pos1             pos                pos (collapsed)       3D              position-only baseline
-pos_dir1_dist1       pos                dir(360°)+dist(1km)   3D              ≈ position-only via dirdist
-pos_dir_dist1        pos                dir(5°)+dist(1km)     5D              angular bins, no distance
-pos_dir_dist         pos                dir(5°)+dist(0.24)    6D              angular + distance bins
+pos__pos               pos                pos (same cell)       6D              canonical (V(A,B)=V(B,A))
+posA__posB             pos                pos (2x cell)         6D              asymmetric, no canon.
+pos__pos1              pos                pos (collapsed)       3D              position-only baseline
+pos__dir1_dist1        pos                dir(360°)+dist(1km)   3D              ≈ position-only via dirdist
+pos__dir_dist1         pos                dir(5°)+dist(1km)     5D              angular bins, no distance
+pos__dir_dist          pos                dir(5°)+dist(0.24)    6D              angular + distance bins
 ─── new (requires Phase 1 implementation) ──────────────────────────────────────────
-posN_dir1_dist1      pos+normal         dir(360°)+dist(1km)   5D              normal only, no dir/dist
-posN_dir_dist1       pos+normal         dir(5°)+dist(1km)     7D              normal + angular, no dist
-posN_dir_dist        pos+normal         dir(5°)+dist(0.24)    8D              full primary mode (paper)
-posN_pos             pos+normal         pos (same cell)       8D              normal + pos×pos hybrid
+pos_norm__dir1_dist1   pos+normal         dir(360°)+dist(1km)   5D              normal only, no dir/dist
+pos_norm__dir_dist1    pos+normal         dir(5°)+dist(1km)     7D              normal + angular, no dist
+pos_norm__dir_dist     pos+normal         dir(5°)+dist(0.24)    8D              full primary mode (paper)
+pos_norm__pos          pos+normal         pos (same cell)       8D              normal + pos×pos hybrid
 ```
 
 **Pass criteria per variant:**
@@ -342,9 +342,9 @@ posN_pos             pos+normal         pos (same cell)       8D              no
 ```
 Ladder Step    Feature                          Pass Criteria
 ──────────────────────────────────────────────────────────────────────
-L01            Distance bin isolation            pos_dir_dist shows different μ for
+L01            Distance bin isolation            pos__dir_dist shows different μ for
                                                 near vs far lights in same direction;
-                                                pos_dir_dist1 merges them (single bin)
+                                                pos__dir_dist1 merges them (single bin)
 L02            Distance multi-write (Phase 3)   After V=0 trace at d=5m: farther bins
                                                 also show V=0 count; nearer bins unchanged
 L03            CommittedRayT() propagation (P3) d_hit diagnostic channel nonzero for V=0
