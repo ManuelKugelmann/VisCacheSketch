@@ -73,8 +73,8 @@ addQuad('CeilingLight', light_ceil,
     float3(0.15, 1.98, 0.15), float3(-0.15, 1.98, 0.15),
     0, -1, 0)
 
-# Red wall light: at center of left wall (X=-1), hovering 0.02 inward
-# Normal (1,0,0) faces into room. CCW from +X view: +Z to -Z bottom, -Z to +Z top.
+# Red wall light: at center of left wall (X=-1), hovering 0.02 inward.
+# Geometric normal must point +X (into room). Verified: (p1-p0)×(p2-p0) = (+1,0,0).
 addQuad('RedWallLight', light_red,
     float3(-0.98, 0.9, 0.1), float3(-0.98, 0.9, -0.1),
     float3(-0.98, 1.1, -0.1), float3(-0.98, 1.1, 0.1),
