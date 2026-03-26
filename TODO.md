@@ -77,58 +77,57 @@ Run: `scripts/VisCache_Reference.py`
 
 ## 3. Paper Revision (detail in `paper/TODO.md`)
 
+> **Note:** All items below were completed in prior editing sessions. Verified against paper sections 2026-03-26.
+
 ### 3.1 CRITICAL — Blocks Submission
-- [ ] **CRITICAL** Remove "TODO: experimental validation" from abstract
-- [ ] **CRITICAL** §13 Table 4: "~60% benefit at ~5% cost" — add supporting data or mark as projected
-- [ ] **CRITICAL** §15 Results is entirely TODO — add at minimum one profiling data point
+- [x] **CRITICAL** Remove "TODO: experimental validation" from abstract — replaced with ##% placeholders
+- [x] **CRITICAL** §13 Table 4: marked as "(projected)" with red placeholders
+- [x] **CRITICAL** §13 Results: structured skeleton (13.1–13.5) with metric structure — needs measured data
 
 ### 3.2 HIGH — Significant Gaps
-- [ ] **HIGH** Add Bokšanský & Meister 2025 (JCGT) citation — concurrent neural visibility cache
-- [ ] **HIGH** §10.1: Clarify firefly_budget units
-- [ ] **HIGH** §11.1: Define M in "1/M of budget"
-- [ ] **HIGH** §4: Frame as continuation of [Kugelmann 2006] experiment (2)
-- [ ] **HIGH** §4: State three motivations for binary over free-path distance
+- [x] **HIGH** Add Bokšanský & Meister 2025 (JCGT) citation — Sec. 2.2, 3.2, 9.1
+- [x] **HIGH** Sec. 8.1: firefly_budget defined as max tolerable absolute luminance (cd/m²)
+- [x] **HIGH** Sec. 9.1: M defined as number of initial light candidates per pixel (typically 32)
+- [x] **HIGH** Sec. 8: Frame as continuation of [Kugelmann 2006] — explicit lineage
+- [x] **HIGH** Sec. 8: Three motivations for binary over free-path distance
 
 ### 3.3 Title & Abstract
-- [ ] Add CV+RRR framing sentence to abstract
-- [ ] Add "revisit" framing to abstract
+- [x] Add CV+RRR framing sentence to abstract
+- [x] Add pos_normal × dir_dist addressing to abstract
 - [ ] Consider alternative title: "Revisiting Visibility Prediction-with-Correction..."
 
 ### 3.4 Introduction (§1)
-- [ ] Reframe contribution list — CV+RRR not claimed as new
-- [ ] Remove "path sharing aligns with ReSTIR" as architectural insight
-- [ ] Add "narrowing and deepening" framing
-- [ ] State three actual contributions explicitly
+- [x] Reframe contribution list — CV+RRR not claimed as new
+- [x] Remove "path sharing aligns with ReSTIR" as architectural insight
+- [x] State contributions explicitly (addressing, jitter, collision, LOD, coupled variance)
 
 ### 3.5 Related Work (§2)
-- [ ] Add [Kugelmann 2006] lineage paragraph (three experiments)
-- [ ] Note hardware/framework gap between 2006 and 2026
-- [ ] Add Bokšanský & Meister 2025 paragraph
-- [ ] Add Liu et al. 2025 (Reservoir Splatting) — one sentence, orthogonal
-- [ ] Add Zhang et al. 2024 (Area ReSTIR) — CV+RRR integrates without modification
-- [ ] Verify pcg3d citation covers PCG3D specifically
+- [x] Add [Kugelmann 2006] lineage paragraph
+- [x] Note hardware/framework gap between 2006 and 2026
+- [x] Add Bokšanský & Meister 2025 paragraph
+- [x] Add Liu et al. 2025 (Reservoir Splatting) — one sentence
+- [x] Add Zhang et al. 2024 (Area ReSTIR)
+- [x] Verify pcg3d citation — confirmed [Jarzynski & Olano 2020, JCGT 9(3)]
 
-### 3.6 CV+RRR Estimator (§4)
-- [ ] Full unbiasedness derivation
-- [ ] Generality statement (applies to any cache with mean estimate µ)
-- [ ] Drop independent development claim → explicit 2006 lineage
-- [ ] Make coupled variance adaptation explicit
-- [ ] Cross-reference §4 coupling from §7 write-depth gate
+### 3.6 CV+RRR Estimator (Sec. 8)
+- [x] Full unbiasedness derivation with residual variance formula
+- [x] Generality statement (applies to any cache with mean estimate µ)
+- [x] Drop independent development claim → explicit 2006 lineage
+- [x] Coupled variance adaptation — dedicated paragraph
+- [x] Cross-reference from Sec. 5 write-depth gate back to Sec. 8
 
-### 3.7 Hash Structure & Addressing (§5–§8)
-- [ ] Add calibration note after Table 1 (scene scale, viewing distance)
-- [ ] Consider pixel-count reframing of cell sizes
-- [ ] Add explicit vs. neural tradeoff paragraph
-- [ ] Explain LOD asymmetry (A finer than B)
-- [ ] Quantify ABA race error rate or fix with CAS
-- [ ] Add DECAY_PERIOD half-life math
-- [ ] Camera-adaptive cell sizing as future work (one sentence)
+### 3.7 Hash Structure & Addressing (Secs. 3–6)
+- [x] Calibration note after Table 1 (2–20 m viewing distances, Bistro/Sponza)
+- [x] Pixel-count column in Table 1
+- [x] Explicit vs. neural tradeoff paragraph
+- [x] ABA race quantified (~3% at L2, negligible at L0)
+- [x] DECAY_PERIOD half-life math
+- [x] Camera-adaptive cell sizing as future work
 
-### 3.8 Citations (see `paper/CITATIONS.md`)
-- [ ] Bokšanský & Meister 2025 — §2, §4, §11.1
-- [ ] Liu et al. 2025 — §2
-- [ ] Zhang et al. 2024 — §2
-- [ ] Confirm Bokšanský & Meister debiasing option status
+### 3.8 Citations
+- [x] Bokšanský & Meister 2025 — Sec. 2.2, 3.2, 9.1
+- [x] Liu et al. 2025 — Sec. 2.5
+- [x] Zhang et al. 2024 — Sec. 2.5
 
 ---
 
@@ -168,7 +167,32 @@ captures/
 
 ## 5. Dependencies & Blockers
 
-**Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §15.
+**Critical path:** Port DQLin → run baseline → capture one Bistro profile → write §13 Results.
+
+---
+
+## 5b. Paper ↔ Code Gaps (audited 2026-03-26)
+
+### Paper describes, code missing
+- [ ] **CRITICAL** Normal in hash key — paper Sec. 4.1 says primary mode is pos+normal × dir+dist; code has no normal component (6D key: qa, qb only)
+- [ ] **CRITICAL** τ_useable / three-state cascade — paper Sec. 5; code has two-gate model (maturity + variance) only
+- [ ] **CRITICAL** Child inherits parent μ at reduced weight — paper Sec. 5; no parent-to-child seeding in code
+- [ ] **HIGH** Distance-bin multi-write — paper Sec. 4.1; code writes single bin per trace, no CommittedRayT() usage
+- [ ] **HIGH** distance_scale parameter — paper Sec. 4.2; not exposed in code
+- [ ] Sentinel trace bypass — paper Sec. 14 (future work); not implemented
+- [ ] 2D LOD cascade (spatial × angular) — paper Sec. 14 (future work); not implemented
+
+### Code has, paper doesn't describe
+- [ ] **HIGH** Confidence-adaptive pMin (`enableVisCacheAdaptivePMin`, log2(N) dependence) — add to Sec. 8
+- [ ] **HIGH** Deterministic xi (`vhfDeterministicXi()` for ReSTIR temporal stability) — add to Sec. 8 or 9
+- [ ] WaveMatch coalescing details (`enableVisCacheWarpReduction`) — mentioned in Sec. 3 but not detailed
+
+### Missing parameter defaults in paper
+- [ ] τ_var (gVarThreshold) — used in Algorithm 1 and 2 but no default value specified
+- [ ] firefly_budget — defined in Sec. 8.1 but no default value
+- [ ] w_min — used in Algorithm 2 (lookup) but value not specified
+- [ ] μmin (default 0.01) — used in Sec. 9.1 but only mentioned in passing
+- [ ] angular_cell_size — referenced in Sec. 4.2 but no default/range given
 
 ---
 
