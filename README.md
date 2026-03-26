@@ -61,15 +61,26 @@ High-variance regions trace more often *and* at finer spatial resolution.
 Low-variance regions trace rarely and only update the coarse level.
 This one-signal-two-decisions coupling is what makes the cache self-regulating without per-scene tuning.
 
-The cache is algorithm-agnostic — it operates on pairwise (point, point) → {0,1} queries regardless of the rendering algorithm generating them.
+The cache is algorithm-agnostic — it operates on pairwise visibility queries regardless of the rendering algorithm generating them.
+
+### Key addressing: position+normal × direction+distance
+
+The hash key decomposes the visibility query into **shading point** (position + surface normal) and **query** (direction + distance). This exploits free geometric information that symmetric position × position addressing cannot:
+
+- **Normal** disambiguates thin geometry and corners — nearby points with different normals get separate entries
+- **Direction** enables angular LOD — coarse angular bins where visibility is smooth, fine bins at shadow edges
+- **Distance monotonicity** — if occluded at distance d, everything farther is also blocked; one any-hit ray (using the free `CommittedRayT()`) propagates V=0 to all farther distance bins at zero cost
+
+A secondary position × position mode with canonicalization V(A,B) = V(B,A) is available for symmetric GI revalidation queries. Both coexist in the same flat hash table.
 
 ### Key additions beyond [Kugelmann 2006][r-kugelmann]
 
-- **Position Jitter as Filtering** intrinsic box filter across cell boundaries, based on [Binder et al. 2018][r-binder] 
-- **Good and Fast Hash** - based on PCG3D [Jarzynski & Olano 2020][r-jarzynski]
-- **Hash Collision Handling** - fingerprint like [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
-- **LOD in the hash key** - multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
-- **Coupled variance adaptation** - variance drives resolution level like in [Stotko et al. 2025][r-stotko]
+- **Position+normal × direction+distance addressing** — exploits surface normal, angular LOD, and distance monotonicity
+- **Position Jitter as Filtering** — intrinsic box filter across cell boundaries, based on [Binder et al. 2018][r-binder]
+- **Good and Fast Hash** — based on PCG3D [Jarzynski & Olano 2020][r-jarzynski]
+- **Hash Collision Handling** — fingerprint like [Binder et al. 2018][r-binder], double-hash probing, pressure-scaled eviction
+- **LOD in the hash key** — multiple resolutions in one flat table [Gautron 2020][r-gautron20], [Gautron 2021][r-gautron21]
+- **Coupled variance adaptation** — variance drives correction rate and spatial resolution like in [Stotko et al. 2025][r-stotko]
 - **GPU implementation** — built on NVIDIA Falcor 8.0 [Kallweit et al. 2022][r-falcor]
 - **Cache-weighted light selection** — cached μ weights ReSTIR candidate selection like [Bokšanský & Meister 2025][r-boksansky]
 - **ReSTIR integration** — example integration with ReSTIR DI [Bitterli et al. 2020][r-bitterli] and ReSTIR PT [Lin et al. 2022][r-lin]

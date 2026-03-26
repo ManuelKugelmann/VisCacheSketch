@@ -7,10 +7,12 @@ corrects them stochastically via prediction-with-correction
 [Szécsi et al. 2003; Szirmay-Kalos et al. 2005; Kugelmann 2006]),
 and operates entirely lock-free on the GPU.
 The method is algorithm-agnostic:
-it operates on pairwise (point, point) → {0,1} queries
+it operates on pairwise visibility queries
 regardless of what generates them.
 
 The key additions, each built on specific prior work:
+
+- **Position+normal × direction+distance addressing.** The hash key decomposes the query into shading-point identity (position + surface normal) and query geometry (direction + distance), exploiting free geometric information that position × position keys cannot. Normal disambiguates thin geometry; direction provides an angular LOD axis; distance monotonicity enables free multi-write from a single any-hit ray.
 
 - **Robust hashing** (modifying [Binder et al. 2018], hash from [Jarzynski & Olano 2020]). Position-seeded jitter replaces cell-index-seeded jitter, converting boundary artifacts from irreducible bias into reducible variance. The jitter is the filter — no explicit smoothing required.
 
@@ -184,39 +186,16 @@ Canonicalization would require restriction
 to the diagonal (lvlA = lvlB) or
 symmetric level assignment.
 
-**Distance-bin propagation for pos\_dir\_dist addressing.**
-In the pos\_dir\_dist addressing mode,
-visibility along a ray is monotone in distance:
-if an occluder exists at distance d,
-everything farther is also blocked.
-This is not an adaptive refinement axis like spatial LOD —
-it is a geometric invariant that holds unconditionally.
-Exploiting it is a free multi-write:
-when a trace returns V=0,
-write V=0 to every distance bin with d\_max ≥ d\_hit;
-when V=1, write V=1 to every bin with d\_max ≤ d\_query.
-The occluder distance d\_hit is already available
-from any-hit shadow rays via `CommittedRayT()` at zero additional cost —
-it is not necessarily the nearest occluder,
-so V=1 cannot be propagated below d\_hit,
-but far-propagation of V=0 is conservative and always safe.
-Distance bins are nested intervals [0, d\_max(l)],
-not disjoint ranges,
-so the monotonicity μ([0, d\_near]) ≥ μ([0, d\_far]) holds by construction.
-The coarsest bin [0, ∞) collapses to pos\_dir addressing
-(directional visibility, no distance discrimination) —
-finer bins add distance resolution where it matters.
-A natural parameterization ties distance thresholds
-to the spatial cell sizes:
-d\_max(l) = cell\_size(l) × distance\_scale,
-introducing one new scalar parameter;
-this couples distance resolution to spatial resolution,
-since an occluder at distance ≫ cell\_size
-subtends a negligible solid angle relative to the cell
-and cannot be spatially resolved anyway.
-Log-spaced thresholds (geometric progression)
-match the distribution of architecturally relevant geometry
-and the 1/d² falloff of projected occluder area.
+**Distance-bin multi-write implementation.**
+The distance monotonicity described in Sec. 4.1
+(V=0 at d implies V=0 at all d' > d)
+enables free propagation across distance bins on every trace.
+The current implementation writes only the queried distance bin;
+extending the insert path to propagate along the distance column
+— V=0 to all farther bins from d\_hit, V=1 to all nearer bins from d\_query —
+is a pure implementation task with no algorithmic risk.
+The variance gate applies to propagation targets:
+skip bins that already agree with the propagated value.
 
 **Sentinel traces for dynamic scene detection.**
 The Pmin floor (Sec. 8) already forces ~5% of pixels

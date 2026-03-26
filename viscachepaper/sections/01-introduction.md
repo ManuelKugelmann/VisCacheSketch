@@ -35,6 +35,19 @@ and a world-space cache amortizes their shared queries naturally.
 This paper revisits the 2006 prototype
 with two decades of hashing and GPU advances:
 
+- **Position+normal × direction+distance addressing**
+  decomposes the visibility query
+  into shading-point identity (position + surface normal)
+  and query geometry (direction + distance).
+  Normal disambiguates thin geometry and corners.
+  Direction provides an angular LOD axis (variance-gatable).
+  Distance monotonicity — if occluded at d, everything farther is blocked —
+  allows free multi-write from a single any-hit ray
+  via the already-available `CommittedRayT()`.
+  The 2006 prototype and prior caches used
+  position × position keys that cannot exploit any of this.
+  See Sec. 4.
+
 - **Position-seeded jitter** replaces Binder et al.'s [2018]
   cell-index jitter with pcg3d [Jarzynski & Olano 2020]
   seeded from unquantized position bits.
@@ -80,9 +93,10 @@ The cache is agnostic to its client algorithm.
 We demonstrate it with ReSTIR DI and GI,
 but it applies equally to classical next-event estimation,
 instant radiosity (as in the original thesis),
-or any system that evaluates pairwise point-to-point visibility.
+or any system that evaluates pairwise visibility.
 
 Our contribution is therefore *completion*, not invention:
+an addressing scheme that exploits free geometric information,
 robust hashing that eliminates cell-boundary bias,
 collision handling that scales on the GPU,
 multilevel resolution with variance-driven gating,

@@ -12,9 +12,16 @@
 Most shadow rays in real-time path tracing are redundant,
 as nearby surface points querying the same light region
 overwhelmingly agree on the outcome.
-We store these binary predictions in a flat, multilevel spatial hash table
+We store binary visibility predictions in a flat, multilevel spatial hash table
 with 8-byte entries and lock-free atomic updates,
-and correct cached predictions stochastically
+keyed by shading-point position and surface normal
+on one side and query direction and distance on the other.
+This decomposition exploits free geometric information:
+normals disambiguate thin geometry,
+direction enables angular LOD,
+and distance monotonicity allows a single any-hit ray
+to propagate results across multiple distance bins at zero cost.
+Cached predictions are corrected stochastically
 so that the estimator remains unbiased regardless of cache quality.
 Position-seeded jitter provides an intrinsic box filter across cell boundaries,
 while variance derived from the Bernoulli mean alone
