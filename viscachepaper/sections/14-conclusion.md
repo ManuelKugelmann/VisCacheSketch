@@ -184,6 +184,40 @@ Canonicalization would require restriction
 to the diagonal (lvlA = lvlB) or
 symmetric level assignment.
 
+**Distance-bin propagation for pos\_dir\_dist addressing.**
+In the pos\_dir\_dist addressing mode,
+visibility along a ray is monotone in distance:
+if an occluder exists at distance d,
+everything farther is also blocked.
+This is not an adaptive refinement axis like spatial LOD —
+it is a geometric invariant that holds unconditionally.
+Exploiting it is a free multi-write:
+when a trace returns V=0,
+write V=0 to every distance bin with d\_max ≥ d\_hit;
+when V=1, write V=1 to every bin with d\_max ≤ d\_query.
+The occluder distance d\_hit is already available
+from any-hit shadow rays via `CommittedRayT()` at zero additional cost —
+it is not necessarily the nearest occluder,
+so V=1 cannot be propagated below d\_hit,
+but far-propagation of V=0 is conservative and always safe.
+Distance bins are nested intervals [0, d\_max(l)],
+not disjoint ranges,
+so the monotonicity μ([0, d\_near]) ≥ μ([0, d\_far]) holds by construction.
+The coarsest bin [0, ∞) collapses to pos\_dir addressing
+(directional visibility, no distance discrimination) —
+finer bins add distance resolution where it matters.
+A natural parameterization ties distance thresholds
+to the spatial cell sizes:
+d\_max(l) = cell\_size(l) × distance\_scale,
+introducing one new scalar parameter;
+this couples distance resolution to spatial resolution,
+since an occluder at distance ≫ cell\_size
+subtends a negligible solid angle relative to the cell
+and cannot be spatially resolved anyway.
+Log-spaced thresholds (geometric progression)
+match the distribution of architecturally relevant geometry
+and the 1/d² falloff of projected occluder area.
+
 **Sentinel traces for dynamic scene detection.**
 The Pmin floor (Sec. 8) already forces ~5% of pixels
 to trace unconditionally, paying the ray cost regardless of cache state.

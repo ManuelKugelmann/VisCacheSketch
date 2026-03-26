@@ -181,13 +181,13 @@ captures/
 - [ ] Background decay becomes global safety net, not primary change-response mechanism
 - [ ] Written up in Sec. 14 future work
 
-### 6.2 Distance-Bin Monotonicity Cascade (pos_dir_dist addressing)
-- [ ] Exploit geometric monotonicity: μ(P, D, d_near) ≥ μ(P, D, d_far)
-- [ ] Multi-write across distance bins on trace: V=0 propagates to all farther bins, V=1 propagates to all nearer bins
-- [ ] Variance gate on propagation: stop when target bin already agrees
-- [ ] Closest-hit shadow rays give d_occ → fill entire distance column from one trace (V=1 below d_occ, V=0 above)
-- [ ] Closest-hit for sentinel traces only (5% budget, already paying full cost)
-- [ ] Add to Sec. 14 future work
+### 6.2 Distance-Bin Propagation (pos_dir_dist addressing)
+- [x] Exploit geometric monotonicity: μ(P, D, d_near) ≥ μ(P, D, d_far) — not an LOD axis, a geometric invariant
+- [x] Free multi-write on trace: V=0 propagates far (from any-hit d_hit), V=1 propagates near (from d_query)
+- [x] Any-hit d_hit via CommittedRayT() — zero cost, one-directional propagation, no closest-hit needed
+- [x] Nested [0, d_max(l)] bins, log scale, A=∞; coarsest bin = pos_dir (no distance discrimination)
+- [x] d_max(l) = cell_size(l) × distance_scale — one new parameter, couples to spatial resolution
+- [x] Written up in Sec. 14 future work
 
 ### 6.3 Interpolatable Visibility Field
 - [ ] Reframe hash table as scattered spatial samples of continuous V(a,b) field
@@ -211,4 +211,4 @@ captures/
 - [x] Sec. 14: added sentinel traces future work
 - [x] Sec. 14: added interpolatable visibility field future work
 - [x] Sec. 14: added double jitter future work
-- [ ] Sec. 14: add distance-bin monotonicity cascade future work
+- [x] Sec. 14: add distance-bin propagation future work (geometric invariant, not LOD)
