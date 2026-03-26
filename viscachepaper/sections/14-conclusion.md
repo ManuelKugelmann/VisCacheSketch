@@ -163,28 +163,55 @@ it operates on pairwise (point, point) → {0,1} queries
 regardless of how those points were generated —
 whether by MCMC path guiding, ReSTIR, or any other sampler.
 
+**2D LOD cascade (spatial × angular).**
+The position+normal × direction+distance addressing (Sec. 4.1)
+has two independent LOD axes: spatial cell size and angular bin size.
+The full LOD grid is N × N (spatial\_lvl, angular\_lvl) pairs.
+We propose a diagonal-first exploration scheme:
+
+1. Walk the diagonal (0,0) → (1,1) → (2,2),
+   advancing both axes together.
+   Cost: N lookups — identical to the current 1D cascade.
+2. At the terminal diagonal level (k,k),
+   if variance is still high,
+   probe the two off-diagonal neighbors (k+1,k) and (k,k+1)
+   to determine which axis needs finer resolution.
+   Cost: +2 lookups.
+3. A max\_diff constraint (|spatial\_lvl − angular\_lvl| ≤ 1)
+   prevents the two axes from diverging too far.
+   A fine spatial cell with a coarse angular bin
+   (or vice versa) wastes the finer resolution
+   because the coarser axis dominates the variance.
+
+The three-state cascade (Sec. 5) applies to each (s, a) pair:
+a child entry (s+1, a+1) on the diagonal starts receiving writes
+once its parent (s, a) is useable (not necessarily mature).
+New child entries inherit the parent's μ as initial data
+at reduced weight (equivalent to a few decay steps),
+so the child starts with a reasonable control variate
+rather than bootstrapping from zero.
+The parent continues refining in parallel;
+writes stop only when the parent reaches maturity.
+
+Off-diagonal children follow the same rule:
+(k+1, k) starts when (k, k) is useable and spatial variance is high;
+(k, k+1) starts when (k, k) is useable and angular variance is high.
+The common case (both axes equally needed) stays on the diagonal
+at current cost; off-diagonal exploration only fires
+at the terminal level when the diagonal answer isn't sufficient.
+
 **Independent per-endpoint LOD.**
-The current design uses a shared level index —
-both endpoints are quantized at the same cell size,
-enabling canonicalization (Sec. 4.5).
-A natural extension is independent LOD per endpoint:
-replacing the 1D key `(qa, qb, lvl)` with a 2D key
+A further extension replaces the shared level index with a 2D key
 `(qa, qb, lvlA, lvlB)`,
 where each endpoint is quantized at its own level's cell size.
 A sharp shadow boundary from a large area light
 needs fine resolution on the shading point
 but only coarse resolution on the light —
 the entry would live at (lvlA=2, lvlB=0) instead of (2, 2).
-A 3-way split variance cascade
-(refine A, refine B, refine both)
-would determine which (lvlA, lvlB) pairs to populate,
-with coarse entries already established as mixed
-skipped on insert and left to decay for revalidation.
-The current 1D cascade is the diagonal of the N × N LOD grid,
+The current 1D cascade is the diagonal of this N × N grid,
 so the extension is backward-compatible.
-Canonicalization would require restriction
-to the diagonal (lvlA = lvlB) or
-symmetric level assignment.
+Canonicalization requires restriction
+to the diagonal (lvlA = lvlB) or symmetric level assignment.
 
 **Distance-bin multi-write implementation.**
 The distance monotonicity described in Sec. 4.1
