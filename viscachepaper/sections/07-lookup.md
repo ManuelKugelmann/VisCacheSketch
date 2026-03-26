@@ -12,8 +12,10 @@ for l <- 0 to N-1 do
   if e.total < w_min then break        // too sparse
   p <- e.vis / e.total
   best <- (mean=p, var=p(1-p), level=l)
-  if best.var < tau then break         // clean enough
+  if best.var < tau_var then break      // clean enough
 return best
 ```
+
+where w_min is the minimum sample count for a lookup result to be considered reliable (default ##).
 
 Three stopping conditions: no entry, too few samples, low variance. The cascade always starts at L0 (coarsest) and descends to finer levels until one of these conditions is met.
