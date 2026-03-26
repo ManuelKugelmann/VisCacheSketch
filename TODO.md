@@ -8,7 +8,6 @@
 
 - `[ ]` — not started
 - `[~]` — in progress
-- `[x]` — done
 
 Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), normal (polish).
 
@@ -31,26 +30,35 @@ Priority tags: **CRITICAL** (blocks submission), **HIGH** (significant gap), nor
 - [ ] Symmetric cells for GI revalidation — measure error before changing constants
 - [ ] Camera-adaptive cell sizing (FoV + CoC) — future work, document only
 
+### 1.3 New Feature Implementation (paper describes, code missing)
+- [ ] **CRITICAL** Normal in hash key — paper Sec. 4.1; code has no normal component (6D key: qa, qb only)
+- [ ] **CRITICAL** τ_useable / three-state cascade — paper Sec. 5; code has two-gate model only
+- [ ] **CRITICAL** Child inherits parent μ at reduced weight — paper Sec. 5; no parent-to-child seeding
+- [ ] **HIGH** Distance-bin multi-write — paper Sec. 4.1; code writes single bin, no CommittedRayT()
+- [ ] **HIGH** distance_scale parameter — paper Sec. 4.2; not exposed in code
+- [ ] Sentinel trace bypass — paper Sec. 14 (future work)
+- [ ] 2D LOD cascade (spatial × angular) — paper Sec. 14 (future work)
+
+### 1.4 Code→Paper Sync (code has, paper doesn't describe)
+- [ ] **HIGH** Confidence-adaptive pMin (`enableVisCacheAdaptivePMin`, log2(N) dependence) — add to Sec. 8
+- [ ] **HIGH** Deterministic xi (`vhfDeterministicXi()` for ReSTIR temporal stability) — add to Sec. 8 or 9
+- [ ] WaveMatch coalescing details (`enableVisCacheWarpReduction`) — mentioned in Sec. 3 but not detailed
+
 ---
 
 ## 2. Experiments & Ablation
 
 ### 2.0 Setup
-- [x] Ablation capture script (`scripts/VisCache_Ablation.py` — 10 configs)
-- [x] Baseline capture script (`scripts/VisCache_Baselines.py` — 14 DI/GI/PT configs)
-- [x] Reference capture script (`scripts/VisCache_Reference.py` — 1024 spp)
-- [x] Stress test script (`scripts/VisCache_Stress.py` — flythrough)
-- [x] Scene download script (`scripts/download_scenes.sh` — Bistro, Sponza)
-- [x] Full paper runner (`scripts/run_paper_experiments.sh` — runs all of the above)
-- [x] Manual release workflow (`.github/workflows/release.yml` — timestamp+SHA versioning)
 - [ ] Download test scenes: `./scripts/download_scenes.sh`
 
 ### 2.1 Ablation Sweep (see `docs/ABLATION.md` for full matrix)
 Run: `./scripts/run_paper_experiments.sh` (or individual scripts below)
-- [ ] **CRITICAL** Run at least one informal Bistro profiling data point (blocks §15)
+- [ ] **CRITICAL** Run at least one informal Bistro profiling data point (blocks §13)
 - [ ] Full config baseline capture (Bistro + Sponza) — `scripts/VisCache_Baselines.py`
+
+**Existing feature ablations:**
 - [ ] -A: distance-gated LOD off
-- [ ] -B: variance gate off (most important ablation)
+- [ ] -B: variance gate (τ_var) off — most important ablation
 - [ ] -C: WaveMatch off (SM 6.5 comparison, RTX 3090/4090)
 - [ ] -D: decay off (animated scene, show drift after ~1000 frames)
 - [ ] -E: pressure eviction off
@@ -59,6 +67,47 @@ Run: `./scripts/run_paper_experiments.sh` (or individual scripts below)
 - [ ] Coarsest-only (minLevel=maxLevel=0)
 - [ ] No-cache full-retrace baseline
 - [ ] **HIGH** Add multilevel vs. finest-level-only ablation row to paper table
+
+**New feature ablations (once implemented):**
+
+_Addressing mode (Sec. 4.1):_
+- [ ] pos×pos (current code) vs pos_normal×dir_dist (paper primary) — measures normal disambiguation + angular LOD + distance propagation combined
+- [ ] pos×dirdist (no normal) vs pos_normal×dirdist — isolates normal contribution
+- [ ] pos_normal×dir (no distance bins) vs pos_normal×dir_dist — isolates distance bins
+- [ ] Thin geometry stress test (Bistro window frames, plant leaves) — normal disambiguation is critical here
+
+_Three-state cascade (Sec. 5):_
+- [ ] Two-gate (current code, τ_mature + τ_var) vs three-gate (τ_useable + τ_mature + τ_var) — measures faster child start
+- [ ] τ_useable sweep: 4, 8, 16, 32 — find minimum viable parent quality
+- [ ] With vs without parent→child inheritance — measures bootstrap acceleration
+- [ ] Inheritance weight sweep: 1/4, 1/8, 1/16 of parent counts — find optimal seeding
+
+_Distance-bin multi-write (Sec. 4.1):_
+- [ ] Single-bin write (current) vs multi-write with monotonicity — measures free propagation benefit
+- [ ] Distance bin count sweep: 1, 2, 4 bins — diminishing returns vs table pressure
+- [ ] With vs without CommittedRayT() propagation — isolates the any-hit distance contribution
+
+_Sentinel traces (Sec. 14 future work):_
+- [ ] Dynamic scene: with vs without sentinel maturity bypass — measures staleness detection speed
+- [ ] sentinel_threshold sweep: 0.3, 0.5, 0.7 — false positive rate vs detection speed
+- [ ] Static scene: verify sentinels add zero overhead (agreeing sentinels respect maturity)
+
+_Angular LOD (Sec. 4.4):_
+- [ ] Fixed coarse angular bins vs variance-gated angular refinement — measures angular LOD benefit
+- [ ] Angular bin size sweep: 90°, 45°, 15°, 5° fixed — find where diminishing returns hit
+- [ ] Scene-dependent: open areas (coarse sufficient) vs complex occluders (fine needed)
+
+_2D LOD cascade (Sec. 14 future work):_
+- [ ] 1D diagonal-only (current) vs diagonal + off-diagonal probe — measures asymmetric refinement benefit
+- [ ] max_diff=0 vs max_diff=1 vs max_diff=2 — measures exploration vs table pressure
+
+_Confidence-adaptive pMin (code-only, not in paper):_
+- [ ] Fixed pMin vs confidence-adaptive — measures firefly reduction
+- [ ] Document in paper Sec. 8 if ablation shows benefit
+
+_Deterministic xi (code-only, not in paper):_
+- [ ] Random xi vs deterministic xi — measures temporal flicker in ReSTIR
+- [ ] Document in paper Sec. 8/9 if ablation shows benefit
 
 ### 2.2 Stress Tests
 Run: `scripts/VisCache_Stress.py`
@@ -75,59 +124,13 @@ Run: `scripts/VisCache_Reference.py`
 
 ---
 
-## 3. Paper Revision (detail in `paper/TODO.md`)
+## 3. Paper Revision
 
-> **Note:** All items below were completed in prior editing sessions. Verified against paper sections 2026-03-26.
+> All prior revision items completed. See `paper/TODO.md` for history.
 
-### 3.1 CRITICAL — Blocks Submission
-- [x] **CRITICAL** Remove "TODO: experimental validation" from abstract — replaced with ##% placeholders
-- [x] **CRITICAL** §13 Table 4: marked as "(projected)" with red placeholders
-- [x] **CRITICAL** §13 Results: structured skeleton (13.1–13.5) with metric structure — needs measured data
-
-### 3.2 HIGH — Significant Gaps
-- [x] **HIGH** Add Bokšanský & Meister 2025 (JCGT) citation — Sec. 2.2, 3.2, 9.1
-- [x] **HIGH** Sec. 8.1: firefly_budget defined as max tolerable absolute luminance (cd/m²)
-- [x] **HIGH** Sec. 9.1: M defined as number of initial light candidates per pixel (typically 32)
-- [x] **HIGH** Sec. 8: Frame as continuation of [Kugelmann 2006] — explicit lineage
-- [x] **HIGH** Sec. 8: Three motivations for binary over free-path distance
-
-### 3.3 Title & Abstract
-- [x] Add CV+RRR framing sentence to abstract
-- [x] Add pos_normal × dir_dist addressing to abstract
+### 3.1 Remaining
 - [ ] Consider alternative title: "Revisiting Visibility Prediction-with-Correction..."
-
-### 3.4 Introduction (§1)
-- [x] Reframe contribution list — CV+RRR not claimed as new
-- [x] Remove "path sharing aligns with ReSTIR" as architectural insight
-- [x] State contributions explicitly (addressing, jitter, collision, LOD, coupled variance)
-
-### 3.5 Related Work (§2)
-- [x] Add [Kugelmann 2006] lineage paragraph
-- [x] Note hardware/framework gap between 2006 and 2026
-- [x] Add Bokšanský & Meister 2025 paragraph
-- [x] Add Liu et al. 2025 (Reservoir Splatting) — one sentence
-- [x] Add Zhang et al. 2024 (Area ReSTIR)
-- [x] Verify pcg3d citation — confirmed [Jarzynski & Olano 2020, JCGT 9(3)]
-
-### 3.6 CV+RRR Estimator (Sec. 8)
-- [x] Full unbiasedness derivation with residual variance formula
-- [x] Generality statement (applies to any cache with mean estimate µ)
-- [x] Drop independent development claim → explicit 2006 lineage
-- [x] Coupled variance adaptation — dedicated paragraph
-- [x] Cross-reference from Sec. 5 write-depth gate back to Sec. 8
-
-### 3.7 Hash Structure & Addressing (Secs. 3–6)
-- [x] Calibration note after Table 1 (2–20 m viewing distances, Bistro/Sponza)
-- [x] Pixel-count column in Table 1
-- [x] Explicit vs. neural tradeoff paragraph
-- [x] ABA race quantified (~3% at L2, negligible at L0)
-- [x] DECAY_PERIOD half-life math
-- [x] Camera-adaptive cell sizing as future work
-
-### 3.8 Citations
-- [x] Bokšanský & Meister 2025 — Sec. 2.2, 3.2, 9.1
-- [x] Liu et al. 2025 — Sec. 2.5
-- [x] Zhang et al. 2024 — Sec. 2.5
+- [ ] Fill in ##% placeholders in abstract and §13 Results with measured data
 
 ---
 
@@ -171,111 +174,61 @@ captures/
 
 ---
 
-## 5b. Paper ↔ Code Gaps (audited 2026-03-26)
-
-### Paper describes, code missing
-- [ ] **CRITICAL** Normal in hash key — paper Sec. 4.1 says primary mode is pos+normal × dir+dist; code has no normal component (6D key: qa, qb only)
-- [ ] **CRITICAL** τ_useable / three-state cascade — paper Sec. 5; code has two-gate model (maturity + variance) only
-- [ ] **CRITICAL** Child inherits parent μ at reduced weight — paper Sec. 5; no parent-to-child seeding in code
-- [ ] **HIGH** Distance-bin multi-write — paper Sec. 4.1; code writes single bin per trace, no CommittedRayT() usage
-- [ ] **HIGH** distance_scale parameter — paper Sec. 4.2; not exposed in code
-- [ ] Sentinel trace bypass — paper Sec. 14 (future work); not implemented
-- [ ] 2D LOD cascade (spatial × angular) — paper Sec. 14 (future work); not implemented
-
-### Code has, paper doesn't describe
-- [ ] **HIGH** Confidence-adaptive pMin (`enableVisCacheAdaptivePMin`, log2(N) dependence) — add to Sec. 8
-- [ ] **HIGH** Deterministic xi (`vhfDeterministicXi()` for ReSTIR temporal stability) — add to Sec. 8 or 9
-- [ ] WaveMatch coalescing details (`enableVisCacheWarpReduction`) — mentioned in Sec. 3 but not detailed
+## 6. Paper ↔ Code Gaps (audited 2026-03-26)
 
 ### Missing parameter defaults in paper
 - [ ] τ_var (gVarThreshold) — used in Algorithm 1 and 2 but no default value specified
+- [ ] τ_useable (gUseableThreshold) — paper says default ~8 but parameter doesn't exist in code
 - [ ] firefly_budget — defined in Sec. 8.1 but no default value
 - [ ] w_min — used in Algorithm 2 (lookup) but value not specified
 - [ ] μmin (default 0.01) — used in Sec. 9.1 but only mentioned in passing
 - [ ] angular_cell_size — referenced in Sec. 4.2 but no default/range given
+- [ ] sentinel_threshold — paper Sec. 14 says default 0.5 but no parameter exists
+- [ ] distance_scale — paper Sec. 4.2 references but no default/range given
+- [ ] max_diff — paper Sec. 14 says default 1 but no parameter exists
+- [ ] n_useable inheritance weight — paper says right-shift by 3 (1/8) but no parameter exists
+
+### Paper internal discrepancies
+- [ ] Sec. 3.2 Table 1 caption still says "enabling canonicalization (Sec. 4.5)" — should be Sec. 4.6
+- [ ] Sec. 3.2 "Two addressing modes" paragraph references Sec. 4.6 — verify cross-refs
+- [ ] Sec. 7 Algorithm 2 uses `w_min` and `tau` — should use named τ_var
+- [ ] Sec. 8 Algorithm 3 uses `tau` — should use τ_var
+- [ ] Sec. 10 Algorithm 4 uses `threshold` — should use named parameter (τ_reval or similar)
+- [ ] Sec. 4.4 says two LOD dimensions but Sec. 3.2 Table 1 only shows spatial — add angular bin sizes
 
 ---
 
-## 6. Future Work / Paper Extensions (from review session 2026-03-26)
+## 7. Future Work / Paper Extensions (from review session 2026-03-26)
 
-### 6.1 Sentinel Traces for Dynamic Scenes
+### 7.1 Sentinel Traces for Dynamic Scenes
 - [ ] Pmin-forced traces bypass maturity gate when |V − μ| > sentinel_threshold (default 0.5, tuneable)
 - [ ] Agreeing sentinels respect maturity gate — only disagreement triggers forced write
-- [ ] Combined with inline overflow decay, gives O(1)-second response to local scene changes
-- [ ] Background decay becomes global safety net, not primary change-response mechanism
 - [ ] Written up in Sec. 14 future work
 
-### 6.2 Distance-Bin Propagation (pos_dir_dist addressing)
-- [x] Exploit geometric monotonicity: μ(P, D, d_near) ≥ μ(P, D, d_far) — not an LOD axis, a geometric invariant
-- [x] Free multi-write on trace: V=0 propagates far (from any-hit d_hit), V=1 propagates near (from d_query)
-- [x] Any-hit d_hit via CommittedRayT() — zero cost, one-directional propagation, no closest-hit needed
-- [x] Nested [0, d_max(l)] bins, log scale, A=∞; coarsest bin = pos_dir (no distance discrimination)
-- [x] d_max(l) = cell_size(l) × distance_scale — one new parameter, couples to spatial resolution
-- [x] Written up in Sec. 14 future work
-
-### 6.3 Interpolatable Visibility Field
+### 7.2 Interpolatable Visibility Field
 - [ ] Reframe hash table as scattered spatial samples of continuous V(a,b) field
 - [ ] Explicit neighbor interpolation at coarse levels (L0): 8 cube-corner lookups, blend by distance + confidence
 - [ ] Jitter-filter only at fine levels (L2): near-pixel scale, denoiser handles it
-- [ ] Interpolated L0 μ has lower variance → cascade stops earlier
 - [ ] Written up in Sec. 14 future work
 
-### 6.4 Double Jitter (Grid Jitter + Point Jitter)
-- [ ] Stage 1: grid jitter displaces cell centers by hash(quantized_coords), breaks axis-aligned regularity
-- [ ] Stage 2: point jitter (existing position-seeded), provides boundary box filter
-- [ ] Improves sample independence for interpolation (quasi-random cell centers vs. regular lattice)
+### 7.3 Double Jitter (Grid Jitter + Point Jitter)
+- [ ] Stage 1: grid jitter displaces cell centers, breaks axis-aligned regularity
+- [ ] Stage 2: point jitter (existing), provides boundary box filter
 - [ ] Written up in Sec. 14 future work
 
-### 6.5 Visibility Correlation Length
-- [x] Add terminology to Sec. 5 — variance-gated cascade discovers correlation length implicitly
-- [ ] Consider adding to Sec. 4 discussion of cache key justification (pre-empts "under-justified" critique)
+### 7.4 Visibility Correlation Length
+- [ ] Consider adding to Sec. 4 discussion of cache key justification
 
-### 6.6 Position+Normal × Direction+Distance Addressing (primary mode)
-- [x] Reframe Sec. 4 around pos_normal × dir_dist as primary addressing mode
-- [x] Normal disambiguates thin geometry/corners — free geometric info
-- [x] Direction enables angular LOD (variance-gatable refinement axis)
-- [x] Distance monotonicity enables free multi-write (geometric invariant, not LOD)
-- [x] pos×pos remains as secondary mode for symmetric GI revalidation with canonicalization
-- [x] Updated: abstract, introduction, Sec. 3, Sec. 4, Sec. 14, README
+### 7.5 Three-State Cascade Implementation
+- [ ] Add gUseableThreshold to cbuffer and VisCache.h
+- [ ] Inherit parent μ on first child insert (reduced-weight seeding)
 
-### 6.7 Three-State Cascade (Bootstrap / Useable / Mature)
-- [x] Separate τ_useable (gUseableThreshold, default 8) from τ_mature (gMatureThreshold, default 32 at μ=0.5)
-- [x] τ_useable: min samples before children may be written (low — rough μ suffices as parent CV)
-- [x] τ_mature: stop writing to this entry (high — SE-based, scales with variance)
-- [x] τ_var (gVarThreshold): variance gate for cascade propagation
-- [x] Child entries inherit parent μ at reduced weight (right-shift by 3 = 1/8 of parent count)
-- [x] Written up in Sec. 5
-- [ ] Implementation: add gUseableThreshold to cbuffer and VisCache.h
-- [ ] Implementation: inherit parent μ on first child insert (reduced-weight seeding)
+### 7.6 2D LOD Cascade Implementation
+- [ ] 2D level index in hash key (spatial_lvl, angular_lvl)
+- [ ] Diagonal cascade with off-diagonal probe at terminal level
 
-### 6.8 2D LOD Cascade (Spatial × Angular)
-- [x] Two independent LOD axes: spatial cell size and angular bin size
-- [x] Diagonal-first exploration: (0,0)→(1,1)→(2,2), same cost as 1D
-- [x] Off-diagonal probing at terminal level: +2 lookups to determine which axis needs refinement
-- [x] max_diff=1 constraint: |spatial_lvl − angular_lvl| ≤ 1 prevents axis divergence
-- [x] Three-state cascade applies per (s,a) pair: child starts when parent is useable, not mature
-- [x] Written up in Sec. 14 future work
-- [ ] Implementation: 2D level index in hash key (spatial_lvl, angular_lvl)
-- [ ] Implementation: diagonal cascade with off-diagonal probe at terminal level
-- [ ] Ablation: diagonal-only vs diagonal+probe vs full 2D grid
-
-### 6.9 Distance-Bin Multi-Write Implementation
-- [x] Design written up in Sec. 4.1 and Sec. 14
-- [ ] Implementation: propagate V=0 to farther bins from d_hit on insert
-- [ ] Implementation: propagate V=1 to nearer bins from d_query on insert
-- [ ] Implementation: read CommittedRayT() from any-hit result in ShadingCV.slang
+### 7.7 Distance-Bin Multi-Write Implementation
+- [ ] Propagate V=0 to farther bins from d_hit on insert
+- [ ] Propagate V=1 to nearer bins from d_query on insert
+- [ ] Read CommittedRayT() from any-hit result in ShadingCV.slang
 - [ ] Variance gate on propagation targets: skip bins that already agree
-
-### 6.10 Paper Sections Status
-- [x] Sec. 4: restructured around pos_normal × dir_dist as primary mode
-- [x] Sec. 5: three-state cascade with named thresholds (τ_useable, τ_mature, τ_var)
-- [x] Sec. 5: added correlation length paragraph
-- [x] Sec. 14: added 2D diagonal LOD cascade future work
-- [x] Sec. 14: added sentinel traces future work
-- [x] Sec. 14: added interpolatable visibility field future work
-- [x] Sec. 14: added double jitter future work
-- [x] Sec. 14: added distance-bin multi-write future work
-- [x] Sec. 14: shortened independent-per-endpoint LOD (subsumed by 2D cascade)
-- [x] Abstract: updated with pos_normal × dir_dist key decomposition
-- [x] Introduction: new first contribution bullet for addressing
-- [x] README: new addressing section + updated key additions list
