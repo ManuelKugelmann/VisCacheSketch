@@ -189,12 +189,17 @@ The Pmin floor (Sec. 8) already forces ~5% of pixels
 to trace unconditionally, paying the ray cost regardless of cache state.
 Currently these traces feed into the normal update pipeline,
 slowly shifting μ.
-A zero-cost extension: Pmin-forced traces bypass the maturity gate (Sec. 5),
-always writing their result even to mature entries.
+A zero-cost extension: Pmin-forced traces that disagree
+with the cached estimate by more than a sentinel threshold
+(e.g. |V − μ| > 0.5, tuneable)
+bypass the maturity gate (Sec. 5),
+forcing a write even to mature entries.
+Agreeing sentinels respect the maturity gate as normal —
+only disagreement warrants overriding it.
 This turns the existing 5% always-trace budget
 into an implicit change detector —
 if the scene changes and a mature entry becomes stale,
-Pmin traces correct it at a rate of Pmin × frame_rate
+disagreeing Pmin traces correct it at a rate of Pmin × frame_rate
 (~3 updates/second per cell at 60 fps),
 without needing explicit invalidation logic
 or a separate probe pass.
