@@ -50,7 +50,7 @@ jobs:
   prepare:
     name: Prepare
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
       sha_short: ${{ steps.resolve.outputs.sha_short }}
@@ -176,10 +176,6 @@ jobs:
         run: |
           cd ${{ env.FALCOR_DIR }}
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
-
-      - name: Integrate VisCache plugins into Falcor tree
-        shell: cmd
-        run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
 
       - name: Build
         shell: cmd
@@ -310,10 +306,6 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           call tools\packman\packman.cmd pull --platform windows-x86_64 dependencies.xml
 
-      - name: Integrate VisCache plugins into Falcor tree
-        shell: cmd
-        run: call scripts\integrate-plugins.bat ${{ env.FALCOR_DIR }}
-
       - name: Build
         shell: cmd
         continue-on-error: false
@@ -380,7 +372,7 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get -qq install -y shellcheck
-          shellcheck scripts/integrate-plugins.sh scripts/verify-build-output.sh
+          shellcheck scripts/verify-build-output.sh
 
       - name: Cache Falcor submodules
         uses: actions/cache@v5
@@ -419,14 +411,14 @@ jobs:
           cd ${{ env.FALCOR_DIR }}
           cp -fp external/packman/nvtt/libnvtt.so.30106 external/packman/nvtt/libnvtt.so
 
-      - name: Integrate VisCache plugins into Falcor tree
-        run: bash scripts/integrate-plugins.sh ${{ env.FALCOR_DIR }}
-
       - name: CMake Configure
         run: |
           cd ${{ env.FALCOR_DIR }}
           SRCDIR="$(pwd)"
+          VISCACHE_ROOT="$(cd .. && pwd)"
+          PLUGIN_DIRS="${VISCACHE_ROOT}/Source/RenderPasses/VisCache;${VISCACHE_ROOT}/Source/RenderPasses/ReSTIRPTPass"
           ./tools/.packman/cmake/bin/cmake --preset ${{ env.CMAKE_BUILD_PRESET }} \
+            -DFALCOR_PLUGIN_DIRS="${PLUGIN_DIRS}" \
             -DFALCOR_VALIDATE_HEADERS=OFF \
             "-DCMAKE_C_FLAGS=-ffile-prefix-map=${SRCDIR}/=" \
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${SRCDIR}/="

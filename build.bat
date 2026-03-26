@@ -168,7 +168,7 @@ if not exist "!BUILD_OUT!\Mogwai.exe" (
 
 REM Sync shaders, scripts, data, and scenes from source to runtime.
 echo [build] Syncing shaders, scripts, data...
-bash "%ROOT%.scripts\sync_to_runtime.sh"
+bash "%ROOT%\.scripts\sync_to_runtime.sh"
 
 :done
 echo.
