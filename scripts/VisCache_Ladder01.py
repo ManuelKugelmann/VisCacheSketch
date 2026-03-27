@@ -9,7 +9,7 @@ Usage:
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from VisCache_LadderCommon import run_variants, plot_rays_overview
+from VisCache_LadderCommon import run_variants, VARIANTS_ALL, plot_rays_overview
 
 SCENES = [
     "media/scenes/CornellBox_1AreaLight.pyscene",
@@ -26,6 +26,7 @@ for scene_file in SCENES:
         step_name="01",
         frame_configs=[(1, 1, 1)],
         scene_file=scene_file,
+        variants=VARIANTS_ALL,
         resX=res, resY=res,
         mogwai_globals=globals(),
     )

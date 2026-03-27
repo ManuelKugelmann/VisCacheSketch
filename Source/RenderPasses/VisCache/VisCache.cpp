@@ -57,6 +57,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("cellBCoarse"))    mParams.cellBCoarse    = props["cellBCoarse"];
     if (props.has("angularBCoarse")) mParams.angularBCoarse = props["angularBCoarse"];
     if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
+    if (props.has("normalBCoarse")) mParams.normalBCoarse  = props["normalBCoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
@@ -97,6 +98,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("cellBCoarse"))    mParams.cellBCoarse    = props["cellBCoarse"];
     if (props.has("angularBCoarse")) mParams.angularBCoarse = props["angularBCoarse"];
     if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
+    if (props.has("normalBCoarse")) mParams.normalBCoarse  = props["normalBCoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
@@ -131,6 +133,7 @@ Properties VisCache::getProperties() const
     p["cellBCoarse"]     = mParams.cellBCoarse;
     p["angularBCoarse"]  = mParams.angularBCoarse;
     p["distBCoarse"]     = mParams.distBCoarse;
+    p["normalBCoarse"]   = mParams.normalBCoarse;
     p["diagAccumWindow"] = mParams.diagAccumWindow;
     p["autoTuneCells"] = mParams.autoTuneCells;
     p["decayPeriod"]   = mParams.decayPeriod;
@@ -322,6 +325,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.angularBFine   = (mParams.numLevels > 1) ? deriveFine(mParams.angularBCoarse, mParams.numLevels) : mParams.angularBCoarse;
     gpu.distBCoarse    = mParams.distBCoarse;
     gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(mParams.distBCoarse, mParams.numLevels) : mParams.distBCoarse;
+    gpu.normalBCoarse  = mParams.normalBCoarse;
+    gpu.normalBFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalBCoarse, mParams.numLevels) : mParams.normalBCoarse;
     gpu.diagAccumWindow = mParams.diagAccumWindow;
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -378,6 +383,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_angularBFine"]   = gpu.angularBFine;
     dict["vhfParam_distBCoarse"]    = gpu.distBCoarse;
     dict["vhfParam_distBFine"]      = gpu.distBFine;
+    dict["vhfParam_normalBCoarse"]  = gpu.normalBCoarse;
+    dict["vhfParam_normalBFine"]    = gpu.normalBFine;
     dict["vhfParam_diagAccumWindow"] = mParams.diagAccumWindow;
 
     // Feature + ablation toggles — downstream passes read these
@@ -577,6 +584,8 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gAngularBFine"]   = (N > 1) ? deriveFine(mParams.angularBCoarse, N) : mParams.angularBCoarse;
     vars["VisCacheParams"]["gDistBCoarse"]    = mParams.distBCoarse;
     vars["VisCacheParams"]["gDistBFine"]      = (N > 1) ? deriveFine(mParams.distBCoarse, N) : mParams.distBCoarse;
+    vars["VisCacheParams"]["gNormalBCoarse"]  = mParams.normalBCoarse;
+    vars["VisCacheParams"]["gNormalBFine"]    = (N > 1) ? deriveFine(mParams.normalBCoarse, N) : mParams.normalBCoarse;
     vars["VisCacheParams"]["gDiagAccumWindow"] = mParams.diagAccumWindow;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);

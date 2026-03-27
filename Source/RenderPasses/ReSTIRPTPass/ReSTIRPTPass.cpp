@@ -1533,6 +1533,8 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
             mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
+            mVCParams.normalBCoarse  = dict.getValue<float>("vhfParam_normalBCoarse");
+            mVCParams.normalBFine    = dict.getValue<float>("vhfParam_normalBFine");
             mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
         }
 
@@ -1694,6 +1696,8 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         var["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        var["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
+        var["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
         var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
@@ -1824,6 +1828,8 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        rootVar["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
+        rootVar["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
         rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
@@ -1919,6 +1925,8 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        rootVar["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
+        rootVar["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
         rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 

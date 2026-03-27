@@ -223,7 +223,10 @@
       "Bash(mv CornellBox3Area.pyscene CornellBox_3AreaLights.pyscene)",
       "Bash(mv CornellBoxPointLight.pyscene CornellBox_1PointLight.pyscene)",
       "Bash(mv CornellBoxPointLights5.pyscene CornellBox_5PointLights.pyscene)",
-      "Bash(kill %1)"
+      "Bash(kill %1)",
+      "Bash(.scripts/sync_to_runtime.sh)",
+      "Bash(.scripts/mogwai-headless.sh 'PathTracer_Graph.py' 'scenes/CornellBox_1AreaLight.pyscene' 2)",
+      "Bash(GRAPH_SCRIPT=\"scripts/VisCache/MinimalPathTracer_VisCache_Graph.py\" SCENE_FILE=\"media/scenes/CornellBox_1AreaLight.pyscene\" NUM_FRAMES=1 /c/Projects/VisCacheSketch/runtime/Mogwai.exe --headless --script \"scripts/VisCache/run_graph_headless.py\")"
     ],
     "deny": []
   }

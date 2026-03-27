@@ -180,6 +180,7 @@ private:
              uint32_t numLevels=0, flags=1;
              float cellACoarse=0, cellAFine=0, cellBCoarse=0, cellBFine=0;
              float angularBCoarse=0, angularBFine=0, distBCoarse=0, distBFine=0;
+             float normalBCoarse=0, normalBFine=0;
              uint32_t diagAccumWindow=128; } mVCParams;
     bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
     bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)

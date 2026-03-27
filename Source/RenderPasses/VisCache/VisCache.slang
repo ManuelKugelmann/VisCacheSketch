@@ -188,6 +188,8 @@ cbuffer VisCacheParams
     float  gAngularBFine;    ///< direction finest cell size (auto-derived)
     float  gDistBCoarse;     ///< distance coarsest cell size (world units, dirdist mode)
     float  gDistBFine;       ///< distance finest cell size (auto-derived)
+    float  gNormalBCoarse;   ///< normal coarsest cell size (degrees, like angularBCoarse)
+    float  gNormalBFine;     ///< normal finest cell size (auto-derived)
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
 };
 
@@ -264,9 +266,9 @@ uint3 pcg3d(uint3 v)
 // 9 is odd, which breaks perfect circular symmetry — acceptable since the
 // inputs ARE asymmetric (positions vs levels vs salt).
 // ---------------------------------------------------------------------------
-uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint salt)
+uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist, uint salt)
 {
-    // Linear congruential step per component
+    // Linear congruential step per component (10D)
     uint a = uint(qa.x) * 1664525u + 1013904223u;
     uint b = uint(qa.y) * 1664525u + 1013904223u;
     uint c = uint(qa.z) * 1664525u + 1013904223u;
@@ -275,23 +277,24 @@ uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint salt)
     uint f = uint(qb.z) * 1664525u + 1013904223u;
     uint g = lvlA        * 1664525u + 1013904223u;
     uint h = lvlB        * 1664525u + 1013904223u;
-    uint i = salt        * 1664525u + 1013904223u;
+    uint i = lvlDist     * 1664525u + 1013904223u;
+    uint j = salt        * 1664525u + 1013904223u;
 
-    // Round 1: circular cross-mix
-    a += b * i;  b += c * a;  c += d * b;  d += e * c;
-    e += f * d;  f += g * e;  g += h * f;  h += i * g;  i += a * h;
+    // Round 1: circular cross-mix (10 components)
+    a += b * j;  b += c * a;  c += d * b;  d += e * c;  e += f * d;
+    f += g * e;  g += h * f;  h += i * g;  i += j * h;  j += a * i;
 
     // XOR-shift
-    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;
-    d ^= d >> 16u;  e ^= e >> 16u;  f ^= f >> 16u;
-    g ^= g >> 16u;  h ^= h >> 16u;  i ^= i >> 16u;
+    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;  d ^= d >> 16u;  e ^= e >> 16u;
+    f ^= f >> 16u;  g ^= g >> 16u;  h ^= h >> 16u;  i ^= i >> 16u;  j ^= j >> 16u;
 
     // Round 2: circular cross-mix
-    a += b * i;  b += c * a;  c += d * b;  d += e * c;
-    e += f * d;  f += g * e;  g += h * f;  h += i * g;  i += a * h;
+    a += b * j;  b += c * a;  c += d * b;  d += e * c;  e += f * d;
+    f += g * e;  g += h * f;  h += i * g;  i += j * h;  j += a * i;
 
-    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i;
+    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i ^ j;
 }
+
 
 // ===========================================================================
 // DIRECTIONAL ENCODING — shared by IBL and dirdist addressing
@@ -481,9 +484,10 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
     if (gFlags & kFlag_EnableNormalAddr)
     {
         float2 oct = octEncode(normalA) + 1.f;  // [0, 2]
-        // Coarse normal bins: ~8 bins (45° per bin) — enough to separate
+        // Coarse normal bins: ~6 bins (60° per bin) — separates
         // floor/wall/ceiling without excessive subdivision.
-        int2 nBin = int2(floor(oct * 4.f));  // 4 = 8 bins across [0,2]
+        float normCellOct = max(gNormalBCoarse, 1.f) / 90.f;  // degrees → octahedral cell size
+        int2 nBin = int2(floor(oct / normCellOct));
         // XOR-fold into qa to change the hash without adding dimensions.
         qa.x ^= nBin.x * 0x45D9F3Bu;
         qa.y ^= nBin.y * 0xC3A5C85Cu;
@@ -536,14 +540,14 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
 // Both use PCG3D for high-quality mixing of the 6 integer coordinates
 // (3 from each quantized endpoint).
 // ---------------------------------------------------------------------------
-uint vhfAddr(int3 qa, int3 qb, uint lvl)
+uint vhfAddr(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist)
 {
-    return pcgHash(qa, qb, lvl, lvl, 0x12345678u) & (gTableCapacity - 1u);
+    return pcgHash(qa, qb, lvlA, lvlB, lvlDist, 0x12345678u) & (gTableCapacity - 1u);
 }
 
-uint vhfFingerprint(int3 qa, int3 qb, uint lvl)
+uint vhfFingerprint(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist)
 {
-    uint fp = pcgHash(qa, qb, lvl, lvl, 0xDEADBEEFu);
+    uint fp = pcgHash(qa, qb, lvlA, lvlB, lvlDist, 0xDEADBEEFu);
     return fp == 0u ? 1u : fp;  // Reserve 0 as empty-slot sentinel
 }
 
@@ -673,8 +677,8 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
-        uint fp   = vhfFingerprint(qa, qb, uint(lvl));
-        uint addr = vhfAddr(qa, qb, uint(lvl));
+        uint fp   = vhfFingerprint(qa, qb, uint(lvl), uint(lvl), uint(lvl));
+        uint addr = vhfAddr(qa, qb, uint(lvl), uint(lvl), uint(lvl));
         uint lvlProbe;
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, lvlProbe);
         best.probeSteps += lvlProbe;
@@ -730,8 +734,8 @@ VHFResult vhfLookupRaw(float3 posA, float3 posB, float3 normalA = float3(0.f))
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
-        uint fp   = vhfFingerprint(qa, qb, uint(lvl));
-        uint addr = vhfAddr(qa, qb, uint(lvl));
+        uint fp   = vhfFingerprint(qa, qb, uint(lvl), uint(lvl), uint(lvl));
+        uint addr = vhfAddr(qa, qb, uint(lvl), uint(lvl), uint(lvl));
         uint _ps;
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, _ps);
 
@@ -1085,8 +1089,8 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
-        uint fp   = vhfFingerprint(qa, qb, uint(lvl));
-        uint addr = vhfAddr(qa, qb, uint(lvl));
+        uint fp   = vhfFingerprint(qa, qb, uint(lvl), uint(lvl), uint(lvl));
+        uint addr = vhfAddr(qa, qb, uint(lvl), uint(lvl), uint(lvl));
 
         // Gate 1: maturity — skip entries with enough samples.
         // Decay periodically un-matures entries for revalidation.

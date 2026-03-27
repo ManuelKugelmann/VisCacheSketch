@@ -178,6 +178,8 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
             mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
             mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
+            mVCParams.normalBCoarse  = dict.getValue<float>("vhfParam_normalBCoarse");
+            mVCParams.normalBFine    = dict.getValue<float>("vhfParam_normalBFine");
             mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
@@ -254,6 +256,8 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         var["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        var["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
+        var["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
         var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 

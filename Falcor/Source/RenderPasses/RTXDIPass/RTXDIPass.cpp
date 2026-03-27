@@ -154,6 +154,8 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
         mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
         mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
+        mVCParams.normalBCoarse  = dict.getValue<float>("vhfParam_normalBCoarse");
+        mVCParams.normalBFine    = dict.getValue<float>("vhfParam_normalBFine");
         mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
     }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
@@ -336,6 +338,8 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
+        rootVar["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
+        rootVar["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
         rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 

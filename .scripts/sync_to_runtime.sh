@@ -56,7 +56,7 @@ SCENES_SRC="$PROJECT_ROOT/scenes"
 SCENES_DST="$RUNTIME/media/scenes"
 if [ -d "$SCENES_SRC" ]; then
     mkdir -p "$SCENES_DST"
-    cp -f "$SCENES_SRC/"*.pyscene "$SCENES_DST/"
+    cp -f "$SCENES_SRC/"*.pyscene "$SCENES_SRC/"*.py "$SCENES_DST/" 2>/dev/null
 fi
 
 # --- Scripts ---

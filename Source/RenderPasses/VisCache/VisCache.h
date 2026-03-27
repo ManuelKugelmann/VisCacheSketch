@@ -71,9 +71,11 @@ public:
         float    angularBFine;    ///< direction finest cell (auto-derived)
         float    distBCoarse;     ///< distance coarsest cell (world units, dirdist)
         float    distBFine;       ///< distance finest cell (auto-derived)
+        float    normalBCoarse;   ///< normal coarsest bin scale (oct [0,2] multiplier, 3=60°/bin)
+        float    normalBFine;     ///< normal finest bin scale (auto-derived)
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
     };
-    static_assert(sizeof(GPUParams) == 64, "GPUParams must match VisCacheParams cbuffer (64 bytes)");
+    static_assert(sizeof(GPUParams) == 72, "GPUParams must match VisCacheParams cbuffer (72 bytes)");
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
     /// ablation toggles). Feature and ablation toggles are exported via InternalDictionary
@@ -93,6 +95,7 @@ public:
         float    cellBCoarse     = 20.0f;       ///< posB coarsest cell (world units, pos×pos modes)
         float    angularBCoarse  = 90.0f;       ///< direction coarsest cell (degrees, dirdist mode)
         float    distBCoarse     = 10.0f;       ///< distance coarsest cell (world units, dirdist mode)
+        float    normalBCoarse   = 60.0f;      ///< normal coarsest cell (degrees, 60°≈6 bins, 90°≈4 bins, 360°=collapsed)
         uint32_t diagAccumWindow = 128u;        ///< EMA window for accumulated diagnostics (0 = all frames)
         bool     autoTuneCells   = true;        ///< Auto-derive cellACoarse from scene bounds
 

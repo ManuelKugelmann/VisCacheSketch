@@ -2,7 +2,7 @@
 VisCache_LadderCommon.py — Shared infrastructure for ladder test steps.
 
 Provides:
-- VARIANTS: addressing mode configurations
+- VARIANTS_POS_NORM1 / VARIANTS_POS_NORM / VARIANTS_ALL: addressing mode configurations
 - BASE: shared base config (1 level, no jitter, all features off)
 - run_variants(): execute all variants × frame configs, capture + postprocess
 - postprocess(): EXR → named PNG extraction with grid layout
@@ -40,71 +40,76 @@ BASE = {
     "enableVisCachePressureEvict": False,
 }
 
-# Addressing variants — naming: A__B where __ separates endpoint A from B,
-# _ separates dimensions within an endpoint. "1" suffix = collapsed/single bucket.
-# All variants include the normal dimension — norm1 = collapsed (off), norm = active.
-# pos_norm1__* is the "no normal" baseline; pos_norm__* adds normal discrimination.
-VARIANTS = [
-    ("pos_norm1__pos1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": False,
-        "cellBCoarse": 10000.0,
-    }),
-    ("pos_norm1__dir1_dist1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": False,
-        "angularBCoarse": 360.0,
-        "distBCoarse": 1000.0,
-    }),
-    ("pos_norm1__pos", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": False,
-        "cellBCoarse": 0.06,
-    }),
-    ("pos_norm1__dir_dist1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": False,
-        "angularBCoarse": 5.0,
-        "distBCoarse": 1000.0,
-    }),
-    ("pos_norm1__dir_dist", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": False,
-        "angularBCoarse": 5.0,
-        "distBCoarse": 0.24,
-    }),
-]
+# ---------------------------------------------------------------------------
+# Quantization presets
+# ---------------------------------------------------------------------------
+# Named size presets for B-side quantization bins.
+# cellA is always from BASE (0.06). cellB/angular/dist/normal vary per preset.
+QUANT_SMALL = {"cellB": 0.06, "angular": 5.0,  "dist": 0.24, "normal": 60.0}
+QUANT_MID   = {"cellB": 0.12, "angular": 8.0,  "dist": 0.48, "normal": 60.0}
+QUANT_LARGE = {"cellB": 0.24, "angular": 15.0, "dist": 1.0,  "normal": 90.0}
 
-# Normal-active variants: surface normal at A added to hash key (octahedral, ~8 bins).
-# No pos_norm__pos — canonicalization impossible (normal not available for B).
-VARIANTS_NORM = [
-    ("pos_norm__dir1_dist1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": True,
-        "angularBCoarse": 360.0,
-        "distBCoarse": 1000.0,
-    }),
-    ("pos_norm__dir_dist1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": True,
-        "angularBCoarse": 5.0,
-        "distBCoarse": 1000.0,
-    }),
-    ("pos_norm__dir_dist", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": True,
-        "angularBCoarse": 5.0,
-        "distBCoarse": 0.24,
-    }),
-]
+# ---------------------------------------------------------------------------
+# Addressing variant groups
+# ---------------------------------------------------------------------------
+# Naming: A__B where __ separates endpoint A from B,
+# _ separates dimensions within an endpoint. "1" suffix = collapsed/single bucket.
+# pos_norm1__* = normal collapsed (off); pos_norm__* = normal active.
+#
+# Each group has the same 5 B-side configurations in the same order:
+#   pos1, dir1_dist1, pos, dir_dist1, dir_dist
+
+def _make_variants(normal_active, quant=None):
+    """Generate 5 variants for one A-side config (norm1 or norm).
+    quant: quantization preset dict with cellB, angular, dist, normal keys.
+    """
+    q = quant or QUANT_SMALL
+    prefix = "pos_norm" if normal_active else "pos_norm1"
+    na = normal_active
+    return [
+        (f"{prefix}__pos1", {
+            **BASE,
+            "enableVisCacheDirDistAddr": False,
+            "enableVisCacheNormalAddr": na,
+            "normalBCoarse": q["normal"],
+            "cellBCoarse": 10000.0,
+        }),
+        (f"{prefix}__dir1_dist1", {
+            **BASE,
+            "enableVisCacheDirDistAddr": True,
+            "enableVisCacheNormalAddr": na,
+            "normalBCoarse": q["normal"],
+            "angularBCoarse": 360.0,
+            "distBCoarse": 1000.0,
+        }),
+        (f"{prefix}__pos", {
+            **BASE,
+            "enableVisCacheDirDistAddr": False,
+            "enableVisCacheNormalAddr": na,
+            "normalBCoarse": q["normal"],
+            "cellBCoarse": q["cellB"],
+        }),
+        (f"{prefix}__dir_dist1", {
+            **BASE,
+            "enableVisCacheDirDistAddr": True,
+            "enableVisCacheNormalAddr": na,
+            "normalBCoarse": q["normal"],
+            "angularBCoarse": q["angular"],
+            "distBCoarse": 1000.0,
+        }),
+        (f"{prefix}__dir_dist", {
+            **BASE,
+            "enableVisCacheDirDistAddr": True,
+            "enableVisCacheNormalAddr": na,
+            "normalBCoarse": q["normal"],
+            "angularBCoarse": q["angular"],
+            "distBCoarse": q["dist"],
+        }),
+    ]
+
+VARIANTS_POS_NORM1 = _make_variants(normal_active=False)
+VARIANTS_POS_NORM  = _make_variants(normal_active=True)
+VARIANTS_ALL       = VARIANTS_POS_NORM1 + VARIANTS_POS_NORM
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -225,8 +230,10 @@ def plot_rays_overview(step_name, all_stats):
         "pos_norm1__pos":        ("o", "#1f77b4"),  # blue circle
         "pos_norm1__dir_dist1":  ("^", "#9467bd"),  # purple triangle
         "pos_norm1__dir_dist":   ("^", "#8c564b"),  # brown triangle
-        # norm (active normal) — open markers
+        # norm (active normal)
+        "pos_norm__pos1":        ("D", "#bcbd22"),  # olive diamond
         "pos_norm__dir1_dist1":  ("D", "#e377c2"),  # pink diamond
+        "pos_norm__pos":         ("o", "#17becf"),  # cyan circle
         "pos_norm__dir_dist1":   ("^", "#7f7f7f"),  # gray triangle
         "pos_norm__dir_dist":    ("^", "#17becf"),  # cyan triangle
     }
@@ -407,7 +414,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
     mogwai_globals: pass globals() from the Mogwai script to access m, fc, etc.
     """
     if variants is None:
-        variants = VARIANTS
+        variants = VARIANTS_POS_NORM
     g_dict = mogwai_globals or {}
     m = g_dict.get('m')
     fc = g_dict.get('fc')

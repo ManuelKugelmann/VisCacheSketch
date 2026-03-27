@@ -13,6 +13,7 @@ VISCACHE_DEFAULTS = {
     "cellBCoarse":      20.0,   # posB coarsest cell (world units)
     "angularBCoarse":   90.0,   # direction coarsest cell (degrees, dirdist mode)
     "distBCoarse":      10.0,   # distance coarsest cell (world units, dirdist mode)
+    "normalBCoarse":    60.0,   # normal coarsest cell (degrees, 60°≈6 bins, 360°=collapsed)
     "enableVisCacheVisibilityCheck":   True,
     "enableVisCacheLightSelection": True,
     "enableVisCacheWarpReduction":  True,

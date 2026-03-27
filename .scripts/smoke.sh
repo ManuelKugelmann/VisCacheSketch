@@ -11,4 +11,4 @@ GRAPH_SCRIPT="scripts/VisCache/MinimalPathTracer_VisCache_Graph.py" \
 SCENE_FILE="media/scenes/CornellBox_1AreaLight.pyscene" \
 NUM_FRAMES=1 \
     "$RUNTIME/Mogwai.exe" --headless --script "scripts/VisCache/run_graph_headless.py" 2>&1 \
-    | grep -qE '\[headless\] OK' && echo "PASS" || { echo "FAIL"; exit 1; }
+    | tee /dev/stderr | grep -qE '\[headless\] OK' && echo "PASS" || { echo "FAIL"; exit 1; }
