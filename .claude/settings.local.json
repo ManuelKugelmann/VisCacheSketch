@@ -272,7 +272,15 @@
       "Bash(.scripts/mogwai-headless.sh:*)",
       "Bash(../runtime/pythondist/python.exe ../scripts/VisCache_Replot.py)",
       "Bash(/c/Projects/VisCacheSketch/runtime/pythondist/python.exe /c/Projects/VisCacheSketch/scripts/VisCache_Replot.py 2>&1)",
-      "Bash(/c/Projects/VisCacheSketch/runtime/pythondist/python.exe -c \"\nimport csv\nrows = list\\(csv.DictReader\\(open\\('C:/Projects/VisCacheSketch/docs/devlog/step01/stats.csv'\\)\\)\\)\nfrom collections import defaultdict\nby_variant = defaultdict\\(list\\)\nfor r in rows:\n    try: by_variant[r['variant']].append\\(float\\(r['rays_traced_pct']\\)\\)\n    except: pass\nranked = sorted\\(by_variant.items\\(\\), key=lambda kv: sum\\(kv[1]\\)/len\\(kv[1]\\)\\)\nfor v, vals in ranked:\n    print\\(f'{sum\\(vals\\)/len\\(vals\\):.1f}%  {v}  \\(n={len\\(vals\\)}\\)'\\)\n\")"
+      "Bash(/c/Projects/VisCacheSketch/runtime/pythondist/python.exe -c \"\nimport csv\nrows = list\\(csv.DictReader\\(open\\('C:/Projects/VisCacheSketch/docs/devlog/step01/stats.csv'\\)\\)\\)\nfrom collections import defaultdict\nby_variant = defaultdict\\(list\\)\nfor r in rows:\n    try: by_variant[r['variant']].append\\(float\\(r['rays_traced_pct']\\)\\)\n    except: pass\nranked = sorted\\(by_variant.items\\(\\), key=lambda kv: sum\\(kv[1]\\)/len\\(kv[1]\\)\\)\nfor v, vals in ranked:\n    print\\(f'{sum\\(vals\\)/len\\(vals\\):.1f}%  {v}  \\(n={len\\(vals\\)}\\)'\\)\n\")",
+      "Bash(do NUM_FRAMES=4 .scripts/mogwai-headless.sh 'TestRender.py' \"$scene.pyscene\")",
+      "Bash(NUM_FRAMES=4 .scripts/mogwai-headless.sh 'TestRender.py' 'BistroInterior.pyscene')",
+      "Bash(NUM_FRAMES=4 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'BistroInterior.pyscene')",
+      "Bash(NUM_FRAMES=4 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'BistroExterior.pyscene')",
+      "Bash(/c/Projects/VisCacheSketch/.scripts/sync_to_runtime.sh)",
+      "Bash(NUM_FRAMES=4 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene')",
+      "Bash(NUM_FRAMES=16 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene')",
+      "Bash(do NUM_FRAMES=16 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' \"$scene\")"
     ],
     "deny": [],
     "defaultMode": "auto"

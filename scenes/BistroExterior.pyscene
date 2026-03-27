@@ -16,10 +16,10 @@ sceneBuilder.importScene(_fbx)
 
 # Camera — street-level view of the bistro facade
 camera = Camera('VisCacheDefault')
-camera.position = float3(-8.0, 2.5, -0.3)
-camera.target   = float3( 3.0, 1.5, -1.5)
+camera.position = float3(-8.0, 2.5,  4.5)
+camera.target   = float3( 1.5, 1.5, -1.5)
 camera.up       = float3( 0.0, 1.0,  0.0)
-camera.focalLength = 24.0
+camera.focalLength = 21.0
 sceneBuilder.addCamera(camera)
 
 # Boost all emissive materials (FBX defaults are far too dim)

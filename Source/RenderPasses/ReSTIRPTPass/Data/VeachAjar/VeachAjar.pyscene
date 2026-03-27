@@ -1,10 +1,10 @@
 AnimatedVersion = False
 
 camera = Camera()
-camera.position = float3(1.472850, 1.269930, -0.558769)
-camera.target = float3(0.648815, 1.177880, -1.117770)
-camera.up = float3(-0.031992, 0.999478, -0.004434)
-camera.focalLength = 36.9504
+camera.position = float3(1.47, 1.27, -0.56)
+camera.target = float3(0.30, 1.18, -1.20)
+camera.up = float3(0.0, 1.0, 0.0)
+camera.focalLength = 21.0
 sceneBuilder.addCamera(camera)
 
 Landscape = Material('Landscape')

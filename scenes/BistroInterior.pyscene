@@ -16,12 +16,12 @@ if not _os.path.exists(_fbx):
     _fbx = 'BistroInterior.fbx'
 sceneBuilder.importScene(_fbx)
 
-# Camera — counter view looking into the bistro interior
+# Camera — mid-room looking diagonally across the dining area
 camera = Camera('VisCacheDefault')
-camera.position = float3(-5.5, 2.0, -0.6)
-camera.target   = float3( 0.5, 1.5, -1.0)
+camera.position = float3(-3.0, 2.0, 12.0)
+camera.target   = float3( 0.5, 1.5, -3.0)
 camera.up       = float3( 0.0, 1.0,  0.0)
-camera.focalLength = 24.0
+camera.focalLength = 21.0
 sceneBuilder.addCamera(camera)
 
 # Boost all emissive materials (FBX defaults are far too dim)

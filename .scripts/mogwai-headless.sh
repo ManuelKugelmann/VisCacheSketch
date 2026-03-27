@@ -28,7 +28,7 @@ fi
 
 PATTERN="${1:?Usage: mogwai-headless.sh [--source|--synced] <Graph-pattern> [scene] [frames]}"
 SCENE="${2:-}"  # empty = let script's get_scenes() use ALL_SCENES
-FRAMES="${3:-2}"
+FRAMES="${3:-${NUM_FRAMES:-2}}"
 
 cd "$RUNTIME"
 
