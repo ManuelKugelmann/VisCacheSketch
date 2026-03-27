@@ -30,4 +30,4 @@ run_baseline(
     gt_spp=32768,             # ground truth at 32768 SPP per frame
     mogwai_globals=globals(),
 )
-exit()
+_HEADLESS_SCRIPT_DONE = True

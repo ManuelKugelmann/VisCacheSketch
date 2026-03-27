@@ -50,3 +50,6 @@ slang-check-results.log
 
 # Generated paper (built by CI, deployed to Pages)
 viscachepaper/paper-combined.md
+.scripts/.mode
+.run-state
+runtime/.runstate/

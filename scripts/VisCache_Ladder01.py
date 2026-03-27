@@ -33,4 +33,4 @@ for scene_file in SCENES:
     all_stats.extend(stats)
 
 plot_rays_overview("01", all_stats)
-exit()
+_HEADLESS_SCRIPT_DONE = True

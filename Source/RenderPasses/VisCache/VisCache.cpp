@@ -298,6 +298,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     if (mParams.cellBCoarse    <= 0.f) mParams.cellBCoarse    = 1.0f;
     if (mParams.angularBCoarse <= 0.f) mParams.angularBCoarse = 1.0f;
     if (mParams.distBCoarse    <= 0.f) mParams.distBCoarse    = 1.0f;
+    if (mParams.normalBCoarse  <= 0.f) mParams.normalBCoarse  = 60.0f;
     if (mParams.pMin           <= 0.f) mParams.pMin           = 0.01f;
 
     // Derive fine values from coarse + numLevels

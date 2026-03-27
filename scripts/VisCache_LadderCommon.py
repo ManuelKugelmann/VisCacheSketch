@@ -14,6 +14,15 @@ from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
 from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_error
 
+def resolve_scene(scene_file):
+    """Resolve scene path: check PROJECT_ROOT/scenes/ first (source mode), else pass through."""
+    project_root = os.environ.get("PROJECT_ROOT", "")
+    if project_root and not os.path.isabs(scene_file):
+        candidate = os.path.join(project_root, "scenes", scene_file)
+        if os.path.isfile(candidate):
+            return candidate
+    return scene_file
+
 try:
     from falcor import *
 except ImportError:
@@ -453,7 +462,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
                     del VISCACHE_DEFAULTS[k]
 
             m.addGraph(g)
-            m.loadScene(scene_file)
+            m.loadScene(resolve_scene(scene_file))
             m.resizeFrameBuffer(resX, resY)
 
             os.makedirs(captureDir, exist_ok=True)
@@ -531,7 +540,7 @@ def run_baseline(step_name, frame_configs, scene_file,
             g = render_graph_PathTracer(viscache=False, maxBounces=maxBounces,
                                          samplesPerPixel=spp)
             m.addGraph(g)
-            m.loadScene(scene_file)
+            m.loadScene(resolve_scene(scene_file))
             m.resizeFrameBuffer(resX, resY)
 
             os.makedirs(captureDir, exist_ok=True)

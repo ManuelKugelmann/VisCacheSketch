@@ -74,4 +74,4 @@ run_variants(
     resX=res, resY=res,
     mogwai_globals=globals(),
 )
-exit()
+_HEADLESS_SCRIPT_DONE = True

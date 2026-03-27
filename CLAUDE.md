@@ -83,10 +83,34 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 
 Reusable wrappers for common operations (avoids `cd release` boilerplate):
 
-- **`.scripts/mogwai-headless.sh <pattern> [scene] [frames]`** — headless test, supports glob patterns (e.g. `*_Graph.py`)
-- **`.scripts/mogwai-headed.sh <pattern> [scene]`** — headed (GPU window) test
-- **`.scripts/sync_to_runtime.sh`** — hot-sync shaders, scripts, data from source to `runtime/` without rebuilding; clears shader cache
+- **`.scripts/mogwai-headless.sh [--source|--synced] <pattern> [scene] [frames]`** — headless test, glob patterns OK
+- **`.scripts/mogwai-headed.sh [--source|--synced] <pattern> [scene]`** — headed (GPU window) test
+- **`.scripts/sync_to_runtime.sh [--synced]`** — hot-sync shaders+data (always); add `--synced` to also copy scenes+scripts (CI use)
 - **`.scripts/smoke.sh`** — quick build validation (1 frame with scene)
+
+**Mode resolution** (headless/headed, first match wins):
+1. `--source` / `--synced` flag on the command line
+2. `VISCACHE_MODE` env var
+3. `.scripts/.mode` marker file (gitignored, default: `source`)
+4. Auto: `source` if `scripts/` dir exists, else `synced`
+
+In **source mode** scripts and scenes are served from the project source tree — no sync needed. In **synced mode** they come from `runtime/` copies (CI default).
+
+## `.run-state` — Inter-Agent Communication
+
+`.run-state` at the project root is a gitignored, human- and agent-readable coordination file. It is injected into context automatically via hooks (`SessionStart` always; `UserPromptSubmit` only when changed).
+
+Format:
+```
+mode: source          # mogwai mode (source|synced); keep in sync with .scripts/.mode
+exp: -                # active experiment name, or "-" if none
+note: <free text>     # one-liner for the next agent to read
+by: <agent> | <date>  # who last wrote it
+```
+
+When starting a session: read `.run-state` to pick up context from the previous agent.
+When handing off or ending a session: update `note:` and `by:` so the next agent knows what's going on.
+Update `mode:` to reflect the current `.scripts/.mode` if you change it.
 
 ## Build + Test Workflow
 
