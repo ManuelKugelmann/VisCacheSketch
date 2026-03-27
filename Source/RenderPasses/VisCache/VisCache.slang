@@ -266,33 +266,32 @@ uint3 pcg3d(uint3 v)
 // 9 is odd, which breaks perfect circular symmetry — acceptable since the
 // inputs ARE asymmetric (positions vs levels vs salt).
 // ---------------------------------------------------------------------------
+/// Hash one endpoint: int3 coords + level + salt → uint.
+/// PCG-style: LCG init, 2 rounds of circular cross-mix, XOR-fold.
+uint pcgHashEndpoint(int3 q, uint lvl, uint salt)
+{
+    uint a = uint(q.x) * 1664525u + 1013904223u;
+    uint b = uint(q.y) * 1664525u + 1013904223u;
+    uint c = uint(q.z) * 1664525u + 1013904223u;
+    uint d = lvl        * 1664525u + 1013904223u;
+    uint e = salt       * 1664525u + 1013904223u;
+
+    a += b * e;  b += c * a;  c += d * b;  d += e * c;  e += a * d;
+    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;  d ^= d >> 16u;  e ^= e >> 16u;
+    a += b * e;  b += c * a;  c += d * b;  d += e * c;  e += a * d;
+
+    return a ^ b ^ c ^ d ^ e;
+}
+
+/// Combined hash: hash A and B endpoints independently, then combine.
+/// Diagnostics can show hashA and hashB separately.
 uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist, uint salt)
 {
-    // Linear congruential step per component (10D)
-    uint a = uint(qa.x) * 1664525u + 1013904223u;
-    uint b = uint(qa.y) * 1664525u + 1013904223u;
-    uint c = uint(qa.z) * 1664525u + 1013904223u;
-    uint d = uint(qb.x) * 1664525u + 1013904223u;
-    uint e = uint(qb.y) * 1664525u + 1013904223u;
-    uint f = uint(qb.z) * 1664525u + 1013904223u;
-    uint g = lvlA        * 1664525u + 1013904223u;
-    uint h = lvlB        * 1664525u + 1013904223u;
-    uint i = lvlDist     * 1664525u + 1013904223u;
-    uint j = salt        * 1664525u + 1013904223u;
-
-    // Round 1: circular cross-mix (10 components)
-    a += b * j;  b += c * a;  c += d * b;  d += e * c;  e += f * d;
-    f += g * e;  g += h * f;  h += i * g;  i += j * h;  j += a * i;
-
-    // XOR-shift
-    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;  d ^= d >> 16u;  e ^= e >> 16u;
-    f ^= f >> 16u;  g ^= g >> 16u;  h ^= h >> 16u;  i ^= i >> 16u;  j ^= j >> 16u;
-
-    // Round 2: circular cross-mix
-    a += b * j;  b += c * a;  c += d * b;  d += e * c;  e += f * d;
-    f += g * e;  g += h * f;  h += i * g;  i += j * h;  j += a * i;
-
-    return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i ^ j;
+    uint hashA = pcgHashEndpoint(qa, lvlA, salt);
+    uint hashB = pcgHashEndpoint(qb, lvlB, salt ^ 0x9E3779B9u);
+    // Mix in lvlDist to differentiate distance levels
+    uint distMix = lvlDist * 1664525u + 1013904223u;
+    return hashA ^ hashB ^ distMix;
 }
 
 
@@ -827,29 +826,9 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     VHFResult r = vhfLookup(posA, posB, normalA);
 
     // Quantize at coarsest level for hash grid visualization (diagnostics).
-    // Use pre-canonicalization order: qa=surface(posA), qb=light(posB).
-    // This keeps hashA showing structured surface-cell patterns and
-    // hashB showing per-sample light variation (noise).
-    {
-        bool jA = (gFlags & kFlag_EnableJitterA) != 0;
-        bool jB = (gFlags & kFlag_EnableJitterB) != 0;
-        g.qa = jitterQuantize(posA, vhfCellSizeA(0), 0xAAu, jA);
-        if (gFlags & kFlag_EnableNormalAddr)
-        {
-            float2 oct = octEncode(normalA) + 1.f;
-            int2 nBin = int2(floor(oct * 4.f));
-            g.qa.x ^= nBin.x * 0x45D9F3Bu;
-            g.qa.y ^= nBin.y * 0xC3A5C85Cu;
-        }
-#if USE_VISCACHE_DIRDIST_ADDRESSING
-        float3 edge = posB - posA;
-        float dist = length(edge);
-        float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
-        g.qb = vhfQuantizeDirection(dir, vhfAngularSize(0) / 90.f, dist, vhfDistSize(0));
-#else
-        g.qb = jitterQuantize(posB, vhfCellSizeB(0), 0xBBu, jB);
-#endif
-    }
+    // Diagnostic hash vis: compute qa/qb exactly as the rendering path does
+    // (including normal XOR-fold into qa when enabled).
+    vhfQuantizePair(posA, posB, vhfCellSizeA(0), 0u, g.qa, g.qb, normalA);
 
     // No mature entry: must trace unconditionally.
     // invP = 1 means the commit weight is just V (no correction needed).

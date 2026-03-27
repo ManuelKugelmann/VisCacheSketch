@@ -73,12 +73,12 @@ tallNode = sceneBuilder.addNode('TallBox', Transform(
 sceneBuilder.addMeshInstance(tallNode, tallID)
 
 # --- Thin diagonal wall (light bleeding test) ---
-thinwall = TriangleMesh.createCube(float3(0.6, 0.6, 0.01))
+thinwall = TriangleMesh.createCube(float3(0.6, 1.2, 0.01))
 thinwall.name = 'ThinWall'
 thinwallID = sceneBuilder.addTriangleMesh(thinwall, white)
 thinwallNode = sceneBuilder.addNode('ThinWall', Transform(
-    translation=float3(-0.64, 0.3, -0.12),
-    rotationEulerDeg=float3(0, 60, 0),
+    translation=float3(-0.64, 0.6, -0.12),
+    rotationEulerDeg=float3(0, 45, 0),
 ))
 sceneBuilder.addMeshInstance(thinwallNode, thinwallID)
 

@@ -67,8 +67,10 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
             coldmiss                                                             // A: cold miss
         );
 
-        uint posAHash = vhfCellHash(g.qa);
-        uint posBHash = vhfCellHash(g.qb);
+        // Use pcgHashEndpoint — same function used in actual addressing.
+        // hashA includes normal (if XOR'd into qa), hashB is pure endpoint.
+        uint posAHash = pcgHashEndpoint(g.qa, 0u, 0x12345678u);
+        uint posBHash = pcgHashEndpoint(g.qb, 0u, 0x12345678u ^ 0x9E3779B9u);
         gVCFrameHashAHashBHashABRays[pixel] = float4(
             float(posAHash & 0xFFFFu) / 65535.f,                    // R: posA cell hash
             float(posBHash & 0xFFFFu) / 65535.f,                    // G: posB cell hash

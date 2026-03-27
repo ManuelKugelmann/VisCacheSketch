@@ -7,14 +7,17 @@ import os
 exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Base.py")).read())
 
 # ---------------------------------------------------------------------------
-# 32 scattered colored point lights — low power, varied hues.
+# 32 scattered colored point lights — primary and secondary hues, low power.
 # ---------------------------------------------------------------------------
 import colorsys
 
 random.seed(123)
 n_lights = 32
-total_power = 6.0
+total_power = 3.0
 per_light = total_power / n_lights
+
+# Cycle R → Y → G → C → B → M for strong, distinct colors
+_hues = [0.0, 1/6, 2/6, 3/6, 4/6, 5/6]
 
 for idx in range(n_lights):
     while True:
@@ -26,8 +29,7 @@ for idx in range(n_lights):
             continue
         break
 
-    hue = (idx * 0.618033988) % 1.0
-    r, g, b = colorsys.hls_to_rgb(hue, 0.5, 1.0)
+    r, g, b = colorsys.hls_to_rgb(_hues[idx % 6], 0.5, 1.0)
     intensity = float3(r * per_light, g * per_light, b * per_light)
 
     light = PointLight(f'PL_{idx:02d}')
