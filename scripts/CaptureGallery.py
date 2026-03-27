@@ -1,12 +1,12 @@
 """
-capture_gallery.py — Capture a test image from a graph script after N warmup frames.
+CaptureGallery.py — Capture a test image from a graph script after N warmup frames.
 
 Usage:
     set GRAPH_SCRIPT=scripts/VisCache/ReSTIRPT_Graph.py
     set GALLERY_DIR=C:/Projects/VisCacheSketch/.tests
     set SCENE_FILE=data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene
     set WARMUP_FRAMES=64
-    Mogwai.exe --headless -s scripts/VisCache/capture_gallery.py
+    Mogwai.exe --headless -s scripts/VisCache/CaptureGallery.py
 
 Env vars:
     GRAPH_SCRIPT    — graph script to load (required)

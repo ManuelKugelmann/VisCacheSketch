@@ -47,13 +47,13 @@ fi
 
 # Configure paths for selected mode
 if [ "$MODE" = "source" ]; then
-    HARNESS="$SCRIPTS_SRC/run_graph_headless.py"
+    HARNESS="$SCRIPTS_SRC/RunGraphHeadless.py"
     EXPORT_ROOT="$PROJECT_ROOT"
     shopt -s nullglob
     MATCHES=("$SCRIPTS_SRC/"$PATTERN)
     shopt -u nullglob
 else
-    HARNESS="$RUNTIME/scripts/VisCache/run_graph_headless.py"
+    HARNESS="$RUNTIME/scripts/VisCache/RunGraphHeadless.py"
     EXPORT_ROOT=""
     shopt -s nullglob
     MATCHES=("$RUNTIME/scripts/VisCache/"$PATTERN)

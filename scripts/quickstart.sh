@@ -192,7 +192,7 @@ if [ "$SKIP_LAUNCH" -eq 1 ]; then
     echo "[quickstart] step 5 headless smoke test -- skipped (--skip-launch)"
 elif [ -f "$RUNTIME_DIR/Mogwai.exe" ]; then
     echo "[quickstart] step 5 run headless smoke test"
-    "$RUNTIME_DIR/Mogwai.exe" --headless --script "$RUNTIME_DIR/scripts/VisCache/smoke_test.py" || \
+    "$RUNTIME_DIR/Mogwai.exe" --headless --script "$RUNTIME_DIR/scripts/VisCache/SmokeTest.py" || \
         echo "[quickstart] WARNING: Smoke test failed"
 else
     echo "[quickstart] step 5 headless smoke test -- skipped (Mogwai.exe not found)"

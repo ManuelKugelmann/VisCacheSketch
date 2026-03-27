@@ -19,18 +19,19 @@ except ImportError:
     pass
 
 
-def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1):
+def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True):
     """Build a PathTracer render graph.
 
     Args:
         viscache: If True, add VisCache pass for shadow gating (§11.2).
+        useJitter: If False, pin samples to pixel center (no subpixel jitter).
     """
     name = "PathTracer_VisCache" if viscache else "PathTracer"
     g = RenderGraph(name)
 
     # V-Buffer (visibility buffer — primary ray hits)
     vbuf = createPass("VBufferRT", {
-        "samplePattern": "Stratified",
+        "samplePattern": "Stratified" if useJitter else "Center",
         "sampleCount":   16,
     })
     g.addPass(vbuf, "VBufferRT")

@@ -139,7 +139,7 @@ if "%SKIP_LAUNCH%"=="1" (
     echo [quickstart] step 5 headless smoke test -- skipped ^(--skip-launch^)
 ) else if exist "%RUNTIME_DIR%\Mogwai.exe" (
     echo [quickstart] step 5 run headless smoke test
-    "%RUNTIME_DIR%\Mogwai.exe" --headless --script "%RUNTIME_DIR%\scripts\VisCache\smoke_test.py"
+    "%RUNTIME_DIR%\Mogwai.exe" --headless --script "%RUNTIME_DIR%\scripts\VisCache\SmokeTest.py"
     if errorlevel 1 (
         echo [quickstart] WARNING: Smoke test failed
     ) else (

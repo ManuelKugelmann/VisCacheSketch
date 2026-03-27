@@ -312,17 +312,27 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
 
     # --- Compute global stats from EXR data ---
     stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0}
+    from viscache_exr import read_exr
+    import numpy as np
+    # Rays traced ratio from accumulated texture
     exr = find_exr(exrs, "AccumRaysNoiseErrorCold")
     if exr:
-        from viscache_exr import read_exr
         data = read_exr(exr).get("RGBA")
         if data is not None and data.shape[2] >= 4:
-            rays = data[:, :, 0]          # R: rays traced ratio per pixel [0,1]
+            rays = data[:, :, 0]
             stats["rays_traced_pct"] = float(rays.mean() * 100)
-            if nd_accum is not None:
-                mask = nd_accum > 0.5
+    # Cold miss % from per-frame texture (matches what the plate shows)
+    exr = find_exr(exrs, "FrameLevelProbesSamplesCold")
+    if exr:
+        data = read_exr(exr).get("RGBA")
+        if data is not None and data.shape[2] >= 4:
+            coldmiss = data[:, :, 3]  # A: 1=miss, 0=hit
+            if nd_frame is not None:
+                mask = nd_frame > 0.5  # only queried pixels
                 if mask.any():
-                    stats["coldmiss_pct"] = float(data[:, :, 3][mask].mean() * 100)
+                    stats["coldmiss_pct"] = float(coldmiss[mask].mean() * 100)
+            else:
+                stats["coldmiss_pct"] = float(coldmiss.mean() * 100)
 
     # --- Row 1: accumulated ---
     exr = find_exr(exrs, "AccumRaysNoiseErrorCold")
@@ -346,10 +356,21 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
         _wc(exr, 1, o("r2c8_frame_posBhash"),   nodata=nd_frame)
     exr = find_exr(exrs, "FrameLevelProbesSamplesCold")
     if exr:
-        _wc(exr, 0, o("r2c1_frame_level"),       nodata=nd_frame)
-        _wc(exr, 2, o("r2c3_frame_samplecount"), nodata=nd_frame)
-        _wc(exr, 3, o("r2c7_frame_coldmiss"),    nodata=nd_frame)
-        _wc(exr, 1, o("r2c9_frame_probesteps"),  nodata=nd_frame)
+        # Combine nodata + coldmiss for channels that should hide cold misses
+        nd_nohit = nd_frame
+        cm_data = read_exr(exr).get("RGBA") if exr else None
+        if cm_data is not None and cm_data.shape[2] >= 4:
+            import numpy as np
+            coldmiss_binary = cm_data[:, :, 3]  # A channel: 1=cold miss, 0=hit
+            nohit = np.clip(1.0 - coldmiss_binary, 0.0, 1.0).astype(np.float32)
+            if nd_frame is not None:
+                nd_nohit = nd_frame * nohit
+            else:
+                nd_nohit = nohit
+        _wc(exr, 0, o("r2c1_frame_level"),       nodata=nd_nohit)
+        _wc(exr, 2, o("r2c3_frame_samplecount"), nodata=nd_nohit)
+        _wc(exr, 3, o("r2c7_frame_coldmiss"),    nodata=nd_frame)  # coldmiss itself uses nodata only
+        _wc(exr, 1, o("r2c9_frame_probesteps"),  nodata=nd_nohit)
     exr = find_exr(exrs, "FrameMeanVarMatSamplesRaw")
     if exr:
         _wc(exr, 1, o("r2c4_frame_maturity"),   nodata=nd_frame)
@@ -505,7 +526,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
 def run_baseline(step_name, frame_configs, scene_file,
                  maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None,
-                 gt_spp=32768, extra_spp=None):
+                 gt_spp=4096, extra_spp=None):
     """Run vanilla PathTracer (no VisCache) as baseline references.
     For each frame_config, renders baselines at 1 SPP, gt_spp, and any extra_spp values.
     For each frame_config, renders two baselines:
@@ -537,8 +558,15 @@ def run_baseline(step_name, frame_configs, scene_file,
 
             print(f"\n[{step_name}] ======== vanilla_x{spp} {tag} ({scene_name}) ========")
 
+            # Remap virtual SPP to Falcor params:
+            # - Falcor caps samplesPerPixel at 16
+            # - Higher counts: accumulate multiple frames via AccumulatePass
+            # - Ground truth (spp > 16): disable jitter for edge-free comparison
+            actual_spp = min(spp, 16)
+            num_frames = max(1, spp // max(actual_spp, 1))
+            use_jitter = (spp <= 16)  # no jitter for accumulated ground truth
             g = render_graph_PathTracer(viscache=False, maxBounces=maxBounces,
-                                         samplesPerPixel=spp)
+                                         samplesPerPixel=actual_spp, useJitter=use_jitter)
             m.addGraph(g)
             m.loadScene(resolve_scene(scene_file))
             m.resizeFrameBuffer(resX, resY)
@@ -549,7 +577,7 @@ def run_baseline(step_name, frame_configs, scene_file,
 
             for _ in range(warmup):
                 m.renderFrame()
-            for _ in range(averaging):
+            for _ in range(num_frames * averaging):
                 m.renderFrame()
 
             fc.capture()

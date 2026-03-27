@@ -132,9 +132,9 @@ echo "[run]  Step 1: Smoke test"
 echo "[run] =========================================="
 
 if [ "$DRY_RUN" = true ]; then
-    echo "[run] DRY RUN: $MOGWAI --headless --script $SCRIPT_DIR/smoke_test.py"
+    echo "[run] DRY RUN: $MOGWAI --headless --script $SCRIPT_DIR/SmokeTest.py"
 else
-    "$MOGWAI" --headless --script "$SCRIPT_DIR/smoke_test.py" 2>&1 || {
+    "$MOGWAI" --headless --script "$SCRIPT_DIR/SmokeTest.py" 2>&1 || {
         echo "[run] ERROR: Smoke test failed — plugins not loaded correctly"
         exit 1
     }

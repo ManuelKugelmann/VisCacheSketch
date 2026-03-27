@@ -122,7 +122,7 @@ REM 7. Headless smoke test (Release only, expected to fail without GPU)
 REM ---------------------------------------------------------------------------
 if /i not "%CONFIG%"=="Release" goto :skip_smoke
 echo [build] Attempting headless smoke test (no GPU expected)...
-"%OUTDIR%\Mogwai.exe" --headless --script "%OUTDIR%\scripts\VisCache\smoke_test.py" 2>&1 || (
+"%OUTDIR%\Mogwai.exe" --headless --script "%OUTDIR%\scripts\VisCache\SmokeTest.py" 2>&1 || (
     echo [build] Mogwai exited — expected without GPU
 )
 :skip_smoke

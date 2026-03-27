@@ -117,7 +117,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Syntax check + mock-import
-        run: python scripts/validate_scripts.py
+        run: python scripts/ValidateScripts.py
 
   # ---------------------------------------------------------------------------
   # Validate scene download URLs are reachable (HEAD request, no full download)

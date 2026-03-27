@@ -39,7 +39,7 @@ for %%R in (MinimalPathTracer PathTracer RTXDI ReSTIRPT) do (
         set "WARMUP_FRAMES=%WARMUP%"
         set "CAPTURE_NAME=!NAME!"
         set "SCENE_FILE=%SCENE%"
-        call "%ROOT%\scripts\mogwai_run.bat" --headless -s scripts/VisCache/capture_gallery.py >nul 2>&1
+        call "%ROOT%\scripts\mogwai_run.bat" --headless -s scripts/VisCache/CaptureGallery.py >nul 2>&1
 
         if !errorlevel! equ 0 (
             echo [gallery]   OK

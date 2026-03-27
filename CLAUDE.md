@@ -70,7 +70,7 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
    - Captures to `runtime/captures/ladder/00/<SceneName>/`
 5. **Full matrix:** `.scripts/mogwai-headless.sh '*_Graph.py'`
 
-**Mogwai:** `run_graph_headless.py` calls `m.loadScene()` — do NOT use `--scene` flag (loads too late). Exit 0 = pass; check `Mogwai.exe.*.log` in `runtime/` on failure.
+**Mogwai:** `RunGraphHeadless.py` calls `m.loadScene()` — do NOT use `--scene` flag (loads too late). Exit 0 = pass; check `Mogwai.exe.*.log` in `runtime/` on failure.
 
 ## Ladder Test System
 

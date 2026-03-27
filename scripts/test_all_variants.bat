@@ -6,7 +6,7 @@ REM Usage: scripts\test_all_variants.bat [NUM_FRAMES]
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "RELEASE=%ROOT%\release"
 set "MOGWAI=%RELEASE%\Mogwai.exe"
-set "RUNNER=scripts/VisCache/run_graph_headless.py"
+set "RUNNER=scripts/VisCache/RunGraphHeadless.py"
 set "SCENE=data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene"
 set "FRAMES=%~1"
 if "%FRAMES%"=="" set "FRAMES=2"

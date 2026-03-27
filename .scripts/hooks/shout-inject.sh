@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# runstate-inject.sh — Inject .run-state into model context if changed since last seen.
+# shout-inject.sh — Inject .agents/shout into model context if changed since last seen.
 #
 # SessionStart: always inject (bootstraps new session with current state).
 # UserPromptSubmit: inject only if changed since this session last saw it.
 # Per-session tracking: runtime/.runstate/<session_id>.hash
 #
+# Injects "[.agents/shout] (session: <short-id>)" so the agent knows its own session key.
+#
 # Stdin: Claude Code hook JSON { "session_id": "...", "hook_event_name": "..." }
 # Stdout: JSON with additionalContext, or empty (silent)
 
-STATE=".run-state"
+STATE=".agents/shout"
 [ -f "$STATE" ] || exit 0
 
 PYTHON="python"
@@ -39,12 +41,13 @@ echo "$CUR" > "$HASH_FILE"
 
 "$PYTHON" -c "
 import json, sys
-content = open('.run-state').read().rstrip()
+content = open('.agents/shout').read().rstrip()
 event = sys.argv[1]
+short_id = sys.argv[2][:8]
 print(json.dumps({
     'hookSpecificOutput': {
         'hookEventName': event,
-        'additionalContext': '[.run-state]\n' + content
+        'additionalContext': '[.agents/shout]\nself: ' + short_id + '\n' + content
     }
 }))
-" "$EVENT"
+" "$EVENT" "$SESSION"

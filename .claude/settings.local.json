@@ -239,7 +239,19 @@
       "Bash(.scripts/mogwai-headless.sh 'PathTracer_Graph.py' 'CornellBox_1PointLight.pyscene' 2)",
       "Bash(.scripts/mogwai-headless.sh 'PathTracer_Graph.py' 'CornellBox_3AreaLights.pyscene' 2)",
       "Bash(.scripts/mogwai-headless.sh 'PathTracer_Graph.py' 'CornellBox_32PointLights.pyscene' 2)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(C:/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'PathTracer_Graph.py' 'CornellBox_1AreaLight.pyscene' 2 2>&1)",
+      "Bash(GRAPH_SCRIPT=\"C:/Projects/VisCacheSketch/scripts/PathTracer_Graph.py\" GALLERY_DIR=\"C:/Projects/VisCacheSketch/.tests\" SCENE_FILE=\"C:/Projects/VisCacheSketch/scenes/CornellBox_1AreaLight.pyscene\" WARMUP_FRAMES=32 CAPTURE_NAME=cornell_cam_test ./Mogwai.exe --headless -s \"C:/Projects/VisCacheSketch/scripts/capture_gallery.py\")",
+      "Bash(C:/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'CornellBox_1AreaLight.pyscene' 32 2>&1)",
+      "Bash(cp C:/Projects/VisCacheSketch/scripts/run_graph_headless.py C:/Projects/VisCacheSketch/scripts/RunGraphHeadless.py)",
+      "Bash(cp C:/Projects/VisCacheSketch/scripts/capture_gallery.py C:/Projects/VisCacheSketch/scripts/CaptureGallery.py)",
+      "Bash(cp C:/Projects/VisCacheSketch/scripts/smoke_test.py C:/Projects/VisCacheSketch/scripts/SmokeTest.py)",
+      "Bash(cp C:/Projects/VisCacheSketch/scripts/validate_scripts.py C:/Projects/VisCacheSketch/scripts/ValidateScripts.py)",
+      "Bash(rm C:/Projects/VisCacheSketch/scripts/run_graph_headless.py C:/Projects/VisCacheSketch/scripts/capture_gallery.py C:/Projects/VisCacheSketch/scripts/smoke_test.py C:/Projects/VisCacheSketch/scripts/validate_scripts.py C:/Projects/VisCacheSketch/scripts/smoke_test_render.py)",
+      "Bash(sed -i 's/run_graph_headless\\\\.py/RunGraphHeadless.py/g' C:/Projects/VisCacheSketch/CLAUDE.md)",
+      "Bash(sed -i 's/run_graph_headless\\\\.py/RunGraphHeadless.py/g; s/capture_gallery\\\\.py/CaptureGallery.py/g' C:/Projects/VisCacheSketch/scripts/RunGraphHeadless.py C:/Projects/VisCacheSketch/scripts/CaptureGallery.py C:/Projects/VisCacheSketch/scripts/SmokeTest.py C:/Projects/VisCacheSketch/scripts/ValidateScripts.py)"
     ],
     "deny": [],
     "defaultMode": "auto"
@@ -250,7 +262,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /c/Projects/VisCacheSketch/.scripts/hooks/runstate-inject.sh"
+            "command": "bash /c/Projects/VisCacheSketch/.scripts/hooks/shout-inject.sh"
           }
         ]
       }
@@ -260,7 +272,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /c/Projects/VisCacheSketch/.scripts/hooks/runstate-inject.sh"
+            "command": "bash /c/Projects/VisCacheSketch/.scripts/hooks/shout-inject.sh"
           }
         ]
       }

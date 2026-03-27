@@ -1,10 +1,10 @@
 """
-run_graph_headless.py — Generic headless test: load a graph script, render N frames, exit.
+RunGraphHeadless.py — Generic headless test: load a graph script, render N frames, exit.
 
 Usage:
     set GRAPH_SCRIPT=scripts/VisCache/MinimalPathTracer_Graph.py
     set SCENE_FILE=CornellBox_1AreaLight.pyscene
-    Mogwai.exe --headless -s scripts/VisCache/run_graph_headless.py
+    Mogwai.exe --headless -s scripts/VisCache/RunGraphHeadless.py
 
 NOTE: The scene MUST be loaded inside this script via m.loadScene(), not via
 Mogwai's --scene flag. Mogwai loads --scene AFTER the script finishes, but this

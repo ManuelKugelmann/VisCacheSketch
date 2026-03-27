@@ -54,7 +54,7 @@ echo "[2/4] Checking for stale Falcor 4.x enum references..."
 TOTAL=$((TOTAL + 1))
 ENUM_FAIL=0
 STALE_PATTERN='SamplePattern\.\|CullMode\.\|RTXDIMode\.\|RTXDIOptions(\|ColorFormat\.\|NRDMethod\.\|ToneMapOp\.'
-for f in "$ROOT_DIR"/scripts/VisCache_*.py "$ROOT_DIR"/scripts/smoke_test.py; do
+for f in "$ROOT_DIR"/scripts/VisCache_*.py "$ROOT_DIR"/scripts/SmokeTest.py; do
     [ -f "$f" ] || continue
     if grep -n "$STALE_PATTERN" "$f" >/dev/null 2>&1; then
         echo "  FAIL: $(basename "$f") contains old-style enum references:"

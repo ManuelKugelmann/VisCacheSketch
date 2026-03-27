@@ -52,7 +52,7 @@ REM -------------------------------------------------------------------
 echo [2/4] Checking for stale Falcor 4.x enum references...
 set /a TOTAL+=1
 set "ENUM_FAIL=0"
-for %%f in ("%ROOT_DIR%\scripts\VisCache_*.py" "%ROOT_DIR%\scripts\smoke_test.py") do (
+for %%f in ("%ROOT_DIR%\scripts\VisCache_*.py" "%ROOT_DIR%\scripts\SmokeTest.py") do (
     REM Use findstr for basic pattern matching (no full regex, but catches the obvious ones)
     findstr /n /r "SamplePattern\. CullMode\. RTXDIMode\. RTXDIOptions( ColorFormat\. NRDMethod\. ToneMapOp\." "%%f" >nul 2>nul
     if not errorlevel 1 (
