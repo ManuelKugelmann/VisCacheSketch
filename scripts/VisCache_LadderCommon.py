@@ -61,7 +61,7 @@ def get_scenes():
 # Shared base: 1 level, no jitter, all features off, always trace
 BASE = {
     "numLevels": 1,
-    "cellACoarse": 0.06,
+    "posACoarse": 0.06,
     "autoTuneCells": False,
     "bootThreshold": 4,
     "pMin": 1.0,
@@ -77,10 +77,11 @@ BASE = {
 # Quantization presets
 # ---------------------------------------------------------------------------
 # Named size presets for B-side quantization bins.
-# cellA is always from BASE (0.06). cellB/angular/dist/normal vary per preset.
-QUANT_SMALL = {"cellB": 0.06, "angular": 5.0,  "dist": 0.24, "normal": 60.0}
-QUANT_MID   = {"cellB": 0.12, "angular": 8.0,  "dist": 0.48, "normal": 60.0}
-QUANT_LARGE = {"cellB": 0.24, "angular": 15.0, "dist": 1.0,  "normal": 90.0}
+# Default quantization preset — step scripts define their own and pass to _make_variants.
+# Keys: posA (A-side cell), normalA (normal bin degrees), posB (B-side pos cell),
+#        dirB (angular degrees), distB (distance cell).
+# A-side params first, B-side second.
+QUANT_DEFAULT = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0, "distB": 0.24}
 
 # ---------------------------------------------------------------------------
 # Addressing variant groups
@@ -94,9 +95,9 @@ QUANT_LARGE = {"cellB": 0.24, "angular": 15.0, "dist": 1.0,  "normal": 90.0}
 
 def _make_variants(normal_active, quant=None):
     """Generate 5 variants for one A-side config (norm1 or norm).
-    quant: quantization preset dict with cellB, angular, dist, normal keys.
+    quant: dict with posA, normalA, posB, dirB, distB keys.
     """
-    q = quant or QUANT_SMALL
+    q = quant or QUANT_DEFAULT
     prefix = "pos_norm" if normal_active else "pos_norm1"
     na = normal_active
     return [
@@ -104,39 +105,44 @@ def _make_variants(normal_active, quant=None):
             **BASE,
             "enableVisCacheDirDistAddr": False,
             "enableVisCacheNormalAddr": na,
-            "normalBCoarse": q["normal"],
-            "cellBCoarse": 10000.0,
+            "posACoarse": q["posA"],
+            "normalACoarse": q["normalA"],
+            "posBCoarse": 10000.0,
         }),
         (f"{prefix}__dir1_dist1", {
             **BASE,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
-            "normalBCoarse": q["normal"],
-            "angularBCoarse": 360.0,
+            "posACoarse": q["posA"],
+            "normalACoarse": q["normalA"],
+            "dirBCoarse": 360.0,
             "distBCoarse": 1000.0,
         }),
         (f"{prefix}__pos", {
             **BASE,
             "enableVisCacheDirDistAddr": False,
             "enableVisCacheNormalAddr": na,
-            "normalBCoarse": q["normal"],
-            "cellBCoarse": q["cellB"],
+            "posACoarse": q["posA"],
+            "normalACoarse": q["normalA"],
+            "posBCoarse": q["posB"],
         }),
         (f"{prefix}__dir_dist1", {
             **BASE,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
-            "normalBCoarse": q["normal"],
-            "angularBCoarse": q["angular"],
+            "posACoarse": q["posA"],
+            "normalACoarse": q["normalA"],
+            "dirBCoarse": q["dirB"],
             "distBCoarse": 1000.0,
         }),
         (f"{prefix}__dir_dist", {
             **BASE,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
-            "normalBCoarse": q["normal"],
-            "angularBCoarse": q["angular"],
-            "distBCoarse": q["dist"],
+            "posACoarse": q["posA"],
+            "normalACoarse": q["normalA"],
+            "dirBCoarse": q["dirB"],
+            "distBCoarse": q["distB"],
         }),
     ]
 
@@ -217,8 +223,8 @@ PLATE_LAYOUT = [
      ("r1c5_accum_mean",       "mean"),
      ("r1c6_accum_variance",   "variance")],
     [("r1c7_accum_coldmiss",   "cold miss {coldmiss_pct:.1f}%"),
-     ("r1c8_frame_posAhash",   "posA hash"),
-     ("r2c8_frame_posBhash",   "posB hash"),
+     ("r1c8_frame_qAhash",   "qA hash"),
+     ("r2c8_frame_qBhash",   "qB hash"),
      ("r2c9_frame_probesteps", "probe steps")],
 ]
 
@@ -356,7 +362,8 @@ def plot_rays_overview(step_name):
     spread   = 0.65
     offsets  = np.linspace(-spread / 2, spread / 2, n_series) if n_series > 1 else [0.0]
 
-    fig, ax = plt.subplots(figsize=(max(7, (n_sc + 2) * 2.0), 5))
+    fig, ax = plt.subplots(figsize=(max(7, (n_sc + 2) * 2.0), 5),
+                           constrained_layout=True)
 
     series_idx = 0
     legend_handles = []
@@ -365,7 +372,7 @@ def plot_rays_overview(step_name):
         for spp in spps:
             filled = (spp == spps[0])
             fc     = color if filled else "none"
-            label  = vname if len(spps) == 1 else f"{vname} x{spp}"
+            label  = f"{vname} x{spp}"
 
             # Per-scene individual run dots
             pts = [(scene_x[r["scene"]] + offsets[series_idx], r["rays_traced_pct"])
@@ -399,16 +406,14 @@ def plot_rays_overview(step_name):
                        rotation=20, ha="right", fontsize=9)
     ax.axvline(x=n_sc, color="#bbbbbb", linestyle="--", linewidth=0.8, zorder=1)
 
-    spp_note = "filled=x" + str(spps[0]) + (f", hollow=x{spps[-1]}" if len(spps) > 1 else "")
     ax.set_ylabel("Rays Traced %")
-    ax.set_title(f"Step {step_name} — Rays Traced  ({spp_note})")
-    ax.legend(handles=legend_handles, fontsize=6, loc="best",
-              ncol=max(1, len(variants_ordered) // 6))
+    ax.set_title(f"Step {step_name} — Rays Traced")
+    ax.legend(handles=legend_handles, fontsize=6,
+              loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0,
+              ncol=1)
     ax.set_ylim(0, 105)
     ax.grid(axis="y", alpha=0.3)
     ax.grid(axis="x", alpha=0.15)
-    plt.tight_layout()
-
     out_dir = f"captures/ladder/{step_name}"
     os.makedirs(out_dir, exist_ok=True)
     out = os.path.join(out_dir, f"overview_rays_{step_name}.png")
@@ -427,8 +432,8 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
                   If None, nodata mask is binary.
 
     9-column grid (r<row>c<col> prefix):
-    Row 1 (accum): render, raysTraced, error, maturity, mean, variance, coldmiss, posAHash, noise
-    Row 2 (frame): level, raysTraced, sampleCount, maturity, mean, variance, coldmiss, posBHash, probeSteps
+    Row 1 (accum): render, raysTraced, error, maturity, mean, variance, coldmiss, qAHash, noise
+    Row 2 (frame): level, raysTraced, sampleCount, maturity, mean, variance, coldmiss, qBHash, probeSteps
     """
     vn = variant_name
     o = lambda name: _out(captureDir, name, prefix)
@@ -475,13 +480,13 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
         _wc(exr, 2, o("r1c5_accum_mean"),       nodata=nd_accum)
         _wc(exr, 0, o("r1c6_accum_variance"),   nodata=nd_accum)
     exr = find_exr(exrs, "FrameHashAHashBHashABRays")
-    if exr: _wc(exr, 0, o("r1c8_frame_posAhash"), nodata=nd_frame)
+    if exr: _wc(exr, 0, o("r1c8_frame_qAhash"), nodata=nd_frame)
 
     # --- Row 2: per-frame ---
     exr = find_exr(exrs, "FrameHashAHashBHashABRays")
     if exr:
         _wc(exr, 3, o("r2c2_frame_raystraced"))
-        _wc(exr, 1, o("r2c8_frame_posBhash"),   nodata=nd_frame)
+        _wc(exr, 1, o("r2c8_frame_qBhash"),   nodata=nd_frame)
     exr = find_exr(exrs, "FrameLevelProbesSamplesCold")
     if exr:
         # Combine nodata + coldmiss for channels that should hide cold misses

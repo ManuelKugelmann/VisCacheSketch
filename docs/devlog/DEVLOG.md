@@ -1,43 +1,42 @@
 # VisCache Dev Log
 
-Systematic test ladder results. Each plate shows a 4x3 diagnostic grid per addressing variant.
+Systematic ladder test results. One entry per ladder step.
+Full plates and stats in each step's subfolder.
 
-**Plate layout:**
+**Diagnostic plate layout** (4×3 grid):
 
 | | col 1 | col 2 | col 3 | col 4 |
 |---|---|---|---|---|
 | **r1** | render | accum raysTraced | accum error | accum noise |
 | **r2** | frame level | accum maturity | accum mean | accum variance |
-| **r3** | accum coldmiss | frame posAHash | frame posBHash | frame probeSteps |
+| **r3** | accum coldmiss | frame qAHash | frame qBHash | frame probeSteps |
 
 ---
 
-## Ladder Step 00 — Vanilla Baselines
+## [Step 00 — Vanilla Baselines](step00/STEP00.md)
 
-Renders vanilla PathTracer (no VisCache) at 1 SPP and 4096 SPP for error/noise comparison.
+Vanilla PathTracer (no VisCache) at x1 and x32768 SPP. Error and ground-truth reference for downstream steps. No VisCache plates.
 
-## Ladder Step 01 — Addressing Variants (fine cells)
+---
 
-**Config:** CornellBox_1AreaLight, 512x512, 1 warmup + 1 render frame, maxBounces=0, cellA=0.06
+## [Step 01 — Initial Exploration](step01/STEP01.md)
 
-### pos\_\_pos (canonical pos x pos, cellA==cellB=0.06)
-![pos__pos](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos__pos_plate.png)
+Naive first pass: single level, uniform QUANT_SMALL, all 10 variants (pos_norm1 + pos_norm families), 4 scenes × x1 SPP.
 
-### posA\_\_posB (asymmetric, cellB=0.12)
-![posA__posB](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_posA__posB_plate.png)
+![](step01/overview_rays_01.png)
 
-### pos\_\_pos1 (position-only, cellB=10000)
-![pos__pos1](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos__pos1_plate.png)
+Best variant: **pos_norm__dir1_dist1** — 39.6% rays traced (60.4% savings), 0.2% cold miss.
 
-### pos\_\_dir1\_dist1 (dirdist, both collapsed)
-![pos__dir1_dist1](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos__dir1_dist1_plate.png)
+![](step01/plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__dir1_dist1_plate.png)
 
-### pos\_\_dir\_dist1 (dirdist, angular=5deg, dist collapsed)
-![pos__dir_dist1](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos__dir_dist1_plate.png)
+---
 
-### pos\_\_dir\_dist (dirdist, angular=5deg, dist=0.24)
-![pos__dir_dist](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos__dir_dist_plate.png)
+## [Step 02 — Quantization Refinement](step02/STEP02.md)
 
-## Ladder Step 02 — Coarser Cell Sizes
+Per-variant tuned bin sizes, norm1 family, x1 vs x16 SPP comparison across 4 scenes.
 
-**Config:** CornellBox_1AreaLight, 512x512, 1 warmup + 1 render, x1 and x32 SPP
+![](step02/overview_rays_02.png)
+
+Best at x16: **pos_norm__dir_dist1** — 21.0% rays traced (79% savings), 0.3% cold miss.
+
+![](step02/plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm__dir_dist1_plate.png)

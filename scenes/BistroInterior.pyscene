@@ -1,7 +1,7 @@
 # BistroInterior.pyscene — Amazon Lumberyard Bistro (Interior)
 # VisCache paper experiments — camera and settings tuned for indoor GI.
 #
-# Expects: BistroInterior.fbx in same directory or FALCOR_MEDIA_FOLDERS.
+# Expects: runtime/media/Bistro/BistroInterior.fbx (downloaded via download_scenes.bat).
 # Source:  NVIDIA ORCA (CC-BY 4.0), https://developer.nvidia.com/orca
 #
 # Lighting approach follows SirKero/RTProgressivePhotonMapper and
@@ -9,7 +9,12 @@
 # (the FBX has emissive lamps/signs at very low default intensity),
 # and configure glass materials for proper specular transmission.
 
-sceneBuilder.importScene('BistroInterior.fbx')
+import os as _os
+_dir = _os.path.dirname(_os.path.abspath(__file__))
+_fbx = _os.path.join(_dir, '..', 'runtime', 'media', 'Bistro', 'BistroInterior.fbx')
+if not _os.path.exists(_fbx):
+    _fbx = 'BistroInterior.fbx'
+sceneBuilder.importScene(_fbx)
 
 # Camera — counter view looking into the bistro interior
 camera = Camera('VisCacheDefault')

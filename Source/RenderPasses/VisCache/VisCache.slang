@@ -66,10 +66,10 @@
 // Addressing modes (compile-time, mutually exclusive):
 //   Default (neither set):       Canonical pos x pos — same cell size for both endpoints, lexicographic swap.
 //   USE_VISCACHE_DIRDIST_ADDRESSING=1:  Dir+dist — posB from direction+distance, per-dimension cascade.
-//                                       gAngularBCoarse/Fine control angular quantization.
+//                                       gDirBCoarse/Fine control angular quantization.
 //                                       gDistBCoarse/Fine control distance quantization.
-//   Neither set + cellBCoarse == cellACoarse: Canonical pos x pos with lexicographic swap.
-//   Neither set + cellBCoarse != cellACoarse: Asymmetric pos x pos, no swap (auto-derived).
+//   Neither set + posBCoarse == posACoarse: Canonical pos x pos with lexicographic swap.
+//   Neither set + posBCoarse != posACoarse: Asymmetric pos x pos, no swap (auto-derived).
 #ifndef USE_VISCACHE_DIRDIST_ADDRESSING
 #define USE_VISCACHE_DIRDIST_ADDRESSING 0
 #endif
@@ -166,7 +166,7 @@ struct VHFResult
 //     (coarse/mid/fine). More levels give finer spatial adaptation but
 //     use more table capacity per endpoint pair. Must be >= 1.
 //
-//   Per-dimension coarse/fine pairs (cellA, cellB, angularB, distB):
+//   Per-dimension coarse/fine pairs (posA, posB, dirB, distB):
 //     Coarse = coarsest level cell size, fine = finest (auto-derived).
 //     Intermediate levels are geometrically interpolated.
 // ---------------------------------------------------------------------------
@@ -180,16 +180,16 @@ cbuffer VisCacheParams
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
     uint   gFlags;           ///< Packed flags: bit 0 = jitterA, bit 1 = jitterB, bit 2 = adaptivePMin
     // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
-    float  gCellACoarse;     ///< posA coarsest cell size (world units, auto-tuned from scene)
-    float  gCellAFine;       ///< posA finest cell size (auto-derived from coarse + numLevels)
-    float  gCellBCoarse;     ///< posB coarsest cell size (world units, pos×pos modes)
-    float  gCellBFine;       ///< posB finest cell size (auto-derived)
-    float  gAngularBCoarse;  ///< direction coarsest cell size (degrees, dirdist mode)
-    float  gAngularBFine;    ///< direction finest cell size (auto-derived)
+    float  gPosACoarse;      ///< posA coarsest cell size (world units, auto-tuned from scene)
+    float  gPosAFine;        ///< posA finest cell size (auto-derived from coarse + numLevels)
+    float  gPosBCoarse;      ///< posB coarsest cell size (world units, pos×pos modes)
+    float  gPosBFine;        ///< posB finest cell size (auto-derived)
+    float  gDirBCoarse;      ///< direction coarsest cell size (degrees, dirdist mode)
+    float  gDirBFine;        ///< direction finest cell size (auto-derived)
     float  gDistBCoarse;     ///< distance coarsest cell size (world units, dirdist mode)
     float  gDistBFine;       ///< distance finest cell size (auto-derived)
-    float  gNormalBCoarse;   ///< normal coarsest cell size (degrees, like angularBCoarse)
-    float  gNormalBFine;     ///< normal finest cell size (auto-derived)
+    float  gNormalACoarse;   ///< normal coarsest cell size (degrees, like dirBCoarse)
+    float  gNormalAFine;     ///< normal finest cell size (auto-derived)
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
 };
 
@@ -204,13 +204,10 @@ float vhfInterp(float coarse, float fine, int lvl)
     return coarse * exp(t * log(max(fine, 1e-6f) / max(coarse, 1e-6f)));
 }
 
-float vhfCellSizeA(int lvl)     { return vhfInterp(gCellACoarse,    gCellAFine,    lvl); }
-float vhfCellSizeB(int lvl)     { return vhfInterp(gCellBCoarse,    gCellBFine,    lvl); }
-float vhfAngularSize(int lvl)   { return vhfInterp(gAngularBCoarse, gAngularBFine, lvl); }
-float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse,    gDistBFine,    lvl); }
-
-// Backward compat — used by jitter, deterministic xi, diagnostics
-float vhfCellSize(int lvl)      { return vhfCellSizeA(lvl); }
+float vhfPosASize(int lvl)      { return vhfInterp(gPosACoarse,  gPosAFine,  lvl); }
+float vhfPosBSize(int lvl)      { return vhfInterp(gPosBCoarse,  gPosBFine,  lvl); }
+float vhfDirBSize(int lvl)      { return vhfInterp(gDirBCoarse,  gDirBFine,  lvl); }
+float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse, gDistBFine, lvl); }
 
 /// The hash table — RWStructuredBuffer so all threads can read and atomically
 /// update entries concurrently. Bound by the host via dict["vhfTable"].
@@ -352,7 +349,7 @@ static const float kIBLAngularCell = 0.785f;  ///< ~45 degrees for endpoint mode
 
 float3 vhfEncodeDirection(float3 dir)
 {
-    float marker = gCellACoarse / kIBLAngularCell;
+    float marker = gPosACoarse / kIBLAngularCell;
     return dir * marker;
 }
 
@@ -440,9 +437,9 @@ float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 // Canonical quantization: quantize both endpoints and lexicographic-swap
 // so that V(A,B) and V(B,A) always produce the same (qa, qb) pair.
 //
-// Canonicalization: in pos×pos mode, if cellA == cellB (same resolution for
+// Canonicalization: in pos×pos mode, if posA == posB (same resolution for
 // both endpoints), V(A,B) = V(B,A) so we lexicographic-swap to halve table
-// pressure. If cellA != cellB, endpoints have different resolutions — no swap.
+// pressure. If posA != posB, endpoints have different resolutions — no swap.
 // In dirdist mode: direction is inherently asymmetric — never canonicalize.
 //
 // The canonicalize flag is constant per frame (depends only on coarse values),
@@ -472,11 +469,13 @@ bool vhfCanonicalLess(int3 a, int3 b)
     return a.z < b.z;
 }
 
-// Precompute canonicalization flag — constant for all levels in a frame.
-#if !USE_VISCACHE_DIRDIST_ADDRESSING
-static const bool kCanonicalize = (gCellACoarse == gCellBCoarse)
-                               && !(gFlags & kFlag_EnableNormalAddr);
-#endif
+// Canonicalization disabled — posB is always coarser than posA (3× by convention),
+// and normal addressing makes qa/qb asymmetric. No V(A,B)==V(B,A) assumption.
+// To re-enable: uncomment kCanonicalize and the swap block in vhfQuantizePair.
+// #if !USE_VISCACHE_DIRDIST_ADDRESSING
+// static const bool kCanonicalize = (gPosACoarse == gPosBCoarse)
+//                                && !(gFlags & kFlag_EnableNormalAddr);
+// #endif
 
 void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
                      out int3 qa, out int3 qb, float3 normalA = float3(0.f))
@@ -494,7 +493,7 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
         float2 oct = octEncode(normalA) + 1.f;  // [0, 2]
         // Coarse normal bins: ~6 bins (60° per bin) — separates
         // floor/wall/ceiling without excessive subdivision.
-        float normCellOct = max(gNormalBCoarse, 1.f) / 90.f;  // degrees → octahedral cell size
+        float normCellOct = max(gNormalACoarse, 1.f) / 90.f;  // degrees → octahedral cell size
         int2 nBin = int2(floor(oct / normCellOct));
         // XOR-fold into qa to change the hash without adding dimensions.
         qa.x ^= nBin.x * 0x45D9F3Bu;
@@ -507,24 +506,23 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
         float3 edge = posB - posA;
         float dist = length(edge);
         float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
-        float angCellOct = vhfAngularSize(lvl) / 90.f;
+        float angCellOct = vhfDirBSize(lvl) / 90.f;
         float distCell   = vhfDistSize(lvl);
         qb = vhfQuantizeDirection(dir, angCellOct, dist, distCell);
     }
 #else
     // Pos×pos: quantize posB at its own cell size from the B cascade.
-    float cellB = vhfCellSizeB(lvl);
-    qb = jitterQuantize(posB, cellB, 0xBBu ^ lvl, jitterB);
+    float posBCell = vhfPosBSize(lvl);
+    qb = jitterQuantize(posB, posBCell, 0xBBu ^ lvl, jitterB);
 
-    // Canonicalize only when A and B have the same resolution.
-    // Lexicographic sort — collision-free, ensures V(A,B) == V(B,A).
-    if (kCanonicalize)
-    {
-        if (vhfCanonicalLess(qb, qa))
-        {
-            int3 tmp = qa; qa = qb; qb = tmp;
-        }
-    }
+    // Canonicalization disabled — asymmetric endpoints (posB coarser, normal on A only).
+    // if (kCanonicalize)
+    // {
+    //     if (vhfCanonicalLess(qb, qa))
+    //     {
+    //         int3 tmp = qa; qa = qb; qb = tmp;
+    //     }
+    // }
 #endif
 }
 
@@ -681,7 +679,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
-        float cs = vhfCellSize(lvl);
+        float cs = vhfPosASize(lvl);
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
@@ -738,7 +736,7 @@ VHFResult vhfLookupRaw(float3 posA, float3 posB, float3 normalA = float3(0.f))
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
-        float cs = vhfCellSize(lvl);
+        float cs = vhfPosASize(lvl);
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
@@ -837,7 +835,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     // Quantize at coarsest level for hash grid visualization (diagnostics).
     // Diagnostic hash vis: compute qa/qb exactly as the rendering path does
     // (including normal XOR-fold into qa when enabled).
-    vhfQuantizePair(posA, posB, vhfCellSizeA(0), 0u, g.qa, g.qb, normalA);
+    vhfQuantizePair(posA, posB, vhfPosASize(0), 0u, g.qa, g.qb, normalA);
 
     // No mature entry: must trace unconditionally.
     // invP = 1 means the commit weight is just V (no correction needed).
@@ -935,7 +933,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
 float vhfDeterministicXi(float3 posA, float3 posB)
 {
     int hiLvl = int(gNumLevels) - 1;
-    float cs = vhfCellSize(hiLvl);
+    float cs = vhfPosASize(hiLvl);
     int3 qa, qb;
     vhfQuantizePair(posA, posB, cs, uint(hiLvl), qa, qb);
     // Different hash constants (0xCC, 0x13371337) ensure independence from
@@ -1073,7 +1071,7 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
-        float cs = vhfCellSize(lvl);
+        float cs = vhfPosASize(lvl);
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 

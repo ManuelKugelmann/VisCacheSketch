@@ -1,13 +1,18 @@
 # BistroExterior.pyscene — Amazon Lumberyard Bistro (Exterior)
 # VisCache paper experiments — camera and settings for outdoor street view.
 #
-# Expects: BistroExterior.fbx in same directory or FALCOR_MEDIA_FOLDERS.
+# Expects: runtime/media/Bistro/BistroExterior.fbx (downloaded via download_scenes.bat).
 # Source:  NVIDIA ORCA (CC-BY 4.0), https://developer.nvidia.com/orca
 #
 # Lighting approach follows SirKero/RTProgressivePhotonMapper:
 # boost all emissives by 1000x and configure glass for transmission.
 
-sceneBuilder.importScene('BistroExterior.fbx')
+import os as _os
+_dir = _os.path.dirname(_os.path.abspath(__file__))
+_fbx = _os.path.join(_dir, '..', 'runtime', 'media', 'Bistro', 'BistroExterior.fbx')
+if not _os.path.exists(_fbx):
+    _fbx = 'BistroExterior.fbx'
+sceneBuilder.importScene(_fbx)
 
 # Camera — street-level view of the bistro facade
 camera = Camera('VisCacheDefault')

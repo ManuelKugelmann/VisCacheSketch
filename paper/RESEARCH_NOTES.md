@@ -101,7 +101,7 @@ VisCache must execute before PathTracer, RTXDIPass, ReSTIRPTPass. It owns the ta
 Current constants calibrated for 2–20 m primary viewing distances. Will produce incorrect LOD selection at 0.5 m (interior close-up) or 100 m (city-scale flyover). Add calibration note to §5.2. Camera-adaptive scaling via FoV + CoC is the principled fix — defer to future work but state it.
 
 ### Symmetric cells for GI revalidation
-Current L2 asymmetry: cellA=0.08m, cellB=0.62m. For GI (point-to-point between surfaces), B should probably match A. Quantify the error before changing constants — may not matter at L2 where both A and B are close to each other spatially.
+Current L2 asymmetry: posA=0.08m, posB=0.62m. For GI (point-to-point between surfaces), B should probably match A. Quantify the error before changing constants — may not matter at L2 where both A and B are close to each other spatially.
 
 ### Free-path distance (experiment 3 from 2006)
 Binary is sufficient for hard shadow decisions. But for soft shadows with many-light sampling, free-path distance would be richer — it captures the probability of traversal at a given distance, not just binary hit/miss. Potential future work with a float cache entry instead of bool. Would require separate variance estimator (not Bernoulli). Not in this paper.

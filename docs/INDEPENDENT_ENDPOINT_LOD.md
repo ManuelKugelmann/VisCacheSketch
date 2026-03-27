@@ -18,7 +18,7 @@ Each endpoint gets its own LOD level in the hash key:
 
 - `qa = jitterQuantize(posA, kCell[lvlA], ...)` — A quantized at A's level
 - `qb = jitterQuantize(posB, kCell[lvlB], ...)` — B quantized at B's level
-- **Single cell size array** `kCell[N]` (geometric progression, same as existing `vhfCellSize()`). The asymmetry comes from endpoints being at *different* levels, not different cell size tables.
+- **Single cell size array** `kCell[N]` (geometric progression, same as existing `vhfPosASize()`). The asymmetry comes from endpoints being at *different* levels, not different cell size tables.
 - Combined level index for hash: `lvlA * kNumLevels + lvlB`
 - With N=3: up to 9 possible `(lvlA, lvlB)` pairs per spatial region
 
@@ -127,8 +127,8 @@ uint vhfAddr(int3 qa, int3 qb, uint lvlA, uint lvlB) {
 Each endpoint uses its own level's cell size:
 
 ```hlsl
-float csA = vhfCellSize(lvlA);
-float csB = vhfCellSize(lvlB);
+float csA = vhfPosASize(lvlA);
+float csB = vhfPosBSize(lvlB);
 int3 qa = jitterQuantize(posA, csA, 0xAAu ^ lvlA);
 int3 qb = jitterQuantize(posB, csB, 0xBBu ^ lvlB);
 ```

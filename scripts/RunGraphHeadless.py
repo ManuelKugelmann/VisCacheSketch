@@ -15,7 +15,7 @@ import os, sys
 project_root = os.environ.get("PROJECT_ROOT", "")
 
 graph_script = os.environ.get("GRAPH_SCRIPT", "scripts/VisCache/MinimalPathTracer_Graph.py")
-scene_file = os.environ.get("SCENE_FILE", "data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene")
+scene_file = os.environ.get("SCENE_FILE", "") or "CornellBox_1AreaLight.pyscene"
 num_frames = int(os.environ.get("NUM_FRAMES", "2"))
 
 # Resolve scene: check project scenes/ directory first, then fall through to Mogwai paths

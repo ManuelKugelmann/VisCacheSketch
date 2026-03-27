@@ -266,7 +266,13 @@
       "Bash(__NEW_LINE_251c7201c8536e91__ echo:*)",
       "Bash(__NEW_LINE_cee709f7efb1c53f__ echo:*)",
       "Bash(__NEW_LINE_0ea53273f537d77c__ cd:*)",
-      "Bash(SCENE_FILE=\"scenes/CornellBox_1AreaLight.pyscene\" .scripts/mogwai-headless.sh 'TestRender.py' 'CornellBox_1AreaLight.pyscene' 32)"
+      "Bash(SCENE_FILE=\"scenes/CornellBox_1AreaLight.pyscene\" .scripts/mogwai-headless.sh 'TestRender.py' 'CornellBox_1AreaLight.pyscene' 32)",
+      "Bash(do .scripts/mogwai-headless.sh 'TestRender.py' \"$scene.pyscene\")",
+      "Bash(.scripts/mogwai-headless.sh 'TestRender.py' \"data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene\")",
+      "Bash(.scripts/mogwai-headless.sh:*)",
+      "Bash(../runtime/pythondist/python.exe ../scripts/VisCache_Replot.py)",
+      "Bash(/c/Projects/VisCacheSketch/runtime/pythondist/python.exe /c/Projects/VisCacheSketch/scripts/VisCache_Replot.py 2>&1)",
+      "Bash(/c/Projects/VisCacheSketch/runtime/pythondist/python.exe -c \"\nimport csv\nrows = list\\(csv.DictReader\\(open\\('C:/Projects/VisCacheSketch/docs/devlog/step01/stats.csv'\\)\\)\\)\nfrom collections import defaultdict\nby_variant = defaultdict\\(list\\)\nfor r in rows:\n    try: by_variant[r['variant']].append\\(float\\(r['rays_traced_pct']\\)\\)\n    except: pass\nranked = sorted\\(by_variant.items\\(\\), key=lambda kv: sum\\(kv[1]\\)/len\\(kv[1]\\)\\)\nfor v, vals in ranked:\n    print\\(f'{sum\\(vals\\)/len\\(vals\\):.1f}%  {v}  \\(n={len\\(vals\\)}\\)'\\)\n\")"
     ],
     "deny": [],
     "defaultMode": "auto"

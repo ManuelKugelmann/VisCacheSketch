@@ -29,7 +29,7 @@ Always insert/lookup across all N levels (L0..N-1). No distance heuristic.
 Contention at coarse levels is self-limiting: many threads update L0 → L0 converges fast → maturity gate skips further atomics. The cascaded variance gate stops finer writes once a level converges.
 
 ### Symmetric cell sizes with canonicalization
-Per-dimension cell sizes with geometric interpolation from coarse (L0) to fine (L_{N-1}). Four independent dimensions: cellA (posA), cellB (posB), angularB (direction, dirdist mode), distB (distance, dirdist mode). N, coarse values are runtime cbuffer parameters; fine values auto-derived via `deriveFine(coarse, N)`. Canonicalization (lexicographic swap) merges V(A,B) and V(B,A) into one entry.
+Per-dimension cell sizes with geometric interpolation from coarse (L0) to fine (L_{N-1}). Four independent dimensions: posA, posB, dirB (direction, dirdist mode), distB (distance, dirdist mode). N, coarse values are runtime cbuffer parameters; fine values auto-derived via `deriveFine(coarse, N)`. Canonicalization (lexicographic swap) merges V(A,B) and V(B,A) into one entry.
 
 **Decision:** symmetric cells (current implementation). Independent per-endpoint LOD — where each endpoint can be at a different level — is designed as a future extension (see `docs/INDEPENDENT_ENDPOINT_LOD.md`). The 2D key `(lvlA, lvlB)` subsumes the asymmetric cell size idea: rather than different cell size tables per endpoint, endpoints simply reside at different levels of the same table.
 

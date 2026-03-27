@@ -463,15 +463,15 @@ VCLookup vc_lookup_internal(float3 posA, float3 endpointB,
         return result; // no valid LOD for this distance
     }
 
-    float cellA[VC_NUM_LEVELS] = { _VCCellA.x, _VCCellA.y, _VCCellA.z };
-    float cellB[VC_NUM_LEVELS] = { _VCCellB.x, _VCCellB.y, _VCCellB.z };
+    float posA[VC_NUM_LEVELS] = { _VCCellA.x, _VCCellA.y, _VCCellA.z };
+    float posB[VC_NUM_LEVELS] = { _VCCellB.x, _VCCellB.y, _VCCellB.z };
     float angR [VC_NUM_LEVELS] = { _VCAngularRes.x, _VCAngularRes.y, _VCAngularRes.z };
 
     [loop] for (uint lvl = di.x; lvl <= di.y; lvl++)
     {
-        int3 qA = vc_quantize_pos(posA, cellA[lvl]);
+        int3 qA = vc_quantize_pos(posA, posA[lvl]);
         int3 qB = isInf ? vc_quantize_dir(endpointB, angR[lvl])
-                        : vc_quantize_pos(endpointB, cellB[lvl]);
+                        : vc_quantize_pos(endpointB, posB[lvl]);
 
         uint addr = vc_hash_addr(qA, qB, lvl, isInf);
         uint fp   = vc_hash_fp  (qA, qB, lvl, isInf);
@@ -510,17 +510,17 @@ void vc_record_internal(float3 posA, float3 endpointB,
     uint2 di = vc_dist_lod(posA);
     if (di.x > di.y) return;
 
-    float cellA[VC_NUM_LEVELS] = { _VCCellA.x, _VCCellA.y, _VCCellA.z };
-    float cellB[VC_NUM_LEVELS] = { _VCCellB.x, _VCCellB.y, _VCCellB.z };
+    float posA[VC_NUM_LEVELS] = { _VCCellA.x, _VCCellA.y, _VCCellA.z };
+    float posB[VC_NUM_LEVELS] = { _VCCellB.x, _VCCellB.y, _VCCellB.z };
     float angR [VC_NUM_LEVELS] = { _VCAngularRes.x, _VCAngularRes.y, _VCAngularRes.z };
 
     // Coarse-to-fine cascaded variance gate: write each level, then
     // check its post-increment variance to decide whether to continue.
     [loop] for (uint lvl = di.x; lvl <= di.y; lvl++)
     {
-        int3 qA = vc_quantize_pos(posA, cellA[lvl]);
+        int3 qA = vc_quantize_pos(posA, posA[lvl]);
         int3 qB = isInf ? vc_quantize_dir(endpointB, angR[lvl])
-                        : vc_quantize_pos(endpointB, cellB[lvl]);
+                        : vc_quantize_pos(endpointB, posB[lvl]);
 
         VCInsertResult res = vc_insert_at_level(qA, qB, visible, lvl, isInf);
 

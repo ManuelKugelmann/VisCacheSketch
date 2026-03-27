@@ -178,9 +178,9 @@ private:
     ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
     struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
              uint32_t numLevels=0, flags=1;
-             float cellACoarse=0, cellAFine=0, cellBCoarse=0, cellBFine=0;
-             float angularBCoarse=0, angularBFine=0, distBCoarse=0, distBFine=0;
-             float normalBCoarse=0, normalBFine=0;
+             float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
+             float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
+             float normalACoarse=0, normalAFine=0;
              uint32_t diagAccumWindow=128; } mVCParams;
     bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
     bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)

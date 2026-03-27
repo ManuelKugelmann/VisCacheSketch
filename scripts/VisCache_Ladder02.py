@@ -9,50 +9,13 @@ Usage:
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from VisCache_LadderCommon import run_variants, run_baseline, BASE, get_scenes, plot_rays_overview
+from VisCache_LadderCommon import run_variants, run_baseline, BASE, get_scenes, plot_rays_overview, \
+    _make_variants
 
 res = int(os.environ.get("RES", "512"))
 
-CELL_A = BASE["cellACoarse"]  # 0.06
-
-VARIANTS_02 = [
-    ("pos_norm1__pos", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": False,
-        "cellACoarse": 0.12,
-        "cellBCoarse": 0.12,
-    }),
-    ("pos_norm1__pos1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": False,
-        "enableVisCacheNormalAddr": False,
-        "cellBCoarse": 10000.0,
-    }),
-    ("pos_norm1__dir1_dist1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": False,
-        "angularBCoarse": 360.0,
-        "distBCoarse": 1000.0,
-    }),
-    ("pos_norm1__dir_dist1", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": False,
-        "cellACoarse": 0.12,
-        "angularBCoarse": 8.0,
-        "distBCoarse": 1000.0,
-    }),
-    ("pos_norm1__dir_dist", {
-        **BASE,
-        "enableVisCacheDirDistAddr": True,
-        "enableVisCacheNormalAddr": False,
-        "cellACoarse": 0.12,
-        "angularBCoarse": 8.0,
-        "distBCoarse": 0.24,
-    }),
-]
+QUANT_02 = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 8.0, "distB": 0.48}
+VARIANTS_02 = _make_variants(normal_active=False, quant=QUANT_02)
 
 for scene_file in get_scenes():
     # Ensure x32 baseline exists in step 00

@@ -1525,16 +1525,16 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
             mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
             mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
-            mVCParams.cellACoarse    = dict.getValue<float>("vhfParam_cellACoarse");
-            mVCParams.cellAFine      = dict.getValue<float>("vhfParam_cellAFine");
-            mVCParams.cellBCoarse    = dict.getValue<float>("vhfParam_cellBCoarse");
-            mVCParams.cellBFine      = dict.getValue<float>("vhfParam_cellBFine");
-            mVCParams.angularBCoarse = dict.getValue<float>("vhfParam_angularBCoarse");
-            mVCParams.angularBFine   = dict.getValue<float>("vhfParam_angularBFine");
+            mVCParams.posACoarse    = dict.getValue<float>("vhfParam_posACoarse");
+            mVCParams.posAFine      = dict.getValue<float>("vhfParam_posAFine");
+            mVCParams.posBCoarse    = dict.getValue<float>("vhfParam_posBCoarse");
+            mVCParams.posBFine      = dict.getValue<float>("vhfParam_posBFine");
+            mVCParams.dirBCoarse = dict.getValue<float>("vhfParam_dirBCoarse");
+            mVCParams.dirBFine   = dict.getValue<float>("vhfParam_dirBFine");
             mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
-            mVCParams.normalBCoarse  = dict.getValue<float>("vhfParam_normalBCoarse");
-            mVCParams.normalBFine    = dict.getValue<float>("vhfParam_normalBFine");
+            mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
+            mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
             mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
         }
 
@@ -1688,16 +1688,16 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
         var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
         var["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        var["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
-        var["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
-        var["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
-        var["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
-        var["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
-        var["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        var["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
+        var["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
+        var["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
+        var["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
+        var["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
+        var["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
         var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        var["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
-        var["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
+        var["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
+        var["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
         var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
@@ -1820,16 +1820,16 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
         rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
         rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
-        rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
-        rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
-        rootVar["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
-        rootVar["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
-        rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        rootVar["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
+        rootVar["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
+        rootVar["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
+        rootVar["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
+        rootVar["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
+        rootVar["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        rootVar["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
-        rootVar["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
+        rootVar["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
+        rootVar["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
         rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
     // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
@@ -1917,16 +1917,16 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
         rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
         rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        rootVar["VisCacheParams"]["gCellACoarse"]    = mVCParams.cellACoarse;
-        rootVar["VisCacheParams"]["gCellAFine"]      = mVCParams.cellAFine;
-        rootVar["VisCacheParams"]["gCellBCoarse"]    = mVCParams.cellBCoarse;
-        rootVar["VisCacheParams"]["gCellBFine"]      = mVCParams.cellBFine;
-        rootVar["VisCacheParams"]["gAngularBCoarse"] = mVCParams.angularBCoarse;
-        rootVar["VisCacheParams"]["gAngularBFine"]   = mVCParams.angularBFine;
+        rootVar["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
+        rootVar["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
+        rootVar["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
+        rootVar["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
+        rootVar["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
+        rootVar["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        rootVar["VisCacheParams"]["gNormalBCoarse"]  = mVCParams.normalBCoarse;
-        rootVar["VisCacheParams"]["gNormalBFine"]    = mVCParams.normalBFine;
+        rootVar["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
+        rootVar["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
         rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 

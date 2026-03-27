@@ -88,7 +88,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         g.markOutput("VisCache.vcAccumMeanVarMatCount", TextureChannelFlags.RGBA)   # R=variance*4, G=maturity, B=mean, A=count
         g.markOutput("VisCache.vcFrameMeanVarMatSamplesRaw", TextureChannelFlags.RGBA)  # R=variance*4, G=maturity, B=mean, A=samplesRaw
         g.markOutput("VisCache.vcFrameLevelProbesSamplesCold", TextureChannelFlags.RGBA)  # R=level, G=probeSteps, B=samples, A=coldmiss
-        g.markOutput("VisCache.vcFrameHashAHashBHashABRays", TextureChannelFlags.RGBA)  # R=posAHash, G=posBHash, B=combinedHash, A=raysTraced
+        g.markOutput("VisCache.vcFrameHashAHashBHashABRays", TextureChannelFlags.RGBA)  # R=qAHash, G=qBHash, B=combinedHash, A=raysTraced
         g.markOutput("VisCache.vcAccumRaysNoiseErrorCold", TextureChannelFlags.RGBA)  # R=raysTraced, G=renderNoise, B=renderError, A=coldmiss
 
     return g

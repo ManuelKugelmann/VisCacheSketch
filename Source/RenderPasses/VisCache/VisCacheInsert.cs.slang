@@ -59,7 +59,7 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
     // but with WaveMatch coalescing for reduced atomic contention.
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
-        float cs = vhfCellSize(lvl);
+        float cs = vhfPosASize(lvl);
         int3 qa, qb;
         vhfQuantizePair(ins.posA, ins.posB, cs, uint(lvl), qa, qb);
 

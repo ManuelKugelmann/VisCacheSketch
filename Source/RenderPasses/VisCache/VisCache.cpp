@@ -53,11 +53,11 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("pMin"))           mParams.pMin           = props["pMin"];
     if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
     if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
-    if (props.has("cellACoarse"))  { mParams.cellACoarse    = props["cellACoarse"];  mParams.autoTuneCells = false; }
-    if (props.has("cellBCoarse"))    mParams.cellBCoarse    = props["cellBCoarse"];
-    if (props.has("angularBCoarse")) mParams.angularBCoarse = props["angularBCoarse"];
+    if (props.has("posACoarse"))  { mParams.posACoarse    = props["posACoarse"];  mParams.autoTuneCells = false; }
+    if (props.has("posBCoarse"))    mParams.posBCoarse    = props["posBCoarse"];
+    if (props.has("dirBCoarse")) mParams.dirBCoarse = props["dirBCoarse"];
     if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
-    if (props.has("normalBCoarse")) mParams.normalBCoarse  = props["normalBCoarse"];
+    if (props.has("normalACoarse")) mParams.normalACoarse  = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
@@ -94,11 +94,11 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("pMin"))           mParams.pMin           = props["pMin"];
     if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
     if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
-    if (props.has("cellACoarse"))  { mParams.cellACoarse    = props["cellACoarse"];  mParams.autoTuneCells = false; }
-    if (props.has("cellBCoarse"))    mParams.cellBCoarse    = props["cellBCoarse"];
-    if (props.has("angularBCoarse")) mParams.angularBCoarse = props["angularBCoarse"];
+    if (props.has("posACoarse"))  { mParams.posACoarse    = props["posACoarse"];  mParams.autoTuneCells = false; }
+    if (props.has("posBCoarse"))    mParams.posBCoarse    = props["posBCoarse"];
+    if (props.has("dirBCoarse")) mParams.dirBCoarse = props["dirBCoarse"];
     if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
-    if (props.has("normalBCoarse")) mParams.normalBCoarse  = props["normalBCoarse"];
+    if (props.has("normalACoarse")) mParams.normalACoarse  = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
@@ -129,11 +129,11 @@ Properties VisCache::getProperties() const
     p["pMin"]          = mParams.pMin;
     p["fireflyBudget"] = mParams.fireflyBudget;
     p["numLevels"]     = mParams.numLevels;
-    p["cellACoarse"]     = mParams.cellACoarse;
-    p["cellBCoarse"]     = mParams.cellBCoarse;
-    p["angularBCoarse"]  = mParams.angularBCoarse;
+    p["posACoarse"]     = mParams.posACoarse;
+    p["posBCoarse"]     = mParams.posBCoarse;
+    p["dirBCoarse"]  = mParams.dirBCoarse;
     p["distBCoarse"]     = mParams.distBCoarse;
-    p["normalBCoarse"]   = mParams.normalBCoarse;
+    p["normalACoarse"]   = mParams.normalACoarse;
     p["diagAccumWindow"] = mParams.diagAccumWindow;
     p["autoTuneCells"] = mParams.autoTuneCells;
     p["decayPeriod"]   = mParams.decayPeriod;
@@ -232,14 +232,14 @@ void VisCache::allocateBuffers()
 }
 
 // ---------------------------------------------------------------------------
-// Auto-derive cellACoarse (and dependent cellBCoarse, distBCoarse) from
-// scene bounds. angularBCoarse stays at the user-set default.
+// Auto-derive posACoarse (and dependent posBCoarse, distBCoarse) from
+// scene bounds. dirBCoarse stays at the user-set default.
 //
 // Heuristic:
-//   cellACoarse  = sceneDiameter / 16
-//   cellBCoarse  = cellACoarse * 2  (posB endpoint is coarser)
-//   distBCoarse  = cellACoarse * 8  (distance bins are much coarser)
-//   angularBCoarse  left at user default (rotation-scale differs from position)
+//   posACoarse  = sceneDiameter / 16
+//   posBCoarse  = posACoarse * 2  (posB endpoint is coarser)
+//   distBCoarse  = posACoarse * 8  (distance bins are much coarser)
+//   dirBCoarse  left at user default (rotation-scale differs from position)
 //
 // Fine values are NOT set here — they are derived from coarse + numLevels
 // at GPU upload time via deriveFine().
@@ -257,10 +257,10 @@ void VisCache::autoTuneCellSizes()
 
     float coarse = sceneDiameter / kCoarseScale;
 
-    mParams.cellACoarse = coarse;
-    mParams.cellBCoarse = coarse * 2.f;
+    mParams.posACoarse = coarse;
+    mParams.posBCoarse = coarse * 2.f;
     mParams.distBCoarse = coarse * 8.f;
-    // angularBCoarse stays at user default (mParams.angularBCoarse)
+    // dirBCoarse stays at user default (mParams.dirBCoarse)
 }
 
 // ---------------------------------------------------------------------------
@@ -275,8 +275,8 @@ void VisCache::setScene(RenderContext* pCtx, const ref<Scene>& pScene)
         autoTuneCellSizes();
         logInfo("[VisCache] Scene: diameter={:.2f} extent=({:.2f}, {:.2f}, {:.2f})",
                 sceneDiam, ext.x, ext.y, ext.z);
-        logInfo("[VisCache] Auto-tuned: cellACoarse={:.4f} cellBCoarse={:.4f} distBCoarse={:.4f} angularBCoarse={:.1f} (numLevels={})",
-                mParams.cellACoarse, mParams.cellBCoarse, mParams.distBCoarse, mParams.angularBCoarse, mParams.numLevels);
+        logInfo("[VisCache] Auto-tuned: posACoarse={:.4f} posBCoarse={:.4f} distBCoarse={:.4f} dirBCoarse={:.1f} (numLevels={})",
+                mParams.posACoarse, mParams.posBCoarse, mParams.distBCoarse, mParams.dirBCoarse, mParams.numLevels);
     }
     allocateBuffers();
 }
@@ -294,11 +294,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     mParams.numLevels     = std::max(1u, mParams.numLevels);
     mParams.bootThreshold = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
     if (mParams.varThreshold   <= 0.f) mParams.varThreshold   = 0.01f;
-    if (mParams.cellACoarse    <= 0.f) mParams.cellACoarse    = 1.0f;
-    if (mParams.cellBCoarse    <= 0.f) mParams.cellBCoarse    = 1.0f;
-    if (mParams.angularBCoarse <= 0.f) mParams.angularBCoarse = 1.0f;
+    if (mParams.posACoarse    <= 0.f) mParams.posACoarse    = 1.0f;
+    if (mParams.posBCoarse    <= 0.f) mParams.posBCoarse    = 1.0f;
+    if (mParams.dirBCoarse <= 0.f) mParams.dirBCoarse = 1.0f;
     if (mParams.distBCoarse    <= 0.f) mParams.distBCoarse    = 1.0f;
-    if (mParams.normalBCoarse  <= 0.f) mParams.normalBCoarse  = 60.0f;
+    if (mParams.normalACoarse  <= 0.f) mParams.normalACoarse  = 60.0f;
     if (mParams.pMin           <= 0.f) mParams.pMin           = 0.01f;
 
     // Derive fine values from coarse + numLevels
@@ -318,16 +318,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                        | (mParams.enableVisCacheJitterB ? 2u : 0u)
                        | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
                        | (mParams.enableVisCacheNormalAddr ? 8u : 0u);
-    gpu.cellACoarse    = mParams.cellACoarse;
-    gpu.cellAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.cellACoarse, mParams.numLevels) : mParams.cellACoarse;
-    gpu.cellBCoarse    = mParams.cellBCoarse;
-    gpu.cellBFine      = (mParams.numLevels > 1) ? deriveFine(mParams.cellBCoarse, mParams.numLevels) : mParams.cellBCoarse;
-    gpu.angularBCoarse = mParams.angularBCoarse;
-    gpu.angularBFine   = (mParams.numLevels > 1) ? deriveFine(mParams.angularBCoarse, mParams.numLevels) : mParams.angularBCoarse;
+    gpu.posACoarse    = mParams.posACoarse;
+    gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posACoarse, mParams.numLevels) : mParams.posACoarse;
+    gpu.posBCoarse    = mParams.posBCoarse;
+    gpu.posBFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posBCoarse, mParams.numLevels) : mParams.posBCoarse;
+    gpu.dirBCoarse = mParams.dirBCoarse;
+    gpu.dirBFine   = (mParams.numLevels > 1) ? deriveFine(mParams.dirBCoarse, mParams.numLevels) : mParams.dirBCoarse;
     gpu.distBCoarse    = mParams.distBCoarse;
     gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(mParams.distBCoarse, mParams.numLevels) : mParams.distBCoarse;
-    gpu.normalBCoarse  = mParams.normalBCoarse;
-    gpu.normalBFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalBCoarse, mParams.numLevels) : mParams.normalBCoarse;
+    gpu.normalACoarse  = mParams.normalACoarse;
+    gpu.normalAFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalACoarse, mParams.numLevels) : mParams.normalACoarse;
     gpu.diagAccumWindow = mParams.diagAccumWindow;
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -337,9 +337,9 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     {
         logInfo("[VisCache] tableCapacity={} bootThreshold={} varThreshold={:.3f} pMin={:.3f} fireflyBudget={:.3f}",
                 mParams.tableCapacity, mParams.bootThreshold, mParams.varThreshold, mParams.pMin, mParams.fireflyBudget);
-        logInfo("[VisCache] cellA: coarse={:.4f} fine={:.4f}", gpu.cellACoarse, gpu.cellAFine);
-        logInfo("[VisCache] cellB: coarse={:.4f} fine={:.4f}", gpu.cellBCoarse, gpu.cellBFine);
-        logInfo("[VisCache] angularB: coarse={:.1f}{} fine={:.1f}{}", gpu.angularBCoarse, "\xC2\xB0", gpu.angularBFine, "\xC2\xB0");
+        logInfo("[VisCache] posA: coarse={:.4f} fine={:.4f}", gpu.posACoarse, gpu.posAFine);
+        logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
+        logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
         logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
@@ -376,16 +376,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_enableJitterA"]  = mParams.enableVisCacheJitterA ? 1u : 0u;
     dict["vhfParam_enableJitterB"]  = mParams.enableVisCacheJitterB ? 1u : 0u;
     dict["vhfParam_flags"]         = gpu.flags;
-    dict["vhfParam_cellACoarse"]    = gpu.cellACoarse;
-    dict["vhfParam_cellAFine"]      = gpu.cellAFine;
-    dict["vhfParam_cellBCoarse"]    = gpu.cellBCoarse;
-    dict["vhfParam_cellBFine"]      = gpu.cellBFine;
-    dict["vhfParam_angularBCoarse"] = gpu.angularBCoarse;
-    dict["vhfParam_angularBFine"]   = gpu.angularBFine;
+    dict["vhfParam_posACoarse"]    = gpu.posACoarse;
+    dict["vhfParam_posAFine"]      = gpu.posAFine;
+    dict["vhfParam_posBCoarse"]    = gpu.posBCoarse;
+    dict["vhfParam_posBFine"]      = gpu.posBFine;
+    dict["vhfParam_dirBCoarse"] = gpu.dirBCoarse;
+    dict["vhfParam_dirBFine"]   = gpu.dirBFine;
     dict["vhfParam_distBCoarse"]    = gpu.distBCoarse;
     dict["vhfParam_distBFine"]      = gpu.distBFine;
-    dict["vhfParam_normalBCoarse"]  = gpu.normalBCoarse;
-    dict["vhfParam_normalBFine"]    = gpu.normalBFine;
+    dict["vhfParam_normalACoarse"]  = gpu.normalACoarse;
+    dict["vhfParam_normalAFine"]    = gpu.normalAFine;
     dict["vhfParam_diagAccumWindow"] = mParams.diagAccumWindow;
 
     // Feature + ablation toggles — downstream passes read these
@@ -577,16 +577,16 @@ void VisCache::runDecayPass(RenderContext* pCtx)
                                                 | (mParams.enableVisCacheJitterB ? 2u : 0u)
                                                 | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
                        | (mParams.enableVisCacheNormalAddr ? 8u : 0u);
-    vars["VisCacheParams"]["gCellACoarse"]    = mParams.cellACoarse;
-    vars["VisCacheParams"]["gCellAFine"]      = (N > 1) ? deriveFine(mParams.cellACoarse, N) : mParams.cellACoarse;
-    vars["VisCacheParams"]["gCellBCoarse"]    = mParams.cellBCoarse;
-    vars["VisCacheParams"]["gCellBFine"]      = (N > 1) ? deriveFine(mParams.cellBCoarse, N) : mParams.cellBCoarse;
-    vars["VisCacheParams"]["gAngularBCoarse"] = mParams.angularBCoarse;
-    vars["VisCacheParams"]["gAngularBFine"]   = (N > 1) ? deriveFine(mParams.angularBCoarse, N) : mParams.angularBCoarse;
+    vars["VisCacheParams"]["gPosACoarse"]    = mParams.posACoarse;
+    vars["VisCacheParams"]["gPosAFine"]      = (N > 1) ? deriveFine(mParams.posACoarse, N) : mParams.posACoarse;
+    vars["VisCacheParams"]["gPosBCoarse"]    = mParams.posBCoarse;
+    vars["VisCacheParams"]["gPosBFine"]      = (N > 1) ? deriveFine(mParams.posBCoarse, N) : mParams.posBCoarse;
+    vars["VisCacheParams"]["gDirBCoarse"] = mParams.dirBCoarse;
+    vars["VisCacheParams"]["gDirBFine"]   = (N > 1) ? deriveFine(mParams.dirBCoarse, N) : mParams.dirBCoarse;
     vars["VisCacheParams"]["gDistBCoarse"]    = mParams.distBCoarse;
     vars["VisCacheParams"]["gDistBFine"]      = (N > 1) ? deriveFine(mParams.distBCoarse, N) : mParams.distBCoarse;
-    vars["VisCacheParams"]["gNormalBCoarse"]  = mParams.normalBCoarse;
-    vars["VisCacheParams"]["gNormalBFine"]    = (N > 1) ? deriveFine(mParams.normalBCoarse, N) : mParams.normalBCoarse;
+    vars["VisCacheParams"]["gNormalACoarse"]  = mParams.normalACoarse;
+    vars["VisCacheParams"]["gNormalAFine"]    = (N > 1) ? deriveFine(mParams.normalACoarse, N) : mParams.normalACoarse;
     vars["VisCacheParams"]["gDiagAccumWindow"] = mParams.diagAccumWindow;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
@@ -669,9 +669,9 @@ void VisCache::renderUI(Gui::Widgets& widget)
     // Cell sizes (coarse only — fine auto-derived from coarse + numLevels)
     if (auto g = widget.group("Cell sizes"))
     {
-        g.var("Cell A coarse",           mParams.cellACoarse,    0.01f, 100.0f, 0.01f);
-        g.var("Cell B coarse",           mParams.cellBCoarse,    0.01f, 100.0f, 0.01f);
-        g.var("Angular B coarse (deg)",  mParams.angularBCoarse, 1.0f, 360.0f, 1.0f);
+        g.var("Pos A coarse",            mParams.posACoarse,    0.01f, 100.0f, 0.01f);
+        g.var("Pos B coarse",            mParams.posBCoarse,    0.01f, 100.0f, 0.01f);
+        g.var("Dir B coarse (deg)",      mParams.dirBCoarse, 1.0f, 360.0f, 1.0f);
         g.var("Dist B coarse",           mParams.distBCoarse,    0.01f, 100.0f, 0.1f);
         g.var("Diag accum window",       mParams.diagAccumWindow, 0u, 1024u);
     }

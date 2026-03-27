@@ -63,16 +63,16 @@ public:
         float    fireflyBudget;
         uint32_t numLevels;
         uint32_t flags;           ///< Packed: bit 0 = jitter, bit 1 = adaptivePMin
-        float    cellACoarse;     ///< posA coarsest cell (world units)
-        float    cellAFine;       ///< posA finest cell (auto-derived)
-        float    cellBCoarse;     ///< posB coarsest cell (pos×pos modes)
-        float    cellBFine;       ///< posB finest cell (auto-derived)
-        float    angularBCoarse;  ///< direction coarsest cell (degrees, dirdist)
-        float    angularBFine;    ///< direction finest cell (auto-derived)
+        float    posACoarse;     ///< posA coarsest cell (world units)
+        float    posAFine;       ///< posA finest cell (auto-derived)
+        float    posBCoarse;     ///< posB coarsest cell (pos×pos modes)
+        float    posBFine;       ///< posB finest cell (auto-derived)
+        float    dirBCoarse;  ///< direction coarsest cell (degrees, dirdist)
+        float    dirBFine;    ///< direction finest cell (auto-derived)
         float    distBCoarse;     ///< distance coarsest cell (world units, dirdist)
         float    distBFine;       ///< distance finest cell (auto-derived)
-        float    normalBCoarse;   ///< normal coarsest bin scale (oct [0,2] multiplier, 3=60°/bin)
-        float    normalBFine;     ///< normal finest bin scale (auto-derived)
+        float    normalACoarse;   ///< normal coarsest bin scale (oct [0,2] multiplier, 3=60°/bin)
+        float    normalAFine;     ///< normal finest bin scale (auto-derived)
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
     };
     static_assert(sizeof(GPUParams) == 72, "GPUParams must match VisCacheParams cbuffer (72 bytes)");
@@ -91,13 +91,13 @@ public:
         uint32_t numLevels       = 8u;          ///< Number of LOD levels in the cascade (1..16)
 
         // --- Per-dimension coarse cell sizes (fine auto-derived from coarse + numLevels) ---
-        float    cellACoarse     = 10.0f;       ///< posA coarsest cell (world units, auto-tuned from scene)
-        float    cellBCoarse     = 20.0f;       ///< posB coarsest cell (world units, pos×pos modes)
-        float    angularBCoarse  = 90.0f;       ///< direction coarsest cell (degrees, dirdist mode)
+        float    posACoarse     = 10.0f;       ///< posA coarsest cell (world units, auto-tuned from scene)
+        float    posBCoarse     = 20.0f;       ///< posB coarsest cell (world units, pos×pos modes)
+        float    dirBCoarse  = 90.0f;       ///< direction coarsest cell (degrees, dirdist mode)
         float    distBCoarse     = 10.0f;       ///< distance coarsest cell (world units, dirdist mode)
-        float    normalBCoarse   = 60.0f;      ///< normal coarsest cell (degrees, 60°≈6 bins, 90°≈4 bins, 360°=collapsed)
+        float    normalACoarse   = 60.0f;      ///< normal coarsest cell (degrees, 60°≈6 bins, 90°≈4 bins, 360°=collapsed)
         uint32_t diagAccumWindow = 128u;        ///< EMA window for accumulated diagnostics (0 = all frames)
-        bool     autoTuneCells   = true;        ///< Auto-derive cellACoarse from scene bounds
+        bool     autoTuneCells   = true;        ///< Auto-derive posACoarse from scene bounds
 
         // --- Decay (host-only, not uploaded to GPU params cbuffer) ---
         uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=disabled)
@@ -126,7 +126,7 @@ public:
 private:
 
     void allocateBuffers();
-    void autoTuneCellSizes();    ///< Derive cellACoarse (+ cellBCoarse, distBCoarse) from scene bounds
+    void autoTuneCellSizes();    ///< Derive posACoarse (+ posBCoarse, distBCoarse) from scene bounds
     void runDecayPass(RenderContext* pCtx);
     void readbackStats(RenderContext* pCtx);
     void autoTuneDecayPeriod();
@@ -146,7 +146,7 @@ private:
     // ------------------------------------------------------------------
     Params   mParams;
     ref<Scene> mpScene;          ///< Current scene (for bounds + camera)
-    bool     mAutoTuneCells = true;  ///< Auto-derive cellACoarse/cellBCoarse/distBCoarse from scene
+    bool     mAutoTuneCells = true;  ///< Auto-derive posACoarse/posBCoarse/distBCoarse from scene
     uint32_t mFrameCount = 0u;
 
     /// Readback stats (GPU → staging → CPU, ~4 frame latency).

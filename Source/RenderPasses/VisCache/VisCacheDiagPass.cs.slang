@@ -46,7 +46,7 @@ void csDiag(uint3 tid : SV_DispatchThreadID)
     // actual shadow ray direction, but shows whether the cache has entries
     // near this surface point at each LOD level. The upward probe catches
     // overhead/environment lighting which is the most common case.
-    float3 probeB = posW.xyz + float3(0.f, gCellACoarse, 0.f);
+    float3 probeB = posW.xyz + float3(0.f, gPosACoarse, 0.f);
     VHFResult r = vhfLookup(posW.xyz, probeB);
 
     // Write per-pixel diagnostics from the lookup result.

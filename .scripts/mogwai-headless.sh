@@ -27,7 +27,7 @@ if [ "${1:-}" = "--source" ] || [ "${1:-}" = "--synced" ]; then
 fi
 
 PATTERN="${1:?Usage: mogwai-headless.sh [--source|--synced] <Graph-pattern> [scene] [frames]}"
-SCENE="${2:-CornellBox_1AreaLight.pyscene}"
+SCENE="${2:-}"  # empty = let script's get_scenes() use ALL_SCENES
 FRAMES="${3:-2}"
 
 cd "$RUNTIME"
@@ -71,7 +71,14 @@ FAIL=0
 for MATCH in "${MATCHES[@]}"; do
     NAME="$(basename "$MATCH")"
     echo "=== Testing: $NAME ==="
-    if PROJECT_ROOT="$EXPORT_ROOT" GRAPH_SCRIPT="$MATCH" SCENE_FILE="$SCENE" NUM_FRAMES="$FRAMES" \
+    # Only override SCENE_FILE when a scene arg was given; otherwise let outer env (or script default) through.
+    if [ -n "$SCENE" ]; then
+        SCENE_FILE_ARG="SCENE_FILE=$SCENE"
+    else
+        SCENE_FILE_ARG=""
+    fi
+    if env PROJECT_ROOT="$EXPORT_ROOT" GRAPH_SCRIPT="$MATCH" NUM_FRAMES="$FRAMES" \
+        ${SCENE_FILE_ARG:+"$SCENE_FILE_ARG"} \
         "$RUNTIME/Mogwai.exe" --headless \
         --script "$HARNESS" 2>&1; then
         echo "=== PASS: $NAME ==="

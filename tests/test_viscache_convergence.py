@@ -48,7 +48,7 @@ DECAY_SHIFT      = 3         # value -= value>>shift (keeps 7/8 per step)
 MU_MIN           = 0.05
 
 def cell_size(lvl):
-    """Mirror of VisCache.slang vhfCellSize — geometric interpolation."""
+    """Mirror of VisCache.slang vhfPosASize — geometric interpolation."""
     if NUM_LEVELS <= 1:
         return CELL_COARSE
     t = lvl / (NUM_LEVELS - 1)
