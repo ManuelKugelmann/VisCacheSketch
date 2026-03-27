@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_baseline
 
 import shutil
-scene_file = os.environ.get("SCENE_FILE", "media/scenes/CornellBox_1AreaLight.pyscene")
+scene_file = os.environ.get("SCENE_FILE", "CornellBox_1AreaLight.pyscene")
 res = int(os.environ.get("RES", "512"))
 
 # Wipe baseline directory for clean output

@@ -11,12 +11,15 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, VARIANTS_ALL, plot_rays_overview
 
-SCENES = [
-    "media/scenes/CornellBox_1AreaLight.pyscene",
-    "media/scenes/CornellBox_1PointLight.pyscene",
-    "media/scenes/CornellBox_3AreaLights.pyscene",
-    "media/scenes/CornellBox_32PointLights.pyscene",
+ALL_SCENES = [
+    "CornellBox_1AreaLight.pyscene",
+    "CornellBox_1PointLight.pyscene",
+    "CornellBox_3AreaLights.pyscene",
+    "CornellBox_32PointLights.pyscene",
 ]
+# SCENE_FILE env var overrides to single scene; omit for all scenes.
+scene_override = os.environ.get("SCENE_FILE", "")
+SCENES = [scene_override] if scene_override else ALL_SCENES
 
 res = int(os.environ.get("RES", "512"))
 
