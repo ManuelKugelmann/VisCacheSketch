@@ -283,15 +283,24 @@ uint pcgHashEndpoint(int3 q, uint lvl, uint salt)
     return a ^ b ^ c ^ d ^ e;
 }
 
-/// Combined hash: hash A and B endpoints independently, then combine.
-/// Diagnostics can show hashA and hashB separately.
+// Per-dimension salt constants — each dimension gets its own hash space.
+static const uint kSaltA    = 0x12345678u;
+static const uint kSaltB    = 0x9E3779B9u;
+static const uint kSaltDist = 0x6C62272Eu;
+
+/// Hash one dimension. posB modes reuse pcgHashEndpoint with kSaltDist for distance
+/// (distance is qb.z in dirdist mode, or a constant in pos×pos mode).
+/// Per-dimension hash functions. Used directly by diagnostics (salt=0)
+/// and indirectly by pcgHash (salt=caller's differentiator).
+uint pcgHashA(int3 qa, uint lvlA, uint salt = 0u) { return pcgHashEndpoint(qa, lvlA, kSaltA ^ salt); }
+uint pcgHashB(int3 qb, uint lvlB, uint salt = 0u) { return pcgHashEndpoint(qb, lvlB, kSaltB ^ salt); }
+uint pcgHashDist(uint lvlDist, uint salt = 0u) { return pcgHashEndpoint(int3(0), lvlDist, kSaltDist ^ salt); }
+
+/// Combined hash: hashA ^ hashB ^ hashDist.
+/// salt differentiates address from fingerprint (vhfAddr vs vhfFingerprint).
 uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist, uint salt)
 {
-    uint hashA = pcgHashEndpoint(qa, lvlA, salt);
-    uint hashB = pcgHashEndpoint(qb, lvlB, salt ^ 0x9E3779B9u);
-    // Mix in lvlDist to differentiate distance levels
-    uint distMix = lvlDist * 1664525u + 1013904223u;
-    return hashA ^ hashB ^ distMix;
+    return pcgHashA(qa, lvlA, salt) ^ pcgHashB(qb, lvlB, salt) ^ pcgHashDist(lvlDist, salt);
 }
 
 
