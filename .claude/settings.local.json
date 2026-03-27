@@ -280,7 +280,8 @@
       "Bash(/c/Projects/VisCacheSketch/.scripts/sync_to_runtime.sh)",
       "Bash(NUM_FRAMES=4 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene')",
       "Bash(NUM_FRAMES=16 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'data/ReSTIRPTPass/VeachAjar/VeachAjar.pyscene')",
-      "Bash(do NUM_FRAMES=16 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' \"$scene\")"
+      "Bash(do NUM_FRAMES=16 /c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' \"$scene\")",
+      "Bash(/c/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'VisCache_Ladder00_32PL_x16.py')"
     ],
     "deny": [],
     "defaultMode": "auto"

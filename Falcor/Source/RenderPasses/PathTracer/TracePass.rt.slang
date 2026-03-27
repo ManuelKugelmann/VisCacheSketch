@@ -129,15 +129,15 @@ struct VisibilityQuery : IVisibilityQuery
 #if USE_VISCACHE_VISIBILITYCHECK
     /// CV+RRR visibility query via VisCache. Returns fractional visWeight.
     float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                               float3 normalA = float3(0.f))
+                               uint sampleIdx, float3 normalA = float3(0.f))
     {
-        return vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, normalA);
+        return vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA);
     }
 #ifdef VISCACHE_DIAGNOSTICS
     float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                                    float3 normalA = float3(0.f))
+                                    uint sampleIdx, float3 normalA = float3(0.f))
     {
-        return vcVisibility_Ray_Diag<kUseAlphaTest>(ray, sg, pixel, normalA);
+        return vcVisibility_Ray_Diag<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA);
     }
 #endif
 #endif

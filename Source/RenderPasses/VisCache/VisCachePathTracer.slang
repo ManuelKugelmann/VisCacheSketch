@@ -19,26 +19,21 @@ import Scene.RaytracingInline;
 import Utils.Sampling.SampleGenerator;
 
 /// VisCache-private sample generator: independent of the main PathTracer stream.
-/// Large offset (0xVC000000) ensures no overlap with main SampleGenerator sequence.
-/// This keeps vanilla and VisCache renders deterministically comparable.
-SampleGenerator vcCreateSG(uint2 pixel, uint frameCount)
+/// Same seed structure as PathTracer (seed * maxSpp + sampleIdx) but with large
+/// offset to avoid overlap. Each sample × frame gets a unique RR coin flip.
+SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
 {
-    return SampleGenerator(pixel, frameCount + 0x7C000000u);
-}
-
-/// Overload without frameCount — uses pixel-only seed (acceptable for RR coin flip).
-SampleGenerator vcCreateSG(uint2 pixel)
-{
-    return SampleGenerator(pixel, 0x7C000000u);
+    const uint maxSpp = kSamplesPerPixel > 0 ? kSamplesPerPixel : kMaxSamplesPerPixel;
+    return SampleGenerator(pixel, kParams.frameCount * maxSpp + sampleIdx + 0x7C000000u);
 }
 
 float vcVisibility_Ray<let UseAlphaTest : int>(
-    const Ray ray, inout SampleGenerator sg, uint2 pixel,
+    const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
     float3 normalA = float3(0.f))
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
-    SampleGenerator vcSG = vcCreateSG(pixel);
+    SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA);
 
     if (g.shouldTrace)
@@ -52,12 +47,12 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
 
 #ifdef VISCACHE_DIAGNOSTICS
 float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
-    const Ray ray, inout SampleGenerator sg, uint2 pixel,
+    const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
     float3 normalA = float3(0.f))
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
-    SampleGenerator vcSG = vcCreateSG(pixel);
+    SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA);
 
     if (g.shouldTrace)

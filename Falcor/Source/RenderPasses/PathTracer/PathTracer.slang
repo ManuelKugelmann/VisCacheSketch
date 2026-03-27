@@ -65,10 +65,10 @@ interface IVisibilityQuery
         \return Unbiased CV+RRR visibility weight.
     */
     [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                                          float3 normalA = float3(0.f));
+                                          uint sampleIdx, float3 normalA = float3(0.f));
 #ifdef VISCACHE_DIAGNOSTICS
     [mutating] float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                                               float3 normalA = float3(0.f));
+                                               uint sampleIdx, float3 normalA = float3(0.f));
 #endif
 #endif
 };
@@ -1028,10 +1028,10 @@ struct PathTracer
                     // Write diagnostics only for the primary hit's NEE ray (bounce 0).
                     // Later bounces use the non-diagnostic path to avoid overwriting.
                     float visWeight = (path.getVertexIndex() <= 1)
-                        ? vq.traceVisibilityRayCVDiag(ray, path.sg, path.getPixel(), sd.frame.N)
-                        : vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), sd.frame.N);
+                        ? vq.traceVisibilityRayCVDiag(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N)
+                        : vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
 #else
-                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), sd.frame.N);
+                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
 #endif
                     if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
 #else
