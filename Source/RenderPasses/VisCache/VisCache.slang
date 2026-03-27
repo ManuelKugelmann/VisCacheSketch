@@ -290,17 +290,16 @@ static const uint kSaltDist = 0x6C62272Eu;
 
 /// Hash one dimension. posB modes reuse pcgHashEndpoint with kSaltDist for distance
 /// (distance is qb.z in dirdist mode, or a constant in pos×pos mode).
-/// Per-dimension hash functions. Used directly by diagnostics (salt=0)
-/// and indirectly by pcgHash (salt=caller's differentiator).
-uint pcgHashA(int3 qa, uint lvlA, uint salt = 0u) { return pcgHashEndpoint(qa, lvlA, kSaltA ^ salt); }
-uint pcgHashB(int3 qb, uint lvlB, uint salt = 0u) { return pcgHashEndpoint(qb, lvlB, kSaltB ^ salt); }
-uint pcgHashDist(uint lvlDist, uint salt = 0u) { return pcgHashEndpoint(int3(0), lvlDist, kSaltDist ^ salt); }
+/// Per-dimension hash functions. Same calls in rendering and diagnostics.
+uint pcgHashA(int3 qa, uint lvlA) { return pcgHashEndpoint(qa, lvlA, kSaltA); }
+uint pcgHashB(int3 qb, uint lvlB) { return pcgHashEndpoint(qb, lvlB, kSaltB); }
+uint pcgHashDist(uint lvlDist)     { return pcgHashEndpoint(int3(0), lvlDist, kSaltDist); }
 
-/// Combined hash: hashA ^ hashB ^ hashDist.
-/// salt differentiates address from fingerprint (vhfAddr vs vhfFingerprint).
+/// Combined hash: hashA ^ hashB ^ hashDist ^ salt.
+/// salt differentiates address from fingerprint (applied to final output only).
 uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist, uint salt)
 {
-    return pcgHashA(qa, lvlA, salt) ^ pcgHashB(qb, lvlB, salt) ^ pcgHashDist(lvlDist, salt);
+    return pcgHashA(qa, lvlA) ^ pcgHashB(qb, lvlB) ^ pcgHashDist(lvlDist) ^ salt;
 }
 
 
