@@ -266,7 +266,7 @@ if [ ! -d "$MEDIA_DIR/Manhattan" ]; then
     echo "  3. Extract to: $MEDIA_DIR/Manhattan/"
     echo ""
     echo "[scenes] Credit: MENUDQ2, OpenStreetMap contributors (CC-BY 4.0)"
-    echo "[scenes] Used in Landscape.pyscene (Manhattan + Bistro in Central Park)"
+    echo "[scenes] Used in ManhattanBistro.pyscene (Manhattan + Bistro in Central Park)"
     echo ""
 else
     echo "[scenes] Manhattan already exists, skipping"

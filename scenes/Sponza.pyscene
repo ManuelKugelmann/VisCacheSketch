@@ -12,19 +12,19 @@ sceneBuilder.importScene(_sponza_obj)
 
 # Camera — classic atrium view
 camera = Camera('VisCacheDefault')
-# Sponza OBJ is in centimeters (~3600 wide, ~1500 tall, ~2300 deep)
+# Sponza OBJ is in centimeters but Falcor remaps to meters on import
+# (~36m wide, ~15m tall, ~23m deep)
 # Classic view: from one end of the atrium looking down the length
-# The atrium runs along X with open roof above
-camera.position = float3(-800.0, 200.0, -150.0)
-camera.target   = float3(600.0, 150.0, 50.0)
+camera.position = float3(-8.0, 2.0, -1.5)
+camera.target   = float3(6.0, 1.5, 0.5)
 camera.up       = float3(0.0, 1.0, 0.0)
 camera.focalLength = 21.0
-camera.farPlane = 10000.0
+camera.farPlane = 100.0
 sceneBuilder.addCamera(camera)
 
 # Sun — harsh midday through the open roof
 sun = DirectionalLight('Sun')
-sun.intensity = float3(53.0, 48.0, 40.0)
+sun.intensity = float3(8.0, 7.0, 5.5)
 sun.direction = float3(0.1, -1.0, 0.05)
 sceneBuilder.addLight(sun)
 

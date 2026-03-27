@@ -1,4 +1,4 @@
-# Landscape.pyscene — Manhattan + Bistro in Central Park
+# ManhattanBistro.pyscene — Manhattan + Bistro in Central Park
 #
 # Scale-agnosticism stress test for VisCache.
 # Manhattan OSM (~21 km, 2.9M tris) provides city-scale extent.
