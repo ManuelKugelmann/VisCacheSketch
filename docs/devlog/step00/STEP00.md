@@ -25,8 +25,6 @@ Used as error and noise reference for all downstream steps.
 
 ## Baseline renders — CornellBox_32PointLights
 
-| x1 SPP | x4096 SPP |
-|--------|-----------|
-| ![](renders/CornellBox_32PointLights_x1.png) | ![](renders/CornellBox_32PointLights_x4096.png) |
-
-*(x16 baseline not captured for 32PointLights.)*
+| x1 SPP | x16 SPP | x4096 SPP |
+|--------|---------|-----------|
+| ![](renders/CornellBox_32PointLights_x1.png) | ![](renders/CornellBox_32PointLights_x16.png) | ![](renders/CornellBox_32PointLights_x4096.png) |
