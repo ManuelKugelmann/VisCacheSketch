@@ -3,12 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RUNTIME="$PROJECT_ROOT/runtime"
 
-cd "$RUNTIME"
-GRAPH_SCRIPT="scripts/VisCache/MinimalPathTracer_VisCache_Graph.py" \
-SCENE_FILE="media/scenes/CornellBox_1AreaLight.pyscene" \
-NUM_FRAMES=1 \
-    "$RUNTIME/Mogwai.exe" --headless --script "scripts/VisCache/RunGraphHeadless.py" 2>&1 \
-    | tee /dev/stderr | grep -qE '\[headless\] OK' && echo "PASS" || { echo "FAIL"; exit 1; }
+OUTPUT=$("$SCRIPT_DIR/mogwai-headless.sh" 'MinimalPathTracer_VisCache_Graph.py' 'CornellBox_1AreaLight.pyscene' 1 2>&1)
+echo "$OUTPUT"
+if echo "$OUTPUT" | grep -qF '[headless] OK'; then
+    echo "PASS"
+else
+    echo "FAIL"
+    exit 1
+fi
