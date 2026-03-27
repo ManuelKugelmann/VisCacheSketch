@@ -251,7 +251,22 @@
       "Bash(cp C:/Projects/VisCacheSketch/scripts/validate_scripts.py C:/Projects/VisCacheSketch/scripts/ValidateScripts.py)",
       "Bash(rm C:/Projects/VisCacheSketch/scripts/run_graph_headless.py C:/Projects/VisCacheSketch/scripts/capture_gallery.py C:/Projects/VisCacheSketch/scripts/smoke_test.py C:/Projects/VisCacheSketch/scripts/validate_scripts.py C:/Projects/VisCacheSketch/scripts/smoke_test_render.py)",
       "Bash(sed -i 's/run_graph_headless\\\\.py/RunGraphHeadless.py/g' C:/Projects/VisCacheSketch/CLAUDE.md)",
-      "Bash(sed -i 's/run_graph_headless\\\\.py/RunGraphHeadless.py/g; s/capture_gallery\\\\.py/CaptureGallery.py/g' C:/Projects/VisCacheSketch/scripts/RunGraphHeadless.py C:/Projects/VisCacheSketch/scripts/CaptureGallery.py C:/Projects/VisCacheSketch/scripts/SmokeTest.py C:/Projects/VisCacheSketch/scripts/ValidateScripts.py)"
+      "Bash(sed -i 's/run_graph_headless\\\\.py/RunGraphHeadless.py/g; s/capture_gallery\\\\.py/CaptureGallery.py/g' C:/Projects/VisCacheSketch/scripts/RunGraphHeadless.py C:/Projects/VisCacheSketch/scripts/CaptureGallery.py C:/Projects/VisCacheSketch/scripts/SmokeTest.py C:/Projects/VisCacheSketch/scripts/ValidateScripts.py)",
+      "Bash(C:/Projects/VisCacheSketch/TODO.md:*)",
+      "Bash(runtime_dir=\"C:\\\\Projects\\\\VisCacheSketch/runtime/scripts/VisCache\")",
+      "Bash(__NEW_LINE_3c043f00246b7ac1__ echo:*)",
+      "Bash(cmp \"$runtime_dir/capture_gallery.py\" \"$runtime_dir/CaptureGallery.py\")",
+      "Bash(cmp \"$runtime_dir/run_graph_headless.py\" \"$runtime_dir/RunGraphHeadless.py\")",
+      "Bash(cmp \"$runtime_dir/smoke_test.py\" \"$runtime_dir/SmokeTest.py\")",
+      "Bash(C:/Projects/VisCacheSketch/.scripts/mogwai-headless.sh 'TestRender.py' 'CornellBox_1PointLight.pyscene' 32 2>&1)",
+      "Bash(__NEW_LINE_54fa56725b7002a3__ fi:*)",
+      "Bash(__NEW_LINE_54fa56725b7002a3__ done:*)",
+      "Bash(__NEW_LINE_3f7b00546b54fc9b__ echo:*)",
+      "Bash(__NEW_LINE_d49abadc1d632b49__ echo:*)",
+      "Bash(__NEW_LINE_251c7201c8536e91__ echo:*)",
+      "Bash(__NEW_LINE_cee709f7efb1c53f__ echo:*)",
+      "Bash(__NEW_LINE_0ea53273f537d77c__ cd:*)",
+      "Bash(SCENE_FILE=\"scenes/CornellBox_1AreaLight.pyscene\" .scripts/mogwai-headless.sh 'TestRender.py' 'CornellBox_1AreaLight.pyscene' 32)"
     ],
     "deny": [],
     "defaultMode": "auto"

@@ -4,7 +4,7 @@ TestRender.py — Quick test render: PathTracer + capture.
 Usage:
     .scripts/mogwai-headless.sh 'TestRender.py' [scene] [frames]
 
-Output: captures/testrender/<SceneName>/
+Output: captures/testrender/ (flat, all scenes in one folder)
 
 Env vars:
     SCENE_FILE  — scene path (default: CornellBox_1AreaLight.pyscene)
@@ -20,7 +20,7 @@ warmup     = int(os.environ.get("NUM_FRAMES", "32"))
 res        = int(os.environ.get("RES", "512"))
 
 scene_name = os.path.splitext(os.path.basename(scene_file))[0]
-out_dir    = f"captures/testrender/{scene_name}"
+out_dir    = "captures/testrender"
 os.makedirs(out_dir, exist_ok=True)
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "PathTracer_Graph.py")) as _f:

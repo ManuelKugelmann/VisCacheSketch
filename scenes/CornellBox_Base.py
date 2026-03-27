@@ -77,7 +77,7 @@ thinwall = TriangleMesh.createCube(float3(0.6, 0.6, 0.01))
 thinwall.name = 'ThinWall'
 thinwallID = sceneBuilder.addTriangleMesh(thinwall, white)
 thinwallNode = sceneBuilder.addNode('ThinWall', Transform(
-    translation=float3(-0.35, 0.3, -0.2),
+    translation=float3(-0.64, 0.3, -0.12),
     rotationEulerDeg=float3(0, 60, 0),
 ))
 sceneBuilder.addMeshInstance(thinwallNode, thinwallID)
@@ -150,10 +150,10 @@ short_pole = TriangleMesh.createCube(float3(0.03, 0.6, 0.03))
 short_pole.name = 'ShortPole'
 shortPoleID = sceneBuilder.addTriangleMesh(short_pole, pole_mat)
 for idx, (tx, ty, tz, rx, ry, rz, mid) in enumerate([
-    ( 0.0,  0.7, -0.6,   12,  15,   0, poleID),
-    ( 0.15, 0.7, -0.5,  -10, -10,  15, poleID),
-    (-0.1,  0.7, -0.55,   8,  40,  -8, poleID),
-    ( 0.05, 0.7, -0.45, -15,  25,   5, poleID),
+    ( 0.0,  0.7, -0.6,    5,  15,   0, poleID),
+    ( 0.15, 0.7, -0.5,  -4, -10,   6, poleID),
+    (-0.1,  0.7, -0.55,  3,  40,  -3, poleID),
+    ( 0.05, 0.7, -0.45, -6,  25,   2, poleID),
     ( 0.0,  0.08, -0.5,   85,  20,   0, shortPoleID),
     ( 0.1,  0.12, -0.4,   92, -35,   0, shortPoleID),
 ]):
@@ -165,7 +165,7 @@ for idx, (tx, ty, tz, rx, ry, rz, mid) in enumerate([
 
 # --- Camera (zoomed to fill square frame) ---
 camera = Camera('CornellBoxCam')
-camera.position = float3(0.0, 1.0, -3.1)
+camera.position = float3(0.0, 1.0, -3.6)
 camera.target   = float3(0.0, 1.0, 0.0)
 camera.up       = float3(0.0, 1.0, 0.0)
 camera.focalLength = 28.0

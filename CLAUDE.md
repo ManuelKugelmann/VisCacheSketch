@@ -112,7 +112,11 @@ note[e5f6a7b8]: <freeform>           # another session (read-only)
 ```
 `mode` is global — one value, attributed with `set-by:sid|date`. All other fields are per-session, keyed by short ID. Write only to your own keys. Your short ID is the `self:` line injected at the top of the context.
 
-**`.agents/handoff`** — append-only log for longer-form handoffs, findings, decisions. Not auto-injected — read when picking up a task.
+Update `note[sid]:` when your status changes: renames, mode switches, active experiment, blockers, what you just finished. One line only — it lands in every prompt. Update `mode:`/`worktree:` if you changed them.
+
+**Always read `.agents/shout` before writing it.** Patch only your own keyed lines and `mode:` (if changed); preserve all other sessions' lines. Never overwrite the whole file cold.
+
+**`.agents/handoff`** — append-only log for longer-form handoffs, findings, decisions. Not auto-injected — read when picking up a task. Use for: design decisions, non-obvious fixes, multi-step findings, anything needing more than one line.
 ```
 ---
 by: <agent> | <date>

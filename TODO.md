@@ -432,3 +432,12 @@ All cross-refs, threshold naming, and Table 1b added. No remaining discrepancies
 - [ ] Propagate V=1 to nearer bins from d_query on insert
 - [ ] Read CommittedRayT() from any-hit result in ShadingCV.slang
 - [ ] Variance gate on propagation targets: skip bins that already agree
+
+## Infra / Cleanup
+
+### Script naming — shell and batch files
+- [ ] Rename `scripts/*.sh` snake_case → kebab-case (e.g. `download_release.sh` → `download-release.sh`)
+- [ ] Rename paired `scripts/*.bat` to match (e.g. `download_release.bat` → `download-release.bat`)
+- [ ] Rename `.scripts/sync_to_runtime.sh` → `.scripts/sync-to-runtime.sh`
+- [ ] Update all cross-references: CI workflows, quickstart.bat/sh, run_release.bat/sh, update.bat/sh, docs/
+- Convention: kebab-case for .sh and .bat; Mogwai .py = PascalCase; utility .py = snake_case
