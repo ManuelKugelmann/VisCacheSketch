@@ -34,6 +34,26 @@ except ImportError:
 kResX = 512
 kResY = 512
 
+# Default scene list for ladder tests.
+ALL_SCENES = [
+    "CornellBox_1AreaLight.pyscene",
+    "CornellBox_1PointLight.pyscene",
+    "CornellBox_3AreaLights.pyscene",
+    "CornellBox_32PointLights.pyscene",
+]
+
+def get_scenes():
+    """Resolve scene list from env vars.
+    SCENES (comma-separated) > SCENE_FILE (single) > ALL_SCENES (default).
+    """
+    scenes_env = os.environ.get("SCENES", "")
+    if scenes_env:
+        return [s.strip() for s in scenes_env.split(",") if s.strip()]
+    scene_file = os.environ.get("SCENE_FILE", "")
+    if scene_file:
+        return [scene_file]
+    return ALL_SCENES
+
 # Shared base: 1 level, no jitter, all features off, always trace
 BASE = {
     "numLevels": 1,
@@ -119,6 +139,34 @@ def _make_variants(normal_active, quant=None):
 VARIANTS_POS_NORM1 = _make_variants(normal_active=False)
 VARIANTS_POS_NORM  = _make_variants(normal_active=True)
 VARIANTS_ALL       = VARIANTS_POS_NORM1 + VARIANTS_POS_NORM
+
+# ---------------------------------------------------------------------------
+# Stats CSV
+# ---------------------------------------------------------------------------
+_CSV_FIELDS = ["scene", "variant", "spp", "warmup", "averaging",
+               "rays_traced_pct", "coldmiss_pct", "timestamp"]
+
+def _step_csv(step_name):
+    return os.path.join("captures", "ladder", step_name, "stats.csv")
+
+def append_stats_csv(step, scene, variant, spp, warmup, averaging,
+                     rays_traced_pct, coldmiss_pct):
+    """Append one row to the per-step stats CSV (creates with header if absent)."""
+    import csv, datetime
+    path = _step_csv(step)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    write_header = not os.path.exists(path)
+    with open(path, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=_CSV_FIELDS)
+        if write_header:
+            w.writeheader()
+        w.writerow({
+            "scene": scene, "variant": variant,
+            "spp": spp, "warmup": warmup, "averaging": averaging,
+            "rays_traced_pct": f"{rays_traced_pct:.4f}",
+            "coldmiss_pct":    f"{coldmiss_pct:.4f}",
+            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        })
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -207,75 +255,129 @@ def stitch_plate(captureDir, prefix, variant_name, stats=None):
     print(f"  [plate] {os.path.basename(out)}")
     return out
 
-def plot_rays_overview(step_name, all_stats):
-    """Scatter plot: rays traced % — 1 column per scene, 1 color+marker per variant.
+def plot_rays_overview(step_name):
+    """Scatter: rays traced % — scene groups on x-axis, (variant×spp) series.
 
-    Args:
-        step_name: ladder step ("01", etc.)
-        all_stats: list of {"variant": str, "scene": str, "rays_traced_pct": float}
-    Returns: output path or None.
+    Visual encoding axes:
+      Hue family  : A-side (pos_norm1=blue/teal, pos_norm=orange/red)
+      Lightness   : B-side complexity (pos1=light → dir_dist=dark within family)
+      Marker shape: B-side type (D=pos1, s=dir1_dist1, o=pos, ^=dir_dist1, v=dir_dist)
+      Filled/hollow: SPP (filled=lowest, hollow=higher)
+    Rightmost "All" column = mean of per-scene means (equal scene weight).
+    Legend grouped: norm1 family first, norm family second; SPP variants adjacent.
     """
-    import matplotlib
+    import csv, matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
 
-    if not all_stats:
+    csv_path = _step_csv(step_name)
+    if not os.path.exists(csv_path):
+        print(f"[overview] No stats CSV yet: {csv_path}")
         return None
 
-    scenes = sorted(set(s["scene"] for s in all_stats))
-    variants = sorted(set(s["variant"] for s in all_stats))
+    rows = []
+    with open(csv_path, newline="") as f:
+        for row in csv.DictReader(f):
+            try:
+                row["rays_traced_pct"] = float(row["rays_traced_pct"])
+                row["spp"] = int(row["spp"])
+            except (ValueError, KeyError):
+                continue
+            rows.append(row)
 
-    lookup = {(s["scene"], s["variant"]): s.get("rays_traced_pct", -1) for s in all_stats}
+    if not rows:
+        print(f"[overview] No data in {csv_path}")
+        return None
 
-    # Per-variant style: (marker, color) — same marker = same addressing family.
-    # pos×pos family: circle
-    # collapsed/pos×1 family: diamond
-    # dir+dist family: triangle
-    VARIANT_STYLE = {
-        # norm1 (collapsed normal) — solid markers
-        "pos_norm1__pos1":       ("D", "#2ca02c"),  # green diamond
-        "pos_norm1__dir1_dist1": ("D", "#d62728"),  # red diamond
-        "pos_norm1__pos":        ("o", "#1f77b4"),  # blue circle
-        "pos_norm1__dir_dist1":  ("^", "#9467bd"),  # purple triangle
-        "pos_norm1__dir_dist":   ("^", "#8c564b"),  # brown triangle
-        # norm (active normal)
-        "pos_norm__pos1":        ("D", "#bcbd22"),  # olive diamond
-        "pos_norm__dir1_dist1":  ("D", "#e377c2"),  # pink diamond
-        "pos_norm__pos":         ("o", "#17becf"),  # cyan circle
-        "pos_norm__dir_dist1":   ("^", "#7f7f7f"),  # gray triangle
-        "pos_norm__dir_dist":    ("^", "#17becf"),  # cyan triangle
-    }
-    # Fallback for unknown variants
-    _fallback_markers = ["s", "v", "P", "*", "X", "h"]
-    _fallback_colors = list(plt.cm.tab10.colors)
+    scenes   = sorted(set(r["scene"]   for r in rows))
+    variants = sorted(set(r["variant"] for r in rows))
+    spps     = sorted(set(r["spp"]     for r in rows))
 
-    # Stagger variants horizontally within each scene column
-    n = len(variants)
-    spread = 0.6
-    offsets = np.linspace(-spread / 2, spread / 2, n) if n > 1 else [0.0]
+    # --- Visual encoding ---
+    # B-side → (marker, complexity rank 0–4)
+    _B = {"pos1": ("D", 0), "dir1_dist1": ("s", 1), "pos": ("o", 2),
+          "dir_dist1": ("^", 3), "dir_dist": ("v", 4)}
+    # Hue family palettes: light→dark matches complexity rank
+    _C_NORM1 = ["#aec7e8", "#1f77b4", "#17becf", "#0d6370", "#083040"]  # blue/teal
+    _C_NORM  = ["#ffbb78", "#ff7f0e", "#e05c1a", "#a03010", "#601808"]  # orange/red
 
-    x = np.arange(len(scenes))
-    fig, ax = plt.subplots(figsize=(max(6, len(scenes) * 1.8), 5))
+    def _style(vname):
+        if "__" not in vname:
+            return "o", "#888888"
+        a, b = vname.split("__", 1)
+        marker, rank = _B.get(b, ("o", 0))
+        palette = _C_NORM1 if a == "pos_norm1" else (_C_NORM if a == "pos_norm" else None)
+        color = palette[rank] if palette else plt.cm.tab10.colors[rank % 10]
+        return marker, color
 
-    for i, vname in enumerate(variants):
-        m, c = VARIANT_STYLE.get(vname,
-            (_fallback_markers[i % len(_fallback_markers)],
-             _fallback_colors[i % len(_fallback_colors)]))
-        vals = [lookup.get((sn, vname), None) for sn in scenes]
-        xs = [xi + offsets[i] for xi, v in zip(x, vals) if v is not None and v >= 0]
-        ys = [v for v in vals if v is not None and v >= 0]
-        ax.scatter(xs, ys, label=vname, marker=m, color=c, s=30, zorder=3)
-        for xi, yi in zip(xs, ys):
-            ax.annotate(f"{yi:.0f}%", (xi, yi), textcoords="offset points",
-                        xytext=(4, 3), fontsize=6, color=c)
+    # --- Legend order: norm1 family then norm family, each sorted by B-side rank,
+    #     with SPP variants (filled/hollow) kept adjacent ---
+    def _sort_key(vname):
+        if "__" not in vname:
+            return (2, 0, vname)
+        a, b = vname.split("__", 1)
+        fam = 0 if a == "pos_norm1" else (1 if a == "pos_norm" else 2)
+        rank = _B.get(b, ("o", 99))[1]
+        return (fam, rank, vname)
 
-    ax.set_ylabel("Rays Traced %")
-    ax.set_title(f"Step {step_name} — Rays Traced")
-    ax.set_xticks(x)
-    ax.set_xticklabels([s.replace("CornellBox_", "") for s in scenes],
+    variants_ordered = sorted(variants, key=_sort_key)
+
+    # --- X positions: scenes + gap + "All" ---
+    n_sc   = len(scenes)
+    scene_x = {s: i for i, s in enumerate(scenes)}
+    all_x   = n_sc + 0.5
+
+    n_series = len(variants_ordered) * len(spps)
+    spread   = 0.65
+    offsets  = np.linspace(-spread / 2, spread / 2, n_series) if n_series > 1 else [0.0]
+
+    fig, ax = plt.subplots(figsize=(max(7, (n_sc + 2) * 2.0), 5))
+
+    series_idx = 0
+    legend_handles = []
+    for vname in variants_ordered:
+        marker, color = _style(vname)
+        for spp in spps:
+            filled = (spp == spps[0])
+            fc     = color if filled else "none"
+            label  = vname if len(spps) == 1 else f"{vname} x{spp}"
+
+            # Per-scene individual run dots
+            pts = [(scene_x[r["scene"]] + offsets[series_idx], r["rays_traced_pct"])
+                   for r in rows
+                   if r["variant"] == vname and r["spp"] == spp
+                   and r["rays_traced_pct"] >= 0]
+
+            # "All" column: mean of per-scene means (equal scene weight)
+            scene_means = []
+            for s in scenes:
+                sv = [r["rays_traced_pct"] for r in rows
+                      if r["variant"] == vname and r["spp"] == spp
+                      and r["scene"] == s and r["rays_traced_pct"] >= 0]
+                if sv:
+                    scene_means.append(float(np.mean(sv)))
+            if scene_means:
+                pts.append((all_x + offsets[series_idx], float(np.mean(scene_means))))
+
+            if pts:
+                xs, ys = zip(*pts)
+                h = ax.scatter(xs, ys, label=label, marker=marker, color=color,
+                               facecolors=fc, s=30, zorder=3)
+                legend_handles.append(h)
+            series_idx += 1
+
+    # x-axis with separator
+    ax.set_xticks(list(range(n_sc)) + [all_x])
+    ax.set_xticklabels([s.replace("CornellBox_", "") for s in scenes] + ["All"],
                        rotation=20, ha="right", fontsize=9)
-    ax.legend(fontsize=7, loc="best")
+    ax.axvline(x=n_sc, color="#bbbbbb", linestyle="--", linewidth=0.8, zorder=1)
+
+    spp_note = "filled=x" + str(spps[0]) + (f", hollow=x{spps[-1]}" if len(spps) > 1 else "")
+    ax.set_ylabel("Rays Traced %")
+    ax.set_title(f"Step {step_name} — Rays Traced  ({spp_note})")
+    ax.legend(handles=legend_handles, fontsize=6, loc="best",
+              ncol=max(1, len(variants_ordered) // 6))
     ax.set_ylim(0, 105)
     ax.grid(axis="y", alpha=0.3)
     ax.grid(axis="x", alpha=0.15)
@@ -517,6 +619,10 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             stats["scene"] = scene_name
             stats["spp"] = spp
             all_stats.append(stats)
+
+            append_stats_csv(step_name, scene_name, variant_name, spp,
+                             warmup, averaging,
+                             stats["rays_traced_pct"], stats["coldmiss_pct"])
 
             m.removeGraph(g)
 
