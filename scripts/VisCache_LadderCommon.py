@@ -4,8 +4,12 @@ VisCache_LadderCommon.py — Shared infrastructure for ladder test steps.
 Provides:
 - VARIANTS_POS_NORM1 / VARIANTS_POS_NORM / VARIANTS_ALL: addressing mode configurations
 - BASE: shared base config (1 level, no jitter, all features off)
+- get_scenes(): resolve scene list from SCENES / SCENE_FILE env vars or defaults
 - run_variants(): execute all variants × frame configs, capture + postprocess
+- run_baseline(): render vanilla PathTracer baselines, skip if cached
 - postprocess(): EXR → named PNG extraction with grid layout
+- append_stats_csv(): upsert per-experiment row in per-step stats CSV
+- plot_rays_overview(): scatter plot of rays traced % across scenes and variants
 """
 import os, sys, glob, shutil
 
@@ -143,30 +147,50 @@ VARIANTS_ALL       = VARIANTS_POS_NORM1 + VARIANTS_POS_NORM
 # ---------------------------------------------------------------------------
 # Stats CSV
 # ---------------------------------------------------------------------------
-_CSV_FIELDS = ["scene", "variant", "spp", "warmup", "averaging",
+# key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + warmup + averaging + spp + res + variant
+_CSV_FIELDS = ["key", "scene", "variant", "spp", "warmup", "averaging",
                "rays_traced_pct", "coldmiss_pct", "timestamp"]
 
 def _step_csv(step_name):
     return os.path.join("captures", "ladder", step_name, "stats.csv")
 
-def append_stats_csv(step, scene, variant, spp, warmup, averaging,
+def append_stats_csv(step, scene, prefix, variant, spp, warmup, averaging,
                      rays_traced_pct, coldmiss_pct):
-    """Append one row to the per-step stats CSV (creates with header if absent)."""
+    """Upsert one row keyed by experiment identity (scene + config).
+    key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
+    Re-run of the same experiment overwrites its row; different configs coexist.
+    """
     import csv, datetime
     path = _step_csv(step)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    write_header = not os.path.exists(path)
-    with open(path, "a", newline="") as f:
+
+    key = f"{scene}_{prefix.rstrip('_')}"
+    new_row = {
+        "key": key,
+        "scene": scene, "variant": variant,
+        "spp": str(spp), "warmup": str(warmup), "averaging": str(averaging),
+        "rays_traced_pct": f"{rays_traced_pct:.4f}",
+        "coldmiss_pct":    f"{coldmiss_pct:.4f}",
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+
+    rows = []
+    replaced = False
+    if os.path.exists(path):
+        with open(path, newline="") as f:
+            for row in csv.DictReader(f):
+                if row.get("key") == key:
+                    rows.append(new_row)
+                    replaced = True
+                else:
+                    rows.append(row)
+    if not replaced:
+        rows.append(new_row)
+
+    with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=_CSV_FIELDS)
-        if write_header:
-            w.writeheader()
-        w.writerow({
-            "scene": scene, "variant": variant,
-            "spp": spp, "warmup": warmup, "averaging": averaging,
-            "rays_traced_pct": f"{rays_traced_pct:.4f}",
-            "coldmiss_pct":    f"{coldmiss_pct:.4f}",
-            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-        })
+        w.writeheader()
+        w.writerows(rows)
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -360,11 +384,13 @@ def plot_rays_overview(step_name):
             if scene_means:
                 pts.append((all_x + offsets[series_idx], float(np.mean(scene_means))))
 
-            if pts:
-                xs, ys = zip(*pts)
-                h = ax.scatter(xs, ys, label=label, marker=marker, color=color,
-                               facecolors=fc, s=30, zorder=3)
-                legend_handles.append(h)
+            if not pts:
+                series_idx += 1
+                continue
+            xs, ys = zip(*pts)
+            h = ax.scatter(xs, ys, label=label, marker=marker, color=color,
+                           facecolors=fc, s=30, zorder=3)
+            legend_handles.append(h)
             series_idx += 1
 
     # x-axis with separator
@@ -620,7 +646,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             stats["spp"] = spp
             all_stats.append(stats)
 
-            append_stats_csv(step_name, scene_name, variant_name, spp,
+            append_stats_csv(step_name, scene_name, pfx, variant_name, spp,
                              warmup, averaging,
                              stats["rays_traced_pct"], stats["coldmiss_pct"])
 

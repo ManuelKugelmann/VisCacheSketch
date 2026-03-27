@@ -54,7 +54,6 @@ VARIANTS_02 = [
     }),
 ]
 
-all_stats = []
 for scene_file in get_scenes():
     # Ensure x32 baseline exists in step 00
     run_baseline(
@@ -66,7 +65,7 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
-    stats = run_variants(
+    run_variants(
         step_name="02",
         frame_configs=[(1, 1, 1), (1, 1, 16)],
         scene_file=scene_file,
@@ -74,7 +73,6 @@ for scene_file in get_scenes():
         resX=res, resY=res,
         mogwai_globals=globals(),
     )
-    all_stats.extend(stats)
 
 plot_rays_overview("02")
 _HEADLESS_SCRIPT_DONE = True
