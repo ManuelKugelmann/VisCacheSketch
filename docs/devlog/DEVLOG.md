@@ -15,7 +15,7 @@ Full plates and stats in each step's subfolder.
 
 ## [Step 00 — Vanilla Baselines](step00/STEP00.md)
 
-Vanilla PathTracer (no VisCache) at x1 / x16 / x4096 SPP. Error and ground-truth reference for downstream steps. No VisCache plates.
+Vanilla PathTracer (no VisCache) at x1 / x16 / x4096 SPP. Error and ground-truth reference for downstream steps.
 
 | x1 SPP | x16 SPP | x4096 SPP |
 |--------|---------|-----------|
