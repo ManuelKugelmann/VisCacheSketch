@@ -6,165 +6,128 @@ VisCacheSketch — Visibility Prediction-with-Correction for real-time path trac
 
 Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.github.io/VisCacheSketch/paper.html). 2006 ancestor: `docs/references/Kugelmann2006_ThesisMK.pdf`.
 
-## Directory Layout & Paths
+## Directory Layout
 
-- `Falcor/` — git subtree (not submodule), keep close to NVIDIA original; local bug fixes listed in `Falcor/LOCAL_FIXES.md`
-- `Source/RenderPasses/VisCache/` — Visibility Cache pass; see [`INTEGRATION.md`](Source/RenderPasses/VisCache/INTEGRATION.md) for per-renderer integration details and ablation switches
+- `Falcor/` — git subtree (not submodule); local fixes in `Falcor/LOCAL_FIXES.md`
+- `Source/RenderPasses/VisCache/` — VisCache pass; see [`INTEGRATION.md`](Source/RenderPasses/VisCache/INTEGRATION.md) for ablation switches
 - `Source/RenderPasses/ReSTIRPTPass/` — ReSTIR PT pass (DQLin, Falcor 8 port)
-- `scripts/` — .py graph scripts, smoke tests, validation scripts
-- `.scripts/` — shell wrappers for common operations (build, test, deploy)
-- `scenes/` — .pyscene scene configs (camera, lights, env map); see [`docs/PYSCENE_API.md`](docs/PYSCENE_API.md) for Falcor 8 API reference
-- `runtime/` — build output directory (CMake builds directly here via `FALCOR_RUNTIME_OUTPUT_DIRECTORY`)
-  - `runtime/shaders/RenderPasses/` — deployed .slang shaders
-  - `runtime/data/ReSTIRPTPass/` — data files (e.g. 16RooksPattern256.txt)
-  - `runtime/scripts/VisCache/` — graph configs and smoke tests
-  - `runtime/media/` — all scene assets (Arcade + TestScenes bundled from CI; Bistro, Sponza downloaded)
+- `scripts/` — .py graph scripts, smoke tests, validation; `.scripts/` — shell wrappers
+- `scenes/` — .pyscene configs (camera, lights, env map); see [`docs/PYSCENE_API.md`](docs/PYSCENE_API.md)
+- `runtime/` — flat build output (`shaders/RenderPasses/`, `data/ReSTIRPTPass/`, `scripts/VisCache/`, `media/`)
 - `viscachepaper/sections/*.md` — WIP paper content
+
+## Build System
+
+- **Always build via `build.bat`** — never invoke CMake/MSBuild directly
+  - `build.bat --skip-setup` — incremental (skips packman/submodules)
+  - `build.bat --clean` — full reconfigure (removes CMake cache)
+- **Flat output to `runtime/`** — no `Debug/`/`Release/` subdirs; Mogwai CWD must be `runtime/`
+- **Shader source of truth is `Source/`** — never edit under `runtime/shaders/`
+- **Plugins via `FALCOR_PLUGIN_DIRS`** — `Source/RenderPasses/` builds from source, no copy into Falcor tree
+- Packman fetches binary deps (CUDA, D3D12 Agility SDK, nvtt, slang, falcor_media/Arcade+TestScenes)
+- CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`; Windows requires SDK 10.0.19041.0 (`windows-2022` runner, NOT `windows-latest`)
+- CMake macros: `target_copy_shaders`, `target_copy_data`, `target_copy_scripts`
+- Default to **Debug builds** for ladder tests; Release only for timing benchmarks
+- CI: `build.yml` (binaries+release), `validate.yml` (algorithm), `paper.yml` (GitHub Pages), `quickstart.yml`; runs `ubuntu-22.04` + `windows-2022`
 
 ## Scripting
 
 - **Prefer `.bat` over `.ps1`** — PowerShell execution policies block `.ps1`
-- **Run `.bat` files directly from bash** — Git Bash executes them via cmd.exe automatically; do NOT wrap with `cmd.exe /c "..." 2>&1` as output gets swallowed
-- All .bat scripts resolve ROOT with `for %%I in ("%~dp0..") do set "ROOT=%%~fI"` (clean absolute path, no `..`)
+- **Run `.bat` directly from bash** — Git Bash invokes cmd.exe; do NOT wrap with `cmd.exe /c "..."` (output swallowed)
+- `.bat` ROOT resolution: `for %%I in ("%~dp0..") do set "ROOT=%%~fI"` (clean absolute path, no `..`)
 - Two `.gitmodules` (root + `Falcor/`) — use `sync-submodules.sh` to sync
-
-## Build System
-
-- **External plugin builds via `FALCOR_PLUGIN_DIRS`** — plugins in `Source/RenderPasses/` build directly from source, no copy into Falcor tree needed. `build.bat` passes `-DFALCOR_PLUGIN_DIRS=...` to cmake.
-- **Build output goes directly to `runtime/`** — flat output, no `Debug/`/`Release/` subdirectory. Mogwai working directory must be `runtime/`, never `runtime/Release/`. All paths (scripts, captures, shaders) are relative to `runtime/`
-- Packman fetches binary deps (CUDA, D3D12 Agility SDK, nvtt, slang); also `falcor_media` (Arcade, TestScenes)
-- CMake presets: `linux-gcc-ci`, `windows-vs2022-ci`, `windows-ninja-msvc-ci`
-- Windows: SDK 10.0.19041.0 required (`windows-2022` runner, NOT `windows-latest`)
-- CMake macros for plugin assets:
-  - `target_copy_shaders(target subdir)` — deploys .slang files
-  - `target_copy_data(target subdir)` — deploys `Data/` subdirectory
-  - `target_copy_scripts(target subdir)` — deploys `Scripts/` subdirectory
-- **Shader source of truth is `Source/`**, not `runtime/shaders/` — only edit under `Source/RenderPasses/`
-- **Always build via `build.bat`** — never invoke CMake/MSBuild directly. If functionality or granularity is missing, add it to `build.bat`
-- **Quick build:** `build.bat --skip-setup` (skips packman/submodules, just configure+build)
-- **Clean rebuild:** `build.bat --clean` (removes CMake cache, full reconfigure)
-- **Default to Debug builds** for initial ladder tests — Release is only needed for timing benchmarks
-- **Flat output:** `build.bat` passes `-DFALCOR_FLAT_OUTPUT=ON` so all configs output directly to `runtime/` (no `Release/`/`Debug/` subdirectory)
-
-## CI
-
-- `paper.yml` — paper combine + GitHub Pages
-- `validate.yml` — algorithm validation tests
-- `build.yml` — binary builds + release (bundles Arcade + TestScenes in archive)
-- `quickstart.yml` — quickstart idempotency + CPU tests
-- Runs on: `ubuntu-22.04`, `windows-2022`
-
-## Line Endings
-
-- `.gitattributes`: LF everywhere, CRLF for `.bat` files
-- Edit/Write tools strip `\r` — fine since repo is LF-normalized
+- `.gitattributes`: LF everywhere, CRLF for `.bat`; Edit/Write tools strip `\r` — fine, repo is LF-normalized
 
 ## Scenes
 
-- **Default test scene: CornellBox** — procedural (no download), use for smoke tests, ladder tests, and general testing unless stated otherwise
-- **Use Arcade for quick tests** — bundled with the build, multi-light scene with varied geometry
-- VeachAjar (DQLin ReSTIR PT reference scene) — small, no download needed after data deploy
-- VeachAjar lives in source tree: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/`, deployed to `runtime/data/ReSTIRPTPass/VeachAjar/`
-- Bistro/Sponza require separate downloads (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`
-- Bistro uses material types not statically imported by ReSTIRPTPass shaders — requires scene type conformances (see `setScene()` in ReSTIRPTPass.cpp)
+- **Default: CornellBox** — procedural, no download; use for smoke tests and ladder tests
+- **Arcade** — bundled with build, multi-light varied geometry; good for quick tests
+- VeachAjar: `Source/RenderPasses/ReSTIRPTPass/Data/VeachAjar/` → `runtime/data/ReSTIRPTPass/VeachAjar/`
+- Bistro/Sponza — separate download (~3.2 GB / ~70 MB) via `download_scenes.bat/sh`; Bistro needs scene type conformances in `setScene()` (ReSTIRPTPass.cpp)
 
 ## Quickstart / Launch Scripts
 
-- Scripts support `--renderer`, `--variant`, `--scene`, and `--interactive` flags
-- Renderers: `minimal` (MinimalPathTracer), `pathtracer` (Falcor PathTracer), `rtxdi` (ReSTIR DI), `restirpt` (ReSTIR PT) — default: `restirpt`
-- Variant: `--variant vanilla` (no VisCache) or `--variant viscache` (with VisCache) — applies to all renderers
-- Interactive mode (`-i`): numbered menus for renderer, variant, and scene selection
-- Graph scripts (vanilla): `MinimalPathTracer_Graph.py`, `PathTracer_Graph.py`, `RTXDI_Graph.py`, `ReSTIRPT_Graph.py`
-- Graph scripts (VisCache): `MinimalPathTracer_VisCache_Graph.py`, `PathTracer_VisCache_Graph.py`, `RTXDI_VisCache_Graph.py`, `ReSTIRPT_VisCache_Graph.py` — thin wrappers that call vanilla with `viscache=True`
-- Each vanilla graph script accepts `viscache=True` to add the VisCache pass; no code duplication between vanilla and VisCache variants
-- There is no `renderer=viscache` — VisCache is always a variant, not a renderer
+- `--renderer minimal|pathtracer|rtxdi|restirpt` (default: `restirpt`), `--variant vanilla|viscache`, `--scene`, `-i` (interactive)
+- Graph scripts: `{Minimal,Path,RTXDI,ReSTIRPT}Tracer_Graph.py`; VisCache variants are thin wrappers calling vanilla with `viscache=True`
+- VisCache is always a **variant**, never a renderer — there is no `renderer=viscache`
 
 ## `.scripts/` Wrapper Scripts
 
-Reusable wrappers for common operations (avoids `cd release` boilerplate):
-
 - **`.scripts/mogwai-headless.sh [--source|--synced] <pattern> [scene] [frames]`** — headless test, glob patterns OK
 - **`.scripts/mogwai-headed.sh [--source|--synced] <pattern> [scene]`** — headed (GPU window) test
-- **`.scripts/sync_to_runtime.sh [--synced]`** — hot-sync shaders+data (always); add `--synced` to also copy scenes+scripts (CI use)
-- **`.scripts/smoke.sh`** — quick build validation (1 frame with scene)
+- **`.scripts/sync_to_runtime.sh [--synced]`** — hot-sync shaders+data; `--synced` also copies scenes+scripts (CI)
+- **`.scripts/smoke.sh`** — 1-frame smoke test
 
-**Mode resolution** (headless/headed, first match wins):
-1. `--source` / `--synced` flag on the command line
-2. `VISCACHE_MODE` env var
-3. `.scripts/.mode` marker file (gitignored, default: `source`)
-4. Auto: `source` if `scripts/` dir exists, else `synced`
-
-In **source mode** scripts and scenes are served from the project source tree — no sync needed. In **synced mode** they come from `runtime/` copies (CI default).
-
-## `.run-state` — Inter-Agent Communication
-
-`.run-state` at the project root is a gitignored, human- and agent-readable coordination file. It is injected into context automatically via hooks (`SessionStart` always; `UserPromptSubmit` only when changed).
-
-Format:
-```
-mode: source          # mogwai mode (source|synced); keep in sync with .scripts/.mode
-exp: -                # active experiment name, or "-" if none
-note: <free text>     # one-liner for the next agent to read
-by: <agent> | <date>  # who last wrote it
-```
-
-When starting a session: read `.run-state` to pick up context from the previous agent.
-When handing off or ending a session: update `note:` and `by:` so the next agent knows what's going on.
-Update `mode:` to reflect the current `.scripts/.mode` if you change it.
+**Mode resolution** (first match wins): `--source`/`--synced` flag → `VISCACHE_MODE` env → `.scripts/.mode` file (gitignored, default: `source`) → auto (`source` if `scripts/` exists, else `synced`). Source mode serves scripts/scenes from source tree; synced uses `runtime/` copies.
 
 ## Build + Test Workflow
 
-1. **Build:** `build.bat --skip-setup` (incremental) or `build.bat --clean` (full reconfigure)
-   - Build calls `sync_to_runtime.sh` automatically after compilation
-   - CMake outputs binaries directly to `runtime/` via `FALCOR_RUNTIME_OUTPUT_DIRECTORY`
-   - If DLLs are locked (Mogwai still running), build may silently skip copy — sync warns with yellow text
-2. **Shader-only iteration:** `.scripts/sync_to_runtime.sh` (no rebuild needed for .slang/.py changes)
-3. **Quick smoke test:** `.scripts/smoke.sh` (1 frame, MinimalPathTracer + VeachAjar)
+1. **Build:** `build.bat --skip-setup` or `--clean` — calls `sync_to_runtime.sh` automatically; locked DLLs silently skip (yellow warning)
+2. **Shader-only:** `.scripts/sync_to_runtime.sh` — no rebuild for `.slang`/`.py` changes
+3. **Smoke test:** `.scripts/smoke.sh` (1 frame, MinimalPathTracer + VeachAjar)
 4. **Ladder tests:** `.scripts/mogwai-headless.sh 'VisCache_Ladder00.py' [scene]`
-   - Default scene: CornellBox (procedural, no download). Override via 2nd arg or `SCENE_FILE` env var
-   - Resolution: `RES=1024` env var (default 512)
+   - Default scene: CornellBox. `SCENE_FILE` env or 2nd arg to override; `RES=1024` (default 512)
    - Captures to `runtime/captures/ladder/00/<SceneName>/`
-5. **Full test matrix:** `.scripts/mogwai-headless.sh '*_Graph.py'` (all renderer×variant combos)
+5. **Full matrix:** `.scripts/mogwai-headless.sh '*_Graph.py'`
 
-## Testing with Mogwai
-
-- **Scene loading:** `run_graph_headless.py` loads the scene via `m.loadScene()` inside the script (NOT via Mogwai's `--scene` flag, which loads too late)
-- Graph scripts live in `runtime/scripts/VisCache/` (synced from `scripts/`)
-- Exit code 0 = success; check Mogwai.exe.*.log in runtime/ for errors
+**Mogwai:** `run_graph_headless.py` calls `m.loadScene()` — do NOT use `--scene` flag (loads too late). Exit 0 = pass; check `Mogwai.exe.*.log` in `runtime/` on failure.
 
 ## Ladder Test System
 
-Systematic verification of VisCache addressing modes and cache behavior. Scripts in `scripts/VisCache_Ladder*.py`, shared infra in `VisCache_LadderCommon.py`.
+Scripts in `scripts/VisCache_Ladder*.py`; shared infra in `VisCache_LadderCommon.py`.
 
-- **Step 00** (`VisCache_Ladder00.py`): Single frame with 1 warmup frame. Tests hash table insert/lookup + diagnostic pipeline across all addressing variants
-- **Step 01** (`VisCache_Ladder01.py`): Multi-frame accumulation. Tests cache convergence over time
-- **Variants** (defined in `VisCache_LadderCommon.py`):
-  - `pos_norm1__pos1` — position-only (normal+B collapsed)
-  - `pos_norm1__dir1_dist1` — dirdist, both collapsed (≈ position-only)
-  - `pos_norm1__pos` — pos×pos (same cell, no normal)
-  - `pos_norm1__dir_dist1` — angular bins, distance collapsed
-  - `pos_norm1__dir_dist` — angular + distance bins
-  - `pos_norm__*` — normal-active variants (surface normal at A in hash key)
-  - Naming: `A__B` separates endpoints, `_` separates dims, `1` suffix = collapsed. `pos_norm1__*` = normal off, `pos_norm__*` = normal on
-- **Diagnostic output** (9-column viridis grid per variant, 2 rows):
-  - Row 1 (accum): render, raysTraced, error, maturity, mean, variance, coldmiss, posAHash, noise
-  - Row 2 (frame): level, raysTraced, sampleCount, maturity, mean, variance, coldmiss, posBHash, probeSteps
-- **Postprocess:** `viscache_exr.py` extracts EXR channels → viridis pseudocolor PNGs (Python, no ffmpeg)
-- **Extending the ladder:** add new `VisCache_Ladder<NN>.py` steps. Extract reusable utilities into `VisCache_LadderCommon.py` to avoid duplication across steps
+- **Step 00** (`VisCache_Ladder00.py`): Vanilla baselines (no VisCache). Renders x1 SPP (error reference) + x32768 SPP (ground truth for noise measurement)
+- **Step 01** (`VisCache_Ladder01.py`): First tests — all 10 addressing variants at default cell sizes (QUANT_SMALL). Runs VARIANTS_ALL across 4 CornellBox scene variants
+- **Step 02** (`VisCache_Ladder02.py`): Quantization refinement — per-variant tuned bin sizes, x1 vs x32 SPP comparison
+- **Variants** — naming: `A__B` separates endpoints, `_` separates dims, `1` = collapsed:
+  - `pos_norm1__*` (5 variants, normal collapsed): pos1, dir1_dist1, pos, dir_dist1, dir_dist
+  - `pos_norm__*` (5 variants, normal active ~60°/bin): pos1, dir1_dist1, pos, dir_dist1, dir_dist
+  - Generated by `_make_variants(normal_active, quant)` from quantization presets
+- **Quantization presets** (`QUANT_SMALL/MID/LARGE`): named bin-size bundles for cellB, angular, dist, normal
+- **Error/noise baselines**: HDR pre-tonemapper EXR (AccumulatePass.output), OkLab perceptual distance with 2x L weight. Error = |viscache - vanilla_xN| (matching SPP). Noise = |viscache - vanilla_x32768| (ground truth)
+- **Separate VisCache RNG**: `vcCreateSG(pixel)` — independent sample stream keeps vanilla/VisCache deterministically comparable
+- **Diagnostic grid** (9 cols, 2 rows per variant):
+  - Row 1 accum: render, raysTraced, error, maturity, mean, variance, coldmiss, posAHash, noise
+  - Row 2 frame: level, raysTraced, sampleCount, maturity, mean, variance, coldmiss, posBHash, probeSteps
+- **Plates**: 4×3 diagnostic overview per variant with labels, exported to `docs/devlog/plates/`
+- **Postprocess:** `viscache_exr.py` → viridis PNGs (Python/OpenEXR, no ffmpeg)
+- **Extending:** add `VisCache_Ladder<NN>.py` steps; shared utilities in `VisCache_LadderCommon.py`; ladder scripts set `_HEADLESS_SCRIPT_DONE = True` instead of `exit()`
 
 ## Python
 
-- **Always use Falcor's embedded Python** at `runtime/pythondist/python.exe` — never system Python
-- Install packages via `runtime/pythondist/python.exe -m pip install <pkg>`
-- Mogwai scripts run in this Python automatically; external scripts should use the same interpreter
-- **Never work inside intermediary build folders** (`Falcor/build/...`) — only edit `Source/` and work in `runtime/`
+- **Always use `runtime/pythondist/python.exe`** — never system Python; `runtime/pythondist/python.exe -m pip install <pkg>`
+- Never work in `Falcor/build/...` — only edit `Source/`, work in `runtime/`
+
+## `.agents/` — Inter-Agent Communication
+
+Gitignored folder for agent coordination. Two files:
+
+**`.agents/shout`** — compact broadcast state, auto-injected every session (`SessionStart` always; `UserPromptSubmit` if changed). The hook injects `(session: <short-id>)` in the header — that's your key for `note` and `chat`. Keep it short.
+```
+mode: source  set-by:a1b2c3d4|date   # global; source|synced — keep in sync with .scripts/.mode
+exp[a1b2c3d4]: -                     # active experiment, or "-"
+worktree[a1b2c3d4]: -                # active worktree branch, or "-"
+note[a1b2c3d4]: <freeform>           # your session's note — anything goes
+note[e5f6a7b8]: <freeform>           # another session (read-only)
+```
+`mode` is global — one value, attributed with `set-by:sid|date`. All other fields are per-session, keyed by short ID. Write only to your own keys. Your short ID is the `self:` line injected at the top of the context.
+
+**`.agents/handoff`** — append-only log for longer-form handoffs, findings, decisions. Not auto-injected — read when picking up a task.
+```
+---
+by: <agent> | <date>
+topic: <what>
+<findings, decisions, next steps>
+```
+
+**Worktrees:** Use for risky/experimental work (refactors, experiments that might break main). `Agent` tool `isolation: "worktree"` creates a temp worktree automatically for subagents. Manual: `EnterWorktree`/`ExitWorktree` tools. Record active branch in `worktree:` field of `.agents/shout`.
 
 ## Workflow
 
-- **No backwards compatibility** — move forward, don't maintain back-compat aliases or shims
-- **No duplicated code** — extract shared logic into helper scripts; never copy-paste between .bat/.sh files
-- Work step by step for large edits — small incremental Edit calls, not massive Write
+- **No backwards compatibility** — move forward, no back-compat aliases or shims
+- **No duplicated code** — extract shared logic into helpers; never copy-paste between scripts
+- **Small incremental edits** — step by step for large changes; not massive Write calls
 - **Fix all errors encountered**, even pre-existing ones
-- **Never prefix git/shell commands with `cd`** — wrap cd-requiring calls into reusable scripts in `.scripts/`; never chain `cd &&` before commands
-- **No Co-Authored-By or similar tags in commit messages** — do not add AI attribution lines
-- **Display calls to action and salient info with color in CLI output** — e.g. highlight "Should I fix that?" or important findings so they stand out
+- **Never chain `cd &&` before commands** — wrap cd-requiring calls in `.scripts/` reusable scripts
+- **No Co-Authored-By in commits** — no AI attribution lines
+- **Color in CLI output** — highlight calls to action and salient findings
