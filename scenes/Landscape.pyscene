@@ -1,177 +1,134 @@
-# Landscape.pyscene — Rungholt town embedded in a 2 km landscape
+# Landscape.pyscene — Manhattan + Bistro in Central Park
 #
 # Scale-agnosticism stress test for VisCache.
-# Scene diameter ~2000 units vs CornellBox ~2 units (1000x ratio).
+# Manhattan OSM (~21 km, 2.9M tris) provides city-scale extent.
+# Bistro (~50m, 2.8M tris) sits in Central Park with full material detail.
+# Tests the spatial hash across ~10000x scale range in a single scene.
 #
-# Requires Rungholt (6M-tri medieval town) — run download_scenes.sh first.
-# The town sits at origin on a 2 km terrain with distant procedural landmarks.
+# Requires:
+#   - Manhattan model: download from Sketchfab (free, CC-BY 4.0)
+#   - Bistro: run scripts/download_scenes.sh
 
 import os
 
 # ---------------------------------------------------------------------------
-# Locate Rungholt OBJ (required)
+# Locate Manhattan model (required)
 # ---------------------------------------------------------------------------
 _dir = os.path.dirname(os.path.abspath(__file__))
-_rungholt_candidates = [
-    os.path.join(_dir, '..', 'runtime', 'media', 'Rungholt', 'rungholt.obj'),
-    os.path.join(_dir, 'Rungholt', 'rungholt.obj'),
-    'rungholt.obj',
+
+_manhattan_candidates = [
+    os.path.join(_dir, '..', 'runtime', 'media', 'Manhattan', 'scene.gltf'),
+    os.path.join(_dir, '..', 'runtime', 'media', 'Manhattan', 'scene.glb'),
+    os.path.join(_dir, '..', 'runtime', 'media', 'Manhattan', 'manhattan.obj'),
+    'scene.gltf',
+    'manhattan.obj',
 ]
-_rungholt_obj = None
-for _path in _rungholt_candidates:
+_manhattan = None
+for _path in _manhattan_candidates:
     if os.path.exists(_path):
-        _rungholt_obj = _path
+        _manhattan = _path
         break
 
-if _rungholt_obj is None:
+if _manhattan is None:
     raise FileNotFoundError(
-        'Rungholt OBJ not found. Run scripts/download_scenes.sh (or .bat) first.'
+        'Manhattan model not found. Download from Sketchfab:\n'
+        '  https://sketchfab.com/3d-models/manhattan-osm-complete-model-bad7b7c7c6a64febb83950c24fee4d00\n'
+        'Extract to runtime/media/Manhattan/'
     )
 
 # ---------------------------------------------------------------------------
-# Materials
+# Locate Bistro (required)
 # ---------------------------------------------------------------------------
-grass = StandardMaterial('Grass')
-grass.baseColor = float4(0.22, 0.38, 0.12, 1.0)
-grass.roughness = 0.95
-grass.metallic = 0.0
+_bistro_candidates = [
+    os.path.join(_dir, '..', 'runtime', 'media', 'Bistro', 'BistroExterior.fbx'),
+    'BistroExterior.fbx',
+]
+_bistro = None
+for _path in _bistro_candidates:
+    if os.path.exists(_path):
+        _bistro = _path
+        break
 
-stone = StandardMaterial('Stone')
-stone.baseColor = float4(0.55, 0.52, 0.48, 1.0)
-stone.roughness = 0.85
-stone.metallic = 0.0
-
-water_mat = StandardMaterial('Water')
-water_mat.baseColor = float4(0.15, 0.25, 0.35, 0.6)
-water_mat.roughness = 0.05
-water_mat.metallic = 0.0
-water_mat.specularTransmission = 0.5
-water_mat.indexOfRefraction = 1.33
-
-torch_mat = StandardMaterial('TorchFlame')
-torch_mat.baseColor = float4(1.0, 0.85, 0.4, 1.0)
-torch_mat.emissiveColor = float3(120.0, 80.0, 20.0)
-torch_mat.emissiveFactor = 1.0
-torch_mat.roughness = 1.0
+if _bistro is None:
+    raise FileNotFoundError(
+        'Bistro not found. Run scripts/download_scenes.sh first.'
+    )
 
 # ---------------------------------------------------------------------------
-# Shared meshes (instanced for distant landmarks)
+# Import Manhattan (city-scale backdrop)
 # ---------------------------------------------------------------------------
-tower_mesh = TriangleMesh.createCube(float3(12.0, 30.0, 12.0))
-tower_mesh.name = 'TowerBlock'
-towerID = sceneBuilder.addTriangleMesh(tower_mesh, stone)
-
-torch_sphere = TriangleMesh.createSphere(radius=0.8, segmentsU=12, segmentsV=12)
-torch_sphere.name = 'TorchFlame'
-torchID = sceneBuilder.addTriangleMesh(torch_sphere, torch_mat)
+sceneBuilder.importScene(_manhattan)
 
 # ---------------------------------------------------------------------------
-# Ground plane — 2 km x 2 km
+# Import Bistro placed in Central Park
+#
+# The Manhattan OSM model coordinate system varies by export tool.
+# Central Park is roughly at the center of the island, ~6 km from the
+# southern tip. Adjust BISTRO_OFFSET after loading to align visually.
+# Bistro is ~50m extent — tiny relative to the ~21 km island.
 # ---------------------------------------------------------------------------
-ground = TriangleMesh.createQuad(size=float2(2000.0, 2000.0))
-ground.name = 'Terrain'
-groundID = sceneBuilder.addTriangleMesh(ground, grass)
-groundNode = sceneBuilder.addNode('Terrain', Transform(
-    rotationEulerDeg=float3(-90, 0, 0),
+BISTRO_OFFSET = float3(0.0, 0.0, 3000.0)
+
+# Import Bistro under a transform node to place it in Central Park
+bistroNode = sceneBuilder.addNode('BistroInPark', Transform(
+    translation=BISTRO_OFFSET,
 ))
-sceneBuilder.addMeshInstance(groundNode, groundID)
+sceneBuilder.importScene(_bistro)
+
+# Boost Bistro emissives (FBX defaults too dim)
+for m in sceneBuilder.materials:
+    if m.emissive:
+        m.emissiveFactor = max(m.emissiveFactor, 100.0)
+
+# Glass materials (pattern from BistroExterior.pyscene)
+glass = sceneBuilder.getMaterial('MASTER_Glass_Exterior')
+if glass:
+    glass.specularTransmission = 1
+    glass.roughness = 0
+    glass.metallic = 0
+    glass.doubleSided = True
+    glass.indexOfRefraction = 1.55
+    glass.nestedPriority = 5
+
+tGlass = sceneBuilder.getMaterial('TransparentGlass')
+if tGlass:
+    tGlass.specularTransmission = 1
+    tGlass.roughness = 0
+    tGlass.metallic = 0
+    tGlass.doubleSided = True
+    tGlass.indexOfRefraction = 1.55
+    tGlass.nestedPriority = 5
 
 # ---------------------------------------------------------------------------
-# River crossing the landscape (long thin quad at Y=0.1)
-# ---------------------------------------------------------------------------
-river = TriangleMesh.createQuad(size=float2(1600.0, 30.0))
-river.name = 'River'
-riverID = sceneBuilder.addTriangleMesh(river, water_mat)
-riverNode = sceneBuilder.addNode('River', Transform(
-    translation=float3(0.0, 0.1, 150.0),
-    rotationEulerDeg=float3(-90, 0, 0),
-))
-sceneBuilder.addMeshInstance(riverNode, riverID)
-
-# ---------------------------------------------------------------------------
-# Center: Rungholt medieval town (~6M tris, ~260m extent)
-# ---------------------------------------------------------------------------
-sceneBuilder.importScene(_rungholt_obj)
-
-# ---------------------------------------------------------------------------
-# Distant landmarks (push scene bounds to ~2 km)
-# ---------------------------------------------------------------------------
-# Watchtower 800m north
-distNode = sceneBuilder.addNode('FarTower_N', Transform(
-    translation=float3(0.0, 20.0, 800.0),
-    scaling=float3(1.5, 2.0, 1.5),
-))
-sceneBuilder.addMeshInstance(distNode, towerID)
-
-# Ruins 700m south-west
-ruinNode = sceneBuilder.addNode('Ruin_SW', Transform(
-    translation=float3(-600.0, 10.0, -400.0),
-    scaling=float3(2.0, 0.6, 2.0),
-))
-sceneBuilder.addMeshInstance(ruinNode, towerID)
-
-# Monolith 900m east
-monolith = TriangleMesh.createCube(float3(4.0, 40.0, 4.0))
-monolith.name = 'Monolith'
-monolithID = sceneBuilder.addTriangleMesh(monolith, stone)
-monolithNode = sceneBuilder.addNode('Monolith_E', Transform(
-    translation=float3(900.0, 20.0, 50.0),
-))
-sceneBuilder.addMeshInstance(monolithNode, monolithID)
-
-# Shrine 500m south-east (metallic orb on pedestal)
-pedestal = TriangleMesh.createCube(float3(6.0, 4.0, 6.0))
-pedestal.name = 'Pedestal'
-pedestalID = sceneBuilder.addTriangleMesh(pedestal, stone)
-pedestalNode = sceneBuilder.addNode('Shrine_SE_Base', Transform(
-    translation=float3(400.0, 2.0, -350.0),
-))
-sceneBuilder.addMeshInstance(pedestalNode, pedestalID)
-
-orb = TriangleMesh.createSphere(radius=2.5, segmentsU=24, segmentsV=24)
-orb.name = 'ShrineOrb'
-shiny_orb = StandardMaterial('ShrineOrb')
-shiny_orb.baseColor = float4(0.95, 0.93, 0.88, 1.0)
-shiny_orb.roughness = 0.05
-shiny_orb.metallic = 1.0
-orbID = sceneBuilder.addTriangleMesh(orb, shiny_orb)
-orbNode = sceneBuilder.addNode('Shrine_SE_Orb', Transform(
-    translation=float3(400.0, 6.5, -350.0),
-))
-sceneBuilder.addMeshInstance(orbNode, orbID)
-
-# Torch beacons at distant landmarks (emissive, visible from far)
-for name, pos in [('FarTorch_N', float3(0.0, 45.0, 800.0)),
-                  ('FarTorch_SW', float3(-600.0, 15.0, -400.0)),
-                  ('FarTorch_E', float3(900.0, 42.0, 50.0))]:
-    tn = sceneBuilder.addNode(name, Transform(
-        translation=pos,
-        scaling=float3(3.0, 3.0, 3.0),
-    ))
-    sceneBuilder.addMeshInstance(tn, torchID)
-
-# ---------------------------------------------------------------------------
-# Lighting — afternoon sun + sky fill
+# Lighting — afternoon sun across the Manhattan grid
 # ---------------------------------------------------------------------------
 sun = DirectionalLight('Sun')
-sun.intensity = float3(8.0, 7.0, 5.5)
-sun.direction = float3(0.4, -0.8, 0.3)
+sun.intensity = float3(6.0, 5.2, 4.0)
+sun.direction = float3(0.5, -0.8, 0.3)
 sceneBuilder.addLight(sun)
 
 sky = DirectionalLight('SkyFill')
-sky.intensity = float3(0.8, 0.9, 1.2)
+sky.intensity = float3(0.6, 0.7, 1.0)
 sky.direction = float3(-0.2, -1.0, -0.1)
 sceneBuilder.addLight(sky)
 
 # ---------------------------------------------------------------------------
-# Camera — approach from south, Rungholt town in middle ground
+# Camera — street level at the Bistro, Manhattan skyline visible
 # ---------------------------------------------------------------------------
 camera = Camera('LandscapeDefault')
-camera.position = float3(-20.0, 35.0, -180.0)
-camera.target   = float3(0.0, 15.0, 10.0)
-camera.up       = float3(0.0, 1.0, 0.0)
-camera.focalLength = 28.0
-camera.farPlane = 5000.0
+camera.position = float3(
+    BISTRO_OFFSET.x - 8.0,
+    BISTRO_OFFSET.y + 2.5,
+    BISTRO_OFFSET.z - 0.3,
+)
+camera.target = float3(
+    BISTRO_OFFSET.x + 3.0,
+    BISTRO_OFFSET.y + 1.5,
+    BISTRO_OFFSET.z - 1.5,
+)
+camera.up = float3(0.0, 1.0, 0.0)
+camera.focalLength = 24.0
+camera.farPlane = 50000.0
 sceneBuilder.addCamera(camera)
 
 settings = sceneBuilder.renderSettings

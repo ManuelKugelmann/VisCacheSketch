@@ -304,7 +304,29 @@ if not exist "%MEDIA_DIR%\SunTemple" (
 )
 
 REM ---------------------------------------------------------------------------
-REM 7. VeachAjar — Bitterli scene, DQLin OBJ conversion
+REM 7. Manhattan (Sketchfab -- manual download, CC-BY 4.0)
+REM    Entire Manhattan Island from OSM data, 2.9M triangles, ~21 km extent.
+REM    Requires free Sketchfab account to download.
+REM ---------------------------------------------------------------------------
+:manhattan
+if not exist "%MEDIA_DIR%\Manhattan" (
+    echo.
+    echo [scenes] === Manhattan ^(Sketchfab / OSM^) ===
+    echo [scenes] This scene requires manual download ^(free Sketchfab account^):
+    echo.
+    echo   1. Visit: https://sketchfab.com/3d-models/manhattan-osm-complete-model-bad7b7c7c6a64febb83950c24fee4d00
+    echo   2. Click 'Download 3D Model' ^(glTF format^)
+    echo   3. Extract to: %MEDIA_DIR%\Manhattan\
+    echo.
+    echo [scenes] Credit: MENUDQ2, OpenStreetMap contributors ^(CC-BY 4.0^)
+    echo [scenes] Used in Landscape.pyscene ^(Manhattan + Bistro in Central Park^)
+    echo.
+) else (
+    echo [scenes] Manhattan already exists, skipping
+)
+
+REM ---------------------------------------------------------------------------
+REM 8. VeachAjar — Bitterli scene, DQLin OBJ conversion
 REM    Requires git for sparse clone.
 REM ---------------------------------------------------------------------------
 :veachajar

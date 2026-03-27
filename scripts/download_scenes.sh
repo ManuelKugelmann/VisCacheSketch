@@ -13,6 +13,7 @@
 #   - Sponza (Crytek, NVIDIA ORCA)
 #   - Rungholt (McGuire CG Archive, medieval town ~260m)
 #   - Sun Temple (Epic Games / NVIDIA ORCA)
+#   - Manhattan (Sketchfab, OSM city model ~21km — manual download)
 #   - Cornell Box (bundled with Falcor test_scenes)
 
 set -euo pipefail
@@ -250,7 +251,29 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. VeachAjar — Bitterli's rendering resources, converted to OBJ by DQLin
+# 7. Manhattan (Sketchfab — manual download, CC-BY 4.0)
+#    Entire Manhattan Island from OSM data, 2.9M triangles, ~21 km extent.
+#    Requires free Sketchfab account to download.
+#    https://sketchfab.com/3d-models/manhattan-osm-complete-model-bad7b7c7c6a64febb83950c24fee4d00
+# ---------------------------------------------------------------------------
+if [ ! -d "$MEDIA_DIR/Manhattan" ]; then
+    echo ""
+    echo "[scenes] === Manhattan (Sketchfab / OSM) ==="
+    echo "[scenes] This scene requires manual download (free Sketchfab account):"
+    echo ""
+    echo "  1. Visit: https://sketchfab.com/3d-models/manhattan-osm-complete-model-bad7b7c7c6a64febb83950c24fee4d00"
+    echo "  2. Click 'Download 3D Model' (glTF format)"
+    echo "  3. Extract to: $MEDIA_DIR/Manhattan/"
+    echo ""
+    echo "[scenes] Credit: MENUDQ2, OpenStreetMap contributors (CC-BY 4.0)"
+    echo "[scenes] Used in Landscape.pyscene (Manhattan + Bistro in Central Park)"
+    echo ""
+else
+    echo "[scenes] Manhattan already exists, skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# 8. VeachAjar — Bitterli's rendering resources, converted to OBJ by DQLin
 #    Original scene: https://benedikt-bitterli.me/resources/ (Tungsten/PLY)
 #    DQLin converted to OBJ + added teapot variants and animated door for
 #    the ReSTIR PT demo. We fetch from DQLin's repo (the only OBJ source).
