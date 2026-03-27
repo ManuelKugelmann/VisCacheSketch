@@ -474,7 +474,8 @@ bool vhfCanonicalLess(int3 a, int3 b)
 
 // Precompute canonicalization flag — constant for all levels in a frame.
 #if !USE_VISCACHE_DIRDIST_ADDRESSING
-static const bool kCanonicalize = (gCellACoarse == gCellBCoarse);
+static const bool kCanonicalize = (gCellACoarse == gCellBCoarse)
+                               && !(gFlags & kFlag_EnableNormalAddr);
 #endif
 
 void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
