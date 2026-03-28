@@ -74,8 +74,10 @@ public:
         float    normalACoarse;   ///< normal coarsest bin scale (oct [0,2] multiplier, 3=60°/bin)
         float    normalAFine;     ///< normal finest bin scale (auto-derived)
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
+        uint32_t frameCount;      ///< Current frame index for per-frame RNG variation
+        uint32_t spp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
     };
-    static_assert(sizeof(GPUParams) == 72, "GPUParams must match VisCacheParams cbuffer (72 bytes)");
+    static_assert(sizeof(GPUParams) == 80, "GPUParams must match VisCacheParams cbuffer (80 bytes)");
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
     /// ablation toggles). Feature and ablation toggles are exported via InternalDictionary
@@ -97,6 +99,7 @@ public:
         float    distBCoarse     = 10.0f;       ///< distance coarsest cell (world units, dirdist mode)
         float    normalACoarse   = 60.0f;      ///< normal coarsest cell (degrees, 60°≈6 bins, 90°≈4 bins, 360°=collapsed)
         uint32_t diagAccumWindow = 128u;        ///< EMA window for accumulated diagnostics (0 = all frames)
+        uint32_t spp             = 1u;          ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
         bool     autoTuneCells   = true;        ///< Auto-derive posACoarse from scene bounds
 
         // --- Decay (host-only, not uploaded to GPU params cbuffer) ---
@@ -117,6 +120,7 @@ public:
         bool     enableVisCacheAdaptivePMin   = true;  ///< H: Confidence-adaptive pMin (§8.1.1)
         bool     enableVisCacheNormalAddr     = false; ///< I: Normal-augmented addressing (posNorm)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
+        bool     enableVisCacheNearestDist   = false; ///< J: Per-cell nearest hit distance (dir_nearest mode)
     };
 
     const Params& getParams() const { return mParams; }
@@ -135,6 +139,7 @@ private:
     // GPU resources
     // ------------------------------------------------------------------
     ref<Buffer>         mpHashTable;     ///< RWStructuredBuffer<VHFEntry>
+    ref<Buffer>         mpNearestDist;   ///< RWBuffer<uint> — parallel nearest-hit distance per slot
     ref<Buffer>         mpParamsBuffer;  ///< VisCacheParams cbuffer (32 bytes, exported via dict)
     ref<Buffer>         mpStatsBuffer;   ///< 5x uint32 atomic counters
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats

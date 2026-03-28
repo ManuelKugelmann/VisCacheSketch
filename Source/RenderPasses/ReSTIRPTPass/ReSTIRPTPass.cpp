@@ -1513,7 +1513,8 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasLightSel = mVisCacheLightSelection;
 
-        mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
+        mpVHFTable       = dict.keyExists("vhfTable")       ? dict.getValue<ref<Buffer>>("vhfTable")       : nullptr;
+        mpVHFNearestDist = dict.keyExists("vhfNearestDist") ? dict.getValue<ref<Buffer>>("vhfNearestDist") : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr &&
             dict.keyExists("vhfParam_tableCapacity"));
         if (mVisCacheAvailable)
@@ -1681,6 +1682,7 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
     if (mVisCacheAvailable)
     {
         var["gVHFTable"] = mpVHFTable;
+        var["gVHFNearestDist"] = mpVHFNearestDist;
         var["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
         var["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
         var["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
@@ -1813,6 +1815,7 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     {
         auto rootVar = pass->getRootVar();
         rootVar["gVHFTable"] = mpVHFTable;
+        rootVar["gVHFNearestDist"] = mpVHFNearestDist;
         rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
         rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
         rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
@@ -1910,6 +1913,7 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     {
         auto rootVar = pass->getRootVar();
         rootVar["gVHFTable"] = mpVHFTable;
+        rootVar["gVHFNearestDist"] = mpVHFNearestDist;
         rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
         rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
         rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;

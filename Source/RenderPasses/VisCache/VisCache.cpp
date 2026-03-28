@@ -59,6 +59,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
     if (props.has("normalACoarse")) mParams.normalACoarse  = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
+    if (props.has("spp"))              mParams.spp              = props["spp"];
     if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
 
@@ -74,6 +75,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
+    if (props.has("enableVisCacheNearestDist"))     mParams.enableVisCacheNearestDist     = props["enableVisCacheNearestDist"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -100,6 +102,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
     if (props.has("normalACoarse")) mParams.normalACoarse  = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
+    if (props.has("spp"))              mParams.spp              = props["spp"];
     if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
     if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
 
@@ -114,6 +117,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
+    if (props.has("enableVisCacheNearestDist"))     mParams.enableVisCacheNearestDist     = props["enableVisCacheNearestDist"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -135,6 +139,7 @@ Properties VisCache::getProperties() const
     p["distBCoarse"]     = mParams.distBCoarse;
     p["normalACoarse"]   = mParams.normalACoarse;
     p["diagAccumWindow"] = mParams.diagAccumWindow;
+    p["spp"]           = mParams.spp;
     p["autoTuneCells"] = mParams.autoTuneCells;
     p["decayPeriod"]   = mParams.decayPeriod;
 
@@ -150,6 +155,7 @@ Properties VisCache::getProperties() const
     p["enableVisCacheAdaptivePMin"]    = mParams.enableVisCacheAdaptivePMin;
     p["enableVisCacheNormalAddr"]     = mParams.enableVisCacheNormalAddr;
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
+    p["enableVisCacheNearestDist"]     = mParams.enableVisCacheNearestDist;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -207,6 +213,16 @@ void VisCache::allocateBuffers()
     );
     mpHashTable->setName("VHF_HashTable");
     mClearHashTable = true;  // Must clear to empty-slot sentinel (fingerprint=0) before first use
+
+    // Parallel nearest-hit distance buffer (same capacity, one uint per slot).
+    // Cleared to 0x7F800000 (+INF) so InterlockedMin works from first write.
+    mpNearestDist = mpDevice->createTypedBuffer(
+        ResourceFormat::R32Uint,
+        mParams.tableCapacity,
+        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+        MemoryType::DeviceLocal
+    );
+    mpNearestDist->setName("VHF_NearestDist");
 
     // GPU params constant buffer — exported via dict for downstream passes.
     mpParamsBuffer = mpDevice->createBuffer(
@@ -317,7 +333,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.flags          = (mParams.enableVisCacheJitterA ? 1u : 0u)
                        | (mParams.enableVisCacheJitterB ? 2u : 0u)
                        | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
-                       | (mParams.enableVisCacheNormalAddr ? 8u : 0u);
+                       | (mParams.enableVisCacheNormalAddr ? 8u : 0u)
+                       | (mParams.enableVisCacheNearestDist ? 16u : 0u);
     gpu.posACoarse    = mParams.posACoarse;
     gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posACoarse, mParams.numLevels) : mParams.posACoarse;
     gpu.posBCoarse    = mParams.posBCoarse;
@@ -329,6 +346,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.normalACoarse  = mParams.normalACoarse;
     gpu.normalAFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalACoarse, mParams.numLevels) : mParams.normalACoarse;
     gpu.diagAccumWindow = mParams.diagAccumWindow;
+    gpu.frameCount      = mFrameCount;
+    gpu.spp             = std::max(1u, mParams.spp);
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
 
@@ -341,12 +360,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
         logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={} nearestDist={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
                 mParams.enableVisCacheJitterA, mParams.enableVisCacheJitterB, mParams.enableVisCacheAdaptivePMin,
-                mParams.enableVisCacheDirDistAddr);
+                mParams.enableVisCacheDirDistAddr, mParams.enableVisCacheNearestDist);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -361,9 +380,17 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     //     mClearHashTable = false;
     // }
 
+    // Clear nearest-dist buffer to +INF (0x7F800000) so InterlockedMin works.
+    if (mClearHashTable && mpNearestDist)
+    {
+        pCtx->clearUAV(mpNearestDist->getUAV().get(), uint4(0x7F800000u));
+        mClearHashTable = false;
+    }
+
     auto& dict = renderData.getDictionary();
-    dict["vhfTable"]    = mpHashTable;
-    dict["vhfParamsCB"] = mpParamsBuffer;  // kept for backward compat; prefer per-member binding below
+    dict["vhfTable"]       = mpHashTable;
+    dict["vhfNearestDist"] = mpNearestDist;
+    dict["vhfParamsCB"]    = mpParamsBuffer;  // kept for backward compat; prefer per-member binding below
 
     // Per-member cbuffer values — downstream passes bind these individually
     // because Falcor 8 ParameterBlock::setBuffer() doesn't support cbuffer binding.
@@ -398,6 +425,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableJitterA"]         = mParams.enableVisCacheJitterA;
     dict["vhfEnableJitterB"]         = mParams.enableVisCacheJitterB;
     dict["vhfEnableDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
+    dict["vhfEnableNearestDist"]     = mParams.enableVisCacheNearestDist;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -560,6 +588,7 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["DecayCB"]["gDecayOffset"] = offset;
     vars["DecayCB"]["gDecayStride"] = stride;
     vars["gVHFTable"] = mpHashTable;
+    vars["gVHFNearestDist"] = mpNearestDist;
     // Derive fine values from coarse + numLevels (same formula as execute()).
     static constexpr float kMaxRatio = 4.f;
     auto deriveFine = [&](float coarse, uint32_t N) -> float {
@@ -694,6 +723,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("F: Jitter posA",  mParams.enableVisCacheJitterA);
         g.checkbox("F: Jitter posB",  mParams.enableVisCacheJitterB);
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
+        g.checkbox("J: Nearest-dist per cell", mParams.enableVisCacheNearestDist);
     }
 
     widget.separator();

@@ -176,6 +176,7 @@ private:
     // register pressure from unused VisCache cbuffer bindings.
     // -----------------------------------------------------------------
     ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
+    ref<Buffer> mpVHFNearestDist;          ///< RWBuffer<uint> — parallel nearest-hit distance per slot
     struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
              uint32_t numLevels=0, flags=1;
              float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;

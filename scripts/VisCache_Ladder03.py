@@ -1,26 +1,20 @@
 """
-VisCache_Ladder03.py — Step 03: Normal comparison (pos_norm1 vs pos_norm).
+VisCache_Ladder03.py — Step 03: Expanded SPP, norm-active variants.
 
-Runs the 3 non-collapsed B-side variants (pos, dir_dist1, dir_dist) for
-both norm1 (normal off) and norm (normal active), using QUANT_MID preset.
-Skips pos1 and dir1_dist1 (collapsed baselines already covered in step 01).
+Same preset as step 02 (PRESET_MINIMAL + RR_ADAPTIVE + QUANT_MID),
+norm-active only (norm1 comparison done in steps 01-02), x1 and x16 SPP.
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder03.py
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from VisCache_LadderCommon import run_variants, run_baseline, BASE, get_scenes, \
-    plot_rays_overview, _make_variants
+from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
+    plot_rays_overview, make_norm_variants, PRESET_MINIMAL, RR_ADAPTIVE, QUANT_MID
 
 res = int(os.environ.get("RES", "512"))
 
-# Only non-collapsed B-side: pos, dir_dist1, dir_dist (indices 2, 3, 4 from _make_variants)
-QUANT_03 = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 8.0, "distB": 0.48}
-_norm1_all = _make_variants(normal_active=False, quant=QUANT_03)
-_norm_all  = _make_variants(normal_active=True,  quant=QUANT_03)
-VARIANTS_03 = [v for v in _norm1_all if "__pos1" not in v[0] and "__dir1_dist1" not in v[0]] \
-            + [v for v in _norm_all  if "__pos1" not in v[0] and "__dir1_dist1" not in v[0]]
+VARIANTS_03 = make_norm_variants(quant=QUANT_MID, base=PRESET_MINIMAL)
 
 for scene_file in get_scenes():
     run_baseline(
@@ -39,6 +33,7 @@ for scene_file in get_scenes():
         variants=VARIANTS_03,
         resX=res, resY=res,
         mogwai_globals=globals(),
+        step_overrides=RR_ADAPTIVE,
     )
 
 plot_rays_overview("03")

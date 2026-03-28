@@ -119,6 +119,7 @@ struct VHFResult
     uint  N;        ///< Total sample count at matched level (0 = miss, for diagnostics)
     bool  valid;    ///< false = cold miss — no mature entry found, always trace
     uint  probeSteps; ///< Total probe steps across all levels (diagnostics — collision pressure)
+    float nearestDist; ///< Nearest hit distance stored in this cell (INF if not tracked)
 };
 
 // ===========================================================================
@@ -191,6 +192,8 @@ cbuffer VisCacheParams
     float  gNormalACoarse;   ///< normal coarsest cell size (degrees, like dirBCoarse)
     float  gNormalAFine;     ///< normal finest cell size (auto-derived)
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
+    uint   gFrameCount;      ///< Current frame index for per-frame RNG variation
+    uint   gSpp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
 };
 
 // ---------------------------------------------------------------------------
@@ -212,6 +215,12 @@ float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse, gDistBFine, lvl
 /// The hash table — RWStructuredBuffer so all threads can read and atomically
 /// update entries concurrently. Bound by the host via dict["vhfTable"].
 RWStructuredBuffer<VHFEntry> gVHFTable;
+
+/// Parallel nearest-hit distance buffer. Same capacity as gVHFTable, indexed
+/// by slot. Stores asuint(distance) so InterlockedMin finds the minimum
+/// (works for positive IEEE 754 floats). Cleared to 0x7F800000 (INF).
+/// Only used when kFlag_EnableNearestDist is set.
+RWBuffer<uint> gVHFNearestDist;
 
 // ===========================================================================
 // HASH FUNCTIONS
@@ -590,6 +599,7 @@ static const uint kFlag_EnableJitterA      = 1u << 0;
 static const uint kFlag_EnableJitterB      = 1u << 1;
 static const uint kFlag_EnableAdaptivePMin = 1u << 2;
 static const uint kFlag_EnableNormalAddr   = 1u << 3;
+static const uint kFlag_EnableNearestDist = 1u << 4;
 static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict (lower = more aggressive eviction)
 static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive eviction at kEvictStartStep
 static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K of 65535 max)
@@ -676,6 +686,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     best.probeSteps = 0u;
     best.N     = 0u;
     best.valid = false;
+    best.nearestDist = asfloat(0x7F800000u);  // +INF
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
@@ -706,6 +717,8 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         best.var   = var;
         best.level = lvl;
         best.N     = total;
+        if (gFlags & kFlag_EnableNearestDist)
+            best.nearestDist = asfloat(gVHFNearestDist[slot]);
         if (total >= gBootThreshold)
             best.valid = true;
 
@@ -814,6 +827,7 @@ struct VHFGateResult
     uint  probeSteps;   ///< Hash probe steps (diagnostics — collision pressure)
     int3  qa;           ///< Quantized posA cell coords (diagnostics — hash grid vis)
     int3  qb;           ///< Quantized posB cell coords (diagnostics — hash grid vis)
+    float nearestDist;  ///< Nearest hit distance in this cell (INF if not tracked)
 };
 
 /// Phase 1: lookup + RR decision.
@@ -851,6 +865,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.level       = r.level;  // -1 if truly no entry, else immature level
         g.N           = r.N;      // 0 if no entry, else immature sample count
         g.probeSteps  = r.probeSteps;
+        g.nearestDist = r.nearestDist;
         return g;
     }
 
@@ -885,10 +900,11 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     float p = clamp(r.var / gVarThreshold, pFloor, 1.f);
 
     // Pass through diagnostic fields from the lookup result.
-    g.var        = r.var;
-    g.level      = r.level;
-    g.N          = r.N;
-    g.probeSteps = r.probeSteps;
+    g.var         = r.var;
+    g.level       = r.level;
+    g.N           = r.N;
+    g.probeSteps  = r.probeSteps;
+    g.nearestDist = r.nearestDist;
 
     // RR coin flip: trace if xi < p, skip otherwise.
     if (xi < p)
@@ -1068,6 +1084,9 @@ uint vhfOverflowDecay(int slot, uint cur)
 void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
 {
     uint visVal = (V > 0.5f) ? 1u : 0u;  // Binarize: 1 = visible, 0 = occluded
+    uint distBits = 0u;
+    if (gFlags & kFlag_EnableNearestDist)
+        distBits = asuint(length(posB - posA));
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
@@ -1104,6 +1123,8 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
             uint dummy;
             InterlockedExchange(gVHFTable[slot].fingerprint, fp, dummy);
             InterlockedExchange(gVHFTable[slot].packed, 0u, dummy);
+            if (gFlags & kFlag_EnableNearestDist)
+                InterlockedExchange(gVHFNearestDist[slot], 0x7F800000u, dummy);  // Reset to +INF
         }
 
         // Atomically increment both vis_count (if visible) and total_count.
@@ -1111,6 +1132,14 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         uint delta = (visVal << 16u) | 1u;
         uint prev;
         InterlockedAdd(gVHFTable[slot].packed, delta, prev);
+
+        // Store nearest hit distance. InterlockedMin on asuint(dist) works
+        // for positive floats because IEEE 754 bit ordering is monotonic.
+        if (gFlags & kFlag_EnableNearestDist)
+        {
+            uint _unused;
+            InterlockedMin(gVHFNearestDist[slot], distBits, _unused);
+        }
 
         // Inline overflow decay: prevent 16-bit counter wrap-around.
         uint cur = vhfOverflowDecay(slot, prev + delta);

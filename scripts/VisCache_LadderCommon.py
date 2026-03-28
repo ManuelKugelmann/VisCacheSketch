@@ -2,8 +2,8 @@
 VisCache_LadderCommon.py — Shared infrastructure for ladder test steps.
 
 Provides:
-- VARIANTS_POS_NORM1 / VARIANTS_POS_NORM / VARIANTS_ALL: addressing mode configurations
-- BASE: shared base config (1 level, no jitter, all features off)
+- PRESET_MINIMAL + building blocks (RR_*, LEVELS_*, etc.)
+- _make_variants(normal_active, quant, base): 5 addressing variants from preset + quant
 - get_scenes(): resolve scene list from SCENES / SCENE_FILE env vars or defaults
 - run_variants(): execute all variants × frame configs, capture + postprocess
 - run_baseline(): render vanilla PathTracer baselines, skip if cached
@@ -58,13 +58,25 @@ def get_scenes():
         return [scene_file]
     return ALL_SCENES
 
-# Shared base: 1 level, no jitter, all features off, always trace
-BASE = {
-    "numLevels": 1,
-    "posACoarse": 0.06,
-    "autoTuneCells": False,
-    "bootThreshold": 4,
-    "pMin": 1.0,
+# ===========================================================================
+# Building blocks — combine to assemble step configs
+# ===========================================================================
+
+# --- Levels ----------------------------------------------------------------
+LEVELS_SINGLE = {"numLevels": 1, "autoTuneCells": False}
+LEVELS_MULTI  = {"numLevels": 8, "autoTuneCells": True}
+
+# --- Quality ---------------------------------------------------------------
+QUALITY_MINIMAL  = {"bootThreshold": 4,  "varThreshold": 0.10}
+QUALITY_DEFAULT  = {"bootThreshold": 32, "varThreshold": 0.10}
+
+# --- RR / pMin -------------------------------------------------------------
+RR_OFF      = {"pMin": 1.0, "enableVisCacheAdaptivePMin": False, "fireflyBudget": 0.0}
+RR_FIXED    = {"pMin": 0.05, "enableVisCacheAdaptivePMin": False, "fireflyBudget": 0.05}
+RR_ADAPTIVE = {"pMin": 0.05, "enableVisCacheAdaptivePMin": True,  "fireflyBudget": 0.05}
+
+# --- Features (toggle blocks) ---------------------------------------------
+FEATURES_OFF = {
     "enableVisCacheJitterA": False,
     "enableVisCacheJitterB": False,
     "enableVisCacheVarianceGate": False,
@@ -72,16 +84,17 @@ BASE = {
     "enableVisCacheDecay": False,
     "enableVisCachePressureEvict": False,
 }
+# --- Quantization cell sizes -----------------------------------------------
+QUANT_SMALL   = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0,  "distB": 0.24}
+QUANT_MID     = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 8.0,  "distB": 0.48}
+QUANT_DEFAULT = QUANT_SMALL
 
-# ---------------------------------------------------------------------------
-# Quantization presets
-# ---------------------------------------------------------------------------
-# Named size presets for B-side quantization bins.
-# Default quantization preset — step scripts define their own and pass to _make_variants.
-# Keys: posA (A-side cell), normalA (normal bin degrees), posB (B-side pos cell),
-#        dirB (angular degrees), distB (distance cell).
-# A-side params first, B-side second.
-QUANT_DEFAULT = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0, "distB": 0.24}
+# ===========================================================================
+# Assembled presets — named combos of building blocks
+# ===========================================================================
+
+# The only preset needed so far — add more when ladder steps demand them
+PRESET_MINIMAL = {**LEVELS_SINGLE, **QUALITY_MINIMAL, **RR_OFF, **FEATURES_OFF}
 
 # ---------------------------------------------------------------------------
 # Addressing variant groups
@@ -93,16 +106,19 @@ QUANT_DEFAULT = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0, "dist
 # Each group has the same 5 B-side configurations in the same order:
 #   pos1, dir1_dist1, pos, dir_dist1, dir_dist
 
-def _make_variants(normal_active, quant=None):
-    """Generate 5 variants for one A-side config (norm1 or norm).
+def _make_variants(normal_active, quant=None, base=None):
+    """Generate 6 variants for one A-side config (norm1 or norm).
     quant: dict with posA, normalA, posB, dirB, distB keys.
+    base: preset dict (default: PRESET_MINIMAL). Steps pick the preset closest
+          to their needs and override the differences.
     """
     q = quant or QUANT_DEFAULT
+    b = base if base is not None else PRESET_MINIMAL
     prefix = "pos_norm" if normal_active else "pos_norm1"
     na = normal_active
     return [
         (f"{prefix}__pos1", {
-            **BASE,
+            **b,
             "enableVisCacheDirDistAddr": False,
             "enableVisCacheNormalAddr": na,
             "posACoarse": q["posA"],
@@ -110,7 +126,7 @@ def _make_variants(normal_active, quant=None):
             "posBCoarse": 10000.0,
         }),
         (f"{prefix}__dir1_dist1", {
-            **BASE,
+            **b,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
             "posACoarse": q["posA"],
@@ -119,7 +135,7 @@ def _make_variants(normal_active, quant=None):
             "distBCoarse": 1000.0,
         }),
         (f"{prefix}__pos", {
-            **BASE,
+            **b,
             "enableVisCacheDirDistAddr": False,
             "enableVisCacheNormalAddr": na,
             "posACoarse": q["posA"],
@@ -127,7 +143,7 @@ def _make_variants(normal_active, quant=None):
             "posBCoarse": q["posB"],
         }),
         (f"{prefix}__dir_dist1", {
-            **BASE,
+            **b,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
             "posACoarse": q["posA"],
@@ -136,7 +152,7 @@ def _make_variants(normal_active, quant=None):
             "distBCoarse": 1000.0,
         }),
         (f"{prefix}__dir_dist", {
-            **BASE,
+            **b,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
             "posACoarse": q["posA"],
@@ -144,11 +160,25 @@ def _make_variants(normal_active, quant=None):
             "dirBCoarse": q["dirB"],
             "distBCoarse": q["distB"],
         }),
+        (f"{prefix}__dir_nearest", {
+            **b,
+            "enableVisCacheDirDistAddr": True,
+            "enableVisCacheNearestDist": True,
+            "enableVisCacheNormalAddr": na,
+            "posACoarse": q["posA"],
+            "normalACoarse": q["normalA"],
+            "dirBCoarse": q["dirB"],
+            "distBCoarse": 1000.0,  # distance collapsed in hash — stored per cell instead
+        }),
     ]
 
-VARIANTS_POS_NORM1 = _make_variants(normal_active=False)
-VARIANTS_POS_NORM  = _make_variants(normal_active=True)
-VARIANTS_ALL       = VARIANTS_POS_NORM1 + VARIANTS_POS_NORM
+def make_norm_variants(quant=None, base=None):
+    """The 4 non-collapsed norm-active variants: pos, dir_dist1, dir_dist, dir_nearest.
+    Working set from step 03 onward.
+    """
+    all_v = _make_variants(normal_active=True, quant=quant, base=base)
+    return [v for v in all_v if "__pos1" not in v[0] and "__dir1_dist1" not in v[0]]
+
 
 # ---------------------------------------------------------------------------
 # Stats CSV
@@ -572,12 +602,14 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     return stats
 
 def run_variants(step_name, frame_configs, scene_file, variants=None,
-                  maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None):
+                  maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None,
+                  step_overrides=None):
     """Run all variants × frame configs for a ladder step.
     mogwai_globals: pass globals() from the Mogwai script to access m, fc, etc.
+    step_overrides: dict merged on top of each variant's overrides (e.g. pMin).
     """
     if variants is None:
-        variants = VARIANTS_POS_NORM
+        raise ValueError("variants is required")
     g_dict = mogwai_globals or {}
     m = g_dict.get('m')
     fc = g_dict.get('fc')
@@ -594,6 +626,8 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
     all_stats = []
     for (variant_name, overrides) in variants:
+        if step_overrides:
+            overrides = {**overrides, **step_overrides}
         for fc_entry in frame_configs:
             warmup, averaging = fc_entry[0], fc_entry[1]
             spp = fc_entry[2] if len(fc_entry) > 2 else 1
