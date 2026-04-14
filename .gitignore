@@ -53,3 +53,8 @@ viscachepaper/paper-combined.md
 .scripts/.mode
 .agents/
 runtime/.runstate/
+
+# Claude Code per-user settings (allowlist, local permissions). Shared project
+# settings (hooks, enforced rules) belong in .claude/settings.json.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
