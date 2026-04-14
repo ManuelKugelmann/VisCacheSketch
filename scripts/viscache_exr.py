@@ -203,6 +203,73 @@ def _linear_to_srgb(c):
     return np.where(c <= 0.0031308, c * 12.92, 1.055 * np.abs(c) ** (1.0/2.4) - 0.055).astype(np.float32)
 
 
+def _oklab_distance_hdr(a_exr, b_exr):
+    """Per-pixel OkLab perceptual distance (2× L weight) between two HDR EXRs.
+    Returns (H, W) float32 or None on error. Clamps to [0, 10] pre-tonemap to
+    suppress fireflies before sRGB conversion."""
+    a_data = read_exr(a_exr)
+    b_data = read_exr(b_exr)
+    a_lin = a_data.get("RGBA", a_data.get("RGB"))
+    b_lin = b_data.get("RGBA", b_data.get("RGB"))
+    if a_lin is None or b_lin is None or a_lin.shape[:2] != b_lin.shape[:2]:
+        return None
+    a_lin = np.clip(a_lin[:, :, :3], 0, 10)
+    b_lin = np.clip(b_lin[:, :, :3], 0, 10)
+    lab_a = _srgb_to_oklab(_linear_to_srgb(a_lin))
+    lab_b = _srgb_to_oklab(_linear_to_srgb(b_lin))
+    dL = lab_a[..., 0] - lab_b[..., 0]
+    da = lab_a[..., 1] - lab_b[..., 1]
+    db = lab_a[..., 2] - lab_b[..., 2]
+    return np.sqrt(4.0 * dL**2 + da**2 + db**2)
+
+
+def _signed_error_png(signed, outpath, nodata=None, norm=1.4):
+    """Signed error PNG anchored at viridis(0) = dark purple.
+    `signed` is (H,W) in units where ±norm is the clip range:
+      positive → viridis ramp (purple → blue → green → yellow) as degradation grows
+      zero     → viridis(0) = dark purple (parity with vanilla at same SPP)
+      negative → purple → black ramp as denoising gain grows (viridis(0) * (1 − |s|/norm))
+    The result is a continuous, monotone scalar field: darker-than-purple = better,
+    brighter-than-purple = worse.
+    """
+    s = np.clip(signed / max(norm, 1e-6), -1.0, 1.0).astype(np.float32)
+    h, w = signed.shape
+    rgb = np.zeros((h, w, 3), dtype=np.float32)
+    pos = s > 0
+    neg = ~pos  # includes zero → viridis(0) naturally via 1 + s = 1
+    purple = np.array(cm.viridis(0.0)[:3], dtype=np.float32)  # viridis's dark-purple anchor
+    if pos.any():
+        rgb[pos] = cm.viridis(s[pos])[:, :3].astype(np.float32)
+    if neg.any():
+        # factor in [0, 1]: 1 at s=0 (purple), 0 at s=-1 (black)
+        factor = (1.0 + s[neg]).astype(np.float32)
+        rgb[neg] = factor[:, np.newaxis] * purple[np.newaxis, :]
+    if nodata is not None:
+        cm_arr = np.asarray(nodata)
+        if cm_arr.dtype == bool:
+            rgb[cm_arr] = 0.0
+        else:
+            rgb *= np.clip(cm_arr, 0.0, 1.0)[:, :, np.newaxis]
+    Image.fromarray((rgb * 255).astype(np.uint8)).save(outpath)
+
+
+def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath, nodata=None):
+    """Signed HDR GT-error delta: err(render, GT) − err(vanilla_xN, GT) in OkLab (2× L).
+    Negative (purple) = VisCache denoised at this SPP; positive (yellow) = VisCache degraded.
+    Both errors use identical clamping + OkLab metric so the delta is unit-consistent.
+    """
+    err_render  = _oklab_distance_hdr(render_exr,  gt_exr)
+    err_vanilla = _oklab_distance_hdr(vanilla_xN_exr, gt_exr)
+    if err_render is None or err_vanilla is None:
+        print(f"[viscache_exr] WARNING: cannot compute signed HDR error (missing or mismatched inputs)")
+        return None
+    if err_render.shape != err_vanilla.shape:
+        print(f"[viscache_exr] WARNING: err shape mismatch, skipping signed error")
+        return None
+    _signed_error_png(err_render - err_vanilla, outpath, nodata=nodata)
+    return outpath
+
+
 def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None):
     """HDR perceptual error (OkLab, 2x L weight) from pre-tonemapper EXRs → viridis PNG.
     Converts linear HDR to sRGB before OkLab (OkLab expects sRGB input).

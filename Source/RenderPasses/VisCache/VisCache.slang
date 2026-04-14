@@ -119,7 +119,8 @@ struct VHFResult
     uint  N;        ///< Total sample count at matched level (0 = miss, for diagnostics)
     bool  valid;    ///< false = cold miss — no mature entry found, always trace
     uint  probeSteps; ///< Total probe steps across all levels (diagnostics — collision pressure)
-    float nearestDist; ///< Nearest hit distance stored in this cell (INF if not tracked)
+    int3  qa;       ///< Quantized posA at matched level (diagnostics — hash grid vis)
+    int3  qb;       ///< Quantized posB at matched level (diagnostics — hash grid vis)
 };
 
 // ===========================================================================
@@ -142,16 +143,22 @@ struct VHFResult
 //     a good default for 1080p. Scale with resolution * bounce count. Too
 //     small → high eviction rate → cache thrashing. Too large → wasted VRAM.
 //
-//   gBootThreshold:  Minimum total_count before an entry is trusted. Lower
-//     values (16) give faster warmup but noisier early estimates. Higher
-//     values (64) are more conservative — good when RR decisions are costly.
+//   gBootThreshold:  Minimum total_count before an entry is trusted for RR
+//     decisions (use gate). Lower values (16) give faster warmup but noisier
+//     early estimates. Higher values (64) are more conservative.
 //     Must be >= 1 and <= 0xFFFF (16-bit counter width).
 //
-//   gVarThreshold:  Variance gate for both the cascaded LOD stop (lookup)
-//     and the maturity gate (insert). 0.10 means: stop refining when
-//     mu*(1-mu) < 0.10. Lower values (0.01) activate more levels, giving
-//     higher quality at shadow penumbrae but tracing more rays. Higher
-//     values save more rays but may miss penumbra detail.
+//   gMatureThreshold:  Minimum total_count before stopping writes to an entry
+//     (mature gate). Must be >= gBootThreshold. Higher values keep entries
+//     accepting new samples longer, improving estimate quality in penumbrae.
+//     The actual required count scales with variance: high-variance cells
+//     need more samples (required = var * matureThreshold / varThreshold).
+//
+//   gVarThreshold:  Variance gate for cascaded LOD stop (lookup) and RR
+//     probability scaling. 0.10 means: stop refining when mu*(1-mu) < 0.10.
+//     Lower values (0.01) activate more levels, giving higher quality at
+//     shadow penumbrae but tracing more rays. Higher values save more rays
+//     but may miss penumbra detail.
 //
 //   gPMin:  Minimum RR survival probability — the floor below which
 //     variance-based p is never reduced. 0.05 means never kill more than
@@ -174,12 +181,13 @@ struct VHFResult
 cbuffer VisCacheParams
 {
     uint   gTableCapacity;   ///< Power-of-two entry count
-    uint   gBootThreshold;   ///< Min total_count before entry is trusted
+    uint   gBootThreshold;   ///< Min total_count before entry is trusted for RR (use gate)
+    uint   gMatureThreshold; ///< Min total_count before stopping writes (mature gate)
     float  gVarThreshold;    ///< Variance below which we stop refining LOD
     float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
-    uint   gFlags;           ///< Packed flags: bit 0 = jitterA, bit 1 = jitterB, bit 2 = adaptivePMin
+    uint   gFlags;           ///< Packed flags: 0=jitterA 1=jitterB 2=adaptivePMin 3=normalAddr 4=footprintScale 5=warmupWriteOnly
     // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
     float  gPosACoarse;      ///< posA coarsest cell size (world units, auto-tuned from scene)
     float  gPosAFine;        ///< posA finest cell size (auto-derived from coarse + numLevels)
@@ -194,6 +202,13 @@ cbuffer VisCacheParams
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
     uint   gFrameCount;      ///< Current frame index for per-frame RNG variation
     uint   gSpp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
+    float  gCameraPosX;      ///< Camera world-space X (for footprint estimation)
+    float  gCameraPosY;      ///< Camera world-space Y
+    float  gCameraPosZ;      ///< Camera world-space Z
+    float  gPixelSize1;      ///< Pixel world-space size at unit depth (2*length(cameraU)/frameDim.x)
+    uint   gSubframeN;        ///< N×N Bayer gate (1 = disabled)
+    uint   gWarmupFirst;      ///< # Bayer slots write-only in frame 0 (force trace, no RR)
+    uint   gWarmupRun;        ///< # Bayer slots write-only in every subsequent frame
 };
 
 // ---------------------------------------------------------------------------
@@ -208,6 +223,18 @@ float vhfInterp(float coarse, float fine, int lvl)
 }
 
 float vhfPosASize(int lvl)      { return vhfInterp(gPosACoarse,  gPosAFine,  lvl); }
+
+/// Estimated screen-space pixel count for a cell at the given level and depth.
+/// cellSize² / pixelSize² where pixelSize = depth * gPixelSize1.
+uint vhfCellPixels(int lvl, float3 posA)
+{
+    float cellSize = vhfPosASize(lvl);
+    float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
+    float depth = max(length(posA - camPos), 0.001f);
+    float pixelSize = depth * gPixelSize1;
+    float ratio = cellSize / max(pixelSize, 1e-6f);
+    return uint(max(ratio * ratio, 1.f));
+}
 float vhfPosBSize(int lvl)      { return vhfInterp(gPosBCoarse,  gPosBFine,  lvl); }
 float vhfDirBSize(int lvl)      { return vhfInterp(gDirBCoarse,  gDirBFine,  lvl); }
 float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse, gDistBFine, lvl); }
@@ -215,12 +242,6 @@ float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse, gDistBFine, lvl
 /// The hash table — RWStructuredBuffer so all threads can read and atomically
 /// update entries concurrently. Bound by the host via dict["vhfTable"].
 RWStructuredBuffer<VHFEntry> gVHFTable;
-
-/// Parallel nearest-hit distance buffer. Same capacity as gVHFTable, indexed
-/// by slot. Stores asuint(distance) so InterlockedMin finds the minimum
-/// (works for positive IEEE 754 floats). Cleared to 0x7F800000 (INF).
-/// Only used when kFlag_EnableNearestDist is set.
-RWBuffer<uint> gVHFNearestDist;
 
 // ===========================================================================
 // HASH FUNCTIONS
@@ -595,11 +616,30 @@ uint vhfFingerprint(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist)
 static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving up (controls worst-case lookup time)
 
 // --- gFlags bitfield constants ---
-static const uint kFlag_EnableJitterA      = 1u << 0;
-static const uint kFlag_EnableJitterB      = 1u << 1;
-static const uint kFlag_EnableAdaptivePMin = 1u << 2;
-static const uint kFlag_EnableNormalAddr   = 1u << 3;
-static const uint kFlag_EnableNearestDist = 1u << 4;
+// Assumption: flags are fixed per run (set once at startup, never toggled at runtime).
+// Runtime toggling of flags that drive side-effects on insert/evict paths would
+// leak stale per-slot state until the next full cache turnover.
+static const uint kFlag_EnableJitterA         = 1u << 0;
+static const uint kFlag_EnableJitterB         = 1u << 1;
+static const uint kFlag_EnableAdaptivePMin    = 1u << 2;
+static const uint kFlag_EnableNormalAddr      = 1u << 3;
+static const uint kFlag_EnableFootprintScale  = 1u << 4;
+
+// ---------------------------------------------------------------------------
+// vhfBayerWarmup: returns true if this pixel is in write-only warmup mode
+// this frame. The caller should force trace + write (skip RR read) when true.
+//
+// Bayer slot index: (x mod N) + (y mod N) * N, range [0, N²).
+// Frame 0  → slot < gWarmupFirst
+// Frame >0 → slot < gWarmupRun
+// ---------------------------------------------------------------------------
+bool vhfBayerWarmup(uint2 pixel)
+{
+    uint N = max(gSubframeN, 1u);
+    uint slot = (pixel.x % N) + (pixel.y % N) * N;
+    uint activeSlots = (gFrameCount == 0u) ? gWarmupFirst : gWarmupRun;
+    return slot < activeSlots;
+}
 static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict (lower = more aggressive eviction)
 static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive eviction at kEvictStartStep
 static const uint kOverflowTrigger = 0xE000u; ///< Inline decay fires when total > this (~57K of 65535 max)
@@ -627,14 +667,16 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert, out uint probeSteps)
             return int(slot);
         }
 
+        // Empty slot — no entry was ever placed here or beyond.
+        // Eviction replaces (never empties), so empty = chain end.
+        if (efp == 0u && gVHFTable[slot].packed == 0u)
+        {
+            probeSteps = i;
+            return allowInsert ? int(slot) : -1;
+        }
+
         if (allowInsert)
         {
-            // Empty slot — available for new entry.
-            if (efp == 0u && gVHFTable[slot].packed == 0u)
-            {
-                probeSteps = i;
-                return int(slot);
-            }
 
             // Pressure-scaled eviction: deeper probe steps can evict
             // entries with few samples. This prevents probe chains from
@@ -686,7 +728,8 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     best.probeSteps = 0u;
     best.N     = 0u;
     best.valid = false;
-    best.nearestDist = asfloat(0x7F800000u);  // +INF
+    best.qa = int3(0);
+    best.qb = int3(0);
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
@@ -711,23 +754,36 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         float var = mu * (1.0f - mu);  // Bernoulli variance
 
         // Always record entry data (even immature) so diagnostics can show it.
-        // valid is only set when mature (>= bootThreshold) — the gate uses
-        // valid to decide whether to trust the entry for RR decisions.
         best.mu    = mu;
         best.var   = var;
         best.level = lvl;
         best.N     = total;
-        if (gFlags & kFlag_EnableNearestDist)
-            best.nearestDist = asfloat(gVHFNearestDist[slot]);
-        if (total >= gBootThreshold)
+        best.qa    = qa;
+        best.qb    = qb;
+
+        // Footprint-aware trust: log2(cellPixels) gives a conservative
+        // spatial diversity requirement that scales gently with cell size.
+        // Examples: cellPx=4→2, cellPx=64→6, cellPx=1024→10, cellPx=6889→13
+        // Capped at 2*bootThreshold to stay achievable in few frames.
+        // Ablation K (kFlag_EnableFootprintScale): without it, falls back to
+        // pure bootThreshold gate — exposes distance-related maturity gradient.
+        uint footprintReq = gBootThreshold;
+        if (gFlags & kFlag_EnableFootprintScale)
+        {
+            uint cellPx = vhfCellPixels(lvl, posA);
+            uint diversityReq = uint(log2(max(float(cellPx), 1.f)));
+            footprintReq = min(max(gBootThreshold, diversityReq), gBootThreshold * 2u);
+        }
+        uint required = uint(float(footprintReq) * (1.f + var * 4.f));
+        if (total >= required)
             best.valid = true;
 
-        // Immature entry: don't stop cascade, let finer levels try.
-        if (total < gBootThreshold) continue;
+        // Not yet trusted: try finer levels.
+        if (total < required) continue;
 
-        // Variance gate: if this level is converged (low variance),
-        // finer levels would produce the same estimate. Stop early.
-        if (var <= gVarThreshold) break;
+        // Always descend — even zero-variance coarse cells may straddle
+        // sharp shadow boundaries where all initial samples came from one side.
+        // Only the finest available level is trustworthy.
     }
 
     return best;
@@ -827,7 +883,6 @@ struct VHFGateResult
     uint  probeSteps;   ///< Hash probe steps (diagnostics — collision pressure)
     int3  qa;           ///< Quantized posA cell coords (diagnostics — hash grid vis)
     int3  qb;           ///< Quantized posB cell coords (diagnostics — hash grid vis)
-    float nearestDist;  ///< Nearest hit distance in this cell (INF if not tracked)
 };
 
 /// Phase 1: lookup + RR decision.
@@ -841,15 +896,31 @@ struct VHFGateResult
 ///   Pass 0 to disable adaptive pMin and use the flat gPMin floor.
 VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f,
-                       float3 normalA = float3(0.f))
+                       float3 normalA = float3(0.f),
+                       bool forceWarmup = false)
 {
     VHFGateResult g;
     VHFResult r = vhfLookup(posA, posB, normalA);
 
-    // Quantize at coarsest level for hash grid visualization (diagnostics).
-    // Diagnostic hash vis: compute qa/qb exactly as the rendering path does
-    // (including normal XOR-fold into qa when enabled).
-    vhfQuantizePair(posA, posB, vhfPosASize(0), 0u, g.qa, g.qb, normalA);
+    // Copy qa/qb from the cascade-selected level (diagnostics — hash grid vis).
+    g.qa = r.qa;
+    g.qb = r.qb;
+
+    // Warmup: force trace + cache write, no RR. When forceWarmup is true
+    // (caller determined pixel is in write-only Bayer slot this frame),
+    // skip the RR read entirely. See vhfBayerWarmup().
+    if (forceWarmup)
+    {
+        g.shouldTrace = true;
+        g.visWeight   = 0.f;
+        g.mu          = r.mu;
+        g.invP        = 1.f;
+        g.var         = r.var;
+        g.level       = r.level;
+        g.N           = r.N;
+        g.probeSteps  = r.probeSteps;
+        return g;
+    }
 
     // No mature entry: must trace unconditionally.
     // invP = 1 means the commit weight is just V (no correction needed).
@@ -865,7 +936,6 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.level       = r.level;  // -1 if truly no entry, else immature level
         g.N           = r.N;      // 0 if no entry, else immature sample count
         g.probeSteps  = r.probeSteps;
-        g.nearestDist = r.nearestDist;
         return g;
     }
 
@@ -904,7 +974,6 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     g.level       = r.level;
     g.N           = r.N;
     g.probeSteps  = r.probeSteps;
-    g.nearestDist = r.nearestDist;
 
     // RR coin flip: trace if xi < p, skip otherwise.
     if (xi < p)
@@ -969,10 +1038,11 @@ float vhfDeterministicXi(float3 posA, float3 posB)
 /// stability and reproducibility are required.
 VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
                                     float contribLuminance = 0.f,
+                                    bool forceWarmup = false,
                                     float3 normalA = float3(0.f))
 {
     float xi = vhfDeterministicXi(posA, posB);
-    return vhfGate(posA, posB, xi, contribLuminance, normalA);
+    return vhfGate(posA, posB, xi, contribLuminance, normalA, forceWarmup);
 }
 
 // ===========================================================================
@@ -987,16 +1057,16 @@ VHFGateResult vhfGateDeterministic(float3 posA, float3 posB,
 //   SE = sqrt(mu * (1 - mu) / n)
 //
 // We define "mature" as SE <= SE_threshold, where:
-//   SE_threshold^2 = gVarThreshold / gBootThreshold
+//   SE_threshold^2 = gVarThreshold / gMatureThreshold
 //
 // Rearranging:
-//   n >= mu * (1 - mu) * gBootThreshold / gVarThreshold
+//   n >= mu * (1 - mu) * gMatureThreshold / gVarThreshold
 //
-// Examples (bootThreshold=32, varThreshold=0.1):
-//   mu=1.0  → var=0.00, required=0    → mature immediately (fully lit)
-//   mu=0.95 → var=0.05, required=16   → mature quickly (mostly lit)
-//   mu=0.50 → var=0.25, required=80   → needs many samples (penumbra)
-//   mu=0.70 → var=0.21, required=67   → intermediate
+// Examples (matureThreshold=128, varThreshold=0.1):
+//   mu=1.0  → var=0.00, required=0     → mature immediately (fully lit)
+//   mu=0.95 → var=0.05, required=64    → mature quickly (mostly lit)
+//   mu=0.50 → var=0.25, required=320   → needs many samples (penumbra)
+//   mu=0.70 → var=0.21, required=269   → intermediate
 //
 // The maturity gate reduces atomic contention on well-converged entries.
 // Without it, every shadow ray trace would contend on the same slots,
@@ -1017,17 +1087,19 @@ bool vhfIsMature(uint addr, uint fp)
     // inconsistent values if another thread writes between the reads.
     uint packed = gVHFTable[slot].packed;
     uint total  = packed & 0xFFFFu;
-    if (total < 2u) return false;  // Too few samples to compute variance
 
+    // Hard floor: never mature before bootThreshold, regardless of variance.
+    if (total < gBootThreshold) return false;
+
+    // Variance-scaled maturity: penumbrae need more samples than lit/shadowed.
     uint  vis = packed >> 16u;
     float mu  = float(vis) / float(total);
     float var = mu * (1.0f - mu);
 
     // Guard against gVarThreshold == 0 (would cause division by zero).
-    // When varThreshold is zero, fall back to simple sample count check.
-    if (gVarThreshold <= 0.f) return total >= gBootThreshold;
+    if (gVarThreshold <= 0.f) return total >= gMatureThreshold;
 
-    float required = var * float(gBootThreshold) / gVarThreshold;
+    float required = var * float(gMatureThreshold) / gVarThreshold;
     return float(total) >= required;
 }
 
@@ -1084,9 +1156,6 @@ uint vhfOverflowDecay(int slot, uint cur)
 void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
 {
     uint visVal = (V > 0.5f) ? 1u : 0u;  // Binarize: 1 = visible, 0 = occluded
-    uint distBits = 0u;
-    if (gFlags & kFlag_EnableNearestDist)
-        distBits = asuint(length(posB - posA));
 
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
@@ -1123,8 +1192,6 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
             uint dummy;
             InterlockedExchange(gVHFTable[slot].fingerprint, fp, dummy);
             InterlockedExchange(gVHFTable[slot].packed, 0u, dummy);
-            if (gFlags & kFlag_EnableNearestDist)
-                InterlockedExchange(gVHFNearestDist[slot], 0x7F800000u, dummy);  // Reset to +INF
         }
 
         // Atomically increment both vis_count (if visible) and total_count.
@@ -1133,14 +1200,6 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         uint prev;
         InterlockedAdd(gVHFTable[slot].packed, delta, prev);
 
-        // Store nearest hit distance. InterlockedMin on asuint(dist) works
-        // for positive floats because IEEE 754 bit ordering is monotonic.
-        if (gFlags & kFlag_EnableNearestDist)
-        {
-            uint _unused;
-            InterlockedMin(gVHFNearestDist[slot], distBits, _unused);
-        }
-
         // Inline overflow decay: prevent 16-bit counter wrap-around.
         uint cur = vhfOverflowDecay(slot, prev + delta);
 
@@ -1148,7 +1207,7 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         // stop descending. Finer levels in a converged region would produce
         // the same mu, so writing to them wastes table capacity.
         uint totalCur = cur & 0xFFFFu;
-        if (totalCur >= gBootThreshold)
+        if (totalCur >= gMatureThreshold)
         {
             uint visCur  = cur >> 16u;
             float muCur  = float(visCur) / float(totalCur);

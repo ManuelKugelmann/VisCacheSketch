@@ -222,6 +222,42 @@ is a pure implementation task with no algorithmic risk.
 The variance gate applies to propagation targets:
 skip bins that already agree with the propagated value.
 
+**Per-cell distance prior for collapsed-distance addressing.**
+When the distance axis is collapsed in the hash key
+(`dir_dist1`-style addressing, single distance bucket per `(posA, dir)` bin),
+rays of very different lengths pool into the same cell
+and the cached μ averages short-ray and long-ray visibility together.
+Under the surface-target assumption
+(V=1 implies the ray reached its target surface at tMax,
+with no volumetric scattering past that point),
+every V=1 sample with ray length L is a verified occluder-free segment (0, L)
+for that bin's direction.
+An auxiliary per-cell `clearDist = max(tMax | V=1)` —
+stored as a parallel `RWBuffer<uint>` indexed by slot,
+updated via `InterlockedMax(asuint(tMax))` on V=1 inserts,
+reset to 0 on eviction —
+records the longest verified clear-path length in the bin.
+At lookup, a query ray shorter than `clearDist`
+can be predicted visible (μ→1, var→0) with geometric justification:
+under bin-homogeneity in the direction quantization,
+a shorter ray is contained within a previously cleared segment.
+The CV+RRR estimator remains unbiased regardless of μ accuracy
+(see Sec. 8), so an incorrect override
+(quantization heterogeneity, thin grazing blockers)
+only affects variance, not expectation.
+The complementary V=0 statistic —
+`nearestBlocker = min(tMax | V=0)` — is an upper bound on the true blocker distance
+(the blocker lies somewhere in (0, tMax], not at tMax itself),
+so it cannot cleanly drive an override:
+the blocker could always be closer than any observed blocked ray.
+The V=1 direction gives the stronger signal.
+The open question is whether the per-slot storage overhead
+(one additional 32-bit field per entry, roughly 16 MB at a 4M-entry table)
+buys enough variance reduction in collapsed-distance regimes
+to beat proper distance binning (`dir_dist`);
+in the general case, allocating that same storage
+to finer distance bins in the key itself is likely a better trade.
+
 **Sentinel traces for dynamic scene detection.**
 The Pmin floor (Sec. 8) already forces ~5% of pixels
 to trace unconditionally, paying the ray cost regardless of cache state.

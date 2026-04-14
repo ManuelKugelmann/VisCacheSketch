@@ -38,7 +38,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
 
     # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
     if viscache:
-        vc = createPass("VisCachePass", VISCACHE_DEFAULTS)
+        vc = createPass("VisCachePass", {**VISCACHE_DEFAULTS, "spp": samplesPerPixel})
         g.addPass(vc, "VisCache")
 
     # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
@@ -49,11 +49,16 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
     })
     g.addPass(pt, "PathTracer")
 
-    # Accumulate samples over frames for progressive rendering
-    accum = createPass("AccumulatePass", {
+    # Accumulate samples over frames for progressive rendering.
+    # subframeN mirrors VisCache's Bayer subframe gate so AccumulatePass only fires
+    # on the last subframe of each N² cycle (PathTracer composes a dense frame first).
+    accum_props = {
         "enabled":       True,
         "precisionMode": "Single",
-    })
+    }
+    if viscache:
+        accum_props["subframeN"] = VISCACHE_DEFAULTS.get("subframeN", 1)
+    accum = createPass("AccumulatePass", accum_props)
     g.addPass(accum, "AccumulatePass")
 
     # Tone mapper

@@ -89,7 +89,9 @@ struct ResolvePass
 
         // For the special case of fixed 1 spp output, the path tracer writes directly to the output color buffer.
         // In all other cases, we need to resolve the individual samples.
-        if (kSamplesPerPixel != 1)
+        // When spp==0 (e.g. VisCache subframe gate inactive slot), preserve the stale outputColor so the
+        // N² subframes collectively compose a dense logical frame without zeroing inactive slots.
+        if (kSamplesPerPixel != 1 && spp > 0)
         {
             float3 color = float3(0.f);
 

@@ -116,8 +116,12 @@ protected:
     /// Format type of the source that gets accumulated.
     FormatType mSrcType;
 
-    /// Number of accumulated frames. This is reset upon changes.
+    /// Number of accumulated logical frames. This is reset upon changes.
     uint32_t mFrameCount = 0;
+    /// N×N subframe gate (matches PathTracer). 1 = no gate.
+    uint32_t mSubframeN = 1;
+    /// Current subframe index within a logical frame [0, N²). Cycles mod N².
+    uint32_t mSubframeIdx = 0;
     /// Current frame dimension in pixels.
     uint2 mFrameDim = {0, 0};
     /// Last frame running sum. Used in Single and SingleKahan mode.

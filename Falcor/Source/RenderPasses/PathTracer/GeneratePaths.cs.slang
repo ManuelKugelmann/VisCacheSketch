@@ -44,6 +44,36 @@ static const uint kWarpCount = (kScreenTileDim.x * kScreenTileDim.y) / 32;
 // TODO: Replace explicitly declared size by compile-time constant when it works. For now assume tile is always 16x16!
 groupshared uint gSamplesOffset[8 /* kWarpCount */];
 
+// VisCache subframe gate: N×N Bayer pixel interleaving. 1 = full frame (no gate),
+// 2 = 2×2 (4 subframes), 4 = 4×4 (16 subframes).
+// Disperses cell-write order temporally so the first pixel to touch a cell doesn't
+// bias every neighbor's prediction. See Falcor/LOCAL_FIXES.md #14.
+// TODO: Replace this full-dispatch-with-early-out by reduced-size dispatch
+// (ceil(W/N)xceil(H/N) groups + offset addressing). Saves N^2-1 of N^2 threads.
+#ifndef VISCACHE_SUBFRAME_N
+#define VISCACHE_SUBFRAME_N 1
+#endif
+static const uint kVisCacheSubframeN = VISCACHE_SUBFRAME_N;
+
+// Bayer tables (low-discrepancy, temporally stable). Values = subframe slot index.
+static const uint kBayer2x2[4] = { 0, 2, 3, 1 };
+static const uint kBayer4x4[16] = {
+     0,  8,  2, 10,
+    12,  4, 14,  6,
+     3, 11,  1,  9,
+    15,  7, 13,  5
+};
+bool vcIsActiveSubframeSlot(uint2 pixel, uint frameCount)
+{
+    const uint N = kVisCacheSubframeN;
+    if (N == 1) return true;
+    const uint slot = frameCount % (N * N);
+    const uint bx = pixel.x % N;
+    const uint by = pixel.y % N;
+    const uint bayerVal = (N == 2) ? kBayer2x2[by * 2 + bx] : kBayer4x4[by * 4 + bx];
+    return bayerVal == slot;
+}
+
 /** Helper struct for generating paths in screen space.
 
     The dispatch size is one thread group per screen tile. A warp is assumed to be 32 threads.
@@ -104,7 +134,11 @@ struct PathGenerator
         uint spp = 0;
 
         // Note: Do not terminate threads for out-of-bounds pixels because we need all threads active for the prefix sum pass below.
-        if (all(pixel < params.frameDim))
+        // VisCache subframe gate: inactive-slot pixels behave like out-of-bounds (spp=0, no background write).
+        // Uses params.subframeIdx (cycles 0..N²-1 within one logical frame, keeping frameCount constant).
+        // TODO: replace by reduced-size dispatch (see Falcor/LOCAL_FIXES.md #14).
+        const bool activeSubframe = vcIsActiveSubframeSlot(pixel, params.subframeIdx);
+        if (all(pixel < params.frameDim) && activeSubframe)
         {
             // Determine number of samples at the current pixel.
             // This is either a fixed number or loaded from the sample count texture.
@@ -175,7 +209,7 @@ struct PathGenerator
         }
         GroupMemoryBarrierWithGroupSync();
 
-        if (all(pixel < params.frameDim))
+        if (all(pixel < params.frameDim) && activeSubframe)
         {
             // Compute the output sample index.
             // For a fixed sample count, the output index is computed directly from the thread index.

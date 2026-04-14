@@ -1,8 +1,8 @@
 """
-VisCache_Ladder02.py — Step 02: Tuned quantization + adaptive RR.
+VisCache_Ladder02.py — Step 02: All addressing variants, adaptive RR.
 
-PRESET_MINIMAL + RR_ADAPTIVE + QUANT_MID: tuned bin sizes, RR enabled.
-Collapsed B-side (pos1, dir1_dist1) dropped after step 01. norm1 + norm.
+PRESET_MINIMAL + RR_ADAPTIVE: 1 level, tiny boot, no features, adaptive pMin.
+Isolates cache addressing accuracy with RR enabled.
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder02.py
@@ -10,24 +10,23 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, _make_variants, get_scenes, \
-    plot_rays_overview, PRESET_MINIMAL, RR_ADAPTIVE, QUANT_MID
+    PRESET_MINIMAL, RR_ADAPTIVE, FOOTPRINT_OFF
 
 res = int(os.environ.get("RES", "512"))
 
-_all = _make_variants(normal_active=False, quant=QUANT_MID, base=PRESET_MINIMAL) \
-     + _make_variants(normal_active=True,  quant=QUANT_MID, base=PRESET_MINIMAL)
-VARIANTS_02 = [v for v in _all if "__pos1" not in v[0] and "__dir1_dist1" not in v[0]]
+QUANT_02 = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0, "distB": 0.24}
+VARIANTS_02 = _make_variants(normal_active=False, quant=QUANT_02, base=PRESET_MINIMAL) \
+            + _make_variants(normal_active=True,  quant=QUANT_02, base=PRESET_MINIMAL)
 
 for scene_file in get_scenes():
     run_variants(
         step_name="02",
-        frame_configs=[(1, 1, 1)],
+        frame_configs=[(1, 0, 2, 1)],
         scene_file=scene_file,
         variants=VARIANTS_02,
         resX=res, resY=res,
         mogwai_globals=globals(),
-        step_overrides=RR_ADAPTIVE,
+        step_overrides={**RR_ADAPTIVE, **FOOTPRINT_OFF},
     )
 
-plot_rays_overview("02")
 _HEADLESS_SCRIPT_DONE = True

@@ -211,6 +211,7 @@ private:
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
     bool mVisCacheJitter = true;            ///< F: jitter-before-quantize (§4.2)
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
+    uint32_t mVisCacheSubframeN = 1;        ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); see Falcor/LOCAL_FIXES.md #14
 
     // Cached cbuffer values — bound per-member because Falcor 8 ParameterBlock
     // doesn't support whole-buffer cbuffer binding.

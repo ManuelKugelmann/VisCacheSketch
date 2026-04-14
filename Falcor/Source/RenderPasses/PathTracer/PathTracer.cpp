@@ -421,6 +421,7 @@ void PathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScen
 
     mpScene = pScene;
     mParams.frameCount = 0;
+    mParams.subframeIdx = 0;
     mParams.frameDim = {};
     mParams.screenTiles = {};
 
@@ -693,6 +694,7 @@ bool PathTracer::onMouseEvent(const MouseEvent& mouseEvent)
 void PathTracer::reset()
 {
     mParams.frameCount = 0;
+    mParams.subframeIdx = 0;
 }
 
 PathTracer::TracePass::TracePass(ref<Device> pDevice, const std::string& name, const std::string& passDefine, const ref<Scene>& pScene, const DefineList& defines, const TypeConformanceList& globalTypeConformances)
@@ -1211,6 +1213,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasJitter = mVisCacheJitter;
         bool wasDirDist = mVisCacheDirDistAddr;
+        uint32_t wasSubframeN = mVisCacheSubframeN;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr &&
             dict.keyExists("vhfParam_tableCapacity"));
@@ -1242,6 +1245,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVisCacheJitter = !mVisCacheAvailable || jA || jB;
         }
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
+        mVisCacheSubframeN = (mVisCacheAvailable && dict.keyExists("vhfSubframeN")) ? dict.getValue<uint32_t>("vhfSubframeN") : 1u;
+        if (mVisCacheSubframeN != 1 && mVisCacheSubframeN != 2 && mVisCacheSubframeN != 4) mVisCacheSubframeN = 1;
 
         // Diagnostic textures — bound at root var like PixelStats so all RT stages
         // can write per-pixel heatmap data inline during tracing.
@@ -1269,10 +1274,10 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheJitter != wasJitter || mVisCacheDirDistAddr != wasDirDist
-            || mVisCacheDiagnostics != wasDiag)
+            || mVisCacheDiagnostics != wasDiag || mVisCacheSubframeN != wasSubframeN)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} diag={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheDiagnostics);
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} diag={} subframeN={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheSubframeN);
             mRecompile = true;
         }
     }
@@ -1355,7 +1360,15 @@ void PathTracer::endFrame(RenderContext* pRenderContext, const RenderData& rende
     if (mpRTXDI) mpRTXDI->endFrame(pRenderContext);
 
     mVarsChanged = false;
-    mParams.frameCount++;
+    // Subframe gate: advance frameCount only after a full Bayer cycle (N² dispatches).
+    // Within one cycle, frameCount stays constant so RNG/jitter behave as a single logical frame.
+    const uint32_t kSubframeCount = mVisCacheSubframeN * mVisCacheSubframeN;
+    mParams.subframeIdx++;
+    if (mParams.subframeIdx >= kSubframeCount)
+    {
+        mParams.subframeIdx = 0;
+        mParams.frameCount++;
+    }
 }
 
 void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& renderData)
@@ -1549,6 +1562,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
+    defines.add("VISCACHE_SUBFRAME_N", std::to_string(owner.mVisCacheSubframeN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
 
     // Scene-specific configuration.

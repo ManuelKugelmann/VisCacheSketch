@@ -22,7 +22,7 @@ for scene_file in get_scenes():
 
     run_baseline(
         step_name="00",
-        frame_configs=[(1, 1)],
+        frame_configs=[(1, 0, 2), (0, 0, 1)],
         scene_file=scene_file,
         resX=res, resY=res,
         gt_spp=4096,

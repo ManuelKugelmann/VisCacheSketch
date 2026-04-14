@@ -321,6 +321,35 @@ The VisCache pass exports per-member values via `InternalDictionary` keys
 
 ---
 
+## 14. PathTracer: VisCache subframe gate in GeneratePaths (early-out, TODO reduced-dispatch)
+
+**File:** `Source/RenderPasses/PathTracer/GeneratePaths.cs.slang`
+
+VisCache needs interleaved per-frame pixel coverage to avoid tile-lit bias:
+when a tile is shaded row-major, the first-touched pixel writes the cell
+mean and every neighbor inherits that prediction. Splitting a frame into
+N×N subframes (active slot cycles with `gFrameCount`) spreads the cell-write
+order spatially. See `VisCache.slang` for the design rationale.
+
+`VISCACHE_SUBFRAME_N` accepts 1 (full frame, no gate), 2 (2×2 Bayer), or 4
+(4×4 Bayer). Default 1 is a no-op — the active-slot test trivially passes.
+
+**Current implementation (early-out):** Full-size dispatch; threads whose
+pixel is not in the active Bayer slot set `spp = 0` and skip path generation.
+Prefix sum and warp reduction stay active (required by the pass invariants).
+Cost: N²−1 of N² threads do wasted work per subframe.
+
+**TODO (optimization):** Replace with reduced-size dispatch. Dispatch
+`ceil(W/N) × ceil(H/N)` thread groups instead of full-screen; map
+`screenPixel = tileOffset + deinterleave_8bit(threadIdx)` to
+`tileOffset*N + bayerOffset[slot]`. Ripples into `TracePass.rt.slang`
+(`DispatchRaysIndex()`), `ResolvePass.cs.slang`, and PixelStats. Saves 1/N²
+GPU cost with identical output.
+
+**Upstream status:** VisCache-specific; not intended for upstream.
+
+---
+
 ## 9. CMakeLists: FALCOR_FLAT_OUTPUT to skip $<CONFIG> subdirectory
 
 **File:** `CMakeLists.txt` (line 206)

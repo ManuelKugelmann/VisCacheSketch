@@ -88,9 +88,10 @@ struct PathTracerParams
     uint2   frameDim = { 0, 0 };        ///< Frame dimension in pixels.
     uint2   screenTiles = { 0, 0 };     ///< Number of screen-tiles. Screen tiles may extend outside the frame.
 
-    uint    frameCount = 0;             ///< Frames rendered. This is used as random seed.
+    uint    frameCount = 0;             ///< Logical frame index (shared across subframes of one Bayer cycle).
     uint    seed = 0;                   ///< Random seed. This will get updated from the host depending on settings.
-    uint2   _pad0;
+    uint    subframeIdx = 0;            ///< Subframe index [0, N²) within the current logical frame.
+    uint    _pad0;
 
 #ifndef HOST_CODE
     /** Computes the offset into the tiled sample buffer for a given tile.

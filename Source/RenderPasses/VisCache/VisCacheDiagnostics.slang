@@ -60,21 +60,25 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
             noEntry ? 0.f : float(g.N)                                     // A: raw sample count
         );
 
+        // LOD level: log-scale so low levels are visible with many numLevels
+        float levelNorm = noEntry ? 0.f
+            : log2(float(g.level + 2)) / log2(float(gNumLevels + 1));
         gVCFrameLevelProbesSamplesCold[pixel] = float4(
-            noEntry ? 0.f : float(g.level + 1) / max(float(gNumLevels), 1.f),  // R: LOD level
-            noEntry ? 0.f : saturate(float(g.probeSteps) / float(kMaxProbe)),   // G: probe steps
+            levelNorm,                                                                // R: LOD level (log scale)
+            noEntry ? 0.f : saturate(float(g.probeSteps) / float(kMaxProbe * uint(g.level + 1))),   // G: avg probe steps per level
             noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold * 8u)),  // B: sample count
             coldmiss                                                             // A: cold miss
         );
 
-        // Same functions as rendering — pcgHashA/B/Dist at level 0, no extra salt.
-        uint posAHash = pcgHashA(g.qa, 0u);
-        uint posBHash = pcgHashB(g.qb, 0u);
-        uint combinedHash = posAHash ^ posBHash ^ pcgHashDist(0u);
+        // Hash vis at the cascade-selected level (qa/qb from vhfLookup).
+        uint diagLvl = noEntry ? 0u : uint(g.level);
+        uint posAHash = pcgHashA(g.qa, diagLvl);
+        uint posBHash = pcgHashB(g.qb, diagLvl);
+        uint combinedHash = posAHash ^ posBHash ^ pcgHashDist(diagLvl);
         gVCFrameHashAHashBHashABRays[pixel] = float4(
             float(posAHash & 0xFFFFu) / 65535.f,                    // R: posA cell hash
             float(posBHash & 0xFFFFu) / 65535.f,                    // G: posB cell hash
-            float(combinedHash & 0xFFFFu) / 65535.f,                // B: combined = vhfAddr at lvl 0
+            float(combinedHash & 0xFFFFu) / 65535.f,                // B: combined hash at selected lvl
             traced ? 1.f : 0.f                                       // A: ray traced this frame
         );
     }

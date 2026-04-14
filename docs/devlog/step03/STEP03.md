@@ -1,16 +1,13 @@
-# Step 03 — Normal Family Comparison
+# Step 03 — Quantization Refinement
 
-**Fine B-side only (pos, dir_dist1, dir_dist) × norm vs norm1.** x1 and x16 SPP, 4 scenes each.
+**norm1 family, tuned bin sizes.** x1 and x16 SPP, 4 scenes each.
 Config: 1 warmup + 1 render frame, 512×512.
 
-Key finding: **norm vs norm1 makes no measurable difference** on convex CornellBox geometry.
-All paired variants are numerically identical across all scenes and both SPP levels.
-
-**Decision: proceed with `pos_norm` (uncollapsed normal) only.** Although numerically identical
-here, `norm` (~60°/bin) is architecturally superior for thin-plate geometry — surfaces with
-opposite normals at the same position (e.g. thin walls, leaf geometry) would alias into the
-same slot under `norm1` (all normals → 1 bin). `pos_norm` correctly separates them.
-The CornellBox scenes are too convex to expose this, but it will matter on richer geometry.
+Key finding: **a single qB cell is not enough.** Collapsed B-side variants (pos1, dir1_dist1)
+looked good in step 02 (single 1AreaLight scene), but with multi-light scenes their x16
+performance collapses — the single slot blends incompatible radiance estimates from all
+secondary hit directions. Fine B-side (pos, dir_dist1, dir_dist) converges to ~23–25% rays
+and generalises across scene types.
 
 [← Dev Log overview](../DEVLOG.md)
 
@@ -22,41 +19,74 @@ The CornellBox scenes are too convex to expose this, but it will matter on riche
 
 | variant | x1 rays % | x1 cold | x16 rays % | x16 savings | x16 cold |
 |---------|----------:|--------:|-----------:|------------:|---------:|
-| pos_norm1__pos       | 44.9 % | 10.8 % | **23.4 %** | **76.6 %** | 0.2 % |
-| pos_norm__pos        | 44.9 % | 11.0 % | **23.4 %** | **76.6 %** | 0.3 % |
-| pos_norm1__dir_dist  | 43.6 % | 11.9 % | 25.3 % | 74.7 % | 0.6 % |
-| pos_norm__dir_dist   | 43.6 % | 12.1 % | 25.3 % | 74.7 % | 0.6 % |
-| pos_norm1__dir_dist1 | 42.1 % |  9.4 % | 25.5 % | 74.5 % | 0.4 % |
-| pos_norm__dir_dist1  | 42.0 % |  9.6 % | 25.5 % | 74.5 % | 0.4 % |
+| pos_norm1__pos        | 44.9 % | 10.8 % | **23.4 %** | **76.6 %** | 0.2 % |
+| pos_norm1__dir_dist   | 43.4 % | 11.9 % | 25.3 % | 74.7 % | 0.6 % |
+| pos_norm1__dir_dist1  | 42.2 % |  9.4 % | 25.5 % | 74.5 % | 0.4 % |
+| pos_norm1__dir1_dist1 | 39.7 % |  0.2 % | 42.1 % | 57.9 % | 0.1 % |
+| pos_norm1__pos1       | 39.7 % |  0.2 % | 42.0 % | 58.0 % | 0.1 % |
 
-Norm family has negligible effect — same pattern across all scenes. Not a useful tuning axis.
-Best: **pos (either norm)** at 23.4% mean rays x16. All variants within ~2 pp of each other at x16.
+Collapsed B (pos1, dir1_dist1): near-zero x1 cold miss but **plateau at 42% rays** at x16 —
+useful only for single-dominant-light scenes. Full data by scene:
 
-## Per-scene detail (x16)
+| variant | scene | x1 rays % | x16 rays % |
+|---------|-------|----------:|-----------:|
+| pos_norm1__pos1 | 1AreaLight      | 24.2 % | 21.7 % |
+| pos_norm1__pos1 | 1PointLight     | 19.5 % | 13.0 % |
+| pos_norm1__pos1 | 3AreaLights     | 46.3 % | **57.9 %** |
+| pos_norm1__pos1 | 32PointLights   | 68.9 % | **75.5 %** |
+| pos_norm1__pos  | 1AreaLight      | 44.5 % | 19.4 % |
+| pos_norm1__pos  | 1PointLight     | 19.2 % | 13.1 % |
+| pos_norm1__pos  | 3AreaLights     | 45.5 % | 30.5 % |
+| pos_norm1__pos  | 32PointLights   | 70.2 % | 30.5 % |
 
-| variant | 1AreaLight | 1PointLight | 3AreaLights | 32PointLights |
-|---------|----------:|------------:|------------:|--------------:|
-| pos_norm1__pos  | 19.4 % | 13.1 % | 30.5 % | 30.6 % |
-| pos_norm__pos   | 19.4 % | 13.1 % | 30.5 % | 30.7 % |
-| pos_norm1__dir_dist1 | 21.0 % | 13.4 % | 29.9 % | 37.7 % |
-| pos_norm__dir_dist1  | 21.0 % | 13.4 % | 29.9 % | 37.8 % |
-| pos_norm1__dir_dist  | 21.6 % | 13.4 % | 30.3 % | 35.7 % |
-| pos_norm__dir_dist   | 21.5 % | 13.5 % | 30.4 % | 35.9 % |
+For 32PointLights at x16: pos1 saves only 24.5%, pos saves 69.5%.
 
-## Plates — pos_norm1__pos (best, x1 vs x16)
+## Plates — pos_norm1__pos (best mean x16)
 
 <table><tr>
 <td><img src="plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__pos_plate.png"></td>
 <td><img src="plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm1__pos_plate.png"></td>
 </tr><tr>
-<td align="center">1AreaLight x1</td>
-<td align="center">1AreaLight x16</td>
+<td align="center">x1 SPP</td>
+<td align="center">x16 SPP</td>
 </tr></table>
 
+## Plates — pos_norm1__pos1 (collapsed B, fails multi-light)
+
 <table><tr>
-<td><img src="plates/CornellBox_32PointLights_s_1_1_x1_512x512_pos_norm1__pos_plate.png"></td>
-<td><img src="plates/CornellBox_32PointLights_s_1_1_x16_512x512_pos_norm1__pos_plate.png"></td>
+<td><img src="plates/CornellBox_32PointLights_s_1_1_x1_512x512_pos_norm1__pos1_plate.png"></td>
+<td><img src="plates/CornellBox_32PointLights_s_1_1_x16_512x512_pos_norm1__pos1_plate.png"></td>
 </tr><tr>
-<td align="center">32PointLights x1</td>
-<td align="center">32PointLights x16</td>
+<td align="center">32PointLights x1 SPP</td>
+<td align="center">32PointLights x16 SPP — 75.5% rays (only 24.5% savings)</td>
 </tr></table>
+
+## Plates — all norm1 variants, CornellBox_1AreaLight
+
+### pos_norm1__pos1
+
+<table><tr>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__pos1_plate.png"></td>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm1__pos1_plate.png"></td>
+</tr><tr><td align="center">x1</td><td align="center">x16</td></tr></table>
+
+### pos_norm1__dir1_dist1
+
+<table><tr>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__dir1_dist1_plate.png"></td>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm1__dir1_dist1_plate.png"></td>
+</tr><tr><td align="center">x1</td><td align="center">x16</td></tr></table>
+
+### pos_norm1__dir_dist1
+
+<table><tr>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__dir_dist1_plate.png"></td>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm1__dir_dist1_plate.png"></td>
+</tr><tr><td align="center">x1</td><td align="center">x16</td></tr></table>
+
+### pos_norm1__dir_dist
+
+<table><tr>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__dir_dist_plate.png"></td>
+<td><img src="plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm1__dir_dist_plate.png"></td>
+</tr><tr><td align="center">x1</td><td align="center">x16</td></tr></table>

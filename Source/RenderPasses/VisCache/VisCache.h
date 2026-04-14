@@ -58,6 +58,7 @@ public:
     {
         uint32_t tableCapacity;
         uint32_t bootThreshold;
+        uint32_t matureThreshold;
         float    varThreshold;
         float    pMin;
         float    fireflyBudget;
@@ -76,8 +77,12 @@ public:
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
         uint32_t frameCount;      ///< Current frame index for per-frame RNG variation
         uint32_t spp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
+        float    cameraPosW[3];   ///< Camera world position (for footprint estimation)
+        float    pixelSize1;      ///< Pixel world size at unit depth
+        uint32_t subframeN;        ///< N×N Bayer gate (1 = disabled)
+        uint32_t warmupSlotsFirst; ///< # Bayer slots write-only in frame 0
+        uint32_t warmupSlotsRun;   ///< # Bayer slots write-only in every subsequent frame
     };
-    static_assert(sizeof(GPUParams) == 80, "GPUParams must match VisCacheParams cbuffer (80 bytes)");
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
     /// ablation toggles). Feature and ablation toggles are exported via InternalDictionary
@@ -86,7 +91,8 @@ public:
     {
         // --- Hash table sizing ---
         uint32_t tableCapacity   = 1u << 22u;  ///< 4M entries = 32 MB (must be power-of-two)
-        uint32_t bootThreshold   = 32u;         ///< Min samples before trusting entry (maturity gate)
+        uint32_t bootThreshold   = 32u;         ///< Min samples before trusting entry for RR (use gate)
+        uint32_t matureThreshold = 128u;        ///< Min samples before stopping writes (mature gate, >= bootThreshold)
         float    varThreshold    = 0.10f;       ///< Bernoulli variance gate for cascaded write depth
         float    pMin            = 0.05f;       ///< Min RR survival probability (floor for CV+RRR)
         float    fireflyBudget   = 0.05f;       ///< Contribution luminance scale for adaptive pMin
@@ -120,7 +126,10 @@ public:
         bool     enableVisCacheAdaptivePMin   = true;  ///< H: Confidence-adaptive pMin (§8.1.1)
         bool     enableVisCacheNormalAddr     = false; ///< I: Normal-augmented addressing (posNorm)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
-        bool     enableVisCacheNearestDist   = false; ///< J: Per-cell nearest hit distance (dir_nearest mode)
+        bool     enableVisCacheFootprintScale = true; ///< K: Footprint-aware trust gate (log2(cellPx) diversity req)
+        uint32_t subframeN                     = 1u;    ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); disperses cell writes across frames
+        uint32_t warmupSlotsFirst              = 0u;    ///< L: # of Bayer slots [0,N²) write-only in frame 0 (force trace, no RR)
+        uint32_t warmupSlotsRun                = 0u;    ///< L: # of Bayer slots write-only in every subsequent frame
     };
 
     const Params& getParams() const { return mParams; }
@@ -139,7 +148,6 @@ private:
     // GPU resources
     // ------------------------------------------------------------------
     ref<Buffer>         mpHashTable;     ///< RWStructuredBuffer<VHFEntry>
-    ref<Buffer>         mpNearestDist;   ///< RWBuffer<uint> — parallel nearest-hit distance per slot
     ref<Buffer>         mpParamsBuffer;  ///< VisCacheParams cbuffer (32 bytes, exported via dict)
     ref<Buffer>         mpStatsBuffer;   ///< 5x uint32 atomic counters
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
@@ -152,7 +160,8 @@ private:
     Params   mParams;
     ref<Scene> mpScene;          ///< Current scene (for bounds + camera)
     bool     mAutoTuneCells = true;  ///< Auto-derive posACoarse/posBCoarse/distBCoarse from scene
-    uint32_t mFrameCount = 0u;
+    uint32_t mFrameCount = 0u;    ///< Logical frame (shared across all N² subframes of one Bayer cycle)
+    uint32_t mSubframeIdx = 0u;   ///< 0..N²-1 — cycles within one logical frame
 
     /// Readback stats (GPU → staging → CPU, ~4 frame latency).
     /// These are displayed in the UI and fed to the PI controller.

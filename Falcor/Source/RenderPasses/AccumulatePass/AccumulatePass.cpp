@@ -57,6 +57,7 @@ const char kAutoReset[] = "autoReset";
 const char kPrecisionMode[] = "precisionMode";
 const char kMaxFrameCount[] = "maxFrameCount";
 const char kOverflowMode[] = "overflowMode";
+const char kSubframeN[] = "subframeN";
 } // namespace
 
 AccumulatePass::AccumulatePass(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
@@ -80,6 +81,8 @@ AccumulatePass::AccumulatePass(ref<Device> pDevice, const Properties& props) : R
             mMaxFrameCount = value;
         else if (key == kOverflowMode)
             mOverflowMode = value;
+        else if (key == kSubframeN)
+            mSubframeN = value;
         else
             logWarning("Unknown property '{}' in AccumulatePass properties.", key);
     }
@@ -107,6 +110,7 @@ Properties AccumulatePass::getProperties() const
     props[kPrecisionMode] = mPrecisionMode;
     props[kMaxFrameCount] = mMaxFrameCount;
     props[kOverflowMode] = mOverflowMode;
+    if (mSubframeN != 1) props[kSubframeN] = mSubframeN;
     return props;
 }
 
@@ -153,6 +157,18 @@ void AccumulatePass::execute(RenderContext* pRenderContext, const RenderData& re
                     reset();
             }
         }
+    }
+
+    // Subframe gate: only accumulate on the last subframe of a cycle. Mid-cycle dispatches
+    // are skipped entirely so the N² sparse renders compose into gCurFrame (via PathTracer's
+    // persistent outputColor), and only the final composed dense frame reaches AccumulatePass.
+    // Downstream passes keep seeing the previous logical frame's accumulated result mid-cycle.
+    const uint32_t kSubframeCount = std::max(1u, mSubframeN) * std::max(1u, mSubframeN);
+    const bool isLastSubframe = (mSubframeIdx + 1 == kSubframeCount);
+    if (!isLastSubframe)
+    {
+        mSubframeIdx++;
+        return;
     }
 
     // Check if we reached max number of frames to accumulate and handle overflow.
@@ -282,6 +298,8 @@ void AccumulatePass::accumulate(RenderContext* pRenderContext, const ref<Texture
     {
         mFrameCount++;
     }
+    // Cycle complete — reset subframe counter for next logical frame.
+    mSubframeIdx = 0;
 
     // Run the accumulation program.
     auto pProgram = mpProgram[mPrecisionMode];
@@ -375,6 +393,7 @@ void AccumulatePass::setEnabled(bool enabled)
 void AccumulatePass::reset()
 {
     mFrameCount = 0;
+    mSubframeIdx = 0;
 }
 
 void AccumulatePass::prepareAccumulation(RenderContext* pRenderContext, uint32_t width, uint32_t height)

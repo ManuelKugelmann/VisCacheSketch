@@ -77,10 +77,13 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 Scripts in `scripts/VisCache_Ladder*.py`; shared infra in `VisCache_LadderCommon.py`.
 
 - **Step 00** (`VisCache_Ladder00.py`): Vanilla baselines (no VisCache). Renders x1 SPP (error reference) + x4096 SPP (ground truth for noise measurement)
-- **Step 01** (`VisCache_Ladder01.py`): `PRESET_MINIMAL` + `QUANT_SMALL`, all 10 variants, always-trace. Isolates cache addressing accuracy
-- **Step 02** (`VisCache_Ladder02.py`): `PRESET_MINIMAL` + `RR_ADAPTIVE` + `QUANT_MID`, all 10 variants. First feature: adaptive RR
-- **Step 03** (`VisCache_Ladder03.py`): Same as 02, norm1 subset, x1 + x16 SPP convergence comparison
-- **Step 04** (`VisCache_Ladder04.py`): `PRESET_MINIMAL` + `RR_ADAPTIVE` + `LEVELS_MULTI`, norm1 vs norm. Auto-tuned cell sizes
+- **Step 01** (`VisCache_Ladder01.py`): Cold-start tiling artifact demo. Single frame, coarse cells, mitigations (footprint scale, warmup write-only) ablated off
+- **Step 02** (`VisCache_Ladder02.py`): `PRESET_MINIMAL` + `QUANT_SMALL`, all 10 variants, always-trace. Isolates cache addressing accuracy
+- **Step 03** (`VisCache_Ladder03.py`): `PRESET_MINIMAL` + `RR_ADAPTIVE` + `QUANT_MID`, all 10 variants. First feature: adaptive RR + quant sweep on norm-active subset
+- **Step 04** (`VisCache_Ladder04.py`): Same as 03, norm1 subset, x1 + x16 SPP convergence comparison
+- **Step 05** (`VisCache_Ladder05.py`): Same as 04 with `FOOTPRINT_ON` (single level) — isolates footprint scale effect
+- **Step 06** (`VisCache_Ladder06.py`): `PRESET_MINIMAL` + `RR_ADAPTIVE` + `LEVELS_MULTI` + `FOOTPRINT_ON`. Auto-tuned cell sizes + cascade
+- **Step 07** (`VisCache_Ladder07.py`): Same as 06 with `QUALITY_DEFAULT` (higher thresholds), isolates threshold sensitivity
 - **Presets**: `PRESET_MINIMAL` (others added as ladder steps demand them)
 - **Building blocks**: `LEVELS_*`, `QUALITY_*`, `RR_*` (OFF/FIXED/ADAPTIVE), `FEATURES_*`, `QUANT_*` (SMALL/MID)
 - **Variants** — naming: `A__B` separates endpoints, `_` separates dims, `1` = collapsed:
@@ -135,6 +138,6 @@ topic: <what>
 - **No duplicated code** — extract shared logic into helpers; never copy-paste between scripts
 - **Small incremental edits** — step by step for large changes; not massive Write calls
 - **Fix all errors encountered**, even pre-existing ones
-- **Never chain `cd &&` before commands** — wrap cd-requiring calls in `.scripts/` reusable scripts
+- **Never chain `cd &&` before commands** — do a solo `cd` in a separate Bash call, then run commands from there
 - **No Co-Authored-By in commits** — no AI attribution lines
 - **Color in CLI output** — highlight calls to action and salient findings

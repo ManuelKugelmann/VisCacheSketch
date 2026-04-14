@@ -1,69 +1,69 @@
-# Step 01 — Initial Exploration
+# Step 01 — Cold-Start Tiling + Subframe Mitigation
 
-**Naive first pass.** Single level, uniform QUANT_SMALL quantization.
-10 variants: all 5 B-side configurations × 2 normal families (norm1 collapsed, norm active ~60°/bin).
-Config: 4 scenes × 1 warmup + 1 render frame × x1 SPP, 512×512.
+Single level, RR adaptive, coarse cells, with the two cold-start mitigations
+(K footprint scale, L warmup write-only) **ablated off** — exposes the
+tile-boundary artifact. Then sweeps a third mitigation (**M subframe gate**)
+at 1×1 / 2×2 / 4×4 to show how Bayer interleaving breaks the pattern.
+K/L are re-enabled by default in steps 02–07.
 
 [← Dev Log overview](../DEVLOG.md)
 
-## Overview plot
+## Why tiles appear
 
-![](overview_rays_01.png)
+Within one frame all dispatch tiles run in parallel. A pixel queries the cache
+**before** its own tile's writes have committed (atomics commit in
+non-deterministic warp order; the lookup happens upstream of the write).
 
-## Results summary
+- Cells **fully inside** one tile: every querying pixel sees an empty entry → trace.
+- Cells **straddling a tile boundary**: the neighbor tile already wrote → the
+  pixel sees a "trusted" entry and lets RR skip the trace.
 
-| variant | rays % | savings | cold miss |
-|---------|-------:|--------:|----------:|
-| pos_norm__dir1_dist1  | 39.6 % | **60.4 %** | 0.2 % |
-| pos_norm1__dir1_dist1 | 39.7 % | 60.3 % | 0.2 % |
-| pos_norm__pos1        | 39.7 % | 60.3 % | 0.2 % |
-| pos_norm1__pos1       | 39.7 % | 60.3 % | 0.2 % |
-| pos_norm1__dir_dist1  | 45.6 % | 54.4 % | 14.0 % |
-| pos_norm__dir_dist1   | 45.7 % | 54.3 % | 14.2 % |
-| pos_norm__dir_dist    | 47.5 % | 52.5 % | 18.0 % |
-| pos_norm1__dir_dist   | 47.6 % | 52.4 % | 17.8 % |
-| pos_norm1__pos        | 49.6 % | 50.4 % | 32.4 % |
-| pos_norm__pos         | 49.7 % | 50.3 % | 32.6 % |
+Result: a hatched pattern of false-trusted cells along tile borders. After
+frame 1 every cell has writes, so the artifact disappears in a static scene —
+but reappears on camera motion, lighting changes, or any cache reset.
 
-Collapsed variants (__pos1, __dir1_dist1) top the table — near-zero cold miss and ~60% savings at x1 SPP.
-The __pos variant has the highest cold miss (~32%): symmetric fine cells need more than one warmup frame.
-Normal family (norm vs norm1) has negligible effect at this quantization level.
+## Mitigations
 
-## Plates — pos_norm1 family (normal collapsed)
+### K · `enableVisCacheFootprintScale`
+Scales the trust threshold by `log2(cellPixels)`. Cells covering many screen
+pixels demand more samples before being trusted. Ablated **off** here.
 
-### pos_norm1__pos1
-Position-only B-side (posB=10000).
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__pos1_plate.png)
+### L · `enableVisCacheWarmupWriteOnly` + `warmupFrames`
+For the first N frames, force every ray to trace and skip RR; samples still
+write to the cache. By the time RR turns on, the cache is broadly populated.
+Ablated **off** here.
 
-### pos_norm1__dir1_dist1
-Direction+distance both collapsed (single angular + single distance bin).
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__dir1_dist1_plate.png)
+### M · `subframeN` — Bayer interleaving (this step's sweep)
+`subframeN=N` partitions each N×N pixel block into N² subframes. On frame `f`,
+pixels write only if their intra-block position matches slot `f mod N²`
+(Bayer order). The cache query is unconditional — writes are gated, reads are not.
 
-### pos_norm1__pos
-Symmetric position B-side (posB=posA=0.06).
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__pos_plate.png)
+- **Advantage**: the tile-local first-writer-wins pattern is broken. Cells
+  straddling tile borders are no longer the only early-trusted cells; any cell
+  whose assigned subframe has already fired gets writes too. Warp coherence is
+  preserved because active pixels stay spatially contiguous.
+- **Cost**: a cell needs N² frames to accumulate one sample per slot, so
+  warmup takes longer in wall-clock terms. At x1 SPP, 4×4 ≈ 16 frames to fill.
 
-### pos_norm1__dir_dist1
-Angular bins active (8°), distance collapsed.
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__dir_dist1_plate.png)
+## Config
 
-### pos_norm1__dir_dist
-Full B-side: angular bins (8°) + distance bins (0.24).
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm1__dir_dist_plate.png)
+- Variant: `pos_norm1__pos1` (single endpoint, normal collapsed)
+- `posACoarse = 0.5`, `posBCoarse = 1.0` (coarse — makes tile borders large)
+- `enableVisCacheFootprintScale = False`, `enableVisCacheWarmupWriteOnly = False`
+- Subframe sweep: 1×1 (1 frame), 2×2 (4 frames), 4×4 (16 frames)
+- x1 SPP, 512×512, 4 CornellBox scenes
 
-## Plates — pos_norm family (normal active, ~60°/bin)
+## Plates — CornellBox_32PointLights
 
-### pos_norm__pos1
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__pos1_plate.png)
+### 1×1 (baseline — artifact visible)
+![](plates/CornellBox_32PointLights_s_0_1_x1_sub1x1_512x512_pos_norm1__pos1_plate.png)
 
-### pos_norm__dir1_dist1
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__dir1_dist1_plate.png)
+### 2×2 (4 frames — artifact partially dispersed)
+![](plates/CornellBox_32PointLights_s_0_4_x1_sub2x2_512x512_pos_norm1__pos1_plate.png)
 
-### pos_norm__pos
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__pos_plate.png)
+### 4×4 (16 frames — artifact gone)
+![](plates/CornellBox_32PointLights_s_0_16_x1_sub4x4_512x512_pos_norm1__pos1_plate.png)
 
-### pos_norm__dir_dist1
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__dir_dist1_plate.png)
-
-### pos_norm__dir_dist
-![](plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__dir_dist_plate.png)
+The hatched tile pattern in **maturity**, **mean**, **variance**, and
+**level** panels thins progressively as N grows. The **render** panel's block
+artifacts from false-trusted RR skips disappear once the cache fills uniformly.

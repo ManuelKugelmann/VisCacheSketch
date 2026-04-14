@@ -19,12 +19,11 @@ import Scene.RaytracingInline;
 import Utils.Sampling.SampleGenerator;
 
 /// VisCache-private sample generator: independent of the main PathTracer stream.
-/// Same seed structure as PathTracer (seed * maxSpp + sampleIdx) but with large
-/// offset to avoid overlap. Each sample × frame gets a unique RR coin flip.
+/// Mirrors PathTracer's seed structure (frameCount * spp + sampleIdx) so each
+/// (frame, sample) pair gets a unique coin flip; large offset avoids RNG overlap.
 SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
 {
-    const uint maxSpp = kSamplesPerPixel > 0 ? kSamplesPerPixel : kMaxSamplesPerPixel;
-    return SampleGenerator(pixel, kParams.frameCount * maxSpp + sampleIdx + 0x7C000000u);
+    return SampleGenerator(pixel, gFrameCount * gSpp + sampleIdx + 0x7C000000u);
 }
 
 float vcVisibility_Ray<let UseAlphaTest : int>(
@@ -34,7 +33,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel));
 
     if (g.shouldTrace)
     {
@@ -53,7 +52,7 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel));
 
     if (g.shouldTrace)
     {

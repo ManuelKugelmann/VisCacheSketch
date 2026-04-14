@@ -16,15 +16,30 @@ import os, sys, glob, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
-from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_error
+from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_error, compute_render_error_signed_hdr
+
+# Track last-loaded scene to skip redundant m.loadScene() calls
+_last_loaded_scene = None
+
+def _load_scene_if_needed(m, scene_file, resX, resY):
+    """Load scene after addGraph. Mogwai requires loadScene after each addGraph
+    to rebind scene resources to the new render graph's passes."""
+    m.loadScene(resolve_scene(scene_file))
+    m.resizeFrameBuffer(resX, resY)
 
 def resolve_scene(scene_file):
-    """Resolve scene path: check PROJECT_ROOT/scenes/ first (source mode), else pass through."""
+    """Resolve scene path: check PROJECT_ROOT/scenes/ and known data dirs (source mode), else pass through."""
     project_root = os.environ.get("PROJECT_ROOT", "")
     if project_root and not os.path.isabs(scene_file):
-        candidate = os.path.join(project_root, "scenes", scene_file)
-        if os.path.isfile(candidate):
-            return candidate
+        basename = os.path.basename(scene_file)
+        search_dirs = [
+            os.path.join(project_root, "scenes"),
+            os.path.join(project_root, "Source", "RenderPasses", "ReSTIRPTPass", "Data", "VeachAjar"),
+        ]
+        for d in search_dirs:
+            candidate = os.path.join(d, basename)
+            if os.path.isfile(candidate):
+                return candidate
     return scene_file
 
 try:
@@ -67,8 +82,8 @@ LEVELS_SINGLE = {"numLevels": 1, "autoTuneCells": False}
 LEVELS_MULTI  = {"numLevels": 8, "autoTuneCells": True}
 
 # --- Quality ---------------------------------------------------------------
-QUALITY_MINIMAL  = {"bootThreshold": 4,  "varThreshold": 0.10}
-QUALITY_DEFAULT  = {"bootThreshold": 32, "varThreshold": 0.10}
+QUALITY_MINIMAL  = {"bootThreshold": 8,  "matureThreshold": 128, "varThreshold": 0.10}
+QUALITY_DEFAULT  = {"bootThreshold": 16, "matureThreshold": 256, "varThreshold": 0.10}
 
 # --- RR / pMin -------------------------------------------------------------
 RR_OFF      = {"pMin": 1.0, "enableVisCacheAdaptivePMin": False, "fireflyBudget": 0.0}
@@ -84,10 +99,35 @@ FEATURES_OFF = {
     "enableVisCacheDecay": False,
     "enableVisCachePressureEvict": False,
 }
+
+# --- Footprint trust scale (Ablation K) ----------------------------------
+FOOTPRINT_OFF = {"enableVisCacheFootprintScale": False}
+FOOTPRINT_ON  = {"enableVisCacheFootprintScale": True}
+
+# --- Warmup write-only (Ablation L) --------------------------------------
+# Warmup is now driven per-run by the frame_configs tuple:
+# (warmupFirst, warmupRun, frames, [spp]). The run_variants call injects
+# warmupSlotsFirst / warmupSlotsRun overrides, which the shader applies to
+# determine per-pixel write-only status from the pixel's Bayer slot index.
+# --- Subframe gate (Bayer N×N pixel interleaving to disperse cell-write order) ---
+# 1 = full frame (default, no gate); 2 = 2×2 (4 subframes); 4 = 4×4 (16 subframes).
+# Implemented via early-out in Falcor PathTracer (see Falcor/LOCAL_FIXES.md #14).
+SUBFRAME_1x1  = {"subframeN": 1}
+SUBFRAME_2x2  = {"subframeN": 2}
+SUBFRAME_4x4  = {"subframeN": 4}
 # --- Quantization cell sizes -----------------------------------------------
 QUANT_SMALL   = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0,  "distB": 0.24}
 QUANT_MID     = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 8.0,  "distB": 0.48}
 QUANT_DEFAULT = QUANT_SMALL
+
+# Quantization sweep (step 03): 4 settings from fine to coarse, geometric in posA.
+# Tag names embed in variant names via _make_variants quant_tag argument.
+QUANT_SWEEP = {
+    "qA": {"posA": 0.03, "normalA": 60.0, "posB": 0.09, "dirB":  5.0, "distB": 0.12},
+    "qB": {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB":  8.0, "distB": 0.24},
+    "qC": {"posA": 0.12, "normalA": 60.0, "posB": 0.36, "dirB": 15.0, "distB": 0.48},
+    "qD": {"posA": 0.24, "normalA": 60.0, "posB": 0.72, "dirB": 30.0, "distB": 0.96},
+}
 
 # ===========================================================================
 # Assembled presets — named combos of building blocks
@@ -106,18 +146,21 @@ PRESET_MINIMAL = {**LEVELS_SINGLE, **QUALITY_MINIMAL, **RR_OFF, **FEATURES_OFF}
 # Each group has the same 5 B-side configurations in the same order:
 #   pos1, dir1_dist1, pos, dir_dist1, dir_dist
 
-def _make_variants(normal_active, quant=None, base=None):
-    """Generate 6 variants for one A-side config (norm1 or norm).
+def _make_variants(normal_active, quant=None, base=None, quant_tag=None):
+    """Generate 5 variants for one A-side config (norm1 or norm).
+    B-side configs in order: pos1, dir1_dist1, pos, dir_dist1, dir_dist.
     quant: dict with posA, normalA, posB, dirB, distB keys.
     base: preset dict (default: PRESET_MINIMAL). Steps pick the preset closest
           to their needs and override the differences.
+    quant_tag: optional string appended as __<tag> to the variant name (e.g. "qA").
     """
     q = quant or QUANT_DEFAULT
     b = base if base is not None else PRESET_MINIMAL
     prefix = "pos_norm" if normal_active else "pos_norm1"
     na = normal_active
+    suffix = f"__{quant_tag}" if quant_tag else ""
     return [
-        (f"{prefix}__pos1", {
+        (f"{prefix}__pos1{suffix}", {
             **b,
             "enableVisCacheDirDistAddr": False,
             "enableVisCacheNormalAddr": na,
@@ -125,7 +168,7 @@ def _make_variants(normal_active, quant=None, base=None):
             "normalACoarse": q["normalA"],
             "posBCoarse": 10000.0,
         }),
-        (f"{prefix}__dir1_dist1", {
+        (f"{prefix}__dir1_dist1{suffix}", {
             **b,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
@@ -134,7 +177,7 @@ def _make_variants(normal_active, quant=None, base=None):
             "dirBCoarse": 360.0,
             "distBCoarse": 1000.0,
         }),
-        (f"{prefix}__pos", {
+        (f"{prefix}__pos{suffix}", {
             **b,
             "enableVisCacheDirDistAddr": False,
             "enableVisCacheNormalAddr": na,
@@ -142,7 +185,7 @@ def _make_variants(normal_active, quant=None, base=None):
             "normalACoarse": q["normalA"],
             "posBCoarse": q["posB"],
         }),
-        (f"{prefix}__dir_dist1", {
+        (f"{prefix}__dir_dist1{suffix}", {
             **b,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
@@ -151,7 +194,7 @@ def _make_variants(normal_active, quant=None, base=None):
             "dirBCoarse": q["dirB"],
             "distBCoarse": 1000.0,
         }),
-        (f"{prefix}__dir_dist", {
+        (f"{prefix}__dir_dist{suffix}", {
             **b,
             "enableVisCacheDirDistAddr": True,
             "enableVisCacheNormalAddr": na,
@@ -160,37 +203,31 @@ def _make_variants(normal_active, quant=None, base=None):
             "dirBCoarse": q["dirB"],
             "distBCoarse": q["distB"],
         }),
-        (f"{prefix}__dir_nearest", {
-            **b,
-            "enableVisCacheDirDistAddr": True,
-            "enableVisCacheNearestDist": True,
-            "enableVisCacheNormalAddr": na,
-            "posACoarse": q["posA"],
-            "normalACoarse": q["normalA"],
-            "dirBCoarse": q["dirB"],
-            "distBCoarse": 1000.0,  # distance collapsed in hash — stored per cell instead
-        }),
     ]
 
-def make_norm_variants(quant=None, base=None):
-    """The 4 non-collapsed norm-active variants: pos, dir_dist1, dir_dist, dir_nearest.
-    Working set from step 03 onward.
+def make_norm_variants(quant=None, base=None, quant_tag=None):
+    """The 3 non-collapsed norm-active variants: pos, dir_dist1, dir_dist.
+    Working set from step 04 onward.
     """
-    all_v = _make_variants(normal_active=True, quant=quant, base=base)
-    return [v for v in all_v if "__pos1" not in v[0] and "__dir1_dist1" not in v[0]]
+    all_v = _make_variants(normal_active=True, quant=quant, base=base, quant_tag=quant_tag)
+    # Strip by the dim pattern — match __posN or __dir1_dist1N where N is suffix or end.
+    def is_collapsed(name):
+        core = name.split("__")[1]  # e.g. "pos1" or "dir1_dist1"
+        return core == "pos1" or core == "dir1_dist1"
+    return [v for v in all_v if not is_collapsed(v[0])]
 
 
 # ---------------------------------------------------------------------------
 # Stats CSV
 # ---------------------------------------------------------------------------
-# key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + warmup + averaging + spp + res + variant
-_CSV_FIELDS = ["key", "scene", "variant", "spp", "warmup", "averaging",
+# key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + frames + warmupSub + subframeN + res + variant
+_CSV_FIELDS = ["key", "scene", "variant", "frames", "warmup_first", "warmup_run", "subframe_n",
                "rays_traced_pct", "coldmiss_pct", "timestamp"]
 
 def _step_csv(step_name):
     return os.path.join("captures", "ladder", step_name, "stats.csv")
 
-def append_stats_csv(step, scene, prefix, variant, spp, warmup, averaging,
+def append_stats_csv(step, scene, prefix, variant, frames, warmup_first, warmup_run, subframe_n,
                      rays_traced_pct, coldmiss_pct):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
@@ -204,7 +241,10 @@ def append_stats_csv(step, scene, prefix, variant, spp, warmup, averaging,
     new_row = {
         "key": key,
         "scene": scene, "variant": variant,
-        "spp": str(spp), "warmup": str(warmup), "averaging": str(averaging),
+        "frames": str(frames),
+        "warmup_first": str(warmup_first),
+        "warmup_run":   str(warmup_run),
+        "subframe_n":   str(subframe_n),
         "rays_traced_pct": f"{rays_traced_pct:.4f}",
         "coldmiss_pct":    f"{coldmiss_pct:.4f}",
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -215,6 +255,11 @@ def append_stats_csv(step, scene, prefix, variant, spp, warmup, averaging,
     if os.path.exists(path):
         with open(path, newline="") as f:
             for row in csv.DictReader(f):
+                # Drop rows from old schemas (missing required fields).
+                if any(k not in row for k in _CSV_FIELDS):
+                    continue
+                # Normalize to current field set.
+                row = {k: row.get(k, "") for k in _CSV_FIELDS}
                 if row.get("key") == key:
                     rows.append(new_row)
                     replaced = True
@@ -246,8 +291,8 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "error vs baseline"),
-     ("r1c9_accum_noise",      "render noise")],
+     ("r1c3_accum_error",      "GT-error Δ vs vanilla (black=denoised, purple=0, viridis=degraded)"),
+     ("r1c9_accum_noise",      "render noise (vs GT)")],
     [("r2c1_frame_level",      "level"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
@@ -324,7 +369,7 @@ def plot_rays_overview(step_name):
       Marker shape: B-side type (D=pos1, s=dir1_dist1, o=pos, ^=dir_dist1, v=dir_dist)
       Filled/hollow: SPP (filled=lowest, hollow=higher)
     Rightmost "All" column = mean of per-scene means (equal scene weight).
-    Legend grouped: norm1 family first, norm family second; SPP variants adjacent.
+    Legend grouped: matching norm1/norm pairs adjacent, sorted by B-side complexity.
     """
     import csv, matplotlib
     matplotlib.use("Agg")
@@ -355,12 +400,12 @@ def plot_rays_overview(step_name):
     spps     = sorted(set(r["spp"]     for r in rows))
 
     # --- Visual encoding ---
-    # B-side → (marker, complexity rank 0–4)
+    # B-side → (marker, complexity rank 0–5)
     _B = {"pos1": ("D", 0), "dir1_dist1": ("s", 1), "pos": ("o", 2),
           "dir_dist1": ("^", 3), "dir_dist": ("v", 4)}
     # Hue family palettes: light→dark matches complexity rank
-    _C_NORM1 = ["#aec7e8", "#1f77b4", "#17becf", "#0d6370", "#083040"]  # blue/teal
-    _C_NORM  = ["#ffbb78", "#ff7f0e", "#e05c1a", "#a03010", "#601808"]  # orange/red
+    _C_NORM1 = ["#aec7e8", "#1f77b4", "#17becf", "#0d6370", "#065040", "#083040"]  # blue/teal
+    _C_NORM  = ["#ffbb78", "#ff7f0e", "#e05c1a", "#a03010", "#802010", "#601808"]  # orange/red
 
     def _style(vname):
         if "__" not in vname:
@@ -375,11 +420,11 @@ def plot_rays_overview(step_name):
     #     with SPP variants (filled/hollow) kept adjacent ---
     def _sort_key(vname):
         if "__" not in vname:
-            return (2, 0, vname)
+            return (99, 2, vname)
         a, b = vname.split("__", 1)
         fam = 0 if a == "pos_norm1" else (1 if a == "pos_norm" else 2)
         rank = _B.get(b, ("o", 99))[1]
-        return (fam, rank, vname)
+        return (rank, fam, vname)
 
     variants_ordered = sorted(variants, key=_sort_key)
 
@@ -462,7 +507,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
                   If None, nodata mask is binary.
 
     9-column grid (r<row>c<col> prefix):
-    Row 1 (accum): render, raysTraced, error, maturity, mean, variance, coldmiss, qAHash, noise
+    Row 1 (accum): render, raysTraced, GT-err Δ, maturity, mean, variance, coldmiss, qAHash, noise
     Row 2 (frame): level, raysTraced, sampleCount, maturity, mean, variance, coldmiss, qBHash, probeSteps
     """
     vn = variant_name
@@ -477,13 +522,18 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0}
     from viscache_exr import read_exr
     import numpy as np
-    # Rays traced ratio from accumulated texture
+    # Rays traced ratio from accumulated texture (masked to queried pixels)
     exr = find_exr(exrs, "AccumRaysNoiseErrorCold")
     if exr:
         data = read_exr(exr).get("RGBA")
         if data is not None and data.shape[2] >= 4:
             rays = data[:, :, 0]
-            stats["rays_traced_pct"] = float(rays.mean() * 100)
+            if nd_accum is not None:
+                mask = nd_accum > 0.5
+                if mask.any():
+                    stats["rays_traced_pct"] = float(rays[mask].mean() * 100)
+            else:
+                stats["rays_traced_pct"] = float(rays.mean() * 100)
     # Cold miss % from per-frame texture (matches what the plate shows)
     exr = find_exr(exrs, "FrameLevelProbesSamplesCold")
     if exr:
@@ -554,12 +604,21 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     # Find variant's HDR EXR (pre-tonemapper)
     variant_hdr = find_exr(glob.glob(os.path.join(captureDir, f"{vn}.*")), "AccumulatePass.output")
 
-    # Error: |viscache_hdr - vanilla_xN_hdr| (same sample count, synced RNG, HDR)
-    error_baselines = glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_hdr.exr"))
-    if variant_hdr and error_baselines:
-        from viscache_exr import compute_render_error_hdr
-        compute_render_error_hdr(variant_hdr, error_baselines[0], o("r1c3_accum_error"))
+    # GT baselines for both error (signed Δ) and noise (absolute).
+    gt_baselines = sorted(glob.glob(os.path.join(baseline_dir, "*_vanilla_hdr.exr")))
+    gt_baselines = [b for b in gt_baselines if "_x1_" not in b]
+    vanilla_xN_baselines = glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_hdr.exr"))
+
+    # Error: signed GT-error delta — err(viscache, GT) − err(vanilla_xN, GT).
+    # Negative (purple) = VisCache denoised; positive (yellow) = VisCache degraded.
+    if variant_hdr and vanilla_xN_baselines and gt_baselines:
+        compute_render_error_signed_hdr(variant_hdr, vanilla_xN_baselines[0], gt_baselines[-1], o("r1c3_accum_error"))
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
+    elif variant_hdr and vanilla_xN_baselines:
+        # No GT: fall back to absolute |viscache - vanilla_xN|
+        from viscache_exr import compute_render_error_hdr
+        compute_render_error_hdr(variant_hdr, vanilla_xN_baselines[0], o("r1c3_accum_error"))
+        print(f"  [error] {os.path.basename(o('r1c3_accum_error'))} (no GT, falling back to |viscache − vanilla_xN|)")
     elif render_path:
         # Fallback: tonemapped PNG error
         error_baseline = glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_r1c1_accum_render.png"))
@@ -568,8 +627,6 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             print(f"  [error] {os.path.basename(o('r1c3_accum_error'))} (PNG fallback)")
 
     # Noise: |viscache_hdr - vanilla_gt_hdr| (ground truth, HDR)
-    gt_baselines = sorted(glob.glob(os.path.join(baseline_dir, "*_vanilla_hdr.exr")))
-    gt_baselines = [b for b in gt_baselines if "_x1_" not in b]
     if variant_hdr and gt_baselines:
         from viscache_exr import compute_render_error_hdr
         compute_render_error_hdr(variant_hdr, gt_baselines[-1], o("r1c9_accum_noise"))
@@ -603,10 +660,11 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
 
 def run_variants(step_name, frame_configs, scene_file, variants=None,
                   maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None,
-                  step_overrides=None):
+                  step_overrides=None, wipe_captures=True):
     """Run all variants × frame configs for a ladder step.
     mogwai_globals: pass globals() from the Mogwai script to access m, fc, etc.
     step_overrides: dict merged on top of each variant's overrides (e.g. pMin).
+    wipe_captures: if False, don't wipe the capture dir (for chained calls).
     """
     if variants is None:
         raise ValueError("variants is required")
@@ -619,8 +677,8 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
     res_tag = f"{resX}x{resY}"
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
 
-    # Wipe step×scene directory for clean output
-    if os.path.exists(captureDir):
+    # Wipe step×scene directory for clean output (unless chained).
+    if wipe_captures and os.path.exists(captureDir):
         shutil.rmtree(captureDir, ignore_errors=True)
     os.makedirs(captureDir, exist_ok=True)
 
@@ -629,13 +687,27 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
         if step_overrides:
             overrides = {**overrides, **step_overrides}
         for fc_entry in frame_configs:
-            warmup, averaging = fc_entry[0], fc_entry[1]
-            spp = fc_entry[2] if len(fc_entry) > 2 else 1
-            tag = f"s_{warmup}_{averaging}_x{spp}_{res_tag}"
+            # Frame config: (warmupFirst, warmupRun, frames, [spp=1])
+            # warmupFirst: Bayer slots [0, warmupFirst) are write-only in frame 0
+            # warmupRun:   Bayer slots [0, warmupRun) are write-only in every subsequent frame
+            # frames:      logical frame count; scaled by N² so one logical frame = one full Bayer cycle
+            warmupFirst, warmupRun, frames = fc_entry[0], fc_entry[1], fc_entry[2]
+            spp = fc_entry[3] if len(fc_entry) > 3 else 1
+            subN = overrides.get("subframeN", 1)
+            render_frames = frames * subN * subN
+            tag = f"s_{frames}_{warmupFirst}o{warmupRun}o{subN}x{subN}_{res_tag}"
             print(f"\n[{step_name}] ======== {variant_name} {tag} ({scene_name}) ========")
 
+            # Inject warmup-write-only config for this run.
+            # warmupSlotsFirst / warmupSlotsRun define the write-only Bayer ranges.
+            run_overrides = {
+                **overrides,
+                "warmupSlotsFirst": warmupFirst,
+                "warmupSlotsRun":   warmupRun,
+            }
+
             saved = {}
-            for k, v in overrides.items():
+            for k, v in run_overrides.items():
                 if k in VISCACHE_DEFAULTS:
                     saved[k] = VISCACHE_DEFAULTS[k]
                 VISCACHE_DEFAULTS[k] = v
@@ -645,28 +717,21 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
             for k, v in saved.items():
                 VISCACHE_DEFAULTS[k] = v
-            for k in overrides:
+            for k in run_overrides:
                 if k not in saved and k in VISCACHE_DEFAULTS:
                     del VISCACHE_DEFAULTS[k]
 
             m.addGraph(g)
-            m.loadScene(resolve_scene(scene_file))
-            m.resizeFrameBuffer(resX, resY)
+            _load_scene_if_needed(m, scene_file, resX, resY)
 
             os.makedirs(captureDir, exist_ok=True)
             fc.outputDir = captureDir
             fc.baseFilename = variant_name
 
-            # Phase 1: warmup
-            for _ in range(warmup):
-                m.renderFrame()
-
-            # Reset accum for clean averaging
-            if warmup > 0:
-                g.getPass("VisCache").set_properties({"resetAccum": True})
-
-            # Phase 2: averaging
-            for _ in range(averaging):
+            # Render `render_frames` = `frames * N²`. Write-only Bayer slots are
+            # defined per-frame by warmupSlotsFirst (frame 0) and warmupSlotsRun
+            # (frames 1..N-1). No separate warmup phase, no accum reset.
+            for _ in range(render_frames):
                 m.renderFrame()
 
             fc.capture()
@@ -675,8 +740,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
             print(f"[{step_name}] Captured ({tag})")
             pfx = f"{tag}_{variant_name}_"
-            # total_frames = averaging only (accum counters reset after warmup)
-            stats = postprocess(captureDir, pfx, variant_name, total_frames=averaging, spp=spp, resX=resX, resY=resY)
+            stats = postprocess(captureDir, pfx, variant_name, total_frames=render_frames, spp=spp, resX=resX, resY=resY)
             stitch_plate(captureDir, pfx, variant_name, stats=stats)
 
             # Collect stats for overview chart
@@ -685,8 +749,8 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             stats["spp"] = spp
             all_stats.append(stats)
 
-            append_stats_csv(step_name, scene_name, pfx, variant_name, spp,
-                             warmup, averaging,
+            append_stats_csv(step_name, scene_name, pfx, variant_name,
+                             frames, warmupFirst, warmupRun, subN,
                              stats["rays_traced_pct"], stats["coldmiss_pct"])
 
             m.removeGraph(g)
@@ -714,13 +778,15 @@ def run_baseline(step_name, frame_configs, scene_file,
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     res_tag = f"{resX}x{resY}"
 
-    for (warmup, averaging) in frame_configs:
+    for fc_entry in frame_configs:
+        # Tuple: (warmupFirst, warmupRun, frames, [spp=1]) — warmup fields ignored for vanilla.
+        frames = fc_entry[2] if len(fc_entry) >= 3 else fc_entry[-1]
         captureDir = f"captures/ladder/{step_name}/{scene_name}"
         os.makedirs(captureDir, exist_ok=True)
 
         spp_list = sorted(set([1, gt_spp] + (extra_spp or [])))
         for spp in spp_list:
-            tag = f"s_{warmup}_{averaging}_x{spp}_{res_tag}"
+            tag = f"s_{frames}_x{spp}_{res_tag}"
             out_path = _out(captureDir, "r1c1_accum_render", f"{tag}_vanilla_")
 
             if os.path.exists(out_path) and os.path.getsize(out_path) > 1024:
@@ -739,16 +805,13 @@ def run_baseline(step_name, frame_configs, scene_file,
             g = render_graph_PathTracer(viscache=False, maxBounces=maxBounces,
                                          samplesPerPixel=actual_spp, useJitter=use_jitter)
             m.addGraph(g)
-            m.loadScene(resolve_scene(scene_file))
-            m.resizeFrameBuffer(resX, resY)
+            _load_scene_if_needed(m, scene_file, resX, resY)
 
             os.makedirs(captureDir, exist_ok=True)
             fc.outputDir = captureDir
             fc.baseFilename = f"vanilla_x{spp}"
 
-            for _ in range(warmup):
-                m.renderFrame()
-            for _ in range(num_frames * averaging):
+            for _ in range(num_frames * frames):
                 m.renderFrame()
 
             fc.capture()

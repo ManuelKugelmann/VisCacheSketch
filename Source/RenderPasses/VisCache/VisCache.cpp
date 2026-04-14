@@ -47,21 +47,22 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     : RenderPass(pDevice)
 {
     // Deserialise properties (from Python script or saved graph)
-    if (props.has("tableCapacity"))  mParams.tableCapacity  = props["tableCapacity"];
-    if (props.has("bootThreshold"))  mParams.bootThreshold  = props["bootThreshold"];
-    if (props.has("varThreshold"))   mParams.varThreshold   = props["varThreshold"];
-    if (props.has("pMin"))           mParams.pMin           = props["pMin"];
-    if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
-    if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
-    if (props.has("posACoarse"))  { mParams.posACoarse    = props["posACoarse"];  mParams.autoTuneCells = false; }
-    if (props.has("posBCoarse"))    mParams.posBCoarse    = props["posBCoarse"];
-    if (props.has("dirBCoarse")) mParams.dirBCoarse = props["dirBCoarse"];
-    if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
-    if (props.has("normalACoarse")) mParams.normalACoarse  = props["normalACoarse"];
+    if (props.has("tableCapacity"))    mParams.tableCapacity    = props["tableCapacity"];
+    if (props.has("bootThreshold"))    mParams.bootThreshold    = props["bootThreshold"];
+    if (props.has("matureThreshold"))  mParams.matureThreshold  = props["matureThreshold"];
+    if (props.has("varThreshold"))     mParams.varThreshold     = props["varThreshold"];
+    if (props.has("pMin"))             mParams.pMin             = props["pMin"];
+    if (props.has("fireflyBudget"))    mParams.fireflyBudget    = props["fireflyBudget"];
+    if (props.has("numLevels"))        mParams.numLevels        = props["numLevels"];
+    if (props.has("posACoarse"))     { mParams.posACoarse       = props["posACoarse"];  mParams.autoTuneCells = false; }
+    if (props.has("posBCoarse"))       mParams.posBCoarse       = props["posBCoarse"];
+    if (props.has("dirBCoarse"))       mParams.dirBCoarse       = props["dirBCoarse"];
+    if (props.has("distBCoarse"))      mParams.distBCoarse      = props["distBCoarse"];
+    if (props.has("normalACoarse"))    mParams.normalACoarse    = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
-    if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
-    if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
+    if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
+    if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
 
     // VisCache feature + ablation toggles
     if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
@@ -75,7 +76,10 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
-    if (props.has("enableVisCacheNearestDist"))     mParams.enableVisCacheNearestDist     = props["enableVisCacheNearestDist"];
+    if (props.has("enableVisCacheFootprintScale"))  mParams.enableVisCacheFootprintScale  = props["enableVisCacheFootprintScale"];
+    if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
+    if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
+    if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -90,21 +94,22 @@ ref<VisCache> VisCache::create(ref<Device> pDevice,
 // ---------------------------------------------------------------------------
 void VisCache::setProperties(const Properties& props)
 {
-    if (props.has("tableCapacity"))  mParams.tableCapacity  = props["tableCapacity"];
-    if (props.has("bootThreshold"))  mParams.bootThreshold  = props["bootThreshold"];
-    if (props.has("varThreshold"))   mParams.varThreshold   = props["varThreshold"];
-    if (props.has("pMin"))           mParams.pMin           = props["pMin"];
-    if (props.has("fireflyBudget"))  mParams.fireflyBudget  = props["fireflyBudget"];
-    if (props.has("numLevels"))      mParams.numLevels      = props["numLevels"];
-    if (props.has("posACoarse"))  { mParams.posACoarse    = props["posACoarse"];  mParams.autoTuneCells = false; }
-    if (props.has("posBCoarse"))    mParams.posBCoarse    = props["posBCoarse"];
-    if (props.has("dirBCoarse")) mParams.dirBCoarse = props["dirBCoarse"];
-    if (props.has("distBCoarse"))    mParams.distBCoarse    = props["distBCoarse"];
-    if (props.has("normalACoarse")) mParams.normalACoarse  = props["normalACoarse"];
+    if (props.has("tableCapacity"))    mParams.tableCapacity    = props["tableCapacity"];
+    if (props.has("bootThreshold"))    mParams.bootThreshold    = props["bootThreshold"];
+    if (props.has("matureThreshold"))  mParams.matureThreshold  = props["matureThreshold"];
+    if (props.has("varThreshold"))     mParams.varThreshold     = props["varThreshold"];
+    if (props.has("pMin"))             mParams.pMin             = props["pMin"];
+    if (props.has("fireflyBudget"))    mParams.fireflyBudget    = props["fireflyBudget"];
+    if (props.has("numLevels"))        mParams.numLevels        = props["numLevels"];
+    if (props.has("posACoarse"))     { mParams.posACoarse       = props["posACoarse"];  mParams.autoTuneCells = false; }
+    if (props.has("posBCoarse"))       mParams.posBCoarse       = props["posBCoarse"];
+    if (props.has("dirBCoarse"))       mParams.dirBCoarse       = props["dirBCoarse"];
+    if (props.has("distBCoarse"))      mParams.distBCoarse      = props["distBCoarse"];
+    if (props.has("normalACoarse"))    mParams.normalACoarse    = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
-    if (props.has("autoTuneCells"))  mParams.autoTuneCells  = props["autoTuneCells"];
-    if (props.has("decayPeriod"))    mParams.decayPeriod    = props["decayPeriod"];
+    if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
+    if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
 
     if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
     if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
@@ -117,7 +122,10 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
-    if (props.has("enableVisCacheNearestDist"))     mParams.enableVisCacheNearestDist     = props["enableVisCacheNearestDist"];
+    if (props.has("enableVisCacheFootprintScale"))  mParams.enableVisCacheFootprintScale  = props["enableVisCacheFootprintScale"];
+    if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
+    if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
+    if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -128,8 +136,9 @@ Properties VisCache::getProperties() const
 {
     Properties p;
     p["tableCapacity"] = mParams.tableCapacity;
-    p["bootThreshold"] = mParams.bootThreshold;
-    p["varThreshold"]  = mParams.varThreshold;
+    p["bootThreshold"]   = mParams.bootThreshold;
+    p["matureThreshold"] = mParams.matureThreshold;
+    p["varThreshold"]    = mParams.varThreshold;
     p["pMin"]          = mParams.pMin;
     p["fireflyBudget"] = mParams.fireflyBudget;
     p["numLevels"]     = mParams.numLevels;
@@ -155,7 +164,10 @@ Properties VisCache::getProperties() const
     p["enableVisCacheAdaptivePMin"]    = mParams.enableVisCacheAdaptivePMin;
     p["enableVisCacheNormalAddr"]     = mParams.enableVisCacheNormalAddr;
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
-    p["enableVisCacheNearestDist"]     = mParams.enableVisCacheNearestDist;
+    p["enableVisCacheFootprintScale"]  = mParams.enableVisCacheFootprintScale;
+    p["subframeN"]                     = mParams.subframeN;
+    p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
+    p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -214,16 +226,6 @@ void VisCache::allocateBuffers()
     mpHashTable->setName("VHF_HashTable");
     mClearHashTable = true;  // Must clear to empty-slot sentinel (fingerprint=0) before first use
 
-    // Parallel nearest-hit distance buffer (same capacity, one uint per slot).
-    // Cleared to 0x7F800000 (+INF) so InterlockedMin works from first write.
-    mpNearestDist = mpDevice->createTypedBuffer(
-        ResourceFormat::R32Uint,
-        mParams.tableCapacity,
-        ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
-        MemoryType::DeviceLocal
-    );
-    mpNearestDist->setName("VHF_NearestDist");
-
     // GPU params constant buffer — exported via dict for downstream passes.
     mpParamsBuffer = mpDevice->createBuffer(
         sizeof(GPUParams),
@@ -252,7 +254,7 @@ void VisCache::allocateBuffers()
 // scene bounds. dirBCoarse stays at the user-set default.
 //
 // Heuristic:
-//   posACoarse  = sceneDiameter / 16
+//   posACoarse  = sceneDiameter / 8
 //   posBCoarse  = posACoarse * 2  (posB endpoint is coarser)
 //   distBCoarse  = posACoarse * 8  (distance bins are much coarser)
 //   dirBCoarse  left at user default (rotation-scale differs from position)
@@ -262,7 +264,7 @@ void VisCache::allocateBuffers()
 // ---------------------------------------------------------------------------
 void VisCache::autoTuneCellSizes()
 {
-    static constexpr float kCoarseScale = 16.f;
+    static constexpr float kCoarseScale = 8.f;
 
     if (!mpScene) return;
 
@@ -308,7 +310,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // ----------------------------------------------------------------
     // Parameter validation — clamp to safe ranges before GPU upload.
     mParams.numLevels     = std::max(1u, mParams.numLevels);
-    mParams.bootThreshold = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
+    mParams.bootThreshold   = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
+    mParams.matureThreshold = std::clamp(mParams.matureThreshold, mParams.bootThreshold, 0xFFFFu);
     if (mParams.varThreshold   <= 0.f) mParams.varThreshold   = 0.01f;
     if (mParams.posACoarse    <= 0.f) mParams.posACoarse    = 1.0f;
     if (mParams.posBCoarse    <= 0.f) mParams.posBCoarse    = 1.0f;
@@ -325,8 +328,9 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 
     GPUParams gpu = {};
     gpu.tableCapacity  = mParams.tableCapacity;
-    gpu.bootThreshold  = mParams.bootThreshold;
-    gpu.varThreshold   = mParams.varThreshold;
+    gpu.bootThreshold    = mParams.bootThreshold;
+    gpu.matureThreshold  = mParams.matureThreshold;
+    gpu.varThreshold     = mParams.varThreshold;
     gpu.pMin           = mParams.pMin;
     gpu.fireflyBudget  = mParams.fireflyBudget;
     gpu.numLevels      = mParams.numLevels;
@@ -334,7 +338,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                        | (mParams.enableVisCacheJitterB ? 2u : 0u)
                        | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
                        | (mParams.enableVisCacheNormalAddr ? 8u : 0u)
-                       | (mParams.enableVisCacheNearestDist ? 16u : 0u);
+                       | (mParams.enableVisCacheFootprintScale ? 16u : 0u);
     gpu.posACoarse    = mParams.posACoarse;
     gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posACoarse, mParams.numLevels) : mParams.posACoarse;
     gpu.posBCoarse    = mParams.posBCoarse;
@@ -348,24 +352,51 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.diagAccumWindow = mParams.diagAccumWindow;
     gpu.frameCount      = mFrameCount;
     gpu.spp             = std::max(1u, mParams.spp);
+
+    // Camera footprint estimation: pixel world-space size at unit depth.
+    // pixelSize1 = 2 * length(cameraU) / frameDim.x
+    // cameraU is the camera's right vector scaled by half-FOV extent.
+    if (mpScene && mpScene->getCamera())
+    {
+        const auto& cam = mpScene->getCamera()->getData();
+        float3 posW = cam.posW;
+        gpu.cameraPosW[0] = posW.x;
+        gpu.cameraPosW[1] = posW.y;
+        gpu.cameraPosW[2] = posW.z;
+        float cameraULen = length(cam.cameraU);
+        uint32_t dimX = renderData.getDefaultTextureDims().x;
+        uint32_t frameDimX = dimX > 0u ? dimX : 1u;
+        gpu.pixelSize1 = 2.f * cameraULen / float(frameDimX);
+    }
+    else
+    {
+        gpu.cameraPosW[0] = gpu.cameraPosW[1] = gpu.cameraPosW[2] = 0.f;
+        gpu.pixelSize1 = 0.001f;  // Safe fallback
+    }
+    gpu.subframeN        = std::max(1u, mParams.subframeN);
+    gpu.warmupSlotsFirst = mParams.warmupSlotsFirst;
+    gpu.warmupSlotsRun   = mParams.warmupSlotsRun;
+
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
 
     // Log params on first frame for debugging.
     if (mFrameCount == 0u)
     {
-        logInfo("[VisCache] tableCapacity={} bootThreshold={} varThreshold={:.3f} pMin={:.3f} fireflyBudget={:.3f}",
-                mParams.tableCapacity, mParams.bootThreshold, mParams.varThreshold, mParams.pMin, mParams.fireflyBudget);
+        logInfo("[VisCache] tableCapacity={} bootThreshold={} matureThreshold={} varThreshold={:.3f} pMin={:.3f} fireflyBudget={:.3f}",
+                mParams.tableCapacity, mParams.bootThreshold, mParams.matureThreshold, mParams.varThreshold, mParams.pMin, mParams.fireflyBudget);
         logInfo("[VisCache] posA: coarse={:.4f} fine={:.4f}", gpu.posACoarse, gpu.posAFine);
         logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
         logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={} nearestDist={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={} footprintScale={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
                 mParams.enableVisCacheJitterA, mParams.enableVisCacheJitterB, mParams.enableVisCacheAdaptivePMin,
-                mParams.enableVisCacheDirDistAddr, mParams.enableVisCacheNearestDist);
+                mParams.enableVisCacheDirDistAddr, mParams.enableVisCacheFootprintScale);
+        logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
+                gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -380,23 +411,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     //     mClearHashTable = false;
     // }
 
-    // Clear nearest-dist buffer to +INF (0x7F800000) so InterlockedMin works.
-    if (mClearHashTable && mpNearestDist)
-    {
-        pCtx->clearUAV(mpNearestDist->getUAV().get(), uint4(0x7F800000u));
-        mClearHashTable = false;
-    }
-
     auto& dict = renderData.getDictionary();
     dict["vhfTable"]       = mpHashTable;
-    dict["vhfNearestDist"] = mpNearestDist;
     dict["vhfParamsCB"]    = mpParamsBuffer;  // kept for backward compat; prefer per-member binding below
 
     // Per-member cbuffer values — downstream passes bind these individually
     // because Falcor 8 ParameterBlock::setBuffer() doesn't support cbuffer binding.
     dict["vhfParam_tableCapacity"]  = mParams.tableCapacity;
-    dict["vhfParam_bootThreshold"]  = mParams.bootThreshold;
-    dict["vhfParam_varThreshold"]   = mParams.varThreshold;
+    dict["vhfParam_bootThreshold"]    = mParams.bootThreshold;
+    dict["vhfParam_matureThreshold"] = mParams.matureThreshold;
+    dict["vhfParam_varThreshold"]    = mParams.varThreshold;
     dict["vhfParam_pMin"]           = mParams.pMin;
     dict["vhfParam_fireflyBudget"]  = mParams.fireflyBudget;
     dict["vhfParam_numLevels"]      = mParams.numLevels;
@@ -425,7 +449,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableJitterA"]         = mParams.enableVisCacheJitterA;
     dict["vhfEnableJitterB"]         = mParams.enableVisCacheJitterB;
     dict["vhfEnableDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
-    dict["vhfEnableNearestDist"]     = mParams.enableVisCacheNearestDist;
+    dict["vhfEnableFootprintScale"]  = mParams.enableVisCacheFootprintScale;
+    dict["vhfSubframeN"]        = std::max(1u, mParams.subframeN);
+    dict["vhfWarmupSlotsFirst"] = mParams.warmupSlotsFirst;
+    dict["vhfWarmupSlotsRun"]   = mParams.warmupSlotsRun;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -569,7 +596,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         autoTuneDecayPeriod();
     }
 
-    mFrameCount++;
+    // Subframe gate: advance logical frameCount only after a full Bayer cycle (N²).
+    const uint32_t kSubframeCount = std::max(1u, mParams.subframeN) * std::max(1u, mParams.subframeN);
+    mSubframeIdx++;
+    if (mSubframeIdx >= kSubframeCount)
+    {
+        mSubframeIdx = 0;
+        mFrameCount++;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -588,7 +622,6 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["DecayCB"]["gDecayOffset"] = offset;
     vars["DecayCB"]["gDecayStride"] = stride;
     vars["gVHFTable"] = mpHashTable;
-    vars["gVHFNearestDist"] = mpNearestDist;
     // Derive fine values from coarse + numLevels (same formula as execute()).
     static constexpr float kMaxRatio = 4.f;
     auto deriveFine = [&](float coarse, uint32_t N) -> float {
@@ -597,8 +630,9 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     uint32_t N = std::max(1u, mParams.numLevels);
 
     vars["VisCacheParams"]["gTableCapacity"]  = mParams.tableCapacity;
-    vars["VisCacheParams"]["gBootThreshold"]  = mParams.bootThreshold;
-    vars["VisCacheParams"]["gVarThreshold"]   = mParams.varThreshold;
+    vars["VisCacheParams"]["gBootThreshold"]    = mParams.bootThreshold;
+    vars["VisCacheParams"]["gMatureThreshold"] = mParams.matureThreshold;
+    vars["VisCacheParams"]["gVarThreshold"]    = mParams.varThreshold;
     vars["VisCacheParams"]["gPMin"]           = mParams.pMin;
     vars["VisCacheParams"]["gFireflyBudget"]  = mParams.fireflyBudget;
     vars["VisCacheParams"]["gNumLevels"]      = N;
@@ -689,11 +723,13 @@ void VisCache::renderUI(Gui::Widgets& widget)
     widget.text(fmt::format("Decay period:    {} frames (auto)", mParams.decayPeriod));
     widget.separator();
 
+    widget.var("Use threshold",    mParams.bootThreshold,   1u, 0xFFFFu);
+    widget.var("Mature threshold", mParams.matureThreshold, 1u, 0xFFFFu);
     widget.var("pMin",             mParams.pMin,           0.01f, 0.5f,  0.005f);
     widget.var("Var threshold",    mParams.varThreshold,   0.01f, 0.5f,  0.01f);
     widget.var("Firefly budget",   mParams.fireflyBudget,  0.001f, 1.0f, 0.005f);
     widget.separator();
-    widget.var("Num LOD levels",   mParams.numLevels,      1u, 16u);
+    widget.var("Num LOD levels",   mParams.numLevels,      1u, 1024u);
 
     // Cell sizes (coarse only — fine auto-derived from coarse + numLevels)
     if (auto g = widget.group("Cell sizes"))
@@ -723,7 +759,10 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("F: Jitter posA",  mParams.enableVisCacheJitterA);
         g.checkbox("F: Jitter posB",  mParams.enableVisCacheJitterB);
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
-        g.checkbox("J: Nearest-dist per cell", mParams.enableVisCacheNearestDist);
+        g.checkbox("K: Footprint trust scale", mParams.enableVisCacheFootprintScale);
+        g.var("M: Subframe N (1 = off)",  mParams.subframeN,        1u, 8u);
+        g.var("L: warmupSlots (frame 0)", mParams.warmupSlotsFirst, 0u, 64u);
+        g.var("L: warmupSlots (running)", mParams.warmupSlotsRun,   0u, 64u);
     }
 
     widget.separator();
