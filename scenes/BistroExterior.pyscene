@@ -14,12 +14,14 @@ if not _os.path.exists(_fbx):
     _fbx = 'BistroExterior.fbx'
 sceneBuilder.importScene(_fbx)
 
-# Camera — street-level view of the bistro facade
+# Camera — diagonal street view looking along the bistro facade
+# FBX default cam is at (24.8, 3.2, -61.6) pointing +Z; positioned further back on
+# the far sidewalk so awnings, streetlights and colored signs fit in the frame.
 camera = Camera('VisCacheDefault')
-camera.position = float3(-8.0, 2.5,  4.5)
-camera.target   = float3( 1.5, 1.5, -1.5)
+camera.position = float3(34.0, 1.8, -81.0)
+camera.target   = float3(18.0, 2.8, -42.0)
 camera.up       = float3( 0.0, 1.0,  0.0)
-camera.focalLength = 21.0
+camera.focalLength = 15.0
 sceneBuilder.addCamera(camera)
 
 # Boost all emissive materials (FBX defaults are far too dim)
@@ -57,7 +59,14 @@ skyFill.intensity = float3(0.15, 0.2, 0.35)
 skyFill.direction = float3(-0.4, -0.5, 0.3)
 sceneBuilder.addLight(skyFill)
 
+# IBL — San Giuseppe Bridge (ORCA, bundled with Bistro asset)
+_ibl = _os.path.normpath(_os.path.join(_dir, '..', 'runtime', 'media', 'Bistro', 'san_giuseppe_bridge_4k.hdr'))
+envMap = EnvMap(_ibl)
+envMap.intensity = 1.0
+sceneBuilder.envMap = envMap
+
 # Render settings
 settings = sceneBuilder.renderSettings
 settings.useAnalyticLights = True
 settings.useEmissiveLights = True
+settings.useEnvLight = True

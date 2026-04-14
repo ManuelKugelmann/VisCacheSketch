@@ -16,12 +16,14 @@ if not _os.path.exists(_fbx):
     _fbx = 'BistroInterior.fbx'
 sceneBuilder.importScene(_fbx)
 
-# Camera — mid-room looking diagonally across the dining area
+# Camera — elevated view over the dining area looking toward the bar
+# Probed multiple positions to avoid foreground amphora pots; this one clears
+# the pots and frames dining tables, chairs and bar/wine racks in the back.
 camera = Camera('VisCacheDefault')
-camera.position = float3(-3.0, 2.0, 12.0)
-camera.target   = float3( 0.5, 1.5, -3.0)
+camera.position = float3(-1.7, 5.3,  4.2)
+camera.target   = float3( 3.3, 1.5, -2.4)
 camera.up       = float3( 0.0, 1.0,  0.0)
-camera.focalLength = 21.0
+camera.focalLength = 15.0
 sceneBuilder.addCamera(camera)
 
 # Boost all emissive materials (FBX defaults are far too dim)
@@ -53,7 +55,14 @@ sun.intensity = float3(2.0, 1.6, 1.1)
 sun.direction = float3(0.5, -0.7, -0.5)
 sceneBuilder.addLight(sun)
 
+# IBL — San Giuseppe Bridge (ORCA, bundled with Bistro asset)
+_ibl = _os.path.normpath(_os.path.join(_dir, '..', 'runtime', 'media', 'Bistro', 'san_giuseppe_bridge_4k.hdr'))
+envMap = EnvMap(_ibl)
+envMap.intensity = 1.0
+sceneBuilder.envMap = envMap
+
 # Render settings — emissive geometry is the primary illumination indoors
 settings = sceneBuilder.renderSettings
 settings.useAnalyticLights = True
 settings.useEmissiveLights = True
+settings.useEnvLight = True
