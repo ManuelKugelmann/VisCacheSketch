@@ -58,3 +58,6 @@ runtime/.runstate/
 # settings (hooks, enforced rules) belong in .claude/settings.json.
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Ad-hoc debug log dropped by various tools
+debug.log
