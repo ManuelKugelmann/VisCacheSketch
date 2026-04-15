@@ -301,52 +301,102 @@ Usage: `setup_vs2022.bat --host x64` or `setup_vs2022.bat ci --host x64`.
 
 ---
 
-## 13. VisCache cbuffer: per-member binding required
+## 13. ParameterBlock: cbuffer must be bound member-by-member
 
-**Files:** `PathTracer.cpp`, `MinimalPathTracer.cpp`, `RTXDIPass.cpp`, `ReSTIRPTPass.cpp`
+**Files:** callers that bind cbuffer-typed shader variables
 
 Falcor 8's `ParameterBlock::setBuffer()` does not support binding a raw `Buffer`
 to a `cbuffer` shader variable. Calling `rootVar["MyCBuffer"] = someBuffer` hits
 the else branch in `ParameterBlock.cpp:506` which throws "Error trying to bind
 buffer to a non SRV/UAV variable." `setBlob()` also rejects cbuffer types.
 
-**Fix:** Bind cbuffer members individually:
+**Workaround:** bind cbuffer members individually:
 ```cpp
-rootVar["VisCacheParams"]["gTableCapacity"] = params.tableCapacity;
-rootVar["VisCacheParams"]["gBootThreshold"] = params.bootThreshold;
-// ... etc
+rootVar["MyCBuffer"]["gFieldA"] = valueA;
+rootVar["MyCBuffer"]["gFieldB"] = valueB;
+// ...
 ```
-The VisCache pass exports per-member values via `InternalDictionary` keys
-(`vhfParam_tableCapacity`, etc.) so downstream passes can read and bind them.
+
+**Upstream status:** Falcor limitation. Consider fixing `setBuffer()` to accept
+buffers typed as `ConstantBuffer<T>`, or `setBlob()` to support cbuffer types.
 
 ---
 
-## 14. PathTracer: VisCache subframe gate in GeneratePaths (early-out, TODO reduced-dispatch)
+## 14. PathTracer: Bayer subframe gate in GeneratePaths
 
-**File:** `Source/RenderPasses/PathTracer/GeneratePaths.cs.slang`
+**Files:**
+- `Source/RenderPasses/PathTracer/GeneratePaths.cs.slang` — active-slot gate
+- `Source/RenderPasses/PathTracer/Params.slang` — adds `subframeIdx` field
+- `Source/RenderPasses/PathTracer/PathTracer.cpp` — advances `subframeIdx`
+  per dispatch, `frameCount` per logical frame, sets the gate define
 
-VisCache needs interleaved per-frame pixel coverage to avoid tile-lit bias:
-when a tile is shaded row-major, the first-touched pixel writes the cell
-mean and every neighbor inherits that prediction. Splitting a frame into
-N×N subframes (active slot cycles with `gFrameCount`) spreads the cell-write
-order spatially. See `VisCache.slang` for the design rationale.
+A compile-time define selects an N×N Bayer pixel gate. When `N > 1`, each
+dispatch shades only pixels whose
+`bayerTable[(y%N)*N + (x%N)] == params.subframeIdx`. Inactive-slot threads
+set `spp = 0` and skip path generation (prefix sum and warp reduction remain
+active — required by pass invariants).
 
-`VISCACHE_SUBFRAME_N` accepts 1 (full frame, no gate), 2 (2×2 Bayer), or 4
-(4×4 Bayer). Default 1 is a no-op — the active-slot test trivially passes.
+Bayer tables (low-discrepancy, temporally stable):
 
-**Current implementation (early-out):** Full-size dispatch; threads whose
-pixel is not in the active Bayer slot set `spp = 0` and skip path generation.
-Prefix sum and warp reduction stay active (required by the pass invariants).
-Cost: N²−1 of N² threads do wasted work per subframe.
+```slang
+static const uint kBayer2x2[4]  = { 0, 2, 3, 1 };
+static const uint kBayer4x4[16] = {  0,  8,  2, 10,
+                                    12,  4, 14,  6,
+                                     3, 11,  1,  9,
+                                    15,  7, 13,  5 };
+```
 
-**TODO (optimization):** Replace with reduced-size dispatch. Dispatch
-`ceil(W/N) × ceil(H/N)` thread groups instead of full-screen; map
-`screenPixel = tileOffset + deinterleave_8bit(threadIdx)` to
-`tileOffset*N + bayerOffset[slot]`. Ripples into `TracePass.rt.slang`
-(`DispatchRaysIndex()`), `ResolvePass.cs.slang`, and PixelStats. Saves 1/N²
-GPU cost with identical output.
+### Frame-counter split
 
-**Upstream status:** VisCache-specific; not intended for upstream.
+`params.frameCount` represents a **logical frame** (= N² subframe dispatches).
+`params.subframeIdx` cycles 0..N²−1 within a logical frame. In `endFrame`:
+
+```cpp
+mParams.subframeIdx++;
+if (mParams.subframeIdx >= kSubframeCount) {
+    mParams.subframeIdx = 0;
+    mParams.frameCount++;      // logical frame boundary
+}
+```
+
+Consumers that use `frameCount` for RNG / jitter get the same seed for all
+N² subframes of one logical frame — all subframes of a logical frame share
+the same camera jitter / sample stream.
+
+### Current implementation (full-dispatch early-out)
+
+Full-size dispatch per subframe; inactive-slot threads early-out. Cost:
+N²−1 of N² threads do wasted work per subframe.
+
+### TODO (optimization): reduced-size dispatch
+
+Dispatch `ceil(W/N) × ceil(H/N)` groups; at shader entry, remap the threadID:
+
+```slang
+uint2 reducedPixel = deinterleave_8bit(threadIdx) + (tileID << kScreenTileBits);
+uint2 pixel = reducedPixel * N + bayerInv[subframeIdx];
+```
+
+Downstream shader logic uses `pixel` as before — no other changes required.
+The host-side loop in `PathTracer::execute()` wraps `generatePaths` +
+`tracePass` in an N² loop, advancing `subframeIdx` each iteration; `resolve`
+runs once at the end. Downstream passes (AccumulatePass, ToneMapper, NRD,
+RTXDI) see a fully-populated frame and need no changes. Saves ~1/N² GPU
+cost with identical output.
+
+### Open items
+
+- **RTXDI**: its `update()` currently runs N² times per logical frame from
+  inside the PathTracer loop. Temporal reservoirs see sparse per-subframe
+  coverage. Either move `update()` outside the loop (once on the fully
+  populated sample buffer) or teach RTXDI the Bayer pattern.
+- **ReSTIRPTPass**: still dispatches full-frame. Needs the same treatment —
+  reduced N² dispatch, `subframeRemap()` at kernel entry, and a matching
+  subframe loop in `execute()` / reuse passes.
+
+**Upstream status:** The Bayer-subframe mechanism is a general pixel-write-
+order tool — useful for anything that cares about intra-frame cell/hash
+write ordering independently of per-pixel sample coverage.
 
 ---
 

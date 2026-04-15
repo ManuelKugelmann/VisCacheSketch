@@ -22,10 +22,12 @@ for scene_file in get_scenes():
 
     run_baseline(
         step_name="00",
-        frame_configs=[(1, 0, 2), (0, 0, 1)],
+        frame_configs=[(0, 0, 1)],
         scene_file=scene_file,
         resX=res, resY=res,
         gt_spp=4096,
+        # x4 / x8 added for step 04's sample-count sweep; step 05+ only use x4.
+        extra_spp=[4, 8, 16],
         mogwai_globals=globals(),
     )
 

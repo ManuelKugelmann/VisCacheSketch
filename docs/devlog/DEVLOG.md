@@ -7,11 +7,15 @@ Full plates and stats in each step's subfolder.
 
 | | col 1 | col 2 | col 3 | col 4 |
 |---|---|---|---|---|
-| **r1** | render | accum raysTraced | GT-err Δ vs vanilla | accum noise |
+| **r1** | render | accum raysTraced | GT-err Δ vs vanilla | noise Δ vs vanilla |
 | **r2** | frame level | accum maturity | accum mean | accum variance |
 | **r3** | accum coldmiss | frame qAHash | frame qBHash | frame probeSteps |
 
-**r1c3 GT-error Δ** = OkLab(viscache, GT) − OkLab(vanilla\_xN, GT) at matched SPP. Continuous ramp anchored at viridis(0) = dark purple for Δ=0. Positive (VisCache degraded) walks the full **viridis** palette (purple → blue → green → yellow). Negative (VisCache denoised) fades from purple toward **black**. Darker-than-purple = better; brighter-than-purple = worse.
+Both r1c3 and r1c9 use the same continuous bipolar ramp anchored at viridis(0) = dark purple for Δ = 0. Positive values (VisCache degraded / noisier) walk the full **viridis** palette (purple → blue → green → yellow); negative values (VisCache better / smoother) fade from purple toward **black**. Darker-than-purple = better; brighter-than-purple = worse. Plate labels report mean and per-pixel `[min … max]` signed %.
+
+- **r1c3 GT-err Δ** = OkLabDistance(viscache, GT) − OkLabDistance(vanilla\_xN, GT) at matched SPP — perceptual error vs ground truth, relative to same-SPP vanilla.
+- **r1c9 noise Δ** = bilateral\_noise(viscache LDR) − bilateral\_noise(vanilla\_xN LDR) at matched SPP — screen-space noise difference, independent of GT.
+- Step 00 also emits per-SPP `{tag}_vanilla_gterr.png` — vanilla\_xN's absolute OkLab error vs GT — as the reference noise floor the viscache delta is measured against.
 
 ---
 

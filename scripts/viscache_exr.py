@@ -138,31 +138,126 @@ def load_diag_mask(exrs, mode="nodata", total_frames=None):
         return None
 
 
-def compute_render_noise(render_path, outpath, nodata=None, radius=2, phi=0.1):
-    """Bilateral luminance variance → coefficient of variation → viridis PNG.
-    Edge-aware: luminance-weighted bilateral window suppresses edges.
-    """
-    img = np.array(Image.open(render_path)).astype(np.float32) / 255.0
-    lum = 0.2126 * img[:, :, 0] + 0.7152 * img[:, :, 1] + 0.0722 * img[:, :, 2]
-    h, w = lum.shape
+def _gaussian_blur_2d(img, sigma):
+    """Separable 1D Gaussian, numpy-only. `img` can be (H,W) or (H,W,C)."""
+    if sigma <= 0:
+        return img.astype(np.float32, copy=False)
+    radius = max(1, int(np.ceil(3.0 * sigma)))
+    x = np.arange(-radius, radius + 1, dtype=np.float32)
+    k = np.exp(-(x * x) / (2.0 * sigma * sigma))
+    k /= k.sum()
+    src = img.astype(np.float32, copy=False)
+    # Pad with edge replication to avoid darkening at borders.
+    if src.ndim == 2:
+        pad = np.pad(src, radius, mode="edge")
+        # Horizontal
+        tmp = np.zeros_like(src)
+        for i, ki in enumerate(k):
+            tmp += ki * pad[radius:radius+src.shape[0], i:i+src.shape[1]]
+        # Vertical
+        pad2 = np.pad(tmp, radius, mode="edge")
+        out = np.zeros_like(src)
+        for i, ki in enumerate(k):
+            out += ki * pad2[i:i+src.shape[0], radius:radius+src.shape[1]]
+        return out
+    # (H,W,C): blur each channel
+    out = np.empty_like(src)
+    for c in range(src.shape[2]):
+        out[..., c] = _gaussian_blur_2d(src[..., c], sigma)
+    return out
 
-    sum_w = np.full((h, w), 1e-6, dtype=np.float32)
+
+# Structural-error parameters. σ sets the "correlated-pattern scale" (tile size
+# ≈ 16 px → σ ≈ 8 captures tile-scale bias while damping edge aliasing).
+# pixel_weight scales the raw per-pixel ΔE contribution added on top.
+STRUCTURAL_SIGMA = 8.0
+STRUCTURAL_PIXEL_WEIGHT = 0.25
+
+
+def _bilateral_noise_map(img_rgb, radius=2, phi=0.1):
+    """Per-pixel bilateral-variance coefficient of variation for sRGB [0,1] (H,W,3).
+    Edge-aware: luminance-weighted bilateral window suppresses edges. Returns (H,W) in [0,1].
+    """
+    lum = 0.2126 * img_rgb[:, :, 0] + 0.7152 * img_rgb[:, :, 1] + 0.0722 * img_rgb[:, :, 2]
+    h, w = lum.shape
+    sum_w  = np.full((h, w), 1e-6, dtype=np.float32)
     sum_wl = np.zeros((h, w), dtype=np.float32)
     sum_wl2 = np.zeros((h, w), dtype=np.float32)
-
     for dy in range(-radius, radius + 1):
         for dx in range(-radius, radius + 1):
             shifted = np.roll(np.roll(lum, -dy, axis=0), -dx, axis=1)
             weight = np.exp(-np.abs(lum - shifted) / max(phi, 1e-6))
-            sum_w += weight
+            sum_w  += weight
             sum_wl += weight * shifted
             sum_wl2 += weight * shifted * shifted
-
     mean = sum_wl / sum_w
     var = np.maximum(0, sum_wl2 / sum_w - mean * mean)
     cov = np.sqrt(var) / np.maximum(lum, 1e-3)
-    viridis_png(np.clip(cov, 0, 1), outpath, nodata=nodata)
+    return np.clip(cov, 0, 1).astype(np.float32)
+
+
+def compute_render_noise(render_path, outpath, nodata=None, radius=2, phi=0.1):
+    """Structural noise map → viridis PNG.
+
+    Combines bilateral noise on a Gaussian-smoothed image (catches correlated
+    patterns — tile-scale bias shows up as edge-discontinuity in the smoothed
+    result) with a scaled-down bilateral noise on the original (keeps some
+    sensitivity to pixel-level stochastic noise). Matches the structural error
+    metric: less sensitive to edge aliasing, more sensitive to tile-scale
+    artifacts.
+    """
+    img = np.array(Image.open(render_path)).astype(np.float32) / 255.0
+    rgb = img[:, :, :3]
+    smooth = _gaussian_blur_2d(rgb, STRUCTURAL_SIGMA)
+    noise_s = _bilateral_noise_map(smooth, radius=radius, phi=phi)
+    noise_p = _bilateral_noise_map(rgb,    radius=radius, phi=phi)
+    combined = np.clip(noise_s + STRUCTURAL_PIXEL_WEIGHT * noise_p, 0, 1)
+    viridis_png(combined, outpath, nodata=nodata)
     return outpath
+
+
+def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None, radius=2, phi=0.1):
+    """Signed bilateral-noise delta: noise(render) − noise(baseline) on tonemapped PNGs.
+    Same bipolar ramp as the signed GT-error delta (viridis for positive = noisier,
+    purple→black for negative = smoother than baseline).
+
+    Returns dict {noise_vis_mean, noise_van_mean, noise_delta_mean, noise_delta_pct}
+    or None on failure.
+    """
+    try:
+        img_r = np.array(Image.open(render_path)).astype(np.float32) / 255.0
+        img_b = np.array(Image.open(baseline_path)).astype(np.float32) / 255.0
+    except (IOError, OSError):
+        return None
+    if img_r.shape[:2] != img_b.shape[:2]:
+        return None
+    n_r = _bilateral_noise_map(img_r[:, :, :3], radius=radius, phi=phi)
+    n_b = _bilateral_noise_map(img_b[:, :, :3], radius=radius, phi=phi)
+    signed = n_r - n_b
+    _signed_error_png(signed, outpath, nodata=nodata, norm=1.0)
+    mask = _valid_mask_from_nodata(nodata, signed.shape)
+    if not mask.any():
+        mask = np.ones_like(mask)
+    vals = signed[mask]
+    n_vis  = float(np.nanmean(n_r[mask]))
+    n_van  = float(np.nanmean(n_b[mask]))
+    s_m    = float(np.nanmean(vals))
+    # Robust min/max: 1st and 99th percentile (see error delta rationale).
+    s_min  = float(np.nanpercentile(vals, 1))
+    s_max  = float(np.nanpercentile(vals, 99))
+    # Normalize to fixed bilateral-noise max (1.0 — cov is clipped to [0,1]).
+    # Same scale the image colormap uses; avoids double-counting vanilla.
+    denom  = 1.0
+    return {
+        "noise_vis_mean":       n_vis,
+        "noise_van_mean":       n_van,
+        "noise_delta_mean":     s_m,
+        "noise_delta_min":      s_min,
+        "noise_delta_max":      s_max,
+        "noise_delta_pct":      100.0 * s_m   / denom,
+        "noise_delta_min_pct":  100.0 * s_min / denom,
+        "noise_delta_max_pct":  100.0 * s_max / denom,
+    }
 
 
 def _srgb_to_oklab(img):
@@ -204,9 +299,19 @@ def _linear_to_srgb(c):
 
 
 def _oklab_distance_hdr(a_exr, b_exr):
-    """Per-pixel OkLab perceptual distance (2× L weight) between two HDR EXRs.
-    Returns (H, W) float32 or None on error. Clamps to [0, 10] pre-tonemap to
-    suppress fireflies before sRGB conversion."""
+    """Structural perceptual error between two HDR EXRs — Gaussian-smoothed
+    OkLab distance (2× L weight) plus a scaled per-pixel residual.
+
+    Rationale: per-pixel ΔE is dominated by edge aliasing (a single jittered
+    edge pixel has huge ΔE even if the image is otherwise correct). A
+    Gaussian low-pass at the correlated-pattern scale (σ ≈ half tile width)
+    averages edge jaggies to near-zero while preserving tile-scale bias
+    patterns (cold-start artifacts, systematic over-skip by RR, etc.).
+    Combined = ΔE_smoothed + STRUCTURAL_PIXEL_WEIGHT × ΔE_pixel keeps some
+    sensitivity to truly localized errors (firefly bursts) without letting
+    edge aliasing dominate.
+
+    Returns (H, W) float32 or None on error."""
     a_data = read_exr(a_exr)
     b_data = read_exr(b_exr)
     a_lin = a_data.get("RGBA", a_data.get("RGB"))
@@ -215,34 +320,64 @@ def _oklab_distance_hdr(a_exr, b_exr):
         return None
     a_lin = np.clip(a_lin[:, :, :3], 0, 10)
     b_lin = np.clip(b_lin[:, :, :3], 0, 10)
-    lab_a = _srgb_to_oklab(_linear_to_srgb(a_lin))
-    lab_b = _srgb_to_oklab(_linear_to_srgb(b_lin))
-    dL = lab_a[..., 0] - lab_b[..., 0]
-    da = lab_a[..., 1] - lab_b[..., 1]
-    db = lab_a[..., 2] - lab_b[..., 2]
-    return np.sqrt(4.0 * dL**2 + da**2 + db**2)
+
+    # Pixel ΔE
+    lab_a_p = _srgb_to_oklab(_linear_to_srgb(a_lin))
+    lab_b_p = _srgb_to_oklab(_linear_to_srgb(b_lin))
+    dL_p = lab_a_p[..., 0] - lab_b_p[..., 0]
+    da_p = lab_a_p[..., 1] - lab_b_p[..., 1]
+    db_p = lab_a_p[..., 2] - lab_b_p[..., 2]
+    err_p = np.sqrt(4.0 * dL_p**2 + da_p**2 + db_p**2).astype(np.float32)
+
+    # Structural ΔE: blur linear RGB (not OkLab — keeps Gaussian symmetric in
+    # photon space), then OkLab on the smoothed result.
+    a_blur = _gaussian_blur_2d(a_lin, STRUCTURAL_SIGMA)
+    b_blur = _gaussian_blur_2d(b_lin, STRUCTURAL_SIGMA)
+    lab_a_s = _srgb_to_oklab(_linear_to_srgb(np.clip(a_blur, 0, 10)))
+    lab_b_s = _srgb_to_oklab(_linear_to_srgb(np.clip(b_blur, 0, 10)))
+    dL_s = lab_a_s[..., 0] - lab_b_s[..., 0]
+    da_s = lab_a_s[..., 1] - lab_b_s[..., 1]
+    db_s = lab_a_s[..., 2] - lab_b_s[..., 2]
+    err_s = np.sqrt(4.0 * dL_s**2 + da_s**2 + db_s**2).astype(np.float32)
+
+    return (err_s + STRUCTURAL_PIXEL_WEIGHT * err_p).astype(np.float32)
+
+
+def oklab_distance_hdr_cached(a_exr, b_exr, cache_path=None):
+    """Like _oklab_distance_hdr, but reads/writes a .npy cache if cache_path is given.
+    Bad or missing cache falls through to recompute. Used to skip recomputing
+    vanilla-vs-GT (same across variants) for every ladder variant."""
+    if cache_path and os.path.exists(cache_path):
+        try:
+            return np.load(cache_path).astype(np.float32)
+        except (IOError, OSError, ValueError):
+            pass  # bad cache → fall through
+    arr = _oklab_distance_hdr(a_exr, b_exr)
+    if arr is not None and cache_path:
+        try:
+            np.save(cache_path, arr)
+        except (IOError, OSError):
+            pass
+    return arr
 
 
 def _signed_error_png(signed, outpath, nodata=None, norm=1.4):
     """Signed error PNG anchored at viridis(0) = dark purple.
     `signed` is (H,W) in units where ±norm is the clip range:
-      positive → viridis ramp (purple → blue → green → yellow) as degradation grows
+      positive → viridis ramp (purple → blue → green → yellow) as the delta grows
       zero     → viridis(0) = dark purple (parity with vanilla at same SPP)
-      negative → purple → black ramp as denoising gain grows (viridis(0) * (1 − |s|/norm))
-    The result is a continuous, monotone scalar field: darker-than-purple = better,
-    brighter-than-purple = worse.
+      negative → purple → black ramp as the improvement grows (viridis(0) * (1 − |s|/norm))
     """
     s = np.clip(signed / max(norm, 1e-6), -1.0, 1.0).astype(np.float32)
     h, w = signed.shape
     rgb = np.zeros((h, w, 3), dtype=np.float32)
     pos = s > 0
-    neg = ~pos  # includes zero → viridis(0) naturally via 1 + s = 1
-    purple = np.array(cm.viridis(0.0)[:3], dtype=np.float32)  # viridis's dark-purple anchor
+    neg = ~pos
+    purple = np.array(cm.viridis(0.0)[:3], dtype=np.float32)
     if pos.any():
         rgb[pos] = cm.viridis(s[pos])[:, :3].astype(np.float32)
     if neg.any():
-        # factor in [0, 1]: 1 at s=0 (purple), 0 at s=-1 (black)
-        factor = (1.0 + s[neg]).astype(np.float32)
+        factor = (1.0 + s[neg]).astype(np.float32)  # 1 at s=0 (purple), 0 at s=-1 (black)
         rgb[neg] = factor[:, np.newaxis] * purple[np.newaxis, :]
     if nodata is not None:
         cm_arr = np.asarray(nodata)
@@ -253,49 +388,93 @@ def _signed_error_png(signed, outpath, nodata=None, norm=1.4):
     Image.fromarray((rgb * 255).astype(np.uint8)).save(outpath)
 
 
-def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath, nodata=None):
-    """Signed HDR GT-error delta: err(render, GT) − err(vanilla_xN, GT) in OkLab (2× L).
-    Negative (purple) = VisCache denoised at this SPP; positive (yellow) = VisCache degraded.
-    Both errors use identical clamping + OkLab metric so the delta is unit-consistent.
+def _valid_mask_from_nodata(nodata, shape):
+    """Resolve nodata argument to a boolean (H,W) mask of *valid* pixels.
+    None or shape mismatch → all-True. Bool array → ~nodata. Float array → nodata > 0.5.
     """
-    err_render  = _oklab_distance_hdr(render_exr,  gt_exr)
-    err_vanilla = _oklab_distance_hdr(vanilla_xN_exr, gt_exr)
+    if nodata is None:
+        return np.ones(shape, dtype=bool)
+    arr = np.asarray(nodata)
+    if arr.shape != shape:
+        return np.ones(shape, dtype=bool)
+    if arr.dtype == bool:
+        return ~arr
+    return arr > 0.5
+
+
+def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath, nodata=None,
+                                     vanilla_err_cache=None):
+    """Signed HDR GT-error delta: err(render, GT) − err(vanilla_xN, GT) in OkLab (2× L).
+    Negative (purple→black) = VisCache denoised at this SPP; positive (viridis) = degraded.
+    Both errors use identical clamping + OkLab metric so the delta is unit-consistent.
+
+    Returns dict with mean stats, or None on failure:
+      err_vis_gt_mean:  mean OkLabDistance(viscache, GT) over valid pixels
+      err_van_gt_mean:  mean OkLabDistance(vanilla_xN, GT) over valid pixels
+      err_delta_mean:   mean of (err_vis − err_van) over valid pixels (signed, OkLab units)
+      err_delta_pct:    100 × err_delta_mean / max(err_van_gt_mean, eps) — signed % of vanilla's error
+    """
+    # vanilla-vs-GT is identical across all variants at a given scene+SPP; cache it.
+    err_render  = _oklab_distance_hdr(render_exr, gt_exr)
+    err_vanilla = oklab_distance_hdr_cached(vanilla_xN_exr, gt_exr, vanilla_err_cache)
     if err_render is None or err_vanilla is None:
         print(f"[viscache_exr] WARNING: cannot compute signed HDR error (missing or mismatched inputs)")
         return None
     if err_render.shape != err_vanilla.shape:
         print(f"[viscache_exr] WARNING: err shape mismatch, skipping signed error")
         return None
-    _signed_error_png(err_render - err_vanilla, outpath, nodata=nodata)
-    return outpath
+    signed = err_render - err_vanilla
+    _signed_error_png(signed, outpath, nodata=nodata)
+    mask = _valid_mask_from_nodata(nodata, err_render.shape)
+    if not mask.any():
+        mask = np.ones_like(mask)
+    vals = signed[mask]
+    err_vis  = float(np.nanmean(err_render[mask]))
+    err_van  = float(np.nanmean(err_vanilla[mask]))
+    s_m      = float(np.nanmean(vals))
+    # Robust min/max: 1st and 99th percentile. True min/max get dominated by
+    # a handful of firefly / discontinuity pixels and produce nonsense pcts.
+    s_min    = float(np.nanpercentile(vals, 1))
+    s_max    = float(np.nanpercentile(vals, 99))
+    # Normalize to fixed OkLab max (1.4) — same scale the image colormap uses.
+    # Previously normalized by mean(err_vanilla), which double-counts vanilla
+    # (already in the numerator) and blew up in near-zero regions.
+    denom    = 1.4
+    return {
+        "err_vis_gt_mean":    err_vis,
+        "err_van_gt_mean":    err_van,
+        "err_delta_mean":     s_m,
+        "err_delta_min":      s_min,
+        "err_delta_max":      s_max,
+        "err_delta_pct":      100.0 * s_m   / denom,
+        "err_delta_min_pct":  100.0 * s_min / denom,
+        "err_delta_max_pct":  100.0 * s_max / denom,
+    }
 
 
-def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None):
-    """HDR perceptual error (OkLab, 2x L weight) from pre-tonemapper EXRs → viridis PNG.
+def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None,
+                              distance_cache=None):
+    """HDR perceptual error (OkLab, 2× L weight) from pre-tonemapper EXRs → viridis PNG.
     Converts linear HDR to sRGB before OkLab (OkLab expects sRGB input).
     Clamps negative values and fireflies before conversion.
+
+    distance_cache: optional .npy path to reuse / populate the per-pixel OkLab
+    distance map. Lets baseline GT-err generation seed a cache that the later
+    signed-delta step for each variant then reads instead of recomputing.
+
+    Returns dict {mean_err, mean_err_pct} or None on failure.
+    mean_err_pct = 100 × mean_err / 1.4 — mean viridis-scale intensity in percent.
     """
-    render_data = read_exr(render_exr)
-    base_data = read_exr(baseline_exr)
-    img_lin = render_data.get("RGBA", render_data.get("RGB"))
-    base_lin = base_data.get("RGBA", base_data.get("RGB"))
-    if img_lin is None or base_lin is None:
-        print(f"[viscache_exr] WARNING: cannot read HDR EXR, skipping error")
+    err = oklab_distance_hdr_cached(render_exr, baseline_exr, distance_cache)
+    if err is None:
+        print(f"[viscache_exr] WARNING: cannot read HDR EXR or shape mismatch, skipping error")
         return None
-    if img_lin.shape[:2] != base_lin.shape[:2]:
-        print(f"[viscache_exr] WARNING: HDR shape mismatch, skipping error")
-        return None
-    # Clamp to [0, 10] to suppress fireflies before tonemapping
-    img_lin = np.clip(img_lin[:, :, :3], 0, 10)
-    base_lin = np.clip(base_lin[:, :, :3], 0, 10)
-    # Linear → sRGB → OkLab
-    img_srgb = _linear_to_srgb(img_lin)
-    base_srgb = _linear_to_srgb(base_lin)
-    lab1 = _srgb_to_oklab(img_srgb)
-    lab2 = _srgb_to_oklab(base_srgb)
-    dL = lab1[..., 0] - lab2[..., 0]
-    da = lab1[..., 1] - lab2[..., 1]
-    db = lab1[..., 2] - lab2[..., 2]
-    err = np.sqrt(4.0 * dL**2 + da**2 + db**2)
     viridis_png(np.clip(err / 1.4, 0, 1), outpath, nodata=nodata)
-    return outpath
+    mask = _valid_mask_from_nodata(nodata, err.shape)
+    if not mask.any():
+        mask = np.ones_like(mask)
+    mean_err = float(err[mask].mean())
+    return {
+        "mean_err":     mean_err,
+        "mean_err_pct": 100.0 * mean_err / 1.4,
+    }

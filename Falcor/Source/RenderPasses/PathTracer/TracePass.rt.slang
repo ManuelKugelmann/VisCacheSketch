@@ -662,9 +662,15 @@ void scatterSdfGridClosestHit(inout PathPayload payload, SDFGridHitData sdfGridH
 [shader("raygeneration")]
 void rayGen()
 {
-    uint2 pixel = DispatchRaysIndex().xy;
-    uint2 frameDim = DispatchRaysDimensions().xy;
-    if (all(pixel >= frameDim)) return;
+    // Fixed spp: host dispatches reduced; remap threadID → full-res pixel.
+    // Variable spp + N>1: host falls back to full dispatch; use identity mapping.
+    // Inactive-slot pixels have spp=0 in the sample buffer (set by GeneratePaths),
+    // so gScheduler.run() no-ops on them.
+    uint2 reducedPixel = DispatchRaysIndex().xy;
+    uint2 pixel = (kSamplesPerPixel > 0)
+        ? subframeRemap(reducedPixel, gPathTracer.params.subframeIdx, VISCACHE_SUBFRAME_N)
+        : reducedPixel;
+    if (any(pixel >= gPathTracer.params.frameDim)) return;
 
     gScheduler.run(pixel);
 }

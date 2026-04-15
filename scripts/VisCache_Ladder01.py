@@ -20,7 +20,7 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, _make_variants, get_scenes, \
-    PRESET_MINIMAL, RR_ADAPTIVE, FOOTPRINT_OFF, \
+    plot_overviews, copy_summary_to_root, PRESET_MINIMAL, RR_ADAPTIVE, FOOTPRINT_OFF, \
     SUBFRAME_1x1, SUBFRAME_2x2, SUBFRAME_4x4
 
 res = int(os.environ.get("RES", "512"))
@@ -31,7 +31,11 @@ QUANT_01 = {"posA": 0.5, "normalA": 60.0, "posB": 1.0, "dirB": 5.0, "distB": 0.2
 # Pull just the first variant (pos_norm1__pos1).
 BASE = _make_variants(normal_active=False, quant=QUANT_01, base=PRESET_MINIMAL)[:1]
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **FOOTPRINT_OFF}
+# Softer RR + higher bootThreshold than the shared RR_ADAPTIVE / QUALITY_MINIMAL
+# defaults, to shrink the high-error band the baseline produces before mitigations
+# kick in (pMin 0.05 → 0.20 caps max skip at 80% instead of 95%; bootThreshold
+# 8 → 32 makes each entry wait for 4× more samples before it is trusted for RR).
+STEP_OVERRIDES = {**RR_ADAPTIVE, **FOOTPRINT_OFF, "pMin": 0.20, "bootThreshold": 32}
 
 # Sweep (subframe, (warmupFirst, warmupRun, frames, spp)).
 # frames=1 means "one logical frame" = one full Bayer cycle (N² rendered subframes).
@@ -61,4 +65,6 @@ for scene_file in get_scenes():
             wipe_captures=(i == 0),
         )
 
+plot_overviews("01")
+copy_summary_to_root("01")
 _HEADLESS_SCRIPT_DONE = True

@@ -12,13 +12,13 @@ import os, sys, glob
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Suppress falcor import error — plot_rays_overview only needs csv + matplotlib
+# Suppress falcor import error — plot_overviews only needs csv + matplotlib
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault("PROJECT_ROOT", _project_root)
-# plot_rays_overview uses relative paths — must run from runtime/
+# plot_overviews uses relative paths — must run from runtime/
 os.chdir(os.path.join(_project_root, "runtime"))
 
-from VisCache_LadderCommon import plot_rays_overview, _step_csv
+from VisCache_LadderCommon import plot_overviews, _step_csv
 
 steps = sys.argv[1:] if len(sys.argv) > 1 else None
 
@@ -35,8 +35,10 @@ if not steps:
 
 for step in steps:
     print(f"[replot] Step {step} ...")
-    out = plot_rays_overview(step)
-    if out:
-        print(f"[replot]   -> {out}")
+    outs = plot_overviews(step)
+    if outs:
+        for out in outs:
+            if out:
+                print(f"[replot]   -> {out}")
     else:
-        print(f"[replot]   (no data or already printed)")
+        print(f"[replot]   (no data)")

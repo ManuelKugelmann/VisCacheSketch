@@ -10,7 +10,7 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, _make_variants, get_scenes, \
-    PRESET_MINIMAL, RR_ADAPTIVE, FOOTPRINT_OFF
+    plot_overviews, copy_summary_to_root, PRESET_MINIMAL, RR_ADAPTIVE, FOOTPRINT_OFF, SUBFRAME_2x2
 
 res = int(os.environ.get("RES", "512"))
 
@@ -21,12 +21,14 @@ VARIANTS_02 = _make_variants(normal_active=False, quant=QUANT_02, base=PRESET_MI
 for scene_file in get_scenes():
     run_variants(
         step_name="02",
-        frame_configs=[(1, 0, 2, 1)],
+        frame_configs=[(1, 0, 1, 1)],
         scene_file=scene_file,
         variants=VARIANTS_02,
         resX=res, resY=res,
         mogwai_globals=globals(),
-        step_overrides={**RR_ADAPTIVE, **FOOTPRINT_OFF},
+        step_overrides={**RR_ADAPTIVE, **FOOTPRINT_OFF, **SUBFRAME_2x2},
     )
 
+plot_overviews("02")
+copy_summary_to_root("02")
 _HEADLESS_SCRIPT_DONE = True

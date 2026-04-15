@@ -459,26 +459,40 @@ void PathTracer::execute(RenderContext* pRenderContext, const RenderData& render
     // This should be called after all resources have been created.
     preparePathTracer(renderData);
 
-    // Generate paths at primary hits.
-    generatePaths(pRenderContext, renderData);
-
-    // Update RTXDI.
-    if (mpRTXDI)
+    // Subframe loop: for VISCACHE_SUBFRAME_N>1 we split a logical frame into N²
+    // Bayer-interleaved sub-dispatches. Downstream passes see a fully-populated
+    // frame after all N² iterations; resolve + endFrame run once at the end.
+    const uint32_t kSubframeCount = mVisCacheSubframeN * mVisCacheSubframeN;
+    for (uint32_t sf = 0; sf < kSubframeCount; ++sf)
     {
-        const auto& pMotionVectors = renderData.getTexture(kInputMotionVectors);
-        mpRTXDI->update(pRenderContext, pMotionVectors);
-    }
+        mParams.subframeIdx = sf;
+        if (sf > 0) preparePathTracer(renderData);  // re-upload cbuffer with new subframeIdx
 
-    // Trace pass.
-    FALCOR_ASSERT(mpTracePass);
-    tracePass(pRenderContext, renderData, *mpTracePass);
+        // Generate paths at primary hits.
+        generatePaths(pRenderContext, renderData);
 
-    // Launch separate passes to trace delta reflection and transmission paths to generate respective guide buffers.
-    if (mOutputNRDAdditionalData)
-    {
-        FALCOR_ASSERT(mpTraceDeltaReflectionPass && mpTraceDeltaTransmissionPass);
-        tracePass(pRenderContext, renderData, *mpTraceDeltaReflectionPass);
-        tracePass(pRenderContext, renderData, *mpTraceDeltaTransmissionPass);
+        // Update RTXDI.
+        // TODO: RTXDI is subframe-unaware — update() runs N² times per logical
+        // frame and its temporal reservoirs see sparse per-subframe coverage.
+        // Either move update() outside the loop (once per logical frame on fully
+        // populated sample buffer) or teach RTXDI the Bayer subframe pattern.
+        if (mpRTXDI)
+        {
+            const auto& pMotionVectors = renderData.getTexture(kInputMotionVectors);
+            mpRTXDI->update(pRenderContext, pMotionVectors);
+        }
+
+        // Trace pass.
+        FALCOR_ASSERT(mpTracePass);
+        tracePass(pRenderContext, renderData, *mpTracePass);
+
+        // Launch separate passes to trace delta reflection and transmission paths to generate respective guide buffers.
+        if (mOutputNRDAdditionalData)
+        {
+            FALCOR_ASSERT(mpTraceDeltaReflectionPass && mpTraceDeltaTransmissionPass);
+            tracePass(pRenderContext, renderData, *mpTraceDeltaReflectionPass);
+            tracePass(pRenderContext, renderData, *mpTraceDeltaTransmissionPass);
+        }
     }
 
     // Resolve pass.
@@ -1360,15 +1374,10 @@ void PathTracer::endFrame(RenderContext* pRenderContext, const RenderData& rende
     if (mpRTXDI) mpRTXDI->endFrame(pRenderContext);
 
     mVarsChanged = false;
-    // Subframe gate: advance frameCount only after a full Bayer cycle (N² dispatches).
-    // Within one cycle, frameCount stays constant so RNG/jitter behave as a single logical frame.
-    const uint32_t kSubframeCount = mVisCacheSubframeN * mVisCacheSubframeN;
-    mParams.subframeIdx++;
-    if (mParams.subframeIdx >= kSubframeCount)
-    {
-        mParams.subframeIdx = 0;
-        mParams.frameCount++;
-    }
+    // One logical frame = N² subframe dispatches (driven by execute()'s loop).
+    // Reset subframeIdx; advance logical frameCount.
+    mParams.subframeIdx = 0;
+    mParams.frameCount++;
 }
 
 void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& renderData)
@@ -1397,9 +1406,18 @@ void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& 
 
     if (mpRTXDI) mpRTXDI->bindShaderData(mpGeneratePaths->getRootVar());
 
-    // Launch one thread per pixel.
-    // The dimensions are padded to whole tiles to allow re-indexing the threads in the shader.
-    mpGeneratePaths->execute(pRenderContext, { mParams.screenTiles.x * tileSize, mParams.screenTiles.y, 1u });
+    // Launch one thread per reduced-resolution pixel when subframe gate active.
+    // At N=1 the reduced tiles equal full screenTiles; at N>1 the shader remaps
+    // its threadID via subframeRemap() to cover 1/N² of pixels per dispatch.
+    //
+    // Variable-spp (kSamplesPerPixel == 0): the shader's per-warp prefix sum packs
+    // samples assuming all threads in a group share a full tile — which reduced+remap
+    // can't guarantee at N>1. Fall back to full dispatch; shader gates spp on
+    // inactive Bayer slots (option 1 in the design notes).
+    const uint32_t N = mVisCacheSubframeN;
+    const uint32_t effectiveN = (!mFixedSampleCount && N > 1) ? 1u : N;
+    const uint2 reducedTiles = (mParams.screenTiles + uint2(effectiveN - 1)) / effectiveN;
+    mpGeneratePaths->execute(pRenderContext, { reducedTiles.x * tileSize, reducedTiles.y, 1u });
 }
 
 void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& renderData, TracePass& tracePass)
@@ -1467,7 +1485,14 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         if (mpVCAccumRaysNoiseErrorCold)  var["gVCAccumRaysNoiseErrorCold"]  = mpVCAccumRaysNoiseErrorCold;
     }
     // Full screen dispatch.
-    mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));
+    // Reduced-resolution dispatch when subframe gate active; raygen remaps to
+    // full-res pixel via subframeRemap(). Variable-spp + N>1 falls back to full
+    // dispatch (see comment in generatePaths); the raygen shader chooses its
+    // pixel-compute path based on kSamplesPerPixel, mirroring this host split.
+    const uint32_t N = mVisCacheSubframeN;
+    const uint32_t effectiveN = (!mFixedSampleCount && N > 1) ? 1u : N;
+    const uint2 reducedDim = (mParams.frameDim + uint2(effectiveN - 1)) / effectiveN;
+    mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(reducedDim, 1));
 }
 
 void PathTracer::resolvePass(RenderContext* pRenderContext, const RenderData& renderData)

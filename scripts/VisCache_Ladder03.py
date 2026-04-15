@@ -11,8 +11,8 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, make_norm_variants, get_scenes, \
-    plot_rays_overview, PRESET_MINIMAL, RR_ADAPTIVE, QUANT_SWEEP, \
-    FOOTPRINT_OFF
+    plot_overviews, copy_summary_to_root, PRESET_MINIMAL, RR_ADAPTIVE, QUANT_SWEEP, \
+    FOOTPRINT_OFF, SUBFRAME_2x2
 
 res = int(os.environ.get("RES", "512"))
 
@@ -20,12 +20,12 @@ VARIANTS_03 = []
 for tag, quant in QUANT_SWEEP.items():
     VARIANTS_03.extend(make_norm_variants(quant=quant, base=PRESET_MINIMAL, quant_tag=tag))
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **FOOTPRINT_OFF}
+STEP_OVERRIDES = {**RR_ADAPTIVE, **FOOTPRINT_OFF, **SUBFRAME_2x2}
 
 for scene_file in get_scenes():
     run_variants(
         step_name="03",
-        frame_configs=[(1, 0, 2, 1)],
+        frame_configs=[(1, 0, 1, 1)],
         scene_file=scene_file,
         variants=VARIANTS_03,
         resX=res, resY=res,
@@ -33,5 +33,6 @@ for scene_file in get_scenes():
         step_overrides=STEP_OVERRIDES,
     )
 
-plot_rays_overview("03")
+plot_overviews("03")
+copy_summary_to_root("03")
 _HEADLESS_SCRIPT_DONE = True

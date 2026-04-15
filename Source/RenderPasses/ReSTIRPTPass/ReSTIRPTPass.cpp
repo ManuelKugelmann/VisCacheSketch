@@ -1651,6 +1651,10 @@ void ReSTIRPTPass::generatePaths(RenderContext* pRenderContext, const RenderData
 
     // Launch one thread per pixel.
     // The dimensions are padded to whole tiles to allow re-indexing the threads in the shader.
+    // TODO: mirror PathTracer's reduced N² Bayer-subframe dispatch for symmetry with
+    //       VisCache's cold-start mitigation (see Falcor/LOCAL_FIXES.md #14).
+    //       Needs: N² loop around gen+trace+reuse, reduced dispatch dims, and
+    //       subframeRemap() at shader entry in all ReSTIRPT kernels.
     mpGeneratePaths->execute(pRenderContext, { mParams.screenTiles.x * tileSize, mParams.screenTiles.y, 1u });
 }
 

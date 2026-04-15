@@ -131,4 +131,57 @@ struct PathTracerParams
 #endif
 };
 
+#ifndef HOST_CODE
+#ifndef VISCACHE_SUBFRAME_N
+#define VISCACHE_SUBFRAME_N 1
+#endif
+
+// ---------------------------------------------------------------------------
+// Subframe Bayer remap — maps reduced-resolution threadID to full-resolution
+// pixel. Used by reduced-dispatch path tracing when VISCACHE_SUBFRAME_N > 1.
+//
+// Inverse Bayer tables: slot index → (dx, dy) offset in [0, N).
+// Derived from the forward tables in GeneratePaths.cs.slang.
+// ---------------------------------------------------------------------------
+static const uint2 kBayer2x2Inv[4] = {
+    uint2(0, 0), uint2(1, 1), uint2(1, 0), uint2(0, 1),
+};
+static const uint2 kBayer4x4Inv[16] = {
+    uint2(0,0), uint2(2,2), uint2(2,0), uint2(0,2),
+    uint2(1,1), uint2(3,3), uint2(3,1), uint2(1,3),
+    uint2(1,0), uint2(3,2), uint2(3,0), uint2(1,2),
+    uint2(0,1), uint2(2,3), uint2(2,1), uint2(0,3),
+};
+
+/// Map reduced-resolution pixel to full-resolution pixel via Bayer offset.
+/// N is typically a compile-time constant → compiler folds the branches.
+uint2 subframeRemap(uint2 reducedPixel, uint subframeIdx, uint N)
+{
+    if (N <= 1) return reducedPixel;
+    uint2 offset = (N == 2) ? kBayer2x2Inv[subframeIdx] : kBayer4x4Inv[subframeIdx];
+    return reducedPixel * N + offset;
+}
+
+// Forward Bayer tables — pixel (x%N, y%N) → slot index. Inverse of the Inv tables above.
+static const uint kBayer2x2Fwd[4]   = { 0, 2, 3, 1 };
+static const uint kBayer4x4Fwd[16]  = {
+     0,  8,  2, 10,
+    12,  4, 14,  6,
+     3, 11,  1,  9,
+    15,  7, 13,  5,
+};
+
+/// True if this pixel is the active-slot pixel for the current subframe dispatch.
+/// Used by the full-dispatch fallback path (variable-spp + N>1) to zero spp on
+/// inactive slots, matching the early-out semantics of the reduced-dispatch path.
+bool isActiveSubframeSlot(uint2 pixel, uint subframeIdx, uint N)
+{
+    if (N <= 1) return true;
+    uint bx = pixel.x % N;
+    uint by = pixel.y % N;
+    uint slot = (N == 2) ? kBayer2x2Fwd[by * 2 + bx] : kBayer4x4Fwd[by * 4 + bx];
+    return slot == subframeIdx;
+}
+#endif  // HOST_CODE
+
 END_NAMESPACE_FALCOR

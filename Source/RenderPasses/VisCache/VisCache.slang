@@ -770,9 +770,13 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         uint footprintReq = gBootThreshold;
         if (gFlags & kFlag_EnableFootprintScale)
         {
+            // Scale trust threshold by spatial footprint: cells covering many
+            // screen pixels receive many parallel in-dispatch writes and would
+            // otherwise hit bootThreshold in one dispatch (tile-boundary
+            // artifact). No upper cap — large cells genuinely need more samples.
             uint cellPx = vhfCellPixels(lvl, posA);
             uint diversityReq = uint(log2(max(float(cellPx), 1.f)));
-            footprintReq = min(max(gBootThreshold, diversityReq), gBootThreshold * 2u);
+            footprintReq = max(gBootThreshold, diversityReq);
         }
         uint required = uint(float(footprintReq) * (1.f + var * 4.f));
         if (total >= required)

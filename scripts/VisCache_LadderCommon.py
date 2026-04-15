@@ -9,14 +9,14 @@ Provides:
 - run_baseline(): render vanilla PathTracer baselines, skip if cached
 - postprocess(): EXR → named PNG extraction with grid layout
 - append_stats_csv(): upsert per-experiment row in per-step stats CSV
-- plot_rays_overview(): scatter plot of rays traced % across scenes and variants
+- plot_overviews(): emits 3 scatter plots per step — rays, GT-error Δ, noise
 """
 import os, sys, glob, shutil
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
-from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_error, compute_render_error_signed_hdr
+from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_noise_signed, compute_render_error, compute_render_error_signed_hdr, oklab_distance_hdr_cached
 
 # Track last-loaded scene to skip redundant m.loadScene() calls
 _last_loaded_scene = None
@@ -221,17 +221,27 @@ def make_norm_variants(quant=None, base=None, quant_tag=None):
 # Stats CSV
 # ---------------------------------------------------------------------------
 # key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + frames + warmupSub + subframeN + res + variant
-_CSV_FIELDS = ["key", "scene", "variant", "frames", "warmup_first", "warmup_run", "subframe_n",
-               "rays_traced_pct", "coldmiss_pct", "timestamp"]
+_CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warmup_run", "subframe_n",
+               "rays_traced_pct", "coldmiss_pct",
+               "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
+               "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
+               "timestamp"]
 
 def _step_csv(step_name):
     return os.path.join("captures", "ladder", step_name, "stats.csv")
 
-def append_stats_csv(step, scene, prefix, variant, frames, warmup_first, warmup_run, subframe_n,
-                     rays_traced_pct, coldmiss_pct):
+def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, warmup_run, subframe_n,
+                     rays_traced_pct, coldmiss_pct,
+                     error_delta_pct=None, error_delta_min_pct=None, error_delta_max_pct=None,
+                     noise_delta_pct=None, noise_delta_min_pct=None, noise_delta_max_pct=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
+
+    error_delta_pct: signed mean-% (err_vis_gt − err_van_gt) / err_van_gt × 100 (OkLab, vs GT).
+    error_delta_{min,max}_pct: per-pixel min/max of the same signed delta, same normalization.
+    noise_delta_pct: signed mean-% (noise_vis − noise_van) / noise_van × 100 (bilateral screen noise).
+    noise_delta_{min,max}_pct: per-pixel min/max of the same signed delta.
     """
     import csv, datetime
     path = _step_csv(step)
@@ -241,12 +251,19 @@ def append_stats_csv(step, scene, prefix, variant, frames, warmup_first, warmup_
     new_row = {
         "key": key,
         "scene": scene, "variant": variant,
+        "spp": str(spp),
         "frames": str(frames),
         "warmup_first": str(warmup_first),
         "warmup_run":   str(warmup_run),
         "subframe_n":   str(subframe_n),
         "rays_traced_pct": f"{rays_traced_pct:.4f}",
         "coldmiss_pct":    f"{coldmiss_pct:.4f}",
+        "error_delta_pct":     f"{error_delta_pct:.4f}"     if error_delta_pct     is not None else "",
+        "error_delta_min_pct": f"{error_delta_min_pct:.4f}" if error_delta_min_pct is not None else "",
+        "error_delta_max_pct": f"{error_delta_max_pct:.4f}" if error_delta_max_pct is not None else "",
+        "noise_delta_pct":     f"{noise_delta_pct:.4f}"     if noise_delta_pct     is not None else "",
+        "noise_delta_min_pct": f"{noise_delta_min_pct:.4f}" if noise_delta_min_pct is not None else "",
+        "noise_delta_max_pct": f"{noise_delta_max_pct:.4f}" if noise_delta_max_pct is not None else "",
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -291,8 +308,8 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "GT-error Δ vs vanilla (black=denoised, purple=0, viridis=degraded)"),
-     ("r1c9_accum_noise",      "render noise (vs GT)")],
+     ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% [{error_delta_min_pct:+.1f}%…{error_delta_max_pct:+.1f}%]"),
+     ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}% [{noise_delta_min_pct:+.1f}%…{noise_delta_max_pct:+.1f}%]")],
     [("r2c1_frame_level",      "level"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
@@ -311,13 +328,16 @@ def stitch_plate(captureDir, prefix, variant_name, stats=None):
     cols, rows = 4, 3
     s = stats or {}
 
+    # None-safe: replace None with NaN so numeric format specifiers don't crash.
+    s_fmt = {k: (float("nan") if v is None else v) for k, v in s.items()}
+
     cells = []
     labels = []
     for row in PLATE_LAYOUT:
         for name, tmpl in row:
             path = _out(captureDir, name, prefix)
             cells.append(Image.open(path) if os.path.exists(path) else None)
-            labels.append(tmpl.format(**s))
+            labels.append(tmpl.format(**s_fmt))
 
     tile_w, tile_h = 512, 512
     for c in cells:
@@ -360,8 +380,89 @@ def stitch_plate(captureDir, prefix, variant_name, stats=None):
     print(f"  [plate] {os.path.basename(out)}")
     return out
 
-def plot_rays_overview(step_name):
-    """Scatter: rays traced % — scene groups on x-axis, (variant×spp) series.
+def stitch_baseline_plate(captureDir, xN_tag, out_path):
+    """1×3 plate for a vanilla baseline: render | error vs GT | noise.
+    Mirrors the informative cells of row 1 of the variant plate layout. The rays
+    column is omitted because vanilla always traces 100%.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import os
+
+    render_path = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c1_accum_render.png")
+    err_path    = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c3_accum_error.png")
+    noise_path  = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c9_accum_noise.png")
+
+    cells = [
+        Image.open(render_path) if os.path.exists(render_path) else None,
+        Image.open(err_path) if os.path.exists(err_path) else None,
+        Image.open(noise_path) if os.path.exists(noise_path) else None,
+    ]
+    labels = ["render", "GT-error vs vanilla", "render noise (vs GT)"]
+
+    # Find tile size from any populated cell.
+    tile_w, tile_h = 512, 512
+    for c in cells:
+        if c is not None:
+            tile_w, tile_h = c.size
+            break
+
+    font = ImageFont.load_default()
+    try:
+        font = ImageFont.truetype("arial.ttf", max(tile_w // 20, 12))
+    except (IOError, OSError):
+        pass
+
+    plate_w, plate_h = 3 * tile_w, tile_h
+    plate = Image.new("RGB", (plate_w, plate_h), (0, 0, 0))
+    draw = ImageDraw.Draw(plate)
+
+    for i, (cell, label) in enumerate(zip(cells, labels)):
+        x, y = i * tile_w, 0
+        if cell is not None:
+            plate.paste(cell.resize((tile_w, tile_h)), (x, y))
+        tx, ty = x + 4, y + 2
+        draw.text((tx + 1, ty + 1), label, fill=(0, 0, 0), font=font)
+        draw.text((tx, ty), label, fill=(255, 255, 255), font=font)
+
+    title = f"{xN_tag}_vanilla"
+    bbox = draw.textbbox((0, 0), title, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    tx, ty = plate_w - tw - 6, plate_h - th - 4
+    draw.text((tx + 1, ty + 1), title, fill=(0, 0, 0), font=font)
+    draw.text((tx, ty), title, fill=(200, 200, 200), font=font)
+
+    plate.save(out_path)
+    print(f"  [plate] {os.path.basename(out_path)}")
+    return out_path
+
+
+# One-line theme per ladder step — what that step's run is evaluating.
+# Shows up in the plot titles so viewers know what the scatter is comparing.
+# Title format: "<mission>: <what's swept / varied> (<ambient state: level, RR,
+# feature flags, variant subset>)". Mission is a short noun phrase naming what
+# the step evaluates; parens carry the static-for-this-step context so any
+# single plot can be read standalone.
+_STEP_TITLES = {
+    "00": "Vanilla baselines: no VisCache",
+    "01": "Cold start issues: subframe warmup sweep (single level)",
+    "02": "Addressing sweep: all 10 A/B variants (single level)",
+    "03": "Quantization sweep: 4 quant presets (single level)",
+    "04": "Sample count sweep: x1 / x4 / x8 / x16 SPP (single level)",
+    "05": "Maturity threshold sweep: different values & footprint on/off (single level)",
+    "06": "Level cascade & maturity threshold sweep: different values (multi level, footprint on)",
+    "07": "WIP",
+}
+
+def _step_title(step_name):
+    return _STEP_TITLES.get(step_name, "")
+
+
+def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
+                 ylim=None, zero_line=False, include_neg=False,
+                 whisker_min_key=None, whisker_max_key=None,
+                 symlog_linthresh=None,
+                 ax=None, save=True):
+    """Scatter: one metric — scene groups on x-axis, (variant×spp) series.
 
     Visual encoding axes:
       Hue family  : A-side (pos_norm1=blue/teal, pos_norm=orange/red)
@@ -369,12 +470,248 @@ def plot_rays_overview(step_name):
       Marker shape: B-side type (D=pos1, s=dir1_dist1, o=pos, ^=dir_dist1, v=dir_dist)
       Filled/hollow: SPP (filled=lowest, hollow=higher)
     Rightmost "All" column = mean of per-scene means (equal scene weight).
-    Legend grouped: matching norm1/norm pairs adjacent, sorted by B-side complexity.
+
+    metric_key: row key to plot. Rows where row[metric_key] is None are skipped.
+    include_neg: if False, also skip rows where value < 0 (sentinel for missing data
+                 in non-signed metrics). Leave True for signed metrics (error delta).
+    whisker_min_key/whisker_max_key: optional row keys holding p1/p99 per-pixel
+                 bounds — drawn as thin vertical lines through each point. "All"
+                 column whisker spans min-of-mins to max-of-maxes across scenes.
+    ax/save: when ax is provided, plot onto that axis and skip file I/O — used by
+             the combined multi-panel plot.
     """
-    import csv, matplotlib
+    import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
+
+    # Scenes ordered by rising difficulty (few / simple lights → many / complex).
+    # Unknown scenes sort alphabetically after the known ones.
+    _SCENE_ORDER = [
+        "CornellBox_1PointLight",
+        "CornellBox_1AreaLight",
+        "CornellBox_3AreaLights",
+        "CornellBox_32PointLights",
+    ]
+    def _scene_key(s):
+        return (_SCENE_ORDER.index(s), s) if s in _SCENE_ORDER else (len(_SCENE_ORDER), s)
+    scenes   = sorted({r["scene"] for r in rows}, key=_scene_key)
+    variants = sorted(set(r["variant"] for r in rows))
+    spps     = sorted(set(r["spp"]     for r in rows if r["spp"] is not None))
+    if not spps:
+        spps = [1]  # fallback for CSVs without spp
+
+    _B = {"pos1": ("D", 0), "dir1_dist1": ("s", 1), "pos": ("o", 2),
+          "dir_dist1": ("^", 3), "dir_dist": ("v", 4)}
+    _C_NORM1 = ["#aec7e8", "#1f77b4", "#17becf", "#0d6370", "#065040", "#083040"]
+    _C_NORM  = ["#ffbb78", "#ff7f0e", "#e05c1a", "#a03010", "#802010", "#601808"]
+
+    def _parse(vname):
+        """Split variant name into (A-side, B-core, quant_tag).
+        Examples:
+          pos_norm__dir_dist1        → ("pos_norm", "dir_dist1", None)
+          pos_norm__dir_dist1__qA    → ("pos_norm", "dir_dist1", "qA")
+        """
+        if "__" not in vname:
+            return None, None, None
+        parts = vname.split("__")
+        a = parts[0]
+        b = parts[1] if len(parts) > 1 else None
+        tag = parts[2] if len(parts) > 2 else None
+        return a, b, tag
+
+    # Global ordering of quant tags across all variants — drives the alpha gradient
+    # that separates same-variant-different-quant points on the scatter.
+    _all_tags = sorted({_parse(v)[2] for v in variants if _parse(v)[2] is not None})
+
+    def _alpha(vname):
+        """Finer quant = opaque (α=1.0), coarser quant = more transparent (α=0.35).
+        Returns 1.0 if the run has no quant tags at all."""
+        _, _, tag = _parse(vname)
+        if not _all_tags or tag is None:
+            return 1.0
+        if len(_all_tags) <= 1:
+            return 1.0
+        t = _all_tags.index(tag) / (len(_all_tags) - 1)
+        return 1.0 - t * 0.65
+
+    def _style(vname):
+        a, b_core, _ = _parse(vname)
+        if a is None:
+            return "o", "#888888"
+        marker, rank = _B.get(b_core, ("o", 0))
+        palette = _C_NORM1 if a == "pos_norm1" else (_C_NORM if a == "pos_norm" else None)
+        color = palette[rank] if palette else plt.cm.tab10.colors[rank % 10]
+        return marker, color
+
+    def _sort_key(vname):
+        a, b_core, tag = _parse(vname)
+        if a is None:
+            return (99, 2, 99, vname)
+        fam = 0 if a == "pos_norm1" else (1 if a == "pos_norm" else 2)
+        rank = _B.get(b_core, ("o", 99))[1]
+        tag_rank = _all_tags.index(tag) if tag in _all_tags else 99
+        # Sort order: B-complexity, A-family, quant tag — keeps same-variant
+        # different-quant points adjacent in the legend.
+        return (rank, fam, tag_rank, vname)
+
+    def _valid(v):
+        if v is None: return False
+        if include_neg: return True
+        return v >= 0
+
+    # A "series" is one unique (variant, spp, warmup_first, warmup_run, subframe_n)
+    # tuple — step 01 has 1 variant × 7 sweep configs that need to be separate
+    # dots + separate legend entries; other steps typically collapse to the
+    # familiar (variant, spp) series since warmup/subframe is constant.
+    def _row_key(r):
+        return (r["variant"], r["spp"],
+                int(r.get("warmup_first") or 0),
+                int(r.get("warmup_run")   or 0),
+                int(r.get("subframe_n")   or 1))
+    series_keys = sorted({_row_key(r) for r in rows},
+                         key=lambda k: (_sort_key(k[0]), k[1], k[4], k[2], k[3]))
+
+    # When multiple series share the same variant (step 01), override the A-side
+    # family color with a tab10 cycle so they're visually distinguishable.
+    variant_series_count = {}
+    for k in series_keys:
+        variant_series_count[k[0]] = variant_series_count.get(k[0], 0) + 1
+    idx_within_variant = {}
+    seen = {}
+    for k in series_keys:
+        i = seen.get(k[0], 0)
+        idx_within_variant[k] = i
+        seen[k[0]] = i + 1
+
+    n_sc    = len(scenes)
+    scene_x = {s: i for i, s in enumerate(scenes)}
+    all_x   = n_sc + 0.2  # tighter gap before the "All" column
+
+    n_series = len(series_keys)
+    spread   = 0.70
+    offsets  = np.linspace(-spread / 2, spread / 2, n_series) if n_series > 1 else [0.0]
+
+    own_fig = ax is None
+    if own_fig:
+        fig, ax = plt.subplots(figsize=(max(7, (n_sc + 2) * 2.0), 5))
+    else:
+        fig = ax.figure
+
+    legend_handles = []
+    any_point = False
+    has_whiskers = whisker_min_key is not None and whisker_max_key is not None
+    for series_idx, key in enumerate(series_keys):
+        vname, spp, w1, wr, sn = key
+        marker, color = _style(vname)
+        alpha = _alpha(vname)
+        if variant_series_count[vname] > 1:
+            color = plt.cm.tab10.colors[idx_within_variant[key] % 10]
+        filled = (spp == spps[0])
+        fc     = color if filled else "none"
+        label_parts = [vname, f"x{spp}"]
+        if sn > 1:
+            label_parts.append(f"N{sn}")
+        if w1 or wr:
+            label_parts.append(f"w{w1}/{wr}")
+        label = " ".join(label_parts)
+
+        pts, whiskers = [], []
+        for r in rows:
+            if _row_key(r) != key or not _valid(r.get(metric_key)):
+                continue
+            x = scene_x[r["scene"]] + offsets[series_idx]
+            y = r[metric_key]
+            pts.append((x, y))
+            if has_whiskers:
+                lo = r.get(whisker_min_key)
+                hi = r.get(whisker_max_key)
+                if lo is not None and hi is not None:
+                    whiskers.append((x, lo, hi))
+
+        # "All" column: mean across scenes; whisker = (min of per-scene mins, max of per-scene maxes).
+        scene_means, scene_mins, scene_maxs = [], [], []
+        for s in scenes:
+            matching = [r for r in rows
+                        if _row_key(r) == key and r["scene"] == s and _valid(r.get(metric_key))]
+            if not matching:
+                continue
+            scene_means.append(float(np.mean([r[metric_key] for r in matching])))
+            if has_whiskers:
+                mins = [r[whisker_min_key] for r in matching if r.get(whisker_min_key) is not None]
+                maxs = [r[whisker_max_key] for r in matching if r.get(whisker_max_key) is not None]
+                if mins: scene_mins.append(min(mins))
+                if maxs: scene_maxs.append(max(maxs))
+        if scene_means:
+            x_all = all_x + offsets[series_idx]
+            pts.append((x_all, float(np.mean(scene_means))))
+            if has_whiskers and scene_mins and scene_maxs:
+                whiskers.append((x_all, float(min(scene_mins)), float(max(scene_maxs))))
+
+        if not pts:
+            continue
+        for (wx, wlo, whi) in whiskers:
+            ax.vlines(wx, wlo, whi, color=color, alpha=0.35 * alpha, linewidth=1.2, zorder=2)
+        xs, ys = zip(*pts)
+        h = ax.scatter(xs, ys, label=label, marker=marker, color=color,
+                       facecolors=fc, s=30, alpha=alpha, zorder=3)
+        legend_handles.append(h)
+        any_point = True
+
+    if not any_point:
+        if own_fig:
+            plt.close(fig)
+        return None
+
+    ax.set_xticks(list(range(n_sc)) + [all_x])
+    ax.set_xticklabels([s.replace("CornellBox_", "") for s in scenes] + ["All"],
+                       rotation=20, ha="right", fontsize=9)
+    ax.axvline(x=n_sc - 0.5, color="#bbbbbb", linestyle="--", linewidth=0.8, zorder=1)
+
+    if zero_line:
+        ax.axhline(y=0, color="#666666", linestyle="-", linewidth=0.8, zorder=2)
+
+    ax.set_ylabel(ylabel)
+    # Per-axis title sits directly above the plot area for every plot (single
+    # or combined panel); figure suptitle carries the step + theme once.
+    ax.set_title(title_suffix, fontsize=10, loc="left")
+    if own_fig:
+        step_main = _step_title(step_name)
+        suptitle = f"Step {step_name}" + (f" — {step_main}" if step_main else "")
+        fig.suptitle(suptitle, fontsize=11)
+        ax.legend(handles=legend_handles, fontsize=6,
+                  loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0, ncol=1)
+    if symlog_linthresh is not None:
+        # Symmetric log: [-linthresh, +linthresh] is linear (mean near zero is
+        # readable), values beyond compress logarithmically so whiskers at
+        # ±80%+ still fit without flattening the interesting region.
+        ax.set_yscale("symlog", linthresh=symlog_linthresh)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    ax.grid(axis="y", alpha=0.3)
+    ax.grid(axis="x", alpha=0.15)
+
+    if not save or not own_fig:
+        return legend_handles  # caller manages fig + file I/O
+
+    out_dir = f"captures/ladder/{step_name}"
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, f"overview_{out_suffix}_{step_name}.png")
+    # bbox_inches='tight' keeps external legends visible without clipping.
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[overview] {out}")
+    return out
+
+
+def plot_overviews(step_name):
+    """Generates three overview scatter plots per step:
+      overview_rays_<step>.png   — rays traced %
+      overview_error_<step>.png  — signed GT-error Δ vs vanilla %
+      overview_noise_<step>.png  — absolute mean OkLab distance to GT, % of viridis max
+    Returns list of paths (may contain None entries for metrics with no data).
+    """
+    import csv
 
     csv_path = _step_csv(step_name)
     if not os.path.exists(csv_path):
@@ -384,118 +721,116 @@ def plot_rays_overview(step_name):
     rows = []
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
+            # Required fields; skip malformed rows.
             try:
                 row["rays_traced_pct"] = float(row["rays_traced_pct"])
-                row["spp"] = int(row["spp"])
             except (ValueError, KeyError):
                 continue
+            # Optional numeric fields — empty string → None
+            for k in ("coldmiss_pct",
+                      "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
+                      "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct"):
+                v = row.get(k, "")
+                try:
+                    row[k] = float(v) if v not in ("", None) else None
+                except ValueError:
+                    row[k] = None
+            # spp may be absent in older CSVs — fall back to 1
+            try:
+                row["spp"] = int(row.get("spp") or 1)
+            except ValueError:
+                row["spp"] = 1
             rows.append(row)
 
     if not rows:
         print(f"[overview] No data in {csv_path}")
         return None
 
-    scenes   = sorted(set(r["scene"]   for r in rows))
-    variants = sorted(set(r["variant"] for r in rows))
-    spps     = sorted(set(r["spp"]     for r in rows))
+    out_rays  = _plot_metric(rows, step_name, "rays_traced_pct",
+                             ylabel="rays traced %", title_suffix="rays traced",
+                             out_suffix="rays", ylim=(0, 105))
+    out_err   = _plot_metric(rows, step_name, "error_delta_pct",
+                             ylabel="error Δ % (symlog)", title_suffix="error Δ",
+                             out_suffix="error", zero_line=True, include_neg=True,
+                             whisker_min_key="error_delta_min_pct",
+                             whisker_max_key="error_delta_max_pct",
+                             symlog_linthresh=3.0)
+    out_noise = _plot_metric(rows, step_name, "noise_delta_pct",
+                             ylabel="noise Δ % (symlog)", title_suffix="noise Δ",
+                             out_suffix="noise", zero_line=True, include_neg=True,
+                             whisker_min_key="noise_delta_min_pct",
+                             whisker_max_key="noise_delta_max_pct",
+                             symlog_linthresh=3.0)
+    out_combined = _plot_combined(rows, step_name)
+    return [out_rays, out_err, out_noise, out_combined]
 
-    # --- Visual encoding ---
-    # B-side → (marker, complexity rank 0–5)
-    _B = {"pos1": ("D", 0), "dir1_dist1": ("s", 1), "pos": ("o", 2),
-          "dir_dist1": ("^", 3), "dir_dist": ("v", 4)}
-    # Hue family palettes: light→dark matches complexity rank
-    _C_NORM1 = ["#aec7e8", "#1f77b4", "#17becf", "#0d6370", "#065040", "#083040"]  # blue/teal
-    _C_NORM  = ["#ffbb78", "#ff7f0e", "#e05c1a", "#a03010", "#802010", "#601808"]  # orange/red
 
-    def _style(vname):
-        if "__" not in vname:
-            return "o", "#888888"
-        a, b = vname.split("__", 1)
-        marker, rank = _B.get(b, ("o", 0))
-        palette = _C_NORM1 if a == "pos_norm1" else (_C_NORM if a == "pos_norm" else None)
-        color = palette[rank] if palette else plt.cm.tab10.colors[rank % 10]
-        return marker, color
+def _plot_combined(rows, step_name):
+    """3-panel stacked plot sharing x-axis: rays (top), error Δ (mid), noise Δ (bottom).
+    Each panel uses _plot_metric with whiskers on the signed metrics. Single legend
+    on the right applies to all three panels.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
-    # --- Legend order: norm1 family then norm family, each sorted by B-side rank,
-    #     with SPP variants (filled/hollow) kept adjacent ---
-    def _sort_key(vname):
-        if "__" not in vname:
-            return (99, 2, vname)
-        a, b = vname.split("__", 1)
-        fam = 0 if a == "pos_norm1" else (1 if a == "pos_norm" else 2)
-        rank = _B.get(b, ("o", 99))[1]
-        return (rank, fam, vname)
+    scenes = sorted(set(r["scene"] for r in rows))
+    n_sc = len(scenes)
+    fig, axes = plt.subplots(3, 1,
+                             figsize=(max(7, (n_sc + 2) * 2.0), 10),
+                             sharex=True,
+                             constrained_layout=True)
 
-    variants_ordered = sorted(variants, key=_sort_key)
+    _plot_metric(rows, step_name, "rays_traced_pct",
+                 ylabel="rays traced %", title_suffix="rays traced",
+                 out_suffix="rays", ylim=(0, 105),
+                 ax=axes[0], save=False)
+    _plot_metric(rows, step_name, "error_delta_pct",
+                 ylabel="error Δ % (symlog)", title_suffix="error Δ",
+                 out_suffix="error", zero_line=True, include_neg=True,
+                 whisker_min_key="error_delta_min_pct",
+                 whisker_max_key="error_delta_max_pct",
+                 symlog_linthresh=3.0,
+                 ax=axes[1], save=False)
+    legend_handles = _plot_metric(rows, step_name, "noise_delta_pct",
+                                  ylabel="noise Δ % (symlog)", title_suffix="noise Δ",
+                                  out_suffix="noise", zero_line=True, include_neg=True,
+                                  whisker_min_key="noise_delta_min_pct",
+                                  whisker_max_key="noise_delta_max_pct",
+                                  symlog_linthresh=3.0,
+                                  ax=axes[2], save=False)
 
-    # --- X positions: scenes + gap + "All" ---
-    n_sc   = len(scenes)
-    scene_x = {s: i for i, s in enumerate(scenes)}
-    all_x   = n_sc + 0.5
+    step_main = _step_title(step_name)
+    fig.suptitle(f"Step {step_name}" + (f" — {step_main}" if step_main else ""), fontsize=11)
+    if isinstance(legend_handles, list) and legend_handles:
+        fig.legend(handles=legend_handles, fontsize=6,
+                   loc="center right", bbox_to_anchor=(1.0, 0.5),
+                   borderaxespad=0, ncol=1)
 
-    n_series = len(variants_ordered) * len(spps)
-    spread   = 0.65
-    offsets  = np.linspace(-spread / 2, spread / 2, n_series) if n_series > 1 else [0.0]
-
-    fig, ax = plt.subplots(figsize=(max(7, (n_sc + 2) * 2.0), 5),
-                           constrained_layout=True)
-
-    series_idx = 0
-    legend_handles = []
-    for vname in variants_ordered:
-        marker, color = _style(vname)
-        for spp in spps:
-            filled = (spp == spps[0])
-            fc     = color if filled else "none"
-            label  = f"{vname} x{spp}"
-
-            # Per-scene individual run dots
-            pts = [(scene_x[r["scene"]] + offsets[series_idx], r["rays_traced_pct"])
-                   for r in rows
-                   if r["variant"] == vname and r["spp"] == spp
-                   and r["rays_traced_pct"] >= 0]
-
-            # "All" column: mean of per-scene means (equal scene weight)
-            scene_means = []
-            for s in scenes:
-                sv = [r["rays_traced_pct"] for r in rows
-                      if r["variant"] == vname and r["spp"] == spp
-                      and r["scene"] == s and r["rays_traced_pct"] >= 0]
-                if sv:
-                    scene_means.append(float(np.mean(sv)))
-            if scene_means:
-                pts.append((all_x + offsets[series_idx], float(np.mean(scene_means))))
-
-            if not pts:
-                series_idx += 1
-                continue
-            xs, ys = zip(*pts)
-            h = ax.scatter(xs, ys, label=label, marker=marker, color=color,
-                           facecolors=fc, s=30, zorder=3)
-            legend_handles.append(h)
-            series_idx += 1
-
-    # x-axis with separator
-    ax.set_xticks(list(range(n_sc)) + [all_x])
-    ax.set_xticklabels([s.replace("CornellBox_", "") for s in scenes] + ["All"],
-                       rotation=20, ha="right", fontsize=9)
-    ax.axvline(x=n_sc, color="#bbbbbb", linestyle="--", linewidth=0.8, zorder=1)
-
-    ax.set_ylabel("Rays Traced %")
-    ax.set_title(f"Step {step_name} — Rays Traced")
-    ax.legend(handles=legend_handles, fontsize=6,
-              loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0,
-              ncol=1)
-    ax.set_ylim(0, 105)
-    ax.grid(axis="y", alpha=0.3)
-    ax.grid(axis="x", alpha=0.15)
     out_dir = f"captures/ladder/{step_name}"
     os.makedirs(out_dir, exist_ok=True)
-    out = os.path.join(out_dir, f"overview_rays_{step_name}.png")
-    fig.savefig(out, dpi=150)
+    out = os.path.join(out_dir, f"overview_summary_{step_name}.png")
+    fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"[overview] {out}")
     return out
+
+
+def copy_summary_to_root(step_name):
+    """Mirror captures/ladder/<step>/overview_summary_<step>.png into captures/ladder/
+    so every step's summary sits at one level for cross-step comparison.
+    Silent no-op if the source summary doesn't exist yet."""
+    src = os.path.join(f"captures/ladder/{step_name}",
+                       f"overview_summary_{step_name}.png")
+    dst = os.path.join("captures/ladder", f"overview_summary_{step_name}.png")
+    if not os.path.exists(src):
+        return None
+    try:
+        shutil.copy2(src, dst)
+        print(f"[summary] {dst}")
+        return dst
+    except (IOError, OSError):
+        return None
 
 
 def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX=kResX, resY=kResY):
@@ -519,7 +854,9 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     nd_frame = load_diag_mask(exrs, mode="nodata_frame")
 
     # --- Compute global stats from EXR data ---
-    stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0}
+    stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0,
+             "error_delta_pct": None, "error_delta_min_pct": None, "error_delta_max_pct": None,
+             "noise_delta_pct": None, "noise_delta_min_pct": None, "noise_delta_max_pct": None}
     from viscache_exr import read_exr
     import numpy as np
     # Rays traced ratio from accumulated texture (masked to queried pixels)
@@ -609,35 +946,48 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     gt_baselines = [b for b in gt_baselines if "_x1_" not in b]
     vanilla_xN_baselines = glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_hdr.exr"))
 
-    # Error: signed GT-error delta — err(viscache, GT) − err(vanilla_xN, GT).
-    # Negative (purple) = VisCache denoised; positive (yellow) = VisCache degraded.
+    # Error Δ (r1c3): perceptual GT-error delta — OkLabDistance(viscache, GT) − OkLabDistance(vanilla_xN, GT).
+    # Negative (purple→black) = VisCache denoised; positive (viridis) = degraded.
+    # Vanilla-vs-GT map is identical across variants at the same scene+SPP — loaded
+    # from the .npy cache seeded by step 00's GT-err PNG generation.
     if variant_hdr and vanilla_xN_baselines and gt_baselines:
-        compute_render_error_signed_hdr(variant_hdr, vanilla_xN_baselines[0], gt_baselines[-1], o("r1c3_accum_error"))
+        vanilla_xN_hdr = vanilla_xN_baselines[0]
+        vanilla_err_cache = vanilla_xN_hdr.replace("_vanilla_hdr.exr", "_vanilla_gterr.npy")
+        if not os.path.exists(vanilla_err_cache):
+            vanilla_err_cache = None  # step 00 hasn't populated the cache — recompute
+        r = compute_render_error_signed_hdr(variant_hdr, vanilla_xN_hdr, gt_baselines[-1],
+                                            o("r1c3_accum_error"),
+                                            vanilla_err_cache=vanilla_err_cache)
+        if r is not None:
+            stats["error_delta_pct"]     = r["err_delta_pct"]
+            stats["error_delta_min_pct"] = r["err_delta_min_pct"]
+            stats["error_delta_max_pct"] = r["err_delta_max_pct"]
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
         from viscache_exr import compute_render_error_hdr
         compute_render_error_hdr(variant_hdr, vanilla_xN_baselines[0], o("r1c3_accum_error"))
-        print(f"  [error] {os.path.basename(o('r1c3_accum_error'))} (no GT, falling back to |viscache − vanilla_xN|)")
+        print(f"  [error] {os.path.basename(o('r1c3_accum_error'))} (no GT, falling back to |viscache - vanilla_xN|)")
     elif render_path:
-        # Fallback: tonemapped PNG error
         error_baseline = glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_r1c1_accum_render.png"))
         if error_baseline:
             compute_render_error(render_path, error_baseline[0], o("r1c3_accum_error"))
             print(f"  [error] {os.path.basename(o('r1c3_accum_error'))} (PNG fallback)")
 
-    # Noise: |viscache_hdr - vanilla_gt_hdr| (ground truth, HDR)
-    if variant_hdr and gt_baselines:
-        from viscache_exr import compute_render_error_hdr
-        compute_render_error_hdr(variant_hdr, gt_baselines[-1], o("r1c9_accum_noise"))
+    # Noise Δ (r1c9): signed bilateral-noise delta — bilateral_noise(viscache LDR)
+    # − bilateral_noise(vanilla_xN LDR). Measures screen-space noise difference
+    # independent of GT. Negative = VisCache smoother; positive = noisier.
+    vanilla_xN_renders = sorted(glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_r1c1_accum_render.png")))
+    if render_path and vanilla_xN_renders:
+        r = compute_render_noise_signed(render_path, vanilla_xN_renders[0], o("r1c9_accum_noise"))
+        if r is not None:
+            stats["noise_delta_pct"]     = r["noise_delta_pct"]
+            stats["noise_delta_min_pct"] = r["noise_delta_min_pct"]
+            stats["noise_delta_max_pct"] = r["noise_delta_max_pct"]
         print(f"  [noise] {os.path.basename(o('r1c9_accum_noise'))}")
     elif render_path:
-        # Fallback: tonemapped PNG noise
-        gt_png = sorted(glob.glob(os.path.join(baseline_dir, "*_x[0-9]*_*_vanilla_r1c1_accum_render.png")))
-        gt_png = [b for b in gt_png if "_x1_" not in b]
-        if gt_png:
-            compute_render_error(render_path, gt_png[-1], o("r1c9_accum_noise"))
-            print(f"  [noise] {os.path.basename(o('r1c9_accum_noise'))} (PNG fallback)")
+        compute_render_noise(render_path, o("r1c9_accum_noise"))
+        print(f"  [noise] {os.path.basename(o('r1c9_accum_noise'))} (absolute fallback, no baseline)")
 
     # Cleanup raw EXRs and Mogwai outputs after channel extraction
     for f in exrs:
@@ -695,7 +1045,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             spp = fc_entry[3] if len(fc_entry) > 3 else 1
             subN = overrides.get("subframeN", 1)
             render_frames = frames * subN * subN
-            tag = f"s_{frames}_{warmupFirst}o{warmupRun}o{subN}x{subN}_{res_tag}"
+            tag = f"s_{frames}_x{spp}_{warmupFirst}o{warmupRun}o{subN}x{subN}_{res_tag}"
             print(f"\n[{step_name}] ======== {variant_name} {tag} ({scene_name}) ========")
 
             # Inject warmup-write-only config for this run.
@@ -740,7 +1090,10 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
             print(f"[{step_name}] Captured ({tag})")
             pfx = f"{tag}_{variant_name}_"
-            stats = postprocess(captureDir, pfx, variant_name, total_frames=render_frames, spp=spp, resX=resX, resY=resY)
+            # Baseline lookup uses effective SPP = frames × spp (total samples/pixel).
+            # e.g. (frames=16, spp=1) and (frames=1, spp=16) both map to vanilla_x16.
+            effective_spp = frames * spp
+            stats = postprocess(captureDir, pfx, variant_name, total_frames=render_frames, spp=effective_spp, resX=resX, resY=resY)
             stitch_plate(captureDir, pfx, variant_name, stats=stats)
 
             # Collect stats for overview chart
@@ -750,8 +1103,12 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             all_stats.append(stats)
 
             append_stats_csv(step_name, scene_name, pfx, variant_name,
-                             frames, warmupFirst, warmupRun, subN,
-                             stats["rays_traced_pct"], stats["coldmiss_pct"])
+                             spp, frames, warmupFirst, warmupRun, subN,
+                             stats["rays_traced_pct"], stats["coldmiss_pct"],
+                             stats.get("error_delta_pct"),
+                             stats.get("error_delta_min_pct"), stats.get("error_delta_max_pct"),
+                             stats.get("noise_delta_pct"),
+                             stats.get("noise_delta_min_pct"), stats.get("noise_delta_max_pct"))
 
             m.removeGraph(g)
 
@@ -786,22 +1143,34 @@ def run_baseline(step_name, frame_configs, scene_file,
 
         spp_list = sorted(set([1, gt_spp] + (extra_spp or [])))
         for spp in spp_list:
-            tag = f"s_{frames}_x{spp}_{res_tag}"
+            # Vanilla tag depends only on virtual SPP (total samples/pixel) — the
+            # outer `frames` loop multiplies the sample count but isn't exposed in
+            # the tag because comparisons key on virtual SPP alone.
+            tag = f"s_x{spp}_{res_tag}"
             out_path = _out(captureDir, "r1c1_accum_render", f"{tag}_vanilla_")
 
             if os.path.exists(out_path) and os.path.getsize(out_path) > 1024:
-                print(f"\n[{step_name}] ======== vanilla_x{spp} {tag} ({scene_name}) — cached ========")
+                print(f"\n[{step_name}] ======== vanilla_x{spp} {tag} ({scene_name}) - cached ========")
                 continue
 
             print(f"\n[{step_name}] ======== vanilla_x{spp} {tag} ({scene_name}) ========")
 
-            # Remap virtual SPP to Falcor params:
-            # - Falcor caps samplesPerPixel at 16
-            # - Higher counts: accumulate multiple frames via AccumulatePass
-            # - Ground truth (spp > 16): disable jitter for edge-free comparison
-            actual_spp = min(spp, 16)
-            num_frames = max(1, spp // max(actual_spp, 1))
-            use_jitter = (spp <= 16)  # no jitter for accumulated ground truth
+            # Remap virtual SPP to Falcor params.
+            # - Non-GT (spp <= 16): multi-frame × 1 SPP with per-frame jitter.
+            #   Matches VisCache tests' frames-based sample accumulation so the
+            #   vanilla baseline is apples-to-apples under concurrent-write
+            #   semantics that VisCache stresses.
+            # - GT (spp > 16): multi-frame × 16 SPP, camera jitter disabled.
+            #   In-sample jitter (sample-generator RNG) covers the pixel; camera
+            #   locked to prevent feature drift across accumulated frames.
+            if spp <= 16:
+                actual_spp = 1
+                num_frames = spp
+                use_jitter = True
+            else:
+                actual_spp = 16
+                num_frames = max(1, spp // actual_spp)
+                use_jitter = False
             g = render_graph_PathTracer(viscache=False, maxBounces=maxBounces,
                                          samplesPerPixel=actual_spp, useJitter=use_jitter)
             m.addGraph(g)
@@ -861,5 +1230,45 @@ def run_baseline(step_name, frame_configs, scene_file,
                     pass
 
             m.removeGraph(g)
+
+        # After all SPPs rendered for this frame_config: per-baseline 1×4 plate
+        # (render | rays=100% yellow | error vs GT | bilateral noise) mirroring
+        # row 1 of the variant plates. Also produces the underlying GT-error and
+        # noise PNGs as a side effect.
+        gt_hdr_candidates = glob.glob(os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_hdr.exr"))
+        gt_hdr = gt_hdr_candidates[0] if gt_hdr_candidates else None
+        if gt_hdr:
+            from viscache_exr import compute_render_error_hdr, compute_render_noise
+            for spp in spp_list:
+                if spp == gt_spp:
+                    continue
+                xN_tag = f"s_x{spp}_{res_tag}"
+                xN_hdr = os.path.join(captureDir, f"{xN_tag}_vanilla_hdr.exr")
+                xN_render = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c1_accum_render.png")
+                if not os.path.exists(xN_hdr) or not os.path.exists(xN_render):
+                    continue
+
+                # Error PNG (vs GT) — also caches the per-pixel OkLab distance as
+                # .npy so every ladder variant's signed-delta can load it instead
+                # of recomputing vanilla-vs-GT for each variant.
+                err_path   = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c3_accum_error.png")
+                dist_cache = os.path.join(captureDir, f"{xN_tag}_vanilla_gterr.npy")
+                if not (os.path.exists(err_path) and os.path.getsize(err_path) > 1024):
+                    r = compute_render_error_hdr(xN_hdr, gt_hdr, err_path, distance_cache=dist_cache)
+                    if r is not None:
+                        print(f"[{step_name}] [GT-err] vanilla_x{spp}: mean={r['mean_err_pct']:.2f}% -> {os.path.basename(err_path)}")
+                elif not os.path.exists(dist_cache):
+                    # PNG is cached but .npy isn't — populate it for downstream reuse.
+                    oklab_distance_hdr_cached(xN_hdr, gt_hdr, dist_cache)
+
+                # Absolute noise PNG (bilateral, no GT needed)
+                noise_path = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c9_accum_noise.png")
+                if not (os.path.exists(noise_path) and os.path.getsize(noise_path) > 1024):
+                    compute_render_noise(xN_render, noise_path)
+
+                # Stitch a 1×4 plate — row 1 of the variant plate layout.
+                plate_out = os.path.join(os.path.dirname(captureDir),
+                                         f"{scene_name}_{xN_tag}_vanilla_plate.png")
+                stitch_baseline_plate(captureDir, xN_tag, plate_out)
 
     print(f"\n[{step_name}] All done.")
