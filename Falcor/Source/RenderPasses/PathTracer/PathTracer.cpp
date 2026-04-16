@@ -1225,7 +1225,6 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     {
         bool wasAvailable = mVisCacheAvailable;
         bool wasVisCheck = mVisCacheVisibilityCheck;
-        bool wasJitter = mVisCacheJitter;
         bool wasDirDist = mVisCacheDirDistAddr;
         uint32_t wasSubframeN = mVisCacheSubframeN;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
@@ -1235,6 +1234,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         {
             mVCParams.tableCapacity  = dict.getValue<uint32_t>("vhfParam_tableCapacity");
             mVCParams.bootThreshold  = dict.getValue<uint32_t>("vhfParam_bootThreshold");
+            mVCParams.matureThreshold = dict.getValue<uint32_t>("vhfParam_matureThreshold");
             mVCParams.varThreshold   = dict.getValue<float>("vhfParam_varThreshold");
             mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
             mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
@@ -1250,14 +1250,13 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
             mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
             mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
+            mVCParams.footprintScale = dict.getValue<float>("vhfParam_footprintScale");
+            mVCParams.jitterFilter   = dict.keyExists("vhfParam_jitterFilter") ? dict.getValue<float>("vhfParam_jitterFilter") : 0.f;
+            mVCParams.jitterCell     = dict.keyExists("vhfParam_jitterCell")   ? dict.getValue<float>("vhfParam_jitterCell")   : 0.f;
             mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
-        {   bool jA = !dict.keyExists("vhfEnableJitterA") || dict.getValue<bool>("vhfEnableJitterA");
-            bool jB = !dict.keyExists("vhfEnableJitterB") || dict.getValue<bool>("vhfEnableJitterB");
-            mVisCacheJitter = !mVisCacheAvailable || jA || jB;
-        }
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
         mVisCacheSubframeN = (mVisCacheAvailable && dict.keyExists("vhfSubframeN")) ? dict.getValue<uint32_t>("vhfSubframeN") : 1u;
         if (mVisCacheSubframeN != 1 && mVisCacheSubframeN != 2 && mVisCacheSubframeN != 4) mVisCacheSubframeN = 1;
@@ -1287,11 +1286,11 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         }
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-            || mVisCacheJitter != wasJitter || mVisCacheDirDistAddr != wasDirDist
+            || mVisCacheDirDistAddr != wasDirDist
             || mVisCacheDiagnostics != wasDiag || mVisCacheSubframeN != wasSubframeN)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} jitter={} dirDistAddr={} diag={} subframeN={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheJitter, mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheSubframeN);
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} dirDistAddr={} diag={} subframeN={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheSubframeN);
             mRecompile = true;
         }
     }
@@ -1454,6 +1453,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["gVHFTable"] = mpVHFTable;
         var["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
         var["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
+        var["VisCacheParams"]["gMatureThreshold"] = mVCParams.matureThreshold;
         var["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
         var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
         var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
@@ -1469,6 +1469,9 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
         var["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
         var["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
+        var["VisCacheParams"]["gFootprintScale"] = mVCParams.footprintScale;
+        var["VisCacheParams"]["gJitterFilter"]   = mVCParams.jitterFilter;
+        var["VisCacheParams"]["gJitterCell"]     = mVCParams.jitterCell;
         var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
@@ -1585,7 +1588,6 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     // VisCache integration.
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
-    defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
     defines.add("VISCACHE_SUBFRAME_N", std::to_string(owner.mVisCacheSubframeN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");

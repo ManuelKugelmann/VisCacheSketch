@@ -65,10 +65,13 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 1. **Build:** `build.bat --skip-setup` or `--clean` — calls `sync_to_runtime.sh` automatically; locked DLLs silently skip (yellow warning)
 2. **Shader-only:** `.scripts/sync_to_runtime.sh` — no rebuild for `.slang`/`.py` changes
 3. **Smoke test:** `.scripts/smoke.sh` (1 frame, MinimalPathTracer + VeachAjar)
-4. **Ladder tests:** `.scripts/mogwai-headless.sh 'VisCache_Ladder00.py' [scene]`
-   - Default scene: CornellBox. `SCENE_FILE` env or 2nd arg to override; `RES=1024` (default 512)
-   - Captures to `runtime/captures/ladder/00/<SceneName>/`
-5. **Full matrix:** `.scripts/mogwai-headless.sh '*_Graph.py'`
+4. **Ladder runs (preferred):** `runtime/pythondist/python.exe scripts/run_ladder.py [-s STEPS] [-c SCENES]` — Python wrapper, native paths, per-scene Mogwai isolation. Each scene gets a fresh process to avoid Slang's internal-compiler fatigue (~60 shader permutations / process). Captures & CSV are upsert-keyed → safe to subset, cancel, rerun additively.
+   - `-s "06"` / `-s "03 05 06 07"` / `-s 06,12` — bare numbers or full script names
+   - `-c CornellBox_1AreaLight` / `-c "Arcade,Bistro"` — bare names or `.pyscene` (`.pyscene` auto-appended)
+   - Defaults: all `VisCache_Ladder??.py` × `ALL_SCENES` from `VisCache_LadderCommon.py` (extend that list to add scenes)
+   - Captures to `runtime/captures/ladder/<NN>/<SceneName>/`
+5. **Single-script tests:** `.scripts/mogwai-headless.sh '<pattern>' [scene]` — for non-ladder graphs (e.g. `'*_Graph.py'`). For ladder steps prefer `run_ladder.py`.
+6. **Same-process batch (advanced):** `LADDER_STEPS=... LADDER_SCENES=... mogwai-headless.sh RunLadderBatch.py` — runs everything in one Mogwai. Faster startup but risks Slang fatigue past ~60 permutations. Only for small sweeps.
 
 **Mogwai:** `RunGraphHeadless.py` calls `m.loadScene()` — do NOT use `--scene` flag (loads too late). Exit 0 = pass; check `Mogwai.exe.*.log` in `runtime/` on failure.
 
@@ -83,9 +86,9 @@ Scripts in `scripts/VisCache_Ladder*.py`; shared infra in `VisCache_LadderCommon
 - **Step 04** (`VisCache_Ladder04.py`): Same as 03, norm1 subset, x1 + x16 SPP convergence comparison
 - **Step 05** (`VisCache_Ladder05.py`): Same as 04 with `FOOTPRINT_ON` (single level) — isolates footprint scale effect
 - **Step 06** (`VisCache_Ladder06.py`): `PRESET_MINIMAL` + `RR_ADAPTIVE` + `LEVELS_MULTI` + `FOOTPRINT_ON`. Auto-tuned cell sizes + cascade
-- **Step 07** (`VisCache_Ladder07.py`): Same as 06 with `QUALITY_DEFAULT` (higher thresholds), isolates threshold sensitivity
+- **Step 07** (`VisCache_Ladder07.py`): Same as 06 with `THRESH_HIGH` (higher thresholds), isolates threshold sensitivity
 - **Presets**: `PRESET_MINIMAL` (others added as ladder steps demand them)
-- **Building blocks**: `LEVELS_*`, `QUALITY_*`, `RR_*` (OFF/FIXED/ADAPTIVE), `FEATURES_*`, `QUANT_*` (SMALL/MID)
+- **Building blocks**: `LEVELS_*`, `THRESH_*` (LOW/MID/HIGH), `RR_*` (OFF/FIXED/ADAPTIVE), `FEATURES_*`, `QUANT_*` (SMALL/MID)
 - **Variants** — naming: `A__B` separates endpoints, `_` separates dims, `1` = collapsed:
   - `pos_norm1__*` (5 variants, normal collapsed): pos1, dir1_dist1, pos, dir_dist1, dir_dist
   - `pos_norm__*` (5 variants, normal active ~60°/bin): pos1, dir1_dist1, pos, dir_dist1, dir_dist
@@ -98,6 +101,7 @@ Scripts in `scripts/VisCache_Ladder*.py`; shared infra in `VisCache_LadderCommon
 - **Plates**: 4×3 diagnostic overview per variant with labels, exported to `docs/devlog/plates/`
 - **Postprocess:** `viscache_exr.py` → viridis PNGs (Python/OpenEXR, no ffmpeg)
 - **Extending:** add `VisCache_Ladder<NN>.py` steps; shared utilities in `VisCache_LadderCommon.py`; ladder scripts set `_HEADLESS_SCRIPT_DONE = True` instead of `exit()`
+- **Devlog style** (`docs/devlog/DEVLOG.md`): one entry per ladder step, **ladder-log not dev-history**. Per entry: (1) current config (preset/quant/sweep axes in 1–2 lines), (2) key insights the ladder data reveals, (3) open points / possible improvements. Always reflects the *newest* state + successful validations — rewrite in place when things change, do **not** append debug chronicles, commit descriptions, or fix narratives (those belong in the git log). Keep the current-step-result plate image at the bottom.
 
 ## Python
 

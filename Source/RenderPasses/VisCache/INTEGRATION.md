@@ -44,7 +44,9 @@ float varThreshold      Bernoulli variance gate for write depth
 float pMin              Min RR survival probability
 float fireflyBudget     Contribution scale for adaptive pMin
 uint  numLevels         Number of LOD levels in cascade
-uint  enableJitter      Jitter-before-quantize toggle
+uint  flags             Packed feature bits (adaptivePMin, normalAddr)
+float jitterFilter      Per-position-seed jitter scale (0=off, 1=±0.5 cells)
+float jitterCell        Per-cell-index-seed jitter scale (Binder 2018; 0=off, 1=±0.5 cells)
 float posACoarse        posA coarsest cell (world units)
 float posAFine          posA finest cell (auto-derived)
 float posBCoarse        posB coarsest cell (world units, pos x pos modes)
@@ -363,7 +365,8 @@ under the "Ablations" group.
 | C: Warp reduction | `enableVisCacheWarpReduction` | true | -C | Per-lane atomics instead of SM 6.5 WaveMatch coalescing |
 | D: Decay sweep | `enableVisCacheDecay` | true | -D | No background decay — stale entries persist indefinitely |
 | E: Pressure eviction | `enableVisCachePressureEvict` | true | -E | No pressure-scaled eviction during probe — cold entries never evicted |
-| F: Jitter-before-quantize | `enableVisCacheJitter` | true | -F | Naive `floor(pos/cellSize)` — causes cell-boundary aliasing (banding in shadows, §4.2) |
+| F: Jitter-before-quantize (filter) | `jitterFilter` (float) | 0.0 | -F | Per-position jitter seed; 1.0 = ±0.5 cells = soft boundaries / 3D reconstruction kernel. 0 = naive `floor(pos/cellSize)`. |
+| F: Jitter-before-quantize (cell)   | `jitterCell` (float)   | 0.0 | -F | Per-cell-index jitter seed [Binder 2018]; 1.0 = each cell redirects by a fixed ±0.5-cell offset. Boundaries stay hard, grid shifts. Stacks additively with `jitterFilter`. |
 
 ### Ablation Presets (Graph Scripts)
 
@@ -375,7 +378,7 @@ ABLATIONS = {
     "minus_warp":   {"enableVisCacheWarpReduction": False},   # -C
     "minus_decay":  {"enableVisCacheDecay": False},           # -D
     "minus_evict":  {"enableVisCachePressureEvict": False},   # -E
-    "minus_jitter": {"enableVisCacheJitter": False},          # -F
+    "minus_jitter": {"jitterFilter": 0.0, "jitterCell": 0.0}, # -F
 }
 
 # Usage:

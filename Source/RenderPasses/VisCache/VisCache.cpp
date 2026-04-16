@@ -71,12 +71,14 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
-    if (props.has("enableVisCacheJitterA"))         mParams.enableVisCacheJitterA         = props["enableVisCacheJitterA"];
-    if (props.has("enableVisCacheJitterB"))         mParams.enableVisCacheJitterB         = props["enableVisCacheJitterB"];
+    if (props.has("jitterFilter"))                  mParams.jitterFilter                  = props["jitterFilter"];
+    if (props.has("jitterCell"))                    mParams.jitterCell                    = props["jitterCell"];
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
-    if (props.has("enableVisCacheFootprintScale"))  mParams.enableVisCacheFootprintScale  = props["enableVisCacheFootprintScale"];
+    if (props.has("enableVisCacheBootstrapBreak"))  mParams.enableVisCacheBootstrapBreak  = props["enableVisCacheBootstrapBreak"];
+    if (props.has("enableVisCacheParentPreinit"))   mParams.enableVisCacheParentPreinit   = props["enableVisCacheParentPreinit"];
+    if (props.has("footprintScale"))                mParams.footprintScale                = props["footprintScale"];
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
@@ -117,12 +119,14 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheWarpReduction"))   mParams.enableVisCacheWarpReduction   = props["enableVisCacheWarpReduction"];
     if (props.has("enableVisCacheDecay"))           mParams.enableVisCacheDecay           = props["enableVisCacheDecay"];
     if (props.has("enableVisCachePressureEvict"))   mParams.enableVisCachePressureEvict   = props["enableVisCachePressureEvict"];
-    if (props.has("enableVisCacheJitterA"))         mParams.enableVisCacheJitterA         = props["enableVisCacheJitterA"];
-    if (props.has("enableVisCacheJitterB"))         mParams.enableVisCacheJitterB         = props["enableVisCacheJitterB"];
+    if (props.has("jitterFilter"))                  mParams.jitterFilter                  = props["jitterFilter"];
+    if (props.has("jitterCell"))                    mParams.jitterCell                    = props["jitterCell"];
     if (props.has("enableVisCacheAdaptivePMin"))   mParams.enableVisCacheAdaptivePMin   = props["enableVisCacheAdaptivePMin"];
     if (props.has("enableVisCacheNormalAddr"))    mParams.enableVisCacheNormalAddr     = props["enableVisCacheNormalAddr"];
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
-    if (props.has("enableVisCacheFootprintScale"))  mParams.enableVisCacheFootprintScale  = props["enableVisCacheFootprintScale"];
+    if (props.has("enableVisCacheBootstrapBreak"))  mParams.enableVisCacheBootstrapBreak  = props["enableVisCacheBootstrapBreak"];
+    if (props.has("enableVisCacheParentPreinit"))   mParams.enableVisCacheParentPreinit   = props["enableVisCacheParentPreinit"];
+    if (props.has("footprintScale"))                mParams.footprintScale                = props["footprintScale"];
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
@@ -159,12 +163,14 @@ Properties VisCache::getProperties() const
     p["enableVisCacheWarpReduction"]   = mParams.enableVisCacheWarpReduction;
     p["enableVisCacheDecay"]           = mParams.enableVisCacheDecay;
     p["enableVisCachePressureEvict"]   = mParams.enableVisCachePressureEvict;
-    p["enableVisCacheJitterA"]         = mParams.enableVisCacheJitterA;
-    p["enableVisCacheJitterB"]         = mParams.enableVisCacheJitterB;
+    p["jitterFilter"]                  = mParams.jitterFilter;
+    p["jitterCell"]                    = mParams.jitterCell;
     p["enableVisCacheAdaptivePMin"]    = mParams.enableVisCacheAdaptivePMin;
     p["enableVisCacheNormalAddr"]     = mParams.enableVisCacheNormalAddr;
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
-    p["enableVisCacheFootprintScale"]  = mParams.enableVisCacheFootprintScale;
+    p["enableVisCacheBootstrapBreak"]  = mParams.enableVisCacheBootstrapBreak;
+    p["enableVisCacheParentPreinit"]   = mParams.enableVisCacheParentPreinit;
+    p["footprintScale"]                = mParams.footprintScale;
     p["subframeN"]                     = mParams.subframeN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
@@ -334,11 +340,13 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.pMin           = mParams.pMin;
     gpu.fireflyBudget  = mParams.fireflyBudget;
     gpu.numLevels      = mParams.numLevels;
-    gpu.flags          = (mParams.enableVisCacheJitterA ? 1u : 0u)
-                       | (mParams.enableVisCacheJitterB ? 2u : 0u)
-                       | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
-                       | (mParams.enableVisCacheNormalAddr ? 8u : 0u)
-                       | (mParams.enableVisCacheFootprintScale ? 16u : 0u);
+    gpu.flags          = (mParams.enableVisCacheAdaptivePMin ? 1u : 0u)
+                       | (mParams.enableVisCacheNormalAddr ? 2u : 0u)
+                       | (mParams.enableVisCacheBootstrapBreak ? 4u : 0u)
+                       | (mParams.enableVisCacheParentPreinit ? 8u : 0u);
+    gpu.footprintScale = mParams.footprintScale;
+    gpu.jitterFilter   = mParams.jitterFilter;
+    gpu.jitterCell     = mParams.jitterCell;
     gpu.posACoarse    = mParams.posACoarse;
     gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posACoarse, mParams.numLevels) : mParams.posACoarse;
     gpu.posBCoarse    = mParams.posBCoarse;
@@ -389,12 +397,13 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
         logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterA={} jitterB={} adaptPMin={} dirDistAddr={} footprintScale={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterFilter={:.3f} jitterCell={:.3f} adaptPMin={} dirDistAddr={} footprintScale={:.3f} bootstrapBreak={} parentPreinit={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
-                mParams.enableVisCacheJitterA, mParams.enableVisCacheJitterB, mParams.enableVisCacheAdaptivePMin,
-                mParams.enableVisCacheDirDistAddr, mParams.enableVisCacheFootprintScale);
+                mParams.jitterFilter, mParams.jitterCell, mParams.enableVisCacheAdaptivePMin,
+                mParams.enableVisCacheDirDistAddr, mParams.footprintScale,
+                mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
                 gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
         logInfo("[VisCache] diagnostics={} diagMode={}",
@@ -424,8 +433,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_pMin"]           = mParams.pMin;
     dict["vhfParam_fireflyBudget"]  = mParams.fireflyBudget;
     dict["vhfParam_numLevels"]      = mParams.numLevels;
-    dict["vhfParam_enableJitterA"]  = mParams.enableVisCacheJitterA ? 1u : 0u;
-    dict["vhfParam_enableJitterB"]  = mParams.enableVisCacheJitterB ? 1u : 0u;
+    dict["vhfParam_jitterFilter"]   = mParams.jitterFilter;
+    dict["vhfParam_jitterCell"]     = mParams.jitterCell;
     dict["vhfParam_flags"]         = gpu.flags;
     dict["vhfParam_posACoarse"]    = gpu.posACoarse;
     dict["vhfParam_posAFine"]      = gpu.posAFine;
@@ -446,10 +455,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableVarianceGate"]    = mParams.enableVisCacheVarianceGate;
     dict["vhfEnableDecay"]           = mParams.enableVisCacheDecay;
     dict["vhfEnablePressureEvict"]   = mParams.enableVisCachePressureEvict;
-    dict["vhfEnableJitterA"]         = mParams.enableVisCacheJitterA;
-    dict["vhfEnableJitterB"]         = mParams.enableVisCacheJitterB;
+    dict["vhfJitterFilter"]          = mParams.jitterFilter;
+    dict["vhfJitterCell"]            = mParams.jitterCell;
     dict["vhfEnableDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
-    dict["vhfEnableFootprintScale"]  = mParams.enableVisCacheFootprintScale;
+    dict["vhfEnableBootstrapBreak"]  = mParams.enableVisCacheBootstrapBreak;
+    dict["vhfEnableParentPreinit"]   = mParams.enableVisCacheParentPreinit;
+    dict["vhfParam_footprintScale"]  = mParams.footprintScale;
     dict["vhfSubframeN"]        = std::max(1u, mParams.subframeN);
     dict["vhfWarmupSlotsFirst"] = mParams.warmupSlotsFirst;
     dict["vhfWarmupSlotsRun"]   = mParams.warmupSlotsRun;
@@ -636,10 +647,10 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gPMin"]           = mParams.pMin;
     vars["VisCacheParams"]["gFireflyBudget"]  = mParams.fireflyBudget;
     vars["VisCacheParams"]["gNumLevels"]      = N;
-    vars["VisCacheParams"]["gFlags"]          = (mParams.enableVisCacheJitterA ? 1u : 0u)
-                                                | (mParams.enableVisCacheJitterB ? 2u : 0u)
-                                                | (mParams.enableVisCacheAdaptivePMin ? 4u : 0u)
-                       | (mParams.enableVisCacheNormalAddr ? 8u : 0u);
+    vars["VisCacheParams"]["gFlags"]          = (mParams.enableVisCacheAdaptivePMin ? 1u : 0u)
+                                                | (mParams.enableVisCacheNormalAddr ? 2u : 0u)
+                                                | (mParams.enableVisCacheBootstrapBreak ? 4u : 0u)
+                                                | (mParams.enableVisCacheParentPreinit ? 8u : 0u);
     vars["VisCacheParams"]["gPosACoarse"]    = mParams.posACoarse;
     vars["VisCacheParams"]["gPosAFine"]      = (N > 1) ? deriveFine(mParams.posACoarse, N) : mParams.posACoarse;
     vars["VisCacheParams"]["gPosBCoarse"]    = mParams.posBCoarse;
@@ -756,10 +767,12 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("C: Warp reduction",       mParams.enableVisCacheWarpReduction);
         g.checkbox("D: Inline CAS decay",     mParams.enableVisCacheDecay);
         g.checkbox("E: Pressure eviction",    mParams.enableVisCachePressureEvict);
-        g.checkbox("F: Jitter posA",  mParams.enableVisCacheJitterA);
-        g.checkbox("F: Jitter posB",  mParams.enableVisCacheJitterB);
+        g.var("F: jitterFilter (0=off)", mParams.jitterFilter, 0.f, 4.f, 0.05f);
+        g.var("F: jitterCell (0=off)",   mParams.jitterCell,   0.f, 4.f, 0.05f);
+        g.checkbox("§5: bootstrap-break", mParams.enableVisCacheBootstrapBreak);
+        g.checkbox("§5: parent-preinit",  mParams.enableVisCacheParentPreinit);
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
-        g.checkbox("K: Footprint trust scale", mParams.enableVisCacheFootprintScale);
+        g.var("K: footprintScale (0=off)", mParams.footprintScale, 0.f, 8.f, 0.1f);
         g.var("M: Subframe N (1 = off)",  mParams.subframeN,        1u, 8u);
         g.var("L: warmupSlots (frame 0)", mParams.warmupSlotsFirst, 0u, 64u);
         g.var("L: warmupSlots (running)", mParams.warmupSlotsRun,   0u, 64u);

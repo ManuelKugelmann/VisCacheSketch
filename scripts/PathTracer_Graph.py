@@ -49,15 +49,13 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
     })
     g.addPass(pt, "PathTracer")
 
-    # Accumulate samples over frames for progressive rendering.
-    # subframeN mirrors VisCache's Bayer subframe gate so AccumulatePass only fires
-    # on the last subframe of each N² cycle (PathTracer composes a dense frame first).
+    # Accumulate samples over frames for progressive rendering. PathTracer internally
+    # loops N² Bayer subframes per execute() call, so AccumulatePass sees one fully
+    # composed dense frame per renderFrame — no subframe awareness needed here.
     accum_props = {
         "enabled":       True,
         "precisionMode": "Single",
     }
-    if viscache:
-        accum_props["subframeN"] = VISCACHE_DEFAULTS.get("subframeN", 1)
     accum = createPass("AccumulatePass", accum_props)
     g.addPass(accum, "AccumulatePass")
 

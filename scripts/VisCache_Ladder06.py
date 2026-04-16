@@ -1,11 +1,10 @@
 """
-VisCache_Ladder06.py — Step 06: Level cascade × maturity threshold sweep.
+VisCache_Ladder06.py — Step 06: Footprint-ON threshold × scale sweep.
 
-Same setup as step 05 (2 norm-active B-side variants pos / dir_dist, x1 / x4
-SPP, footprint ON) but with the multi-level LOD cascade enabled. Sweeps
-maturity thresholds to isolate the cascade's effect across quality regimes.
-
-Variant names carry the quality tag as `{variant}__q{min|med|high}`.
+3 threshold presets × 3 footprintScale values (0.5, 1.0, 2.0) = 9 variants.
+Widens the step-05 sweep in two axes simultaneously: thresholds span 8×
+stepping (th_low / th_mid / th_high) and scale brackets the default 1.0 with
+±2× to expose sensitivity. Step 07 then sweeps only scale at the winner.
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder06.py
@@ -13,31 +12,43 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
-    plot_overviews, copy_summary_to_root, make_norm_variants, PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, \
-    FOOTPRINT_ON, SUBFRAME_2x2
+    finalize_step, make_norm_variants, \
+    PRESET_MINIMAL, RR_ADAPTIVE, QUANT_SWEEP, SUBFRAME_2x2
 
+STEP = "06"
 res = int(os.environ.get("RES", "512"))
 
-# Maturity threshold sweep (3 values) — same list as step 05 so deltas line up.
-QUALITY_SWEEP_06 = {
-    "qmin":  {"bootThreshold":  8, "matureThreshold": 128},
-    "qmed":  {"bootThreshold": 16, "matureThreshold": 256},
-    "qhigh": {"bootThreshold": 32, "matureThreshold": 512},
+# Boot threshold is the primary knob; sweep boot, keep mature fixed.
+# Aligned with step 05's THRESH_SCALE so the fp0 column of step 06 is
+# directly comparable to step 05's fpOff sweep — same boot/mature values,
+# only the footprint axis differs across steps.
+THRESH_SCALE = {
+    "th_low":  {"bootThreshold":  2, "matureThreshold": 128},
+    "th_mid":  {"bootThreshold":  4, "matureThreshold": 128},
+    "th_high": {"bootThreshold": 16, "matureThreshold": 128},
 }
 
-# Drop dir_dist1 after step 4 — only pos and dir_dist carry forward.
-BASE_06 = [v for v in make_norm_variants(base=PRESET_MINIMAL)
-           if "__dir_dist1" not in v[0]]
+# footprintScale axis: 0 (off) / 0.5 / 1.0. Hue in the plot is shared by
+# threshold (th_low/mid/high each a single color); fill alpha ramps with
+# the scale value (fp0 hollow → fp1 solid).
+FOOTPRINT_SCALES = {
+    "fp0":  {"footprintScale": 0.0},
+    "fp05": {"footprintScale": 0.5},
+    "fp1":  {"footprintScale": 1.0},
+}
 
-# Fan out: 3 quality × 2 base variants = 6 variants per SPP.
+QUANT_WINNER_TAG, QUANT_WINNER = "qmid", QUANT_SWEEP["qmid"]
+WINNER_05 = f"pos_norm__pos__{QUANT_WINNER_TAG}"
+BASE_06 = [v for v in make_norm_variants(quant=QUANT_WINNER, base=PRESET_MINIMAL,
+                                           quant_tag=QUANT_WINNER_TAG)
+           if v[0] == WINNER_05]
+
 VARIANTS_06 = []
-for q_tag, q_conf in QUALITY_SWEEP_06.items():
-    for (name, overrides) in BASE_06:
-        VARIANTS_06.append((f"{name}__{q_tag}",
-                            {**overrides, **q_conf}))
-
-STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **FOOTPRINT_ON, **SUBFRAME_2x2,
-                  "tableCapacity": 1 << 25}  # 32M entries (8× default) — cascade needs more slots
+for q_tag, q_params in THRESH_SCALE.items():
+    for s_tag, s_params in FOOTPRINT_SCALES.items():
+        for (name, overrides) in BASE_06:
+            VARIANTS_06.append((f"{name}__{q_tag}_{s_tag}",
+                                {**overrides, **q_params, **s_params}))
 
 for scene_file in get_scenes():
     run_baseline(
@@ -50,15 +61,14 @@ for scene_file in get_scenes():
     )
 
     run_variants(
-        step_name="06",
+        step_name=STEP,
         frame_configs=[(1, 0, 1, 1), (1, 0, 1, 4)],
         scene_file=scene_file,
         variants=VARIANTS_06,
         resX=res, resY=res,
         mogwai_globals=globals(),
-        step_overrides=STEP_OVERRIDES,
+        step_overrides={**RR_ADAPTIVE, **SUBFRAME_2x2},
     )
 
-plot_overviews("06")
-copy_summary_to_root("06")
+finalize_step(STEP, prev_winner=WINNER_05)
 _HEADLESS_SCRIPT_DONE = True

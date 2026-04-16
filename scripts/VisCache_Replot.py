@@ -18,7 +18,8 @@ os.environ.setdefault("PROJECT_ROOT", _project_root)
 # plot_overviews uses relative paths — must run from runtime/
 os.chdir(os.path.join(_project_root, "runtime"))
 
-from VisCache_LadderCommon import plot_overviews, _step_csv
+from VisCache_LadderCommon import plot_overviews, plot_baseline_overviews, \
+    copy_summary_to_root, _step_csv
 
 steps = sys.argv[1:] if len(sys.argv) > 1 else None
 
@@ -35,10 +36,12 @@ if not steps:
 
 for step in steps:
     print(f"[replot] Step {step} ...")
-    outs = plot_overviews(step)
+    # Step 00 is the absolute-metrics baseline — different plotter.
+    outs = plot_baseline_overviews(step) if step == "00" else plot_overviews(step)
     if outs:
         for out in outs:
             if out:
                 print(f"[replot]   -> {out}")
+        copy_summary_to_root(step)
     else:
         print(f"[replot]   (no data)")

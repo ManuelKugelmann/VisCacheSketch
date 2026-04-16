@@ -63,7 +63,7 @@ public:
         float    pMin;
         float    fireflyBudget;
         uint32_t numLevels;
-        uint32_t flags;           ///< Packed: bit 0 = jitter, bit 1 = adaptivePMin
+        uint32_t flags;           ///< Packed: bit 0 = adaptivePMin, bit 1 = normalAddr, bit 2 = bootstrapBreak, bit 3 = parentPreinit
         float    posACoarse;     ///< posA coarsest cell (world units)
         float    posAFine;       ///< posA finest cell (auto-derived)
         float    posBCoarse;     ///< posB coarsest cell (pos×pos modes)
@@ -74,6 +74,10 @@ public:
         float    distBFine;       ///< distance finest cell (auto-derived)
         float    normalACoarse;   ///< normal coarsest bin scale (oct [0,2] multiplier, 3=60°/bin)
         float    normalAFine;     ///< normal finest bin scale (auto-derived)
+        float    footprintScale;  ///< K: footprint trust scale. 0 = off (pure bootThreshold),
+                                  ///< 1 = log2(cellPixels) floor, >1 = aggressive.
+        float    jitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
+        float    jitterCell;      ///< F: per-cell-index-seed jitter scale (Binder 2018, hard boundaries shift per cell). 0 = off.
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
         uint32_t frameCount;      ///< Current frame index for per-frame RNG variation
         uint32_t spp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
@@ -121,12 +125,15 @@ public:
         bool     enableVisCacheVarianceGate   = true;  ///< B: Bernoulli variance-gated write depth
         bool     enableVisCacheDecay          = true;  ///< D: Background decay sweep
         bool     enableVisCachePressureEvict  = true;  ///< E: Pressure-driven eviction
-        bool     enableVisCacheJitterA        = true;  ///< F: Jitter-before-quantize posA (§4.2)
-        bool     enableVisCacheJitterB        = true;  ///< F: Jitter-before-quantize posB (§4.2)
+        float    jitterFilter                 = 0.0f;  ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
+        float    jitterCell                   = 0.0f;  ///< F: per-cell-index-seed jitter scale [Binder et al. 2018] (hard boundaries, per-cell shift). 0 = off.
         bool     enableVisCacheAdaptivePMin   = true;  ///< H: Confidence-adaptive pMin (§8.1.1)
         bool     enableVisCacheNormalAddr     = false; ///< I: Normal-augmented addressing (posNorm)
         bool     enableVisCacheDirDistAddr   = false; ///< G: Dir+dist addressing (inherently non-canonical)
-        bool     enableVisCacheFootprintScale = true; ///< K: Footprint-aware trust gate (log2(cellPx) diversity req)
+        bool     enableVisCacheBootstrapBreak = false; ///< §5 Bootstrap: break cascade when post-write total < bootThreshold (too sparse to guide children).
+        bool     enableVisCacheParentPreinit  = false; ///< §5 Parent-preinit: seed new child slot with (parentVis>>3, parentTotal>>3) on first claim.
+        float    footprintScale              = 1.0f; ///< K: Footprint trust scale (floor = k*log2(cellPx)).
+                                                      ///< 0 disables (equivalent to prior fpOff).
         uint32_t subframeN                     = 1u;    ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); disperses cell writes across frames
         uint32_t warmupSlotsFirst              = 0u;    ///< L: # of Bayer slots [0,N²) write-only in frame 0 (force trace, no RR)
         uint32_t warmupSlotsRun                = 0u;    ///< L: # of Bayer slots write-only in every subsequent frame

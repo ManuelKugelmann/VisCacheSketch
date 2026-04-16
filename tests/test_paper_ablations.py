@@ -108,37 +108,41 @@ for pass_name in ["DI", "GI", "PT"]:
 # Test 4: VisCache internal ablation toggles — property round-trip
 # All 5 ablation bools must be settable via createPass() properties.
 # ---------------------------------------------------------------------------
-viscache_ablation_keys = {
+viscache_ablation_bool_keys = {
     "enableVisCacheVarianceGate",
     "enableVisCacheWarpReduction", "enableVisCacheDecay",
-    "enableVisCachePressureEvict", "enableVisCacheJitterA", "enableVisCacheJitterB"
+    "enableVisCachePressureEvict"
 }
-check("VisCache ablation: 5 toggles (B–F) are property-accessible",
-      len(viscache_ablation_keys) == 5,
-      f"keys={sorted(viscache_ablation_keys)}")
+viscache_ablation_float_keys = {
+    "jitterFilter", "jitterCell"  # F: jitter scales (0 = off), replaces old enableVisCacheJitterA/B bools
+}
+viscache_ablation_keys = viscache_ablation_bool_keys | viscache_ablation_float_keys
+check("VisCache ablation: 5 categories (B–F) are property-accessible",
+      len(viscache_ablation_bool_keys) == 4 and len(viscache_ablation_float_keys) == 2,
+      f"bool={sorted(viscache_ablation_bool_keys)} float={sorted(viscache_ablation_float_keys)}")
 
-# Each ablation disables exactly one feature while keeping others on
-for key in sorted(viscache_ablation_keys):
-    defaults = {k: True for k in viscache_ablation_keys}
+# Each bool ablation disables exactly one feature while keeping others on
+for key in sorted(viscache_ablation_bool_keys):
+    defaults = {k: True for k in viscache_ablation_bool_keys}
     defaults[key] = False
     active_count = sum(1 for v in defaults.values() if v)
-    check(f"VisCache ablation: disabling {key} keeps {active_count}/5 active",
-          active_count == 4,
+    check(f"VisCache ablation: disabling {key} keeps {active_count}/4 active",
+          active_count == 3,
           f"{key}=False, rest=True")
 
 # ---------------------------------------------------------------------------
 # Test 5: All enableVisCache* flags set on VisCache, forwarded via dict
 # VisCache is authoritative — downstream passes read from dictionary.
 # ---------------------------------------------------------------------------
-viscache_all_keys = viscache_ablation_keys | {
+viscache_bool_all_keys = viscache_ablation_bool_keys | {
     "enableVisCacheVisibilityCheck", "enableVisCacheLightSelection"
 }
-check("VisCache: 7 enableVisCache* flags (5 ablation + 2 feature)",
-      len(viscache_all_keys) == 7,
-      f"keys={sorted(viscache_all_keys)}")
+check("VisCache: 6 enableVisCache* bool flags (4 ablation + 2 feature)",
+      len(viscache_bool_all_keys) == 6,
+      f"keys={sorted(viscache_bool_all_keys)}")
 
-check("VisCache: all flags use enableVisCache prefix",
-      all(k.startswith("enableVisCache") for k in viscache_all_keys),
+check("VisCache: all enableVisCache* bool flags use enableVisCache prefix",
+      all(k.startswith("enableVisCache") for k in viscache_bool_all_keys),
       "consistent naming")
 
 # ---------------------------------------------------------------------------

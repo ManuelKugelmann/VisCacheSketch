@@ -23,7 +23,7 @@ LADDER = [
     # Expect: blocky grid, uniform mu per cell, no refinement.
     ("00_bare_1level", {
         "numLevels": 1,
-        "enableVisCacheJitterA": False, "enableVisCacheJitterB": False,
+        "jitterFilter": 0.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": False,
         "enableVisCacheWarpReduction": False,
         "enableVisCacheDecay": False,
@@ -33,7 +33,7 @@ LADDER = [
     # Step 1: Add jitter — should smooth cell boundaries.
     ("01_jitter", {
         "numLevels": 1,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": False,
         "enableVisCacheWarpReduction": False,
         "enableVisCacheDecay": False,
@@ -43,7 +43,7 @@ LADDER = [
     # Step 2: Add variance gate — should limit writes to high-variance regions.
     ("02_vargate", {
         "numLevels": 1,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": True,
         "enableVisCacheWarpReduction": False,
         "enableVisCacheDecay": False,
@@ -53,7 +53,7 @@ LADDER = [
     # Step 3: Multi-level (3 levels) — should show LOD cascade.
     ("03_3levels", {
         "numLevels": 3,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": True,
         "enableVisCacheWarpReduction": False,
         "enableVisCacheDecay": False,
@@ -63,7 +63,7 @@ LADDER = [
     # Step 4: Add decay — should prevent stale entries.
     ("04_decay", {
         "numLevels": 3,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": True,
         "enableVisCacheWarpReduction": False,
         "enableVisCacheDecay": True,
@@ -73,7 +73,7 @@ LADDER = [
     # Step 5: Add pressure eviction — should handle table pressure.
     ("05_eviction", {
         "numLevels": 3,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": True,
         "enableVisCacheWarpReduction": False,
         "enableVisCacheDecay": True,
@@ -83,7 +83,7 @@ LADDER = [
     # Step 6: Add warp reduction — performance only, same visual result.
     ("06_warpreduce", {
         "numLevels": 3,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": True,
         "enableVisCacheWarpReduction": True,
         "enableVisCacheDecay": True,
@@ -93,7 +93,7 @@ LADDER = [
     # Step 7: Full system — 8 levels, all features on.
     ("07_full_8levels", {
         "numLevels": 8,
-        "enableVisCacheJitterA": True, "enableVisCacheJitterB": True,
+        "jitterFilter": 1.0, "jitterCell": 0.0,
         "enableVisCacheVarianceGate": True,
         "enableVisCacheWarpReduction": True,
         "enableVisCacheDecay": True,

@@ -9,7 +9,7 @@ Usage:
 """
 import os, sys, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from VisCache_LadderCommon import run_baseline, get_scenes
+from VisCache_LadderCommon import run_baseline, get_scenes, finalize_baseline
 
 res = int(os.environ.get("RES", "512"))
 
@@ -26,9 +26,10 @@ for scene_file in get_scenes():
         scene_file=scene_file,
         resX=res, resY=res,
         gt_spp=4096,
-        # x4 / x8 added for step 04's sample-count sweep; step 05+ only use x4.
-        extra_spp=[4, 8, 16],
+        # x2 / x4 / x8 / x16 added for step 04's sample-count sweep; step 05+ uses x4.
+        extra_spp=[2, 4, 8, 16],
         mogwai_globals=globals(),
     )
 
+finalize_baseline("00")
 _HEADLESS_SCRIPT_DONE = True

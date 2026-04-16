@@ -209,17 +209,18 @@ private:
     ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
-    bool mVisCacheJitter = true;            ///< F: jitter-before-quantize (§4.2)
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
     uint32_t mVisCacheSubframeN = 1;        ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); see Falcor/LOCAL_FIXES.md #14
 
     // Cached cbuffer values — bound per-member because Falcor 8 ParameterBlock
     // doesn't support whole-buffer cbuffer binding.
-    struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
+    struct { uint32_t tableCapacity=0, bootThreshold=0, matureThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
              uint32_t numLevels=0, flags=1;
              float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
              float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
              float normalACoarse=0, normalAFine=0;
+             float footprintScale=0;
+             float jitterFilter=0, jitterCell=0;
              uint32_t diagAccumWindow=128; } mVCParams;
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all

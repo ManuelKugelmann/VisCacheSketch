@@ -1542,12 +1542,6 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheLightSelection = mVisCacheAvailable &&
             dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
-        bool wasJitter = mVisCacheJitter;
-        {   // Compile jitter code if either posA or posB jitter is enabled
-            bool jA = !dict.keyExists("vhfEnableJitterA") || dict.getValue<bool>("vhfEnableJitterA");
-            bool jB = !dict.keyExists("vhfEnableJitterB") || dict.getValue<bool>("vhfEnableJitterB");
-            mVisCacheJitter = !mVisCacheAvailable || jA || jB;
-        }
         bool wasDirDist = mVisCacheDirDistAddr;
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
 
@@ -1556,7 +1550,6 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         if (mVisCacheAvailable != wasAvailable ||
             mVisCacheVisibilityCheck != wasVisCheck ||
             mVisCacheLightSelection != wasLightSel ||
-            mVisCacheJitter != wasJitter ||
             mVisCacheDirDistAddr != wasDirDist)
             mRecompile = true;
     }
@@ -2012,7 +2005,6 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
-    defines.add("USE_VISCACHE_JITTER", owner.mVisCacheJitter ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
     defines.add("USE_LOCAL_CVRRR", owner.mLocalCVRRR ? "1" : "0");
 

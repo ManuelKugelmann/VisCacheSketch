@@ -185,7 +185,6 @@ private:
     bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
     bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)
     bool mVisCacheLightSelection = false;  ///< §11.1: cached mu gates NEE shadow rays (PathTracer.slang)
-    bool mVisCacheJitter = true;           ///< F: jitter-before-quantize (§4.2)
     bool mVisCacheDirDistAddr = false;     ///< G: dir+dist addressing (vs endpoint pairs)
     bool mLocalCVRRR = false;       ///< Ablation: reservoir-local CV+RRR (reuses VisCacheParams)
 

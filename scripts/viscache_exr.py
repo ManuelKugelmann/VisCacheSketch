@@ -116,9 +116,20 @@ def load_diag_mask(exrs, mode="nodata", total_frames=None):
                 coldmiss_rate = data[:, :, 3]
 
         if count is not None and coldmiss_rate is not None:
+            # `count` is the *hit* count (only incremented when a cache entry was
+            # found). `coldmiss_rate = miss / total`. Reconstruct total queries:
+            #   - Hits present (coldmiss_rate < 1): total = count / (1 − coldmiss_rate)
+            #   - Fully cold (count=0, coldmiss_rate>0): pixel was queried but every
+            #     lookup missed. We can't recover the exact total without a
+            #     dedicated counter, so assume "queried every frame" (the common
+            #     case for a persistently-cold cell). Must NOT exclude these
+            #     pixels from the mask — they're real data, not empty.
+            #   - Never queried (both zero): skipped pixel (sky / letterbox).
+            never_queried = (count == 0) & (coldmiss_rate == 0)
+            fully_cold    = (count == 0) & (coldmiss_rate > 0)
             hit_rate = np.clip(1.0 - coldmiss_rate, 1e-7, 1.0)
             total_queries = count / hit_rate
-            never_queried = (count == 0) & (coldmiss_rate == 0)
+            total_queries[fully_cold]    = float(total_frames) if total_frames else 1.0
             total_queries[never_queried] = 0.0
 
             if total_frames is not None and total_frames > 0:
@@ -167,16 +178,32 @@ def _gaussian_blur_2d(img, sigma):
     return out
 
 
-# Structural-error parameters. σ sets the "correlated-pattern scale" (tile size
-# ≈ 16 px → σ ≈ 8 captures tile-scale bias while damping edge aliasing).
-# pixel_weight scales the raw per-pixel ΔE contribution added on top.
-STRUCTURAL_SIGMA = 8.0
-STRUCTURAL_PIXEL_WEIGHT = 0.25
+# Structural-error parameters. σ matches the tile-scale (16 px); a smaller
+# smoothing kernel preserves block-pattern sharpness so cold-start hatches
+# don't get smeared across neighboring tiles. pixel_weight is bumped so the
+# per-pixel ΔE inside an artefact block contributes more visibly to the
+# composite — pure smoothing alone was masking small-magnitude block patterns.
+STRUCTURAL_SIGMA = 4.0
+STRUCTURAL_PIXEL_WEIGHT = 0.5
+
+
+# Luminance floor for CoV denominator. Below this the noise metric switches
+# from relative (std/lum) to near-absolute — true black areas no longer
+# saturate to "maximum noise" just because the signal is near zero.
+# 0.02 ≈ 2% sRGB luminance; anything darker than that and divide-by-near-zero
+# takes over. The blend is smooth (sqrt(lum² + floor²)) so well-lit regions
+# see unchanged CoV and shadow tone-mapped regions get a stable floor.
+_NOISE_LUM_FLOOR = 0.02
 
 
 def _bilateral_noise_map(img_rgb, radius=2, phi=0.1):
     """Per-pixel bilateral-variance coefficient of variation for sRGB [0,1] (H,W,3).
     Edge-aware: luminance-weighted bilateral window suppresses edges. Returns (H,W) in [0,1].
+
+    Uses a soft luminance floor so fully-black regions don't saturate the CoV
+    metric (std/lum → ∞ as lum → 0). `std / sqrt(lum² + floor²)` keeps the
+    relative-noise interpretation in lit areas and smoothly transitions to a
+    stable low value as luminance approaches zero.
     """
     lum = 0.2126 * img_rgb[:, :, 0] + 0.7152 * img_rgb[:, :, 1] + 0.0722 * img_rgb[:, :, 2]
     h, w = lum.shape
@@ -192,28 +219,65 @@ def _bilateral_noise_map(img_rgb, radius=2, phi=0.1):
             sum_wl2 += weight * shifted * shifted
     mean = sum_wl / sum_w
     var = np.maximum(0, sum_wl2 / sum_w - mean * mean)
-    cov = np.sqrt(var) / np.maximum(lum, 1e-3)
+    denom = np.sqrt(lum * lum + _NOISE_LUM_FLOOR * _NOISE_LUM_FLOOR)
+    cov = np.sqrt(var) / denom
     return np.clip(cov, 0, 1).astype(np.float32)
 
 
-def compute_render_noise(render_path, outpath, nodata=None, radius=2, phi=0.1):
-    """Structural noise map → viridis PNG.
+def compute_render_noise(render_path, outpath, nodata=None, radius=2, phi=0.1, floor=None):
+    """Absolute bilateral-noise map → viridis PNG.
 
-    Combines bilateral noise on a Gaussian-smoothed image (catches correlated
-    patterns — tile-scale bias shows up as edge-discontinuity in the smoothed
-    result) with a scaled-down bilateral noise on the original (keeps some
-    sensitivity to pixel-level stochastic noise). Matches the structural error
-    metric: less sensitive to edge aliasing, more sensitive to tile-scale
-    artifacts.
+    Bilateral-weighted CoV of luminance in a small window — edge-aware because
+    bilateral weights collapse across luminance discontinuities, so the measure
+    responds to stochastic grain, not to edges. Kept without the Gaussian pre-
+    smooth used by the structural error metric: smoothing averages away the
+    very high-frequency signal that `noise` is meant to detect.
+
+    floor: optional (H,W) float32 noise map (e.g. bilateral_noise of the
+    converged x4096 GT). Subtracted from the per-pixel bilateral noise before
+    visualization so a self-reference plate (render == floor-source) renders
+    as all-zero — calibrates out the residual noise that remains in the most
+    converged render we have.
+
+    Returns dict {mean_noise, mean_noise_pct}. Noise is already a per-pixel
+    bilateral CoV — no blob smoothing, no windowed-max. The "correlated hot
+    spot" story belongs to the error metric, not the noise metric.
     """
     img = np.array(Image.open(render_path)).astype(np.float32) / 255.0
-    rgb = img[:, :, :3]
-    smooth = _gaussian_blur_2d(rgb, STRUCTURAL_SIGMA)
-    noise_s = _bilateral_noise_map(smooth, radius=radius, phi=phi)
-    noise_p = _bilateral_noise_map(rgb,    radius=radius, phi=phi)
-    combined = np.clip(noise_s + STRUCTURAL_PIXEL_WEIGHT * noise_p, 0, 1)
-    viridis_png(combined, outpath, nodata=nodata)
-    return outpath
+    noise = _bilateral_noise_map(img[:, :, :3], radius=radius, phi=phi)
+    if floor is not None and floor.shape == noise.shape:
+        noise = np.maximum(noise - floor, 0.0)
+    viridis_png(noise, outpath, nodata=nodata)
+    mask = _valid_mask_from_nodata(nodata, noise.shape)
+    s = _map_stats(noise, mask=mask, blob_sigma=None, norm=1.0)
+    return {
+        "mean_noise":     s["mean"],
+        "mean_noise_pct": s["mean_pct"],
+    }
+
+
+def bilateral_noise_cached(render_path, cache_path=None, radius=2, phi=0.1):
+    """Bilateral-noise map of a single tonemapped PNG, with optional .npy cache.
+    Used to compute and persist the "self-noise" of a converged reference
+    (x4096 GT). The cached map gets subtracted from lower-SPP / variant noise
+    plates via the `floor` param of compute_render_noise / *_signed.
+    """
+    if cache_path and os.path.exists(cache_path):
+        try:
+            return np.load(cache_path).astype(np.float32)
+        except (IOError, OSError, ValueError):
+            pass
+    try:
+        img = np.array(Image.open(render_path)).astype(np.float32) / 255.0
+    except (IOError, OSError):
+        return None
+    noise = _bilateral_noise_map(img[:, :, :3], radius=radius, phi=phi)
+    if cache_path:
+        try:
+            np.save(cache_path, noise)
+        except (IOError, OSError):
+            pass
+    return noise
 
 
 def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None, radius=2, phi=0.1):
@@ -248,6 +312,7 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
     # Normalize to fixed bilateral-noise max (1.0 — cov is clipped to [0,1]).
     # Same scale the image colormap uses; avoids double-counting vanilla.
     denom  = 1.0
+    blob_pct = _signed_blob_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
     return {
         "noise_vis_mean":       n_vis,
         "noise_van_mean":       n_van,
@@ -257,6 +322,7 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
         "noise_delta_pct":      100.0 * s_m   / denom,
         "noise_delta_min_pct":  100.0 * s_min / denom,
         "noise_delta_max_pct":  100.0 * s_max / denom,
+        "noise_delta_blob_pct": blob_pct,
     }
 
 
@@ -440,6 +506,7 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
     # Previously normalized by mean(err_vanilla), which double-counts vanilla
     # (already in the numerator) and blew up in near-zero regions.
     denom    = 1.4
+    blob_pct = _signed_blob_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
     return {
         "err_vis_gt_mean":    err_vis,
         "err_van_gt_mean":    err_van,
@@ -449,7 +516,59 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         "err_delta_pct":      100.0 * s_m   / denom,
         "err_delta_min_pct":  100.0 * s_min / denom,
         "err_delta_max_pct":  100.0 * s_max / denom,
+        "err_delta_blob_pct": blob_pct,
     }
+
+
+# Gaussian σ for the "max-blob" windowed-max stat on correlated-error maps.
+# ~σ×3 radius (~12 px) captures tile-scale hot spots (16 px tile) coherently.
+ERR_WINDOW_SIGMA = 4.0
+
+
+def _signed_blob_pct(signed, mask, sigma, denom):
+    """Positive-only max-blob stat for a correlated signed-error map.
+
+    Reports the worst *degradation* blob — Gaussian-blurred max of the signed
+    map, clamped at 0. Negative blobs (viscache denoised) are discarded; the
+    stat is meant to surface "how bad does viscache get in the worst region"
+    and negative means doesn't apply. Single-pixel outliers can't dominate.
+    denom converts raw value to percentage.
+    """
+    blob = _gaussian_blur_2d(signed, sigma)
+    b = np.where(mask, blob, np.nan)
+    try:
+        pos = float(np.nanmax(b))
+    except (ValueError, RuntimeWarning):
+        return None
+    return 100.0 * max(0.0, pos) / max(denom, 1e-6)
+
+
+def _map_stats(arr, mask=None, blob_sigma=None, norm=1.0):
+    """Mean + optional windowed-max stats of a per-pixel float map.
+
+    arr:        (H,W) float32. mask: optional bool (H,W) — defaults to all True.
+    blob_sigma: if > 0, `max` is taken over a Gaussian-smoothed copy so that a
+                single-pixel outlier can't blow up the stat; the peak sits at
+                the center of the worst correlated blob. If None, `max` is
+                omitted from the result.
+    norm:       divisor to convert raw values to percentage (e.g. 1.4 for
+                OkLab max distance, 1.0 for bilateral noise).
+
+    Returns dict with "mean", "mean_pct", and optionally "max", "max_pct".
+    """
+    if mask is None:
+        mask = np.ones(arr.shape, dtype=bool)
+    if not mask.any():
+        mask = np.ones_like(mask)
+    d = max(norm, 1e-6)
+    mean_v = float(np.nanmean(arr[mask]))
+    out = {"mean": mean_v, "mean_pct": 100.0 * mean_v / d}
+    if blob_sigma is not None and blob_sigma > 0:
+        blob  = _gaussian_blur_2d(arr, blob_sigma)
+        max_v = float(np.nanmax(blob[mask]))
+        out["max"]     = max_v
+        out["max_pct"] = 100.0 * max_v / d
+    return out
 
 
 def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None,
@@ -462,8 +581,11 @@ def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None,
     distance map. Lets baseline GT-err generation seed a cache that the later
     signed-delta step for each variant then reads instead of recomputing.
 
-    Returns dict {mean_err, mean_err_pct} or None on failure.
-    mean_err_pct = 100 × mean_err / 1.4 — mean viridis-scale intensity in percent.
+    Returns dict {mean_err, mean_err_pct, max_err, max_err_pct} or None on failure.
+      mean_err_pct = 100 × mean_err / 1.4                — mean intensity %
+      max_err_pct  = 100 × max(gaussian_blur(err)) / 1.4 — worst-blob %.
+                      σ=ERR_WINDOW_SIGMA so a single-pixel firefly can't
+                      dominate; tracks the worst *region* of correlated error.
     """
     err = oklab_distance_hdr_cached(render_exr, baseline_exr, distance_cache)
     if err is None:
@@ -471,10 +593,10 @@ def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None,
         return None
     viridis_png(np.clip(err / 1.4, 0, 1), outpath, nodata=nodata)
     mask = _valid_mask_from_nodata(nodata, err.shape)
-    if not mask.any():
-        mask = np.ones_like(mask)
-    mean_err = float(err[mask].mean())
+    s = _map_stats(err, mask=mask, blob_sigma=ERR_WINDOW_SIGMA, norm=1.4)
     return {
-        "mean_err":     mean_err,
-        "mean_err_pct": 100.0 * mean_err / 1.4,
+        "mean_err":     s["mean"],
+        "mean_err_pct": s["mean_pct"],
+        "max_err":      s["max"],
+        "max_err_pct":  s["max_pct"],
     }

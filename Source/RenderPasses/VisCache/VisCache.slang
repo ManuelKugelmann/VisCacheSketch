@@ -27,10 +27,12 @@
  *     spaced between coarse and fine per dimension. Geometric (not linear)
  *     spacing gives each level roughly the same number of populated cells.
  *
- *   JITTER-BEFORE-QUANTIZE: Adding position-dependent jitter before
- *     floor() eliminates systematic aliasing at cell boundaries [Binder
- *     et al. 2018]. The jitter is derived from the cell index itself (not
- *     frame number), so the same position always maps to the same cell.
+ *   JITTER-BEFORE-QUANTIZE: Two stackable float knobs (jitterFilter,
+ *     jitterCell) add a per-position or per-cell random offset before
+ *     floor() to eliminate systematic aliasing at cell boundaries.
+ *     jitterFilter [asuint(pos)-seeded] softens boundaries (3D filter
+ *     kernel); jitterCell [baseIdx-seeded, Binder et al. 2018] shifts
+ *     each cell as a unit. Both default to 0.0 (off).
  *
  *   TWO INDEPENDENT HASH CHAINS: Address and fingerprint are computed from
  *     different hash seeds. The fingerprint detects collisions (different
@@ -57,11 +59,6 @@
 // unconditionally without #if guards; the Slang compiler eliminates
 // the empty module at compile time.
 #if USE_VISCACHE
-
-// Default jitter to ON — downstream passes set USE_VISCACHE_JITTER=0 for ablation F.
-#ifndef USE_VISCACHE_JITTER
-#define USE_VISCACHE_JITTER 1
-#endif
 
 // Addressing modes (compile-time, mutually exclusive):
 //   Default (neither set):       Canonical pos x pos — same cell size for both endpoints, lexicographic swap.
@@ -187,7 +184,7 @@ cbuffer VisCacheParams
     float  gPMin;            ///< Minimum RR survival probability
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
-    uint   gFlags;           ///< Packed flags: 0=jitterA 1=jitterB 2=adaptivePMin 3=normalAddr 4=footprintScale 5=warmupWriteOnly
+    uint   gFlags;           ///< Packed flags: 0=adaptivePMin 1=normalAddr
     // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
     float  gPosACoarse;      ///< posA coarsest cell size (world units, auto-tuned from scene)
     float  gPosAFine;        ///< posA finest cell size (auto-derived from coarse + numLevels)
@@ -199,6 +196,10 @@ cbuffer VisCacheParams
     float  gDistBFine;       ///< distance finest cell size (auto-derived)
     float  gNormalACoarse;   ///< normal coarsest cell size (degrees, like dirBCoarse)
     float  gNormalAFine;     ///< normal finest cell size (auto-derived)
+    float  gFootprintScale;  ///< K: footprint trust scale. 0 = off (pure bootThreshold),
+                             ///< 1 = log2(cellPixels) floor, >1 = aggressive.
+    float  gJitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
+    float  gJitterCell;      ///< F: per-cell-index-seed jitter scale [Binder 2018] (per-cell shift, hard boundaries). 0 = off.
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
     uint   gFrameCount;      ///< Current frame index for per-frame RNG variation
     uint   gSpp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
@@ -388,52 +389,45 @@ float3 vhfEncodeDirection(float3 dir)
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Jitter-before-quantize [Binder et al. 2018]:
+// Jitter-before-quantize — two stackable modes, each a float scale (0 = off):
 //
-// Naive round(pos / cellSize) creates systematic aliasing at cell boundaries:
-// two points epsilon apart can map to different cells. This causes visual
-// banding in shadows.
-//
-// Solution: add position-dependent random jitter (±0.5 cells) before
-// quantizing. Two jitter modes:
-//
-//   Default (raw-pos jitter): jitter derived from raw float position bits.
+//   jitterFilter (per-position seed, `asuint(pos) ^ seed`):
 //     Each position gets independent jitter → stochastic/soft cell boundaries.
 //     Neighboring positions near a boundary have a chance of landing in either
-//     cell, effectively low-pass filtering the grid assignment.
+//     cell, effectively acting as a 3D reconstruction kernel over the grid.
 //
-//   Ablation F2 (Binder-style): jitter derived from quantized cell index.
-//     All positions in the same cell get identical jitter → grid shifts
-//     uniformly → hard boundaries at new positions. [Binder et al. 2018]
-//     Set USE_VISCACHE_JITTER_BINDER=1 to select this mode.
+//   jitterCell [Binder et al. 2018] (per-cell-index seed, `baseIdx ^ seed`):
+//     All positions in the same cell get identical jitter → each cell redirects
+//     as a unit → boundaries stay hard but shift per cell.
 //
-// The seed parameter allows different jitter for posA vs posB (using
-// 0xAA vs 0xBB), preventing systematic correlation between endpoints.
-// The level index is XORed into the seed so different LOD levels get
-// independent jitter patterns.
+// Both scales are in units of "cells": 1.0 = standard ±0.5-cell offset at the
+// current level's cellSize (so multi-level caches auto-scale). >1 widens the
+// jitter range. When both non-zero, the offsets are summed.
+//
+// The seed parameter allows different jitter for posA vs posB (0xAA vs 0xBB),
+// preventing systematic correlation between endpoints. The level index is
+// XORed into the seed so different LOD levels get independent patterns.
 // ---------------------------------------------------------------------------
-#ifndef USE_VISCACHE_JITTER_BINDER
-#define USE_VISCACHE_JITTER_BINDER 0
-#endif
-
-int3 jitterQuantize(float3 pos, float cellSize, uint seed, bool enableJitter)
+int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 {
     int3 baseIdx = int3(round(pos / cellSize));
-#if USE_VISCACHE_JITTER
-    if (enableJitter)
+    if (gJitterFilter == 0.f && gJitterCell == 0.f)
+        return baseIdx;
+
+    float3 offset = float3(0.f);
+    if (gJitterFilter != 0.f)
     {
-#if USE_VISCACHE_JITTER_BINDER
-        // Ablation F2: Binder-style — jitter from quantized cell index.
-        uint3 r = pcg3d(uint3(baseIdx) ^ seed);
-#else
-        // Default: raw-pos jitter — jitter from position float bits.
         uint3 r = pcg3d(asuint(pos) ^ seed);
-#endif
-        float3 jitter = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
-        return int3(round((pos + jitter * cellSize) / cellSize));
+        float3 j = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
+        offset += j * gJitterFilter;
     }
-#endif
-    return baseIdx;
+    if (gJitterCell != 0.f)
+    {
+        uint3 r = pcg3d(uint3(baseIdx) ^ seed);
+        float3 j = float3(r & 0xFFFFu) / 65535.0f - 0.5f;
+        offset += j * gJitterCell;
+    }
+    return int3(round((pos + offset * cellSize) / cellSize));
 }
 
 // ===========================================================================
@@ -510,10 +504,7 @@ bool vhfCanonicalLess(int3 a, int3 b)
 void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
                      out int3 qa, out int3 qb, float3 normalA = float3(0.f))
 {
-    bool jitterA = (gFlags & kFlag_EnableJitterA) != 0;
-    bool jitterB = (gFlags & kFlag_EnableJitterB) != 0;
-
-    qa = jitterQuantize(posA, cellSizeA, 0xAAu ^ lvl, jitterA);
+    qa = jitterQuantize(posA, cellSizeA, 0xAAu ^ lvl);
 
     // Normal addressing: octahedral-encode normalA and fold into qa hash.
     // This splits cells by surface orientation — same position but different
@@ -543,7 +534,7 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
 #else
     // Pos×pos: quantize posB at its own cell size from the B cascade.
     float posBCell = vhfPosBSize(lvl);
-    qb = jitterQuantize(posB, posBCell, 0xBBu ^ lvl, jitterB);
+    qb = jitterQuantize(posB, posBCell, 0xBBu ^ lvl);
 
     // Canonicalization disabled — asymmetric endpoints (posB coarser, normal on A only).
     // if (kCanonicalize)
@@ -619,26 +610,32 @@ static const uint kMaxProbe        = 8u;      ///< Max probe steps before giving
 // Assumption: flags are fixed per run (set once at startup, never toggled at runtime).
 // Runtime toggling of flags that drive side-effects on insert/evict paths would
 // leak stale per-slot state until the next full cache turnover.
-static const uint kFlag_EnableJitterA         = 1u << 0;
-static const uint kFlag_EnableJitterB         = 1u << 1;
-static const uint kFlag_EnableAdaptivePMin    = 1u << 2;
-static const uint kFlag_EnableNormalAddr      = 1u << 3;
-static const uint kFlag_EnableFootprintScale  = 1u << 4;
-
+static const uint kFlag_EnableAdaptivePMin    = 1u << 0;
+static const uint kFlag_EnableNormalAddr      = 1u << 1;
+static const uint kFlag_EnableBootstrapBreak  = 1u << 2;
+static const uint kFlag_EnableParentPreinit   = 1u << 3;
 // ---------------------------------------------------------------------------
 // vhfBayerWarmup: returns true if this pixel is in write-only warmup mode
 // this frame. The caller should force trace + write (skip RR read) when true.
 //
 // Bayer slot index: (x mod N) + (y mod N) * N, range [0, N²).
-// Frame 0  → slot < gWarmupFirst
-// Frame >0 → slot < gWarmupRun
+// Frame 0  → (slot − 0)       mod N² < gWarmupFirst
+// Frame >0 → (slot − offset)  mod N² < gWarmupRun, offset = gFrameCount mod N²
+//
+// The frame-count offset rotates which slots are write-only each frame so
+// every Bayer slot eventually takes a turn being warmup. Without rotation
+// the same low-index slots would be permanently sacrificed for cache
+// population and never get to use their own gated result.
 // ---------------------------------------------------------------------------
 bool vhfBayerWarmup(uint2 pixel)
 {
     uint N = max(gSubframeN, 1u);
+    uint N2 = N * N;
     uint slot = (pixel.x % N) + (pixel.y % N) * N;
     uint activeSlots = (gFrameCount == 0u) ? gWarmupFirst : gWarmupRun;
-    return slot < activeSlots;
+    uint offset = gFrameCount % N2;
+    uint shifted = (slot + N2 - offset) % N2;
+    return shifted < activeSlots;
 }
 static const uint kEvictStartStep  = 3u;      ///< First probe step that may evict (lower = more aggressive eviction)
 static const uint kEvictBaseCount  = 8u;      ///< Min total_count to survive eviction at kEvictStartStep
@@ -753,41 +750,35 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         float mu  = float(vis) / float(total);
         float var = mu * (1.0f - mu);  // Bernoulli variance
 
-        // Always record entry data (even immature) so diagnostics can show it.
+        // Footprint-aware trust: gFootprintScale * log2(cellPixels) gives a
+        // conservative spatial diversity requirement that scales with cell
+        // size. Examples at scale=1: cellPx=4→2, 64→6, 1024→10, 6889→13.
+        // scale=0 collapses the floor to 0 → max(bootThreshold,0) = bootThreshold
+        // (old fpOff behaviour). scale=1 matches the prior fpOn formula.
+        // Larger scales put more pressure on big cells.
+        uint cellPx = vhfCellPixels(lvl, posA);
+        uint diversityReq = uint(gFootprintScale * log2(max(float(cellPx), 1.f)));
+        uint footprintReq = max(gBootThreshold, diversityReq);
+        uint required = uint(float(footprintReq) * (1.f + var * 4.f));
+
+        // Too sparse: don't trust this level, and finer levels will be sparser
+        // still — break and keep `best` from the last mature level (if any).
+        if (total < required) break;
+
+        // Mature: record and keep `best` at this level. Only overwrite on
+        // mature hits so we never pair a coarse valid mu with a finer
+        // immature one.
         best.mu    = mu;
         best.var   = var;
         best.level = lvl;
         best.N     = total;
         best.qa    = qa;
         best.qb    = qb;
+        best.valid = true;
 
-        // Footprint-aware trust: log2(cellPixels) gives a conservative
-        // spatial diversity requirement that scales gently with cell size.
-        // Examples: cellPx=4→2, cellPx=64→6, cellPx=1024→10, cellPx=6889→13
-        // Capped at 2*bootThreshold to stay achievable in few frames.
-        // Ablation K (kFlag_EnableFootprintScale): without it, falls back to
-        // pure bootThreshold gate — exposes distance-related maturity gradient.
-        uint footprintReq = gBootThreshold;
-        if (gFlags & kFlag_EnableFootprintScale)
-        {
-            // Scale trust threshold by spatial footprint: cells covering many
-            // screen pixels receive many parallel in-dispatch writes and would
-            // otherwise hit bootThreshold in one dispatch (tile-boundary
-            // artifact). No upper cap — large cells genuinely need more samples.
-            uint cellPx = vhfCellPixels(lvl, posA);
-            uint diversityReq = uint(log2(max(float(cellPx), 1.f)));
-            footprintReq = max(gBootThreshold, diversityReq);
-        }
-        uint required = uint(float(footprintReq) * (1.f + var * 4.f));
-        if (total >= required)
-            best.valid = true;
-
-        // Not yet trusted: try finer levels.
-        if (total < required) continue;
-
-        // Always descend — even zero-variance coarse cells may straddle
-        // sharp shadow boundaries where all initial samples came from one side.
-        // Only the finest available level is trustworthy.
+        // Converged at this level — finer cells would produce the same mu.
+        if (var <= gVarThreshold) break;
+        // Else: high variance (penumbra) — descend to refine.
     }
 
     return best;
@@ -971,7 +962,10 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         float contrib = contribLuminance * max(r.mu, 1.f - r.mu);
         pFloor = clamp(contrib / gFireflyBudget, pMinEff, 1.f);
     }
-    float p = clamp(r.var / gVarThreshold, pFloor, 1.f);
+    // Final RR probability clamped to [0.01, 1]. Lower bound prevents runaway
+    // invP when variance is near zero; upper bound accommodates pMin>=1 (force
+    // trace) — callers passing pMin=2 collapse to p=1 cleanly.
+    float p = clamp(r.var / gVarThreshold, max(pFloor, 0.01f), 1.f);
 
     // Pass through diagnostic fields from the lookup result.
     g.var         = r.var;
@@ -1161,6 +1155,18 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
 {
     uint visVal = (V > 0.5f) ? 1u : 0u;  // Binarize: 1 = visible, 0 = occluded
 
+    bool enableBootstrap = (gFlags & kFlag_EnableBootstrapBreak) != 0u;
+    bool enablePreinit   = (gFlags & kFlag_EnableParentPreinit) != 0u;
+
+    // Parent state propagated from the last level we actually wrote to.
+    // Used by parent-preinit (paper §5): when a finer level first claims an
+    // empty slot, seed it with 1/8 of the parent's counts so the child has
+    // a reasonable μ from frame one. Reset across mature-skip because we
+    // don't read the mature entry here (acceptable — post-warmup, children
+    // usually already exist and preinit wouldn't fire anyway).
+    uint parentVis   = 0u;
+    uint parentTotal = 0u;
+
     for (int lvl = 0; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfPosASize(lvl);
@@ -1175,7 +1181,14 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         // Never skip the finest level — always keep it populated for
         // maximum spatial resolution at shadow boundaries.
         bool isFinestLevel = (lvl == int(gNumLevels) - 1);
-        if (!isFinestLevel && vhfIsMature(addr, fp)) continue;
+        if (!isFinestLevel && vhfIsMature(addr, fp))
+        {
+            // Mature parent — cascade continues but preinit chain resets
+            // because we didn't fetch the parent's packed here.
+            parentVis   = 0u;
+            parentTotal = 0u;
+            continue;
+        }
 
         uint _ps;
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true, _ps);
@@ -1185,9 +1198,10 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         // Three outcomes:
         //   origFp == 0:  we won the race, slot is now ours
         //   origFp == fp: same cell pair, another thread got here first — OK
-        //   origFp != fp: different cell pair claimed this slot — skip
+        //   origFp != fp: different cell pair claimed this slot — evict
         uint origFp;
         InterlockedCompareExchange(gVHFTable[slot].fingerprint, 0u, fp, origFp);
+        bool claimedEmpty = (origFp == 0u);
         if (origFp != 0u && origFp != fp)
         {
             // Evict: overwrite fingerprint and zero packed data.
@@ -1196,6 +1210,26 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
             uint dummy;
             InterlockedExchange(gVHFTable[slot].fingerprint, fp, dummy);
             InterlockedExchange(gVHFTable[slot].packed, 0u, dummy);
+            claimedEmpty = true;  // fresh slot — preinit applies
+        }
+
+        // Parent-preinit (paper §5): seed a freshly-claimed child slot with
+        // parent's μ at reduced weight. Gives the child a useful starting
+        // estimate on its first sample rather than starting from zero.
+        // Race class identical to the evict path above (a concurrent thread
+        // could InterlockedAdd between our CAS and the Exchange below; same
+        // collision rate as the existing ABA race, negligible with warp
+        // reduction per paper §5).
+        if (claimedEmpty && enablePreinit && parentTotal > 0u)
+        {
+            uint seedVis   = parentVis   >> 3;
+            uint seedTotal = parentTotal >> 3;
+            if (seedTotal > 0u)
+            {
+                uint seedPacked = (seedVis << 16u) | seedTotal;
+                uint dummy;
+                InterlockedExchange(gVHFTable[slot].packed, seedPacked, dummy);
+            }
         }
 
         // Atomically increment both vis_count (if visible) and total_count.
@@ -1206,14 +1240,23 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
 
         // Inline overflow decay: prevent 16-bit counter wrap-around.
         uint cur = vhfOverflowDecay(slot, prev + delta);
+        uint totalCur = cur & 0xFFFFu;
+        uint visCur   = cur >> 16u;
 
-        // Gate 2: cascaded variance gate — if this level is now smooth,
+        // Track parent state for next iteration's preinit.
+        parentVis   = visCur;
+        parentTotal = totalCur;
+
+        // Gate 2a: Bootstrap break (paper §5) — if this level is still too
+        // sparse to guide children, stop. Writing to finer (sparser) levels
+        // now would just scatter noise that can't converge before its parent.
+        if (enableBootstrap && totalCur < gBootThreshold) break;
+
+        // Gate 2b: cascaded variance gate — if this level is now smooth,
         // stop descending. Finer levels in a converged region would produce
         // the same mu, so writing to them wastes table capacity.
-        uint totalCur = cur & 0xFFFFu;
         if (totalCur >= gMatureThreshold)
         {
-            uint visCur  = cur >> 16u;
             float muCur  = float(visCur) / float(totalCur);
             float varCur = muCur * (1.0f - muCur);
             if (varCur <= gVarThreshold)
@@ -1244,6 +1287,12 @@ float vhfCommit(float3 posA, float3 posB, float V, VHFGateResult g,
                 float3 normalA = float3(0.f))
 {
     vhfInsert(posA, posB, V, normalA);
+    // When invP == 1 (always-trace: pMin>=1, or immature-entry fallback, or
+    // variance at ceiling) the CV+RRR formula algebraically collapses to V.
+    // Short-circuit to avoid `mu + (V - mu) * 1` float drift that leaves tiny
+    // per-pixel residuals even when nothing needs estimation. Makes the
+    // always-trace mode bitwise-equal to vanilla.
+    if (g.invP == 1.f) return V;
     return g.mu + (V - g.mu) * g.invP;
 }
 
