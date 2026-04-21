@@ -15,15 +15,15 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
-    finalize_step, make_norm_variants, \
+    finalize_step, make_norm_variants, MULTI_LEVEL_SCENES, \
     PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP, SUBFRAME_2x2
 
 STEP = "14"
 res = int(os.environ.get("RES", "512"))
 
 THRESHOLDS = {
-    "th_mid":  {"bootThreshold":  4, "matureThreshold": 128},
-    "th_high": {"bootThreshold": 16, "matureThreshold": 128},
+    "th4":  {"bootThreshold":  4, "matureThreshold": 128},
+    "th16": {"bootThreshold": 16, "matureThreshold": 128},
 }
 
 FOOTPRINTS = {
@@ -32,9 +32,9 @@ FOOTPRINTS = {
     "fp05":  {"footprintScale": 0.5},
 }
 
-QUANTS = ["qmid", "qcoarse"]
+QUANTS = ["qa012", "qa036"]
 
-WINNER_11 = "pos_norm__pos__qmid"
+WINNER_11 = "pos_norm__pos__qa012"
 
 VARIANTS_14 = []
 for q_tag in QUANTS:
@@ -51,7 +51,7 @@ for q_tag in QUANTS:
 STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
                   "tableCapacity": 1 << 25}
 
-for scene_file in get_scenes():
+for scene_file in get_scenes(default=MULTI_LEVEL_SCENES):
     run_baseline(
         step_name="00",
         frame_configs=[(0, 0, 1)],

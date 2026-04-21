@@ -111,6 +111,10 @@ public:
         uint32_t diagAccumWindow = 128u;        ///< EMA window for accumulated diagnostics (0 = all frames)
         uint32_t spp             = 1u;          ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
         bool     autoTuneCells   = true;        ///< Auto-derive posACoarse from scene bounds
+        bool     quantSceneScale = false;       ///< Interpret posA/posB/distB as fractions of scene BB
+                                                ///< (Cornell-calibrated reference: avgAxis=2 units).
+                                                ///< Opt-in via Python ladder PRESET. Only applied when
+                                                ///< autoTuneCells=False; autoTune already scales.
 
         // --- Decay (host-only, not uploaded to GPU params cbuffer) ---
         uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=disabled)

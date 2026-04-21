@@ -69,8 +69,8 @@ void csTestInsert(uint3 tid : SV_DispatchThreadID)
     int3 qa, qb;
     getTestPair(pixel, qa, qb);
 
-    uint fp   = vhfFingerprint(qa, qb, 0u);
-    uint addr = vhfAddr(qa, qb, 0u);
+    uint fp   = vhfFingerprint(qa, qb, 0u, 0u, 0u);
+    uint addr = vhfAddr(qa, qb, 0u, 0u, 0u);
 
     uint _ps;
     int slot = vhfFindSlot(addr, fp, /*allowInsert=*/true, _ps);
@@ -99,8 +99,8 @@ void csTestVerify(uint3 tid : SV_DispatchThreadID)
     int3 qa, qb;
     getTestPair(pixel, qa, qb);
 
-    uint fp   = vhfFingerprint(qa, qb, 0u);
-    uint addr = vhfAddr(qa, qb, 0u);
+    uint fp   = vhfFingerprint(qa, qb, 0u, 0u, 0u);
+    uint addr = vhfAddr(qa, qb, 0u, 0u, 0u);
 
     uint probeSteps;
     int slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, probeSteps);
@@ -145,8 +145,8 @@ void csTestInsertAndVerify(uint3 tid : SV_DispatchThreadID)
     int3 qa, qb;
     getTestPair(pixel, qa, qb);
 
-    uint fp   = vhfFingerprint(qa, qb, 0u);
-    uint addr = vhfAddr(qa, qb, 0u);
+    uint fp   = vhfFingerprint(qa, qb, 0u, 0u, 0u);
+    uint addr = vhfAddr(qa, qb, 0u, 0u, 0u);
 
     // Insert
     uint _ps;

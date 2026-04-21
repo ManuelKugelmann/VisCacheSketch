@@ -20,7 +20,7 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, _make_variants, get_scenes, \
-    finalize_step, PRESET_MINIMAL, RR_ADAPTIVE, FOOTPRINT_OFF, \
+    finalize_step, PRESET_MINIMAL, RR_ADAPTIVE, \
     SUBFRAME_1x1, SUBFRAME_2x2, SUBFRAME_4x4
 
 STEP = "01"
@@ -35,11 +35,11 @@ QUANT_01 = {"posA": 0.12, "normalA": 60.0, "posB": 0.36, "dirB": 8.0, "distB": 0
 # Pull just the first variant (pos_norm__pos1).
 BASE = _make_variants(quant=QUANT_01, base=PRESET_MINIMAL)[:1]
 
-# Stock RR_ADAPTIVE + FOOTPRINT_OFF — lets RR actually bite so the subframe
-# mitigation effect is visible. The subval variants below isolate the
-# 100%-trace plumbing baseline, so main doesn't need inflated thresholds
-# to avoid cold-start blob outliers.
-STEP_OVERRIDES = {**RR_ADAPTIVE, **FOOTPRINT_OFF}
+# Stock RR_ADAPTIVE — lets RR actually bite so the subframe mitigation
+# effect is visible. The subval variants below isolate the 100%-trace
+# plumbing baseline, so main doesn't need inflated thresholds to avoid
+# cold-start blob outliers. footprintScale=0 inherited from PRESET_MINIMAL.
+STEP_OVERRIDES = {**RR_ADAPTIVE}
 
 # Sweep (subframe, (warmupFirst, warmupRun, frames, spp)).
 # frames=1 means "one logical frame" = one full Bayer cycle (N² rendered subframes).

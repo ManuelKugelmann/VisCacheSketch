@@ -170,7 +170,13 @@ check "${VISCACHE_DIR}/VisCacheDecay.cs.slang" \
 VC_DFLAGS=$(echo "$DFLAGS" | sed 's/-DUSE_VISCACHE=[0-9]*//')
 VC_COMMON="-target dxil ${CODEGEN} ${COMPILER_FLAGS} ${WARN_FLAGS} ${SEARCH_PATHS} ${PLATFORM_DEFS} ${VC_DFLAGS} -DUSE_VISCACHE=1"
 
-check "${VISCACHE_DIR}/VisCacheTracing.slang" \
+check "${VISCACHE_DIR}/VisCachePathTracer.slang" \
+  ${VC_COMMON} "${VC_STUBS}"
+
+check "${VISCACHE_DIR}/VisCacheMinimalPT.slang" \
+  ${VC_COMMON} "${VC_STUBS}"
+
+check "${VISCACHE_DIR}/VisCacheRTXDI.slang" \
   ${VC_COMMON} "${VC_STUBS}"
 
 check "${VISCACHE_DIR}/ShadingCV.slang" \

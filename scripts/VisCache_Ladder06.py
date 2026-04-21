@@ -1,10 +1,19 @@
 """
-VisCache_Ladder06.py — Step 06: Footprint-ON threshold × scale sweep.
+VisCache_Ladder06.py — Step 06: varThreshold sweep at the step-05 winner.
 
-3 threshold presets × 3 footprintScale values (0.5, 1.0, 2.0) = 9 variants.
-Widens the step-05 sweep in two axes simultaneously: thresholds span 8×
-stepping (th_low / th_mid / th_high) and scale brackets the default 1.0 with
-±2× to expose sensitivity. Step 07 then sweeps only scale at the winner.
+Sweeps the RR variance gate — when cell variance drops below varThreshold
+the RR decision trusts the cached μ; above it, the ray keeps tracing.
+Raising varThreshold loosens that trust gate → more RR skips in high-
+variance regions (especially shadow penumbrae on hard-light scenes, where
+cells stay variance-heavy and the default 0.10 effectively forces full
+tracing near edges).
+
+Sweep values: {0.10, 0.20, 0.40} — 2× stepping at and above the default
+0.10. Tag encodes the value ×100 zero-padded: vt010, vt020, vt040.
+
+Step-05 winner baked in: pos_norm__pos + qA024_qB036 + th2.
+
+  3 varThresh × 2 SPP = 6 runs/scene
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder06.py
@@ -12,43 +21,39 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
-    finalize_step, make_norm_variants, \
-    PRESET_MINIMAL, RR_ADAPTIVE, QUANT_SWEEP, SUBFRAME_2x2
+    finalize_step, write_picks_meta, pick_top_variants_per_bvariant, \
+    _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
 
 STEP = "06"
 res = int(os.environ.get("RES", "512"))
 
-# Boot threshold is the primary knob; sweep boot, keep mature fixed.
-# Aligned with step 05's THRESH_SCALE so the fp0 column of step 06 is
-# directly comparable to step 05's fpOff sweep — same boot/mature values,
-# only the footprint axis differs across steps.
-THRESH_SCALE = {
-    "th_low":  {"bootThreshold":  2, "matureThreshold": 128},
-    "th_mid":  {"bootThreshold":  4, "matureThreshold": 128},
-    "th_high": {"bootThreshold": 16, "matureThreshold": 128},
+WINNER_QUANT_TAG = "qA024_qB036"
+WINNER_QUANT = {"posACoarse": 0.24, "posBCoarse": 0.36}
+WINNER_THRESH_TAG = "th2"
+WINNER_THRESH = {"bootThreshold": 2, "matureThreshold": 128}
+NORMAL_A = 60.0
+
+WINNER_NAME = f"pos_norm__pos__{WINNER_QUANT_TAG}__{WINNER_THRESH_TAG}"
+WINNER_BASE = {
+    **PRESET_MINIMAL,
+    "enableVisCacheDirDistAddr": False,
+    "enableVisCacheNormalAddr": True,
+    "normalACoarse": NORMAL_A,
+    **WINNER_QUANT,
+    **WINNER_THRESH,
 }
 
-# footprintScale axis: 0 (off) / 0.5 / 1.0. Hue in the plot is shared by
-# threshold (th_low/mid/high each a single color); fill alpha ramps with
-# the scale value (fp0 hollow → fp1 solid).
-FOOTPRINT_SCALES = {
-    "fp0":  {"footprintScale": 0.0},
-    "fp05": {"footprintScale": 0.5},
-    "fp1":  {"footprintScale": 1.0},
-}
+VAR_THRESH_VALUES = [0.10, 0.20, 0.40]
 
-QUANT_WINNER_TAG, QUANT_WINNER = "qmid", QUANT_SWEEP["qmid"]
-WINNER_05 = f"pos_norm__pos__{QUANT_WINNER_TAG}"
-BASE_06 = [v for v in make_norm_variants(quant=QUANT_WINNER, base=PRESET_MINIMAL,
-                                           quant_tag=QUANT_WINNER_TAG)
-           if v[0] == WINNER_05]
+def _vt_tag(v): return f"vt{int(round(v * 100)):03d}"
 
-VARIANTS_06 = []
-for q_tag, q_params in THRESH_SCALE.items():
-    for s_tag, s_params in FOOTPRINT_SCALES.items():
-        for (name, overrides) in BASE_06:
-            VARIANTS_06.append((f"{name}__{q_tag}_{s_tag}",
-                                {**overrides, **q_params, **s_params}))
+VARIANTS_06 = [
+    (f"{WINNER_NAME}__{_vt_tag(vt)}",
+     {**WINNER_BASE, "varThreshold": vt})
+    for vt in VAR_THRESH_VALUES
+]
+
+STEP_OVERRIDES = {**RR_ADAPTIVE, **SUBFRAME_2x2}
 
 for scene_file in get_scenes():
     run_baseline(
@@ -67,8 +72,15 @@ for scene_file in get_scenes():
         variants=VARIANTS_06,
         resX=res, resY=res,
         mogwai_globals=globals(),
-        step_overrides={**RR_ADAPTIVE, **SUBFRAME_2x2},
+        step_overrides=STEP_OVERRIDES,
     )
 
-finalize_step(STEP, prev_winner=WINNER_05)
+finalize_step(STEP, inherited_winners=[WINNER_NAME])
+_carried_06 = pick_top_variants_per_bvariant(STEP, n_top=1, spp=1)
+write_picks_meta(STEP, inherited_from="05", inherited=[WINNER_NAME],
+                  carried=_carried_06, rule=_DEFAULT_PICKER_RULE,
+                  notes="varThreshold sweep — how much variance can a cell "
+                        "carry and still be trusted via RR? Target: reduce "
+                        "rays in 1-point-light shadow penumbra without "
+                        "degrading err/blob above median+25%.")
 _HEADLESS_SCRIPT_DONE = True

@@ -60,26 +60,74 @@ def _normalize_scene(s):
     return f"{s}.pyscene"
 
 
-def _run_one(scene, step):
-    """One Mogwai process for one (scene, step) combo. Maximum isolation:
-    avoids both Slang compiler fatigue (accumulated shader permutations) and
-    memory accumulation across step scripts.
-    """
+# Per-step chunk count: steps with large variant sets are dispatched as
+# CHUNK_COUNT Mogwai processes via CHUNK_IDX env, so one step's workload can
+# stay under the per-process OOM ceiling while keeping one logical step name
+# (one CSV, one capture dir, one plot). Steps not listed here run as a single
+# Mogwai process.
+CHUNKS_PER_STEP = {
+    # Empirical safe ceiling: ~24 runs per Mogwai process (step 04 at 3
+    # chunks = 9 variants × 3 SPP = 27 runs/chunk has been stable; the
+    # 4-chunk step 03 version at 48 runs/chunk crashed every chunk).
+    # Sized so a default run completes without triggering retry.
+    "VisCache_Ladder03.py": 8,  # 96 variants × 2 SPP = 192 runs/scene → 8 × 24
+    "VisCache_Ladder04.py": 3,  # 9 variants × 3 SPP = 27 runs/scene  → 3 × 9
+}
+
+
+def _run_one(scene, step, chunk_idx=0, chunk_count=1, attempt_tag=""):
+    """One Mogwai process for one (scene, step, chunk) combo."""
     env = os.environ.copy()
     env["PROJECT_ROOT"]  = PROJECT_ROOT
     env["GRAPH_SCRIPT"]  = BATCH_PY
     env["LADDER_STEPS"]  = step
     env["LADDER_SCENES"] = scene
+    env["CHUNK_IDX"]     = str(chunk_idx)
+    env["CHUNK_COUNT"]   = str(chunk_count)
     cmd = [MOGWAI_EXE, "--headless", "--script", HARNESS_PY]
-    print(f"\n### [{time.strftime('%H:%M:%S')}] scene={scene} step={step} ###",
+    chunk_tag = f" chunk={chunk_idx+1}/{chunk_count}" if chunk_count > 1 else ""
+    print(f"\n### [{time.strftime('%H:%M:%S')}] scene={scene} step={step}{chunk_tag}{attempt_tag} ###",
           flush=True)
     t0 = time.time()
     rc = subprocess.call(cmd, env=env, cwd=RUNTIME_DIR)
     dt = time.time() - t0
     status = "OK" if rc == 0 else f"FAIL (rc={rc})"
-    print(f"### [{time.strftime('%H:%M:%S')}] scene={scene} step={step} {status} ({dt:.0f}s) ###",
+    print(f"### [{time.strftime('%H:%M:%S')}] scene={scene} step={step}{chunk_tag}{attempt_tag} {status} ({dt:.0f}s) ###",
           flush=True)
     return rc == 0
+
+
+def _run_one_with_retry(scene, step, chunk_idx=0, chunk_count=1, max_retries=5):
+    """Run (scene, step, chunk), retrying on non-zero exit (likely OOM). Each
+    retry is a fresh Mogwai process; resume in run_variants skips variants that
+    already have CSV rows, so retries only work on what's left. Stops if a
+    retry makes no progress (same failure without advancing)."""
+    step_num = step.replace("VisCache_Ladder", "").replace(".py", "")
+    csv_path = os.path.join(RUNTIME_DIR, "captures", "ladder", step_num, "stats.csv")
+
+    def _csv_size():
+        try: return os.path.getsize(csv_path)
+        except OSError: return 0
+
+    for attempt in range(1, max_retries + 1):
+        tag = f" (try {attempt}/{max_retries})" if attempt > 1 else ""
+        before = _csv_size()
+        if _run_one(scene, step, chunk_idx, chunk_count, attempt_tag=tag):
+            return True
+        after = _csv_size()
+        if after <= before:
+            print(f"### scene={scene} step={step} — no progress on retry {attempt}, giving up", flush=True)
+            return False
+    return False
+
+
+def _run_scene_step(scene, step):
+    """Dispatch all chunks for (scene, step). Returns True if every chunk OK."""
+    n_chunks = CHUNKS_PER_STEP.get(step, 1)
+    for chunk_idx in range(n_chunks):
+        if not _run_one_with_retry(scene, step, chunk_idx, n_chunks):
+            return False
+    return True
 
 
 def main():
@@ -111,9 +159,9 @@ def main():
         print(f"[run_ladder]   step:  {s}")
 
     passed, failed = 0, []
-    for scene in scenes:
-        for step in steps:
-            if _run_one(scene, step):
+    for step in steps:
+        for scene in scenes:
+            if _run_scene_step(scene, step):
                 passed += 1
             else:
                 failed.append((scene, step))

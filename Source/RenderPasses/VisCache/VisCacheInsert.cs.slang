@@ -63,8 +63,8 @@ void csInsert(uint3 tid : SV_DispatchThreadID)
         int3 qa, qb;
         vhfQuantizePair(ins.posA, ins.posB, cs, uint(lvl), qa, qb);
 
-        uint fp   = vhfFingerprint(qa, qb, uint(lvl));
-        uint addr = vhfAddr(qa, qb, uint(lvl));
+        uint fp   = vhfFingerprint(qa, qb, uint(lvl), uint(lvl), uint(lvl));
+        uint addr = vhfAddr(qa, qb, uint(lvl), uint(lvl), uint(lvl));
 
         // Maturity gate: skip entries that already have enough samples.
         // Never skip the finest level — always keep it populated for

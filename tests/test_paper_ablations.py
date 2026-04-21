@@ -15,6 +15,9 @@ No GPU required — validates ablation study design before image tests.
 
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 # ============================================================================
 # Tests
 # ============================================================================

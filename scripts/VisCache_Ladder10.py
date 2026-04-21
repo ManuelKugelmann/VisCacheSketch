@@ -1,14 +1,17 @@
 """
-VisCache_Ladder10.py — Step 10: Level-count sweep (cascade depth).
+VisCache_Ladder10.py — Step 10: quant × threshold sweep, MULTI-LEVEL.
 
-Entry point into the multi-level ladder. Holds everything from step 07's
-single-level winner fixed (qmid, pos B-side, th_mid boot=16/mature=256,
-footprint ON) and sweeps `numLevels` at {4, 6, 8, 16}. Picks the cascade
-depth carried forward into the threshold × footprint sweep (step 11) and
-2×2×3 head-to-head (step 14).
+Multi-level mirror of step 05 (single-level quant × threshold). Uses the
+same defaults as step 11 (autoTuneCells=True, LEVELS_MULTI) so the sweeps
+are directly comparable. Footprint off (step-11 winner), no jitter.
 
-Auto-tuned cell sizes (autoTuneCells=True) adapt per level, so the sweep
-exposes "how deep does the cascade need to be before diminishing returns".
+  3 quants × 3 thresholds = 9 variants × 2 SPP = 18 runs/scene
+
+Quant axis = step-03 sweep (qa006 / qa012 / qa036). Threshold axis matches
+step 05 and step 11 (th2 / th4 / th16, actual bootThreshold values).
+
+Red-star reference = step-05 single-level best (`qA024_qB036__th2`) for
+visual comparison of the multi-level gain on the same plot.
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder10.py
@@ -17,37 +20,34 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, make_norm_variants, \
-    PRESET_MINIMAL, RR_ADAPTIVE, QUANT_SWEEP, FOOTPRINT_ON, SUBFRAME_2x2
+    PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP, SUBFRAME_2x2
 
 STEP = "10"
 res = int(os.environ.get("RES", "512"))
 
-# Level-count sweep (tag = Ln). autoTuneCells=True lets the cascade adapt
-# finest/coarsest cell sizes to scene bounds regardless of depth.
-LEVEL_COUNTS = {
-    "L4":  {"numLevels":  4, "autoTuneCells": True},
-    "L6":  {"numLevels":  6, "autoTuneCells": True},
-    "L8":  {"numLevels":  8, "autoTuneCells": True},
-    "L16": {"numLevels": 16, "autoTuneCells": True},
+THRESH_SWEEP = {
+    "th2":  {"bootThreshold":  2, "matureThreshold": 128},
+    "th4":  {"bootThreshold":  4, "matureThreshold": 128},
+    "th16": {"bootThreshold": 16, "matureThreshold": 128},
 }
 
-# Fixed central threshold aligned with step 05/06 th_mid (boot=4, mature=128).
-TH_MID = {"bootThreshold": 4, "matureThreshold": 128}
+FP_OFF = {"footprintScale": 0.0}
+NO_JITTER = {"jitterFilter": 0.0, "jitterCell": 0.0}
 
-QUANT_WINNER_TAG, QUANT_WINNER = "qmid", QUANT_SWEEP["qmid"]
-WINNER_07 = f"pos_norm__pos__{QUANT_WINNER_TAG}"
-BASE_10 = [v for v in make_norm_variants(quant=QUANT_WINNER, base=PRESET_MINIMAL,
-                                           quant_tag=QUANT_WINNER_TAG)
-           if v[0] == WINNER_07]
+QUANT_TAGS = ["qa006", "qa012", "qa036"]
 
 VARIANTS_10 = []
-for l_tag, l_params in LEVEL_COUNTS.items():
-    for (name, overrides) in BASE_10:
-        VARIANTS_10.append((f"{name}__{l_tag}",
-                            {**overrides, **l_params, **TH_MID, **FOOTPRINT_ON}))
+for q_tag in QUANT_TAGS:
+    base = [v for v in make_norm_variants(quant=QUANT_SWEEP[q_tag],
+                                           base=PRESET_MINIMAL,
+                                           quant_tag=q_tag)
+            if v[0] == f"pos_norm__pos__{q_tag}"]
+    for (name, overrides) in base:
+        for t_tag, t_params in THRESH_SWEEP.items():
+            VARIANTS_10.append((f"{name}__{t_tag}",
+                                {**overrides, **t_params, **FP_OFF, **NO_JITTER}))
 
-# Cascade needs more slots at deep counts — 32M entries (8× default).
-STEP_OVERRIDES = {**RR_ADAPTIVE, **SUBFRAME_2x2,
+STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
                   "tableCapacity": 1 << 25}
 
 for scene_file in get_scenes():
@@ -70,5 +70,8 @@ for scene_file in get_scenes():
         step_overrides=STEP_OVERRIDES,
     )
 
-finalize_step(STEP, prev_winner=WINNER_07)
+finalize_step(STEP, prev_winner="pos_norm__pos__qA024_qB036__th2",
+              ref_step="05",
+              ref_variant="pos_norm__pos__qA024_qB036__th2",
+              ref_label="single-level best (step 05)")
 _HEADLESS_SCRIPT_DONE = True

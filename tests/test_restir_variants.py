@@ -19,6 +19,9 @@ import random
 import math
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 # ============================================================================
 # Python mirror of evalLocalRevalidation (SpatialReuse.cs.slang)
 # ============================================================================

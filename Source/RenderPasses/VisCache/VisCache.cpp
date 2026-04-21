@@ -62,6 +62,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
     if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
+    if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
 
     // VisCache feature + ablation toggles
@@ -111,6 +112,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
     if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
+    if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
 
     if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
@@ -154,6 +156,7 @@ Properties VisCache::getProperties() const
     p["diagAccumWindow"] = mParams.diagAccumWindow;
     p["spp"]           = mParams.spp;
     p["autoTuneCells"] = mParams.autoTuneCells;
+    p["quantSceneScale"] = mParams.quantSceneScale;
     p["decayPeriod"]   = mParams.decayPeriod;
 
     // VisCache feature + ablation toggles
@@ -326,6 +329,26 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     if (mParams.normalACoarse  <= 0.f) mParams.normalACoarse  = 60.0f;
     if (mParams.pMin           <= 0.f) mParams.pMin           = 0.01f;
 
+    // Scene-scale mode: treat user-supplied posA/posB/distB values as fractions
+    // of a Cornell-box reference (average axis = 2 units). On Cornell, scale=1
+    // so sizes are identical to the old absolute interpretation. On larger
+    // scenes (Bistro, Sponza) cells grow proportionally so cell-count stays in
+    // the same ballpark. Average axis (not longest) so a tall-thin scene like
+    // a narrow hallway doesn't inflate cells beyond what its bulk dimension
+    // warrants. Angular (dirB) and normal cells are unitless — never scaled.
+    // autoTuneCells produces already-scaled values and overrides this.
+    static constexpr float kCornellRefAxis = 2.0f;
+    float sceneScale = 1.f;
+    if (mParams.quantSceneScale && !mParams.autoTuneCells && mpScene)
+    {
+        float3 ext = mpScene->getSceneBounds().extent();
+        float avgAxis = (ext.x + ext.y + ext.z) * (1.f / 3.f);
+        if (avgAxis > 0.f) sceneScale = avgAxis / kCornellRefAxis;
+    }
+    const float posACoarseScaled = mParams.posACoarse  * sceneScale;
+    const float posBCoarseScaled = mParams.posBCoarse  * sceneScale;
+    const float distBCoarseScaled = mParams.distBCoarse * sceneScale;
+
     // Derive fine values from coarse + numLevels
     static constexpr float kMaxRatio = 4.f;
     auto deriveFine = [&](float coarse, uint32_t N) -> float {
@@ -347,14 +370,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.footprintScale = mParams.footprintScale;
     gpu.jitterFilter   = mParams.jitterFilter;
     gpu.jitterCell     = mParams.jitterCell;
-    gpu.posACoarse    = mParams.posACoarse;
-    gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posACoarse, mParams.numLevels) : mParams.posACoarse;
-    gpu.posBCoarse    = mParams.posBCoarse;
-    gpu.posBFine      = (mParams.numLevels > 1) ? deriveFine(mParams.posBCoarse, mParams.numLevels) : mParams.posBCoarse;
+    gpu.posACoarse    = posACoarseScaled;
+    gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(posACoarseScaled, mParams.numLevels) : posACoarseScaled;
+    gpu.posBCoarse    = posBCoarseScaled;
+    gpu.posBFine      = (mParams.numLevels > 1) ? deriveFine(posBCoarseScaled, mParams.numLevels) : posBCoarseScaled;
     gpu.dirBCoarse = mParams.dirBCoarse;
     gpu.dirBFine   = (mParams.numLevels > 1) ? deriveFine(mParams.dirBCoarse, mParams.numLevels) : mParams.dirBCoarse;
-    gpu.distBCoarse    = mParams.distBCoarse;
-    gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(mParams.distBCoarse, mParams.numLevels) : mParams.distBCoarse;
+    gpu.distBCoarse    = distBCoarseScaled;
+    gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(distBCoarseScaled, mParams.numLevels) : distBCoarseScaled;
     gpu.normalACoarse  = mParams.normalACoarse;
     gpu.normalAFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalACoarse, mParams.numLevels) : mParams.normalACoarse;
     gpu.diagAccumWindow = mParams.diagAccumWindow;
@@ -393,6 +416,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     {
         logInfo("[VisCache] tableCapacity={} bootThreshold={} matureThreshold={} varThreshold={:.3f} pMin={:.3f} fireflyBudget={:.3f}",
                 mParams.tableCapacity, mParams.bootThreshold, mParams.matureThreshold, mParams.varThreshold, mParams.pMin, mParams.fireflyBudget);
+        if (mParams.quantSceneScale && !mParams.autoTuneCells)
+            logInfo("[VisCache] quantSceneScale={:.3f} (Cornell ref = avgAxis/2)", sceneScale);
         logInfo("[VisCache] posA: coarse={:.4f} fine={:.4f}", gpu.posACoarse, gpu.posAFine);
         logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
         logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");

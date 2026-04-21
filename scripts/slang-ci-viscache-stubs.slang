@@ -1,6 +1,7 @@
 // slang-ci-viscache-stubs.slang — Consumer-provided stubs for VisCache CI.
 //
-// VisCache shaders (ShadingCV.slang, RevalidationCommon.slang, VisCacheTracing.slang)
+// VisCache shaders (ShadingCV.slang, RevalidationCommon.slang,
+// VisCachePathTracer.slang, VisCacheMinimalPT.slang, VisCacheRTXDI.slang)
 // are library modules consumed by the host render pass.  The host provides
 // ShadingData, evalBRDF(), traceShadowRay(), etc.  For offline CI compilation
 // we provide lightweight stubs here.

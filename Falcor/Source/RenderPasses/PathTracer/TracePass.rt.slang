@@ -40,6 +40,12 @@ import Utils.NVAPI; // TODO(@skallweit) this is currently needed to make g_Nvidi
 
 import RenderPasses.VisCache.VisCachePathTracer;
 
+// Preprocessor defines don't cross Slang import boundaries — re-guard here
+// to keep the macro visible after Params.slang is imported transitively.
+#ifndef VISCACHE_SUBFRAME_N
+#define VISCACHE_SUBFRAME_N 1
+#endif
+
 ParameterBlock<PathTracer> gPathTracer;
 #if USE_SER
 ReorderingScheduler gScheduler;
