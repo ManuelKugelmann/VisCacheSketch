@@ -73,6 +73,7 @@ CHUNKS_PER_STEP = {
     "VisCache_Ladder03.py": 8,  # 96 variants × 2 SPP = 192 runs/scene → 8 × 24
     "VisCache_Ladder04.py": 3,  # 9 variants × 3 SPP = 27 runs/scene  → 3 × 9
     "VisCache_Ladder11.py": 4,  # 48 variants × 2 SPP = 96 runs/scene → 4 × 24
+    "VisCache_Ladder12.py": 2,  # 10 variants × 4 fc = 40 runs/scene; Bistro OOMs at 40 → 2 × 20
     "VisCache_Ladder15.py": 2,  # 16 variants × 3 SPP = 48 runs/scene → 2 × 24
 }
 

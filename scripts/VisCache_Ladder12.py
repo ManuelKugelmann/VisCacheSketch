@@ -40,6 +40,13 @@ from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
 STEP = "12"
 res = int(os.environ.get("RES", "512"))
 
+# 10 variants × 4 frame_configs (warmup × SPP) = 40 runs/scene fits Cornell
+# under the GPU memory ceiling, but Bistro-sized scenes run out after ~20.
+# run_ladder.py dispatches CHUNKS_PER_STEP["VisCache_Ladder12.py"] Mogwai
+# processes per (step, scene); 2 chunks keeps each process at ~20 runs.
+CHUNK_IDX   = int(os.environ.get("CHUNK_IDX",   "0"))
+CHUNK_COUNT = int(os.environ.get("CHUNK_COUNT", "1"))
+
 INHERITED_NAME = read_carried_winner("11")
 if INHERITED_NAME is None:
     raise RuntimeError("[12] step 11 picks.json missing — run step 11 first.")
@@ -78,12 +85,12 @@ def _vt_tag(v):
 
 _VT_TAG = _vt_tag(VT_VAL)
 
-VARIANTS_12 = []
+VARIANTS_ALL = []
 for (name, base_overrides) in BASE_12:
     for ct_tag, ct_val in CT_SWEEP.items():
         for fd_tag, fd_val in FD_SWEEP.items():
             tag = f"{ct_tag}_{_VT_TAG}_fp0_{fd_tag}"
-            VARIANTS_12.append((f"{name}__{tag}", {
+            VARIANTS_ALL.append((f"{name}__{tag}", {
                 **base_overrides,
                 **NO_JITTER,
                 "bootThreshold":   ct_val,
@@ -92,6 +99,17 @@ for (name, base_overrides) in BASE_12:
                 "bootThresholdFactorFootprintPx":  FP_VAL,
                 "forceDescendFootprintPx": fd_val,
             }))
+
+# Contiguous chunking — each Mogwai process handles a slice so per-process
+# GPU memory stays under the ceiling (Bistro-sized scenes hit it at 40 runs
+# without chunking).
+_n = len(VARIANTS_ALL)
+_chunk_size = (_n + CHUNK_COUNT - 1) // CHUNK_COUNT
+_start = CHUNK_IDX * _chunk_size
+_end   = min(_start + _chunk_size, _n)
+VARIANTS_12 = VARIANTS_ALL[_start:_end]
+print(f"[12] chunk {CHUNK_IDX+1}/{CHUNK_COUNT}: variants [{_start}:{_end}] "
+      f"({len(VARIANTS_12)} of {_n})")
 
 STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
                   "tableCapacity": 1 << 25}
@@ -121,15 +139,26 @@ for scene_file in get_scenes():
         step_overrides=STEP_OVERRIDES,
     )
 
-# Carry deferred — the rays / 1PL-blob tradeoff is a judgment call; set
-# carry post-inspection via a manual write_picks_meta override.
-finalize_step(STEP, inherited_winners=[INHERITED_NAME],
-              ref_step="11", ref_variant=INHERITED_NAME,
-              ref_label="step-11 carry")
-write_picks_meta(STEP, inherited_from="11", inherited=[INHERITED_NAME],
-                  carried={}, rule=_DEFAULT_PICKER_RULE,
-                  notes="ct sweep on step-11 carry (qa012, vt005, fp0). "
-                        "Target: reduce 1PL blob (22.9 at ct4) by raising "
-                        "sample-count gate so big near-camera cells mature "
-                        "more slowly. Carry set post-inspection.")
+# finalize on the last chunk only — earlier chunks leave partial CSV.
+if CHUNK_IDX == CHUNK_COUNT - 1:
+    # Manual carry (post-inspection): ct16 + warmup=2 is the corner.
+    # 1PL x4 blob drops 41 → 17 (2.4× better), 1AL 27 → 15, at the cost
+    # of 32PL x4 rays 17.5 → 40.5. force-descend (fd1k) is a no-op here
+    # — finer cascade levels share the same spurious-convergence issue.
+    # w=2 + ct16 is the winning combo: cells mature from spatially
+    # diverse samples only after warmup + some query subframes.
+    CARRY_12 = f"{WINNER_NAME}__ct16_{_VT_TAG}_fp0_fd0"
+    finalize_step(STEP, inherited_winners=[INHERITED_NAME],
+                  carried_winners=[CARRY_12],
+                  ref_step="11", ref_variant=INHERITED_NAME,
+                  ref_label="step-11 carry")
+    write_picks_meta(STEP, inherited_from="11", inherited=[INHERITED_NAME],
+                      carried={"pos": [CARRY_12]}, rule=_DEFAULT_PICKER_RULE,
+                      notes="Manual carry: ct16_vt005_fp0_fd0 with warmup=2. "
+                            "1PL x4 blob 41→17 (2.4× better), 1AL 27→15. "
+                            "32PL rays cost: 17.5 → 40.5. High ct + w=2 is "
+                            "the winning combo — cells need query-subframe "
+                            "samples (not just warmup) to mature from "
+                            "spatially-diverse inputs. force-descend (fd1k) "
+                            "no-op here; fp axis parked as wrong lever.")
 _HEADLESS_SCRIPT_DONE = True
