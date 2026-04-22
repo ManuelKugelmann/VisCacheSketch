@@ -24,6 +24,7 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | 04   | SPP × step-03 top-3           | winners don't degrade with SPP                      | keep quants                            |
 | 05   | bootThreshold × quantAB       | select `qA024_qB036__ct2`, `ct1` is noise           | `qA024_qB036__ct2`                     |
 | 06   | varThreshold (expanded vt0..vt060) | tightening vt improves blob monotonically (single-level) | `vt005`                          |
+| 07   | stderrThreshold pure curve (single-level) | **se005 beats vt005 on 1PL x4 blob 17→11** at matched rays; 32PL blob cost 3.4→5.9 (still below 10) | `qA024_qB036__ct2__se005` |
 | 09   | jitter f / c × fine companion | slightly worse but adds graceful degradation        | (likely `jf05_jc05`, pending review)   |
 | 10   | multi-level quant × threshold | multi-level beats single-level                      | multi-level                            |
 | 11   | vt × ct × fp (expanded) on step-10 carry | `vt005` beats `vt010` on every blob at matched 32PL rays; fp≥0.2 regresses rays | `qa012__ct4_vt005_fp0`  |
@@ -365,6 +366,38 @@ Rays keep falling (the cache matures further), but blob on every scene grows 2�
 | ![](step12/plates/1PointLight.png) | ![](step12/plates/1AreaLight.png) | ![](step12/plates/3AreaLights.png) | ![](step12/plates/32PointLights.png) |
 
 ![](step12/overview_summary_12.png)
+
+---
+
+## Step 07 — stderrThreshold pure sensitivity curve (single-level)
+
+**What it looks at.** Clean single-knob sweep of the stderr gate on the step-05 carry (qA024_qB036 + ct2), complementing step 06's `vt` curve. Tests whether `stderrThreshold` (trust iff `√(var/N) ≤ se`) is strictly better than `varThreshold` (trust iff `var ≤ vt`) as the single-level convergence criterion.
+
+Sweep: `se ∈ {0.01, 0.03, 0.05, 0.08, 0.10, 0.15, 0.20, 0.30}`. 8 values × 2 SPP × 4 scenes = 64 runs.
+
+**Results — x4 blob across scenes (vt curve shown for comparison):**
+
+| axis value | 32PL blob | 1PL blob | 32PL rays |
+|---|---:|---:|---:|
+| **vt0.05** (step-06 carry) | **3.43** | 16.86 | 22.17 |
+| se0.01 | 5.86 | 12.73 | 22.06 |
+| se0.03 | 5.90 | 17.00 | 22.28 |
+| **se0.05** (step-07 carry) | 5.87 | **10.77** | 22.31 |
+| se0.10 | 5.94 | 11.12 | 22.20 |
+| se0.15 | 5.86 | 20.20 | 21.96 |
+| se0.30 | 5.83 | 45.45 | 22.24 |
+
+**Key finding — se trades 32PL blob for 1PL blob at matched rays.** At `se=0.05` vs `vt=0.05`: 1PL x4 blob drops 16.86 → 10.77 (36% better), 32PL x4 blob rises 3.43 → 5.87 (still below the 10-artifact threshold). This is the principled Bernoulli-stderr behaviour: the gate refuses trust when either `var` is too high OR `N` is too small. On 1PL, many penumbra cells have small N and the stderr gate blocks them from false trust; the `vt` gate lets them through. On 32PL cells are better populated and the stricter stderr demand costs marginal blob.
+
+**Why we narrow.** Carry `se0.05` as the principled single-level replacement for `vt0.05`. The 32PL blob cost (2.4pp) is acceptable relative to the 1PL improvement (6.1pp). se0.01 is tied on 1PL but less robust at low N — the step-05 carry uses ct=2, which can leave cells with N=2 samples whose "stderr=sqrt(var/2)" is only reliable above the se=0.05 line.
+
+**Carry `qA024_qB036__ct2__se005` across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step07/plates/1PointLight.png) | ![](step07/plates/1AreaLight.png) | ![](step07/plates/3AreaLights.png) | ![](step07/plates/32PointLights.png) |
+
+![](step07/overview_summary_07.png)
 
 ---
 
