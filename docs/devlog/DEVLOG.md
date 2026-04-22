@@ -30,7 +30,7 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | 11   | vt × ct × fp (expanded) on step-10 carry | `vt005` beats `vt010` on every blob at matched 32PL rays; fp≥0.2 regresses rays | `qa012__ct4_vt005_fp0`  |
 | 12   | ct × warmup × force-descend on step-11 carry (x1/x4/x16) | `ct16` + `w=2` cuts 1PL blob 2.4× (41→17) at 2.3× 32PL rays; x16 stress test shows blob still grows 2–5× with SPP (residual bias), force-descend & fp no-ops | `qa012__ct16_vt005_fp0_fd0` (w=2) |
 | 13   | stderr × hierarchical × accel-decay, single-level | **negative**: no variant strictly beats vt005; best-x4 se10+hc cuts 1PL x4 blob 17→10 but regresses x1 13→50 | no carry (keep step-06 vt005) |
-| 15   | stderr × hierarchical × accel-decay, multi-level + x16 | **negative**: every combo regresses 1PL x4 blob 23→32+; x16 floor 60-87 at all combos (correlation pathology persists); 32PL rays preserved | no carry (keep step-11 ct4_vt005_fp0) |
+| 15   | stderr × hierarchical × accel-decay, multi-level + x16 | **negative** on Cornell; **big-scene supplement (Bistro/Sponza) shows viscache cuts mean GT-err 18–70% on Bistro** — first real-scene data, gate mechanisms near-irrelevant there | no carry (keep step-11 ct4_vt005_fp0) |
 
 ---
 
@@ -449,6 +449,20 @@ Every multi-level variant **regresses** 1PL x4 blob from 22.88 → 32+. At x16 S
 **Carry: none** — step-11 `ct4_vt005_fp0` remains the active multi-level carry. Details and rationale in `captures/ladder/15/picks.json`.
 
 **Next frontier** (in `memory/project_cell_mean_defenses.md`): correlation-specific defenses — per-cell writer-source diversity tracking (refuse trust if too few distinct pixels have contributed) or split-halves agreement (two independent accumulators per cell, trust iff their μ's agree).
+
+**Big-scene supplement (Bistro + Sponza)**
+
+Step 15 was rerun on `BistroInterior.pyscene`, `BistroExterior.pyscene`, `Sponza.pyscene` — the first multi-level viscache data on real-world geometry. Striking result:
+
+| scene | x4 err Δ | x4 blob | x4 rays |
+|---|---:|---:|---:|
+| BistroInterior | **−18.5%** | 293.5 | 26.1 |
+| BistroExterior | **−70.5%** | 365.7 | 27.7 |
+| Sponza | +5.6% | 250.9 | 17.5 |
+
+**On Bistro, viscache cuts mean GT-error by 18–70%** vs same-SPP vanilla — viscache's aggregation across frames delivers exactly what it was designed for on scenes with complex lighting. The blob numbers (200–365) are enormous but they flag *per-region* Δ, not mean; the mean shows a net quality gain everywhere except on Sponza, which slightly regresses (+5.6% err). Sponza's large open interior with scattered directional lighting may hit a different cache-cell occupancy regime than Cornell or Bistro.
+
+The 16 variant combinations (se × hc × ad) show almost no variance within a scene on big-scene x4 (blob 293.5–293.9 on BistroInterior). The cache's fundamental behaviour dominates; the gate mechanisms barely affect outcomes at this scale. This reinforces the step-13/15 Cornell findings: gate tightening is the wrong axis for the correlation-driven pathology.
 
 ![](step15/overview_summary_15.png)
 
