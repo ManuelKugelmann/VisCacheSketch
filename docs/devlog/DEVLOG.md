@@ -368,6 +368,59 @@ Rays keep falling (the cache matures further), but blob on every scene grows 2�
 
 ---
 
+## Step 13 — stderr × hierarchical × accel-decay (single-level, negative result)
+
+**What it looks at.** Three new shader mechanisms landed after step 12:
+- `stderrThreshold` (se) — principled Bernoulli stderr gate: trust iff `√(var/N) ≤ se`. Combines "low variance" and "enough samples" into one criterion. Replaces `varThreshold`'s few-samples-with-spurious-low-var failure.
+- `enableHierarchicalConsistency` (hc) — peek the next finer level's μ at lookup time; if it disagrees with the current level's μ by more than `hierarchicalMuTolerance`, keep descending. Costs one extra hash probe per converged level.
+- `accelDecayDisagreeThresh` (ad) — when an incoming sample disagrees with the cell's current μ by more than the threshold, halve the cell counters before adding. Outlier evidence accelerates forgetting of stale cell means.
+
+Step 13 runs on the step-06 single-level lineage (qA024_qB036 + ct2 + vt005) to see if any combination strictly beats the vt005 baseline.
+
+`4 se × 2 hc × 2 ad = 16 variants × 2 SPP = 32 runs/scene × 4 scenes = 128 runs.`
+
+**Result — no strictly dominant variant.**
+
+| candidate | 1PL x1 blob | 1PL x4 blob | 1AL x1 blob | 32PL x4 rays |
+|---|---:|---:|---:|---:|
+| step-06 `vt005` (baseline) | 12.95 | 16.86 | 4.97 | 22.17 |
+| `se10 hc1 ad0` (best x4) | **49.80** | **9.52** | 9.40 | 22.09 |
+| `se15 hc0 ad50` (best worst-case) | **11.39** | **10.77** | **28.49** | 22.17 |
+
+Every variant that improves 1PL improves it *at a specific SPP* while regressing another scene or another SPP. The stderr gate's tightening trades off the same way as `vt` did — no qualitative shift in the err/rays Pareto frontier. The hierarchical check and accel decay help in narrow regimes but don't rescue others.
+
+**Carry: none** — step-06 `vt005` remains the active single-level carry. Details and rationale in `captures/ladder/13/picks.json`.
+
+![](step13/overview_summary_13.png)
+
+---
+
+## Step 15 — stderr × hierarchical × accel-decay (multi-level + x16, negative result)
+
+**What it looks at.** Multi-level mirror of step 13 on the step-11 lineage (qa012 + ct4 + vt005 + fp0, `LEVELS_MULTI`). Adds x16 SPP — the regime step 12 couldn't defend. Target: does stderr + hierarchical + accel-decay fix the correlation-driven spurious convergence?
+
+`4 se × 2 hc × 2 ad = 16 variants × 3 SPP (x1/x4/x16) = 48 runs/scene × 4 scenes = 192 runs`, chunked 2× for memory.
+
+**Result — no variant beats step-11 baseline. x16 pathology persists.**
+
+| candidate | 1PL x4 blob | 1PL x16 blob | 32PL x4 rays |
+|---|---:|---:|---:|
+| step-11 `ct4_vt005_fp0` (baseline) | **22.88** | (not run) | 17.79 |
+| step-15 best `se20 hc1 ad0` | 32.09 | **60.60** | 17.62 |
+| step-15 all 16 variants 1PL x16 blob range | — | **60.60–87.08** | 17.5–17.6 |
+
+Every multi-level variant **regresses** 1PL x4 blob from 22.88 → 32+. At x16 SPP, every combination sits in the 60–87 blob range — the same ceiling step 12 hit. 32PL rays are preserved (~17.5%) so the mechanisms are not catastrophic, just unhelpful on the target scene.
+
+**Diagnosis.** The x16 pathology is sample *correlation*, not sample *paucity*. At x16 SPP each pixel fires 16 rays through slightly-jittered directions; all 16 land on the same side of a hard shadow penumbra from that pixel's perspective, yielding variance ≈ 0 and μ wrong in a direction that happens to match the local pixel. The stderr gate can't distinguish this from a genuine converged cell — `√(var/N) = 0/√16 = 0` is "infinite confidence". Hierarchical check can't either — finer levels see the same correlated samples. Accel decay can't either — incoming samples agree with the current wrong μ.
+
+**Carry: none** — step-11 `ct4_vt005_fp0` remains the active multi-level carry. Details and rationale in `captures/ladder/15/picks.json`.
+
+**Next frontier** (in `memory/project_cell_mean_defenses.md`): correlation-specific defenses — per-cell writer-source diversity tracking (refuse trust if too few distinct pixels have contributed) or split-halves agreement (two independent accumulators per cell, trust iff their μ's agree).
+
+![](step15/overview_summary_15.png)
+
+---
+
 ## Cross-step ladder progress
 
 Per-scene thin lines + bold weighted-"All" across all ladder steps in three panels (rays / error+blob / noise). Red halos mark each step's carried winner; whiskers show per-scene min→max of all variants at that step. One plot per SPP tier — x1 is the noisiest floor, x4 is the convergence check, x16 the high-SPP regime (only steps that run x16 show dots there; others are empty at that tier). Steps 11 and 14 are excluded until their multi-level expansions settle.
