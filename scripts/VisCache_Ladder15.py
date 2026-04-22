@@ -18,7 +18,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, make_norm_variants, read_carried_winner, parse_variant_tags, \
     write_picks_meta, _DEFAULT_PICKER_RULE, \
-    PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP, SUBFRAME_2x2
+    ALL_SCENES, PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP, SUBFRAME_2x2
+
+# 7-scene superset — Cornell suite (blob/penumbra stress) + the big
+# geometry scenes Bistro/Sponza (real-world stress, more pressure on the
+# hash table). When invoked without -c, step 15 runs the full set so
+# single-light Cornell findings can be cross-checked against scenes with
+# complex occluders and soft indirect lighting.
+BIG_SCENES_15 = list(ALL_SCENES) + [
+    "BistroInterior.pyscene",
+    "BistroExterior.pyscene",
+    "Sponza.pyscene",
+]
 
 STEP = "15"
 res = int(os.environ.get("RES", "512"))
@@ -86,7 +97,7 @@ print(f"[15] chunk {CHUNK_IDX+1}/{CHUNK_COUNT}: variants [{_start}:{_end}] "
 STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
                   "tableCapacity": 1 << 25}
 
-for scene_file in get_scenes():
+for scene_file in get_scenes(default=BIG_SCENES_15):
     run_baseline(
         step_name="00",
         frame_configs=[(0, 0, 1)],
