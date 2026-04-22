@@ -28,6 +28,8 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | 10   | multi-level quant × threshold | multi-level beats single-level                      | multi-level                            |
 | 11   | vt × ct × fp (expanded) on step-10 carry | `vt005` beats `vt010` on every blob at matched 32PL rays; fp≥0.2 regresses rays | `qa012__ct4_vt005_fp0`  |
 | 12   | ct × warmup × force-descend on step-11 carry (x1/x4/x16) | `ct16` + `w=2` cuts 1PL blob 2.4× (41→17) at 2.3× 32PL rays; x16 stress test shows blob still grows 2–5× with SPP (residual bias), force-descend & fp no-ops | `qa012__ct16_vt005_fp0_fd0` (w=2) |
+| 13   | stderr × hierarchical × accel-decay, single-level | **negative**: no variant strictly beats vt005; best-x4 se10+hc cuts 1PL x4 blob 17→10 but regresses x1 13→50 | no carry (keep step-06 vt005) |
+| 15   | stderr × hierarchical × accel-decay, multi-level + x16 | **negative**: every combo regresses 1PL x4 blob 23→32+; x16 floor 60-87 at all combos (correlation pathology persists); 32PL rays preserved | no carry (keep step-11 ct4_vt005_fp0) |
 
 ---
 
