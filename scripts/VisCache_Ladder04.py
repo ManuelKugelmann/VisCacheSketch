@@ -84,7 +84,7 @@ for scene_file in get_scenes():
 
 # Finalize only on last chunk — earlier chunks leave partial CSV.
 if CHUNK_IDX == CHUNK_COUNT - 1:
-    finalize_step(STEP, inherited_winners=winner_names)
+    finalize_step(STEP, inherited_winners=winner_names, carried_winners=[])
     _carried_04 = pick_top_variants_per_bvariant(STEP, n_top=3, spp=1)
     write_picks_meta(STEP, inherited_from="03", inherited=winner_names,
                       carried=_carried_04, rule=_DEFAULT_PICKER_RULE,

@@ -118,7 +118,7 @@ FEATURES_OFF = {
 # bootThreshold); 1 = log2(cellPixels) floor; values >1 put more pressure on
 # big cells. Default is 0 (baked into PRESET_MINIMAL) — multi-level steps
 # take over cell-size modulation and opt in via FOOTPRINT_ON.
-FOOTPRINT_ON = {"footprintScale": 1.0}
+FOOTPRINT_ON = {"bootThresholdFactorFootprintPx": 1.0}
 
 # --- Warmup write-only (Ablation L) --------------------------------------
 # Warmup is now driven per-run by the frame_configs tuple:
@@ -159,7 +159,7 @@ SCENE_SCALED_QUANT = {"quantSceneScale": True}
 # footprintScale=0 baked in — multi-level cascade handles cell-size modulation
 # so single-level steps never opt into the footprint knob by default.
 PRESET_MINIMAL = {**LEVELS_SINGLE, **THRESH_MID, **RR_OFF, **FEATURES_OFF,
-                  "footprintScale": 0.0, **SCENE_SCALED_QUANT}
+                  "bootThresholdFactorFootprintPx": 0.0, **SCENE_SCALED_QUANT}
 
 # ===========================================================================
 # Picker + plotter tuning constants
@@ -199,8 +199,8 @@ _DEFAULT_PICKER_RULE = (
 # Y-axis limits for the step overview plots (shared across all steps so
 # cross-step visual comparison stays consistent).
 RAYS_YLIM        = (0, 105)
-ERROR_DELTA_YLIM = (-10, 200)
-NOISE_DELTA_YLIM = (-10, 100)
+ERROR_DELTA_YLIM = (-10, 100)
+NOISE_DELTA_YLIM = (-1, 1)
 ERROR_ABS_YLIM   = (0, 200)
 NOISE_ABS_YLIM   = (0, 100)
 
@@ -571,8 +571,8 @@ def stitch_baseline_plate(captureDir, xN_tag, out_path, err_stats=None, noise_st
 # compared directly (and differences are not masked by per-step autoscaling).
 # Spans cover the observed-ranges headroom (~-1.5 → 150% error, ~75% noise).
 RAYS_YLIM         = (0, 105)
-ERROR_DELTA_YLIM  = (-10, 200)
-NOISE_DELTA_YLIM  = (-10, 100)
+ERROR_DELTA_YLIM  = (-10, 100)
+NOISE_DELTA_YLIM  = (-1, 1)
 # Baseline (step 00): absolute error/noise (unsigned).
 ERROR_ABS_YLIM    = (0, 200)
 NOISE_ABS_YLIM    = (0, 100)
@@ -587,14 +587,14 @@ NOISE_ABS_YLIM    = (0, 100)
 _STEP_TITLES = {
     "00": "Vanilla baselines: no VisCache",
     "01": "Cold start issues: subframe warmup sweep (single level)",
-    "02": "Addressing sweep: 5 B-side variants (single level)",
+    "02": "Addressing sweep: 4 B-side variants (single level)",
     "03": "Per-axis quant sweep: qA × qB / qA × qD / qA × qD × qd (single level)",
     "04": "SPP convergence for step-03 top-3 per B-variant (x1/x4/x16 SPP)",
     "05": "Quant × threshold sweep on pos__pos (single level)",
     "06": "varThreshold sweep (single level)",
     "09": "Jitter sweep (single level)",
     "10": "Quant × threshold sweep on pos__pos (multi-level)",
-    "11": "Threshold × footprint sweep: 3×3 grid (multi-level)",
+    "11": "varThreshold sweep at ct4 fp0 on step-10 carry (multi-level)",
     "14": "Combined sweep: 2 quant × 2 threshold × 3 footprint (multi-level)",
 }
 
@@ -607,7 +607,8 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
                  whisker_blob_key=None,
                  symlog_linthresh=None,
                  ax=None, save=True, prev_winner=None,
-                 winners=None, inherited=None, ref_rows=None, ref_label=None):
+                 winners=None, inherited=None, ref_rows=None, ref_label=None,
+                 rank_reference_variants=None):
     """Scatter: one metric — scene groups on x-axis, (variant×spp) series.
 
     Visual encoding (new-schema, quant steps):
@@ -650,6 +651,12 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
         return (_SCENE_ORDER.index(s), s) if s in _SCENE_ORDER else (len(_SCENE_ORDER), s)
     scenes   = sorted({r["scene"] for r in rows}, key=_scene_key)
     variants = sorted(set(r["variant"] for r in rows))
+    # Rank maps (qA/qB/qD/…) drive hue & saturation. Callers plotting a
+    # subset of the full step (per-B-variant splits, top-3 comparison) pass
+    # the full step's variants here so the same numeric value always maps
+    # to the same hue across subset plots — otherwise qA024 in pos (rank 2/4)
+    # lands a different hue than qA024 in dir_dist-filtered (rank 2/3).
+    rank_variants = list(rank_reference_variants) if rank_reference_variants else variants
     spps     = sorted(set(r["spp"]     for r in rows if r["spp"] is not None))
     if not spps:
         spps = [1]
@@ -717,23 +724,26 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
         return (t is not None and len(t) > 2 and t[0] == "q" and t[1] in "ab"
                 and t[2:].isdigit())
 
-    def _is_th_token(t):
-        """True for th<digits> threshold tokens (actual bootThreshold value)."""
-        return (t is not None and t.startswith("th")
+    def _is_ct_token(t):
+        """True for ct<digits> tokens (actual bootThreshold sample-count value).
+        `ct` = "count" — disambiguates from varThreshold / matureThreshold."""
+        return (t is not None and t.startswith("ct")
                 and len(t) > 2 and t[2:].isdigit())
 
     def _q_val(t):
         return _scale_val(t[2:]) if _is_q_token(t) else None
 
-    def _th_val(t):
-        return int(t[2:]) if _is_th_token(t) else None
+    def _ct_val(t):
+        return int(t[2:]) if _is_ct_token(t) else None
 
     def _axis_token(vname, prefix):
         plen = len(prefix)
         for p in vname.split("__"):
             for t in p.split("_"):
-                if t.startswith(prefix) and len(t) > plen and t[plen:].isdigit():
-                    return t
+                if t.startswith(prefix) and len(t) > plen:
+                    suffix = t[plen:]
+                    if suffix.isdigit():
+                        return t
         return None
 
     def _qA_of(v): return _axis_token(v, "qA")
@@ -742,13 +752,19 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
     def _qd_of(v): return _axis_token(v, "qd")
     def _jf_of(v): return _axis_token(v, "jf")
     def _jc_of(v): return _axis_token(v, "jc")
+    def _vt_of(v): return _axis_token(v, "vt")
 
     def _axis_val(tok, prefix, scale_factor):
         """Numeric value from an axis token (e.g. 'qA012' → 0.12 with factor 0.01;
-        'qD15' → 15 with factor 1; 'jf1' → 1 with factor 1)."""
+        'qD15' → 15 with factor 1; 'jf1' → 1 with factor 1). Special case:
+        'vt0' → 0.0001 (semantic "trace on any var > 0 modulo eps") — a bare
+        vt0 would otherwise collapse to 0.0 and shader-compare as never-trust,
+        which is not what the sweep is probing."""
         if tok is None:
             return None
         s = tok[len(prefix):]
+        if prefix == "vt" and s == "0":
+            return 0.0001
         try:
             return int(s) * scale_factor
         except ValueError:
@@ -780,14 +796,14 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
 
     def _tag_sort_key(k):
         toks = k.split("_")
-        th_v = next((_th_val(t) for t in toks if _is_th_token(t)), None)
+        th_v = next((_ct_val(t) for t in toks if _is_ct_token(t)), None)
         q_v  = next((_q_val(t)  for t in toks if _is_q_token(t)),  None)
         scale = _fp_scale_val(k)
         th_rank = th_v if th_v is not None else 99
         q_rank  = q_v  if q_v  is not None else 99
         s_rank  = scale if scale is not None else -1.0
         return (th_rank, q_rank, s_rank, k)
-    _all_tags = sorted({_parse(v)[2] for v in variants if _parse(v)[2] is not None},
+    _all_tags = sorted({_parse(v)[2] for v in rank_variants if _parse(v)[2] is not None},
                        key=_tag_sort_key)
 
     def _alpha(vname):
@@ -808,26 +824,68 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
                 if _is_q_token(t): return t
         return None
 
-    def _thresh_of(vname):
+    def _ct_of(vname):
         for p in vname.split("__"):
             for t in p.split("_"):
-                if _is_th_token(t): return t
+                if _is_ct_token(t): return t
+        return None
+
+    def _fp_of(vname):
+        """Return fp tag matching fp<digits>, fpOff, fpOn, or fpS<digits>."""
+        for p in vname.split("__"):
+            for t in p.split("_"):
+                if t in ("fpOff", "fpOn"):
+                    return t
+                if t.startswith("fp") and len(t) > 2:
+                    tail = t[3:] if t.startswith("fpS") else t[2:]
+                    if tail.isdigit():
+                        return t
         return None
 
     # Per-axis rank maps over the variant set.
-    _qA_rank, _qA_n = _build_rank(_axis_val(_qA_of(v), "qA", 0.01) for v in variants)
-    _qB_rank, _qB_n = _build_rank(_axis_val(_qB_of(v), "qB", 0.01) for v in variants)
-    _qD_rank, _qD_n = _build_rank(_axis_val(_qD_of(v), "qD", 1.0)  for v in variants)
-    _qd_rank, _qd_n = _build_rank(_axis_val(_qd_of(v), "qd", 0.01) for v in variants)
-    _jf_rank, _jf_n = _build_rank(_axis_val(_jf_of(v), "jf", 0.1)  for v in variants)
-    _jc_rank, _jc_n = _build_rank(_axis_val(_jc_of(v), "jc", 0.1)  for v in variants)
-    _thr_rank, _thr_n = _build_rank(_th_val(_thresh_of(v)) for v in variants)
+    _qA_rank, _qA_n = _build_rank(_axis_val(_qA_of(v), "qA", 0.01) for v in rank_variants)
+    _qB_rank, _qB_n = _build_rank(_axis_val(_qB_of(v), "qB", 0.01) for v in rank_variants)
+    _qD_rank, _qD_n = _build_rank(_axis_val(_qD_of(v), "qD", 1.0)  for v in rank_variants)
+    _qd_rank, _qd_n = _build_rank(_axis_val(_qd_of(v), "qd", 0.01) for v in rank_variants)
+    _jf_rank, _jf_n = _build_rank(_axis_val(_jf_of(v), "jf", 0.1)  for v in rank_variants)
+    _jc_rank, _jc_n = _build_rank(_axis_val(_jc_of(v), "jc", 0.1)  for v in rank_variants)
+    _thr_rank, _thr_n = _build_rank(_ct_val(_ct_of(v)) for v in rank_variants)
+    _vt_rank, _vt_n = _build_rank(_axis_val(_vt_of(v), "vt", 0.01) for v in rank_variants)
+    _fp_rank, _fp_n = _build_rank(_fp_scale_val(_fp_of(v)) for v in rank_variants)
     _new_schema = _qA_n > 0 or _jf_n > 0
 
-    _quants_in_set  = {_quant_of(v)  for v in variants} - {None}
-    _thresh_in_set  = {_thresh_of(v) for v in variants} - {None}
+    # Dynamic hue/sat axis selection — pick the most-varying axis for hue,
+    # second-most for sat. Keeps every variant visually distinct even when
+    # the "default" qA axis is degenerate (step 05 → hue=ct; step 06 → hue=vt).
+    # jitter axes are excluded because the jitter branch has its own encoding.
+    # fp is consumed by marker-shape (not hue/sat) so it's not listed here.
+    _HUE_CANDIDATES = [
+        ("qA", _qA_n, _qA_rank, lambda v: _axis_val(_qA_of(v), "qA", 0.01)),
+        ("ct", _thr_n, _thr_rank, lambda v: _ct_val(_ct_of(v))),
+        ("vt", _vt_n, _vt_rank, lambda v: _axis_val(_vt_of(v), "vt", 0.01)),
+        ("qB", _qB_n, _qB_rank, lambda v: _axis_val(_qB_of(v), "qB", 0.01)),
+        ("qD", _qD_n, _qD_rank, lambda v: _axis_val(_qD_of(v), "qD", 1.0)),
+    ]
+    _HUE_CAND_SORTED = sorted([c for c in _HUE_CANDIDATES if c[1] >= 2],
+                               key=lambda c: -c[1])
+    _HUE_AXIS = _HUE_CAND_SORTED[0] if _HUE_CAND_SORTED else None
+    _SAT_AXIS = _HUE_CAND_SORTED[1] if len(_HUE_CAND_SORTED) >= 2 else None
+    _HUE_CONSUMED = {c[0] for c in (_HUE_AXIS, _SAT_AXIS) if c is not None}
+
+    # Marker-shape axis. When multiple fp values are present (step 11-style
+    # triple sweep vt × ct × fp), map fp rank to a marker-shape cycle so
+    # every combination is visually distinct without burning an alpha axis.
+    _FP_MARKER_CYCLE = ["o", "^", "s", "D", "P", "v", "X"]
+    _FP_MARKER = None
+    if _fp_n >= 2:
+        _fp_sorted = sorted(_fp_rank.keys())
+        _FP_MARKER = {v: _FP_MARKER_CYCLE[i % len(_FP_MARKER_CYCLE)]
+                      for i, v in enumerate(_fp_sorted)}
+
+    _quants_in_set  = {_quant_of(v)  for v in rank_variants} - {None}
+    _thresh_in_set  = {_ct_of(v) for v in rank_variants} - {None}
     _swap_encoding  = len(_quants_in_set) > 1 and len(_thresh_in_set) > 1
-    _thresh_sorted  = sorted(_thresh_in_set, key=lambda t: _th_val(t) or 0)
+    _thresh_sorted  = sorted(_thresh_in_set, key=lambda t: _ct_val(t) or 0)
     _THRESH_MARKERS = {t: _MARKER_CYCLE[i % len(_MARKER_CYCLE)]
                        for i, t in enumerate(_thresh_sorted)}
 
@@ -837,7 +895,7 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
             return _quant_of(vname)
         return _hue_key(_parse(vname)[2])
 
-    _hue_keys = sorted({_hue_override(v) for v in variants
+    _hue_keys = sorted({_hue_override(v) for v in rank_variants
                         if _hue_override(v) is not None},
                        key=_tag_sort_key)
 
@@ -870,7 +928,7 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
                 jf_v = _axis_val(_jf_of(vname), "jf", 0.1)
                 jc_v = _axis_val(_jc_of(vname), "jc", 0.1)
                 hue_frac = _axis_frac(_jf_rank.get(jf_v, 0), max(_jf_n, 1), 0.05, 0.95)
-                sat_frac = _axis_frac(_jc_rank.get(jc_v, 0), max(_jc_n, 1), 0.25, 1.00)
+                sat_frac = _axis_frac(_jc_rank.get(jc_v, 0), max(_jc_n, 1), 0.50, 1.00)
                 if _qA_n > 1:
                     qA_v = _axis_val(_qA_of(vname), "qA", 0.01)
                     _JITTER_QUANT_MARKERS = ["o", "s", "D", "^", "v"]
@@ -879,26 +937,39 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
                 base = plt.cm.turbo(hue_frac)
                 return marker, _desaturate(base, sat_frac)
 
-            # Quant step: hue = qA, sat = qB OR qD (mutually exclusive).
-            qA_v = _axis_val(_qA_of(vname), "qA", 0.01)
-            if qA_v is not None:
-                hue_frac = _axis_frac(_qA_rank[qA_v], max(_qA_n, 1), 0.05, 0.95)
+            # Quant / threshold / varThresh step: dynamic axis selection.
+            # Hue = most-varying axis, sat = second-most. When qA is degenerate
+            # (step 05 pos-only at one quant, step 06 vt-only), the most-varying
+            # axis promotes to hue so variants stay distinguishable.
+            if _HUE_AXIS is not None:
+                _, hue_n, hue_rank, hue_fn = _HUE_AXIS
+                hv = hue_fn(vname)
+                if hv is not None and hv in hue_rank:
+                    hue_frac = _axis_frac(hue_rank[hv], max(hue_n, 1), 0.05, 0.95)
+                else:
+                    hue_frac = 0.5
             else:
                 hue_frac = 0.5
-            qB_v = _axis_val(_qB_of(vname), "qB", 0.01)
-            qD_v = _axis_val(_qD_of(vname), "qD", 1.0)
-            if qB_v is not None and _qB_n > 0:
-                sat_frac = _axis_frac(_qB_rank[qB_v], _qB_n, 0.50, 1.00)
-            elif qD_v is not None and _qD_n > 0:
-                sat_frac = _axis_frac(_qD_rank[qD_v], _qD_n, 0.50, 1.00)
+            if _SAT_AXIS is not None:
+                _, sat_n, sat_rank, sat_fn = _SAT_AXIS
+                sv = sat_fn(vname)
+                if sv is not None and sv in sat_rank:
+                    sat_frac = _axis_frac(sat_rank[sv], sat_n, 0.50, 1.00)
+                else:
+                    sat_frac = 1.0
             else:
                 sat_frac = 1.0
+            # Marker shape driven by fp rank when fp axis is present.
+            if _FP_MARKER is not None:
+                fp_v = _fp_scale_val(_fp_of(vname))
+                if fp_v is not None and fp_v in _FP_MARKER:
+                    marker = _FP_MARKER[fp_v]
             base = plt.cm.turbo(hue_frac)
             return marker, _desaturate(base, sat_frac)
 
         # Legacy schema path (multi-level steps 10+ retain old tag style).
         if _swap_encoding:
-            th = _thresh_of(vname)
+            th = _ct_of(vname)
             if th is not None:
                 marker = _THRESH_MARKERS[th]
         hue = _hue_override(vname)
@@ -925,9 +996,9 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
         scale = _fp_scale_val(tag)
         if scale is not None:
             return max(0.0, min(1.0, scale))
-        if _new_schema and _thr_n > 1:
-            th_tok = _thresh_of(vname)
-            th_v = _th_val(th_tok) if th_tok else None
+        if _new_schema and _thr_n > 1 and "th" not in _HUE_CONSUMED:
+            th_tok = _ct_of(vname)
+            th_v = _ct_val(th_tok) if th_tok else None
             if th_v is not None:
                 return _axis_frac(_thr_rank[th_v], _thr_n, 0.40, 1.00)
         if b_core and b_core.endswith("1"):
@@ -1159,6 +1230,30 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
                     legend_handles.insert(0, h)
                 else:
                     legend_handles.insert(1, h)
+            if has_whiskers:
+                ref_whiskers = []
+                ref_scene_blobs = []
+                for rr in rrs:
+                    if rr["scene"] not in scene_x:
+                        continue
+                    blob = rr.get(whisker_blob_key)
+                    if blob is None:
+                        continue
+                    blob = max(0.0, float(blob))
+                    if blob <= 0:
+                        continue
+                    ref_whiskers.append((scene_x[rr["scene"]], rr[metric_key], blob))
+                    ref_scene_blobs.append(blob)
+                if ref_scene_blobs and ws > 0:
+                    mean_all_y = sum(v * w for v, w in vals) / ws
+                    ref_whiskers.append((all_x, mean_all_y, max(ref_scene_blobs)))
+                ref_tick = 0.045 + 0.0008 * size
+                for (wx, wlo, whi) in ref_whiskers:
+                    ax.vlines(wx, wlo, whi, color="#d62728", alpha=0.55,
+                              linewidth=1.2, zorder=4)
+                    ax.hlines(whi, wx - ref_tick, wx + ref_tick,
+                              color="#d62728", alpha=1.0, linewidth=1.8,
+                              zorder=5)
 
     ax.set_xticks(list(range(n_sc)) + [all_x])
     ax.set_xticklabels([s.replace("CornellBox_", "") for s in scenes] + ["All"],
@@ -1201,25 +1296,47 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
 
 def plot_overviews(step_name, prev_winner=None, carried_winners=None,
                     inherited_winners=None, ref_step=None, ref_variant=None,
-                    ref_label=None):
+                    ref_label=None, variant_filter=None):
     """Generates three overview scatter plots per step:
       overview_rays_<step>.png   — rays traced %
       overview_error_<step>.png  — signed GT-error Δ vs vanilla %
       overview_noise_<step>.png  — absolute mean OkLab distance to GT, % of viridis max
+
+    variant_filter: optional callable(variant_name) -> bool. When set,
+    excludes matching-False rows from the plot (CSV unchanged). Used by
+    step 11 to hide fp>0 rows from the dense 48-variant sweep.
+
     Returns list of paths (may contain None entries for metrics with no data).
     """
     rows = _load_step_rows(step_name)
     if not rows:
         print(f"[overview] No data in step {step_name}")
         return None
+    # Rank-reference = full row set so hue/sat maps stay consistent with
+    # unfiltered plots; filtering only affects which points are drawn.
+    rank_reference_variants = sorted({r["variant"] for r in rows}) if variant_filter else None
+    if variant_filter is not None:
+        rows = [r for r in rows if variant_filter(r["variant"])]
 
-    # Red-circle overlay: carried forward to next step. Auto-pick top-1 per
-    # B-variant when carried_winners isn't explicitly provided.
+    # Red-circle overlay: carried forward to next step. Resolution order:
+    #   1. explicit carried_winners argument (highest priority)
+    #   2. picks.json for this step (authoritative record of manual carries
+    #      and picker overrides — see step 05's th2 override vs auto-picker's
+    #      th1 top-1)
+    #   3. live auto-picker (fallback when no picks.json exists yet)
     if carried_winners is not None:
         winners = set(carried_winners)
     else:
-        picks = pick_top_variants_per_bvariant(step_name, n_top=1, spp=1)
-        winners = {v for vs in picks.values() for v in vs}
+        import json
+        picks_path = os.path.join("captures", "ladder", step_name, "picks.json")
+        if os.path.exists(picks_path):
+            with open(picks_path) as f:
+                meta = json.load(f)
+            carried = meta.get("carried") or {}
+            winners = {n for vs in carried.values() for n in vs}
+        else:
+            picks = pick_top_variants_per_bvariant(step_name, n_top=1, spp=1)
+            winners = {v for vs in picks.values() for v in vs}
     inherited = set(inherited_winners) if inherited_winners else None
     ref_rows = _resolve_ref_rows(ref_step, ref_variant)
 
@@ -1227,30 +1344,35 @@ def plot_overviews(step_name, prev_winner=None, carried_winners=None,
                              ylabel="rays traced %", title_suffix="rays traced",
                              out_suffix="rays", ylim=RAYS_YLIM, prev_winner=prev_winner,
                              winners=winners, inherited=inherited,
-                             ref_rows=ref_rows, ref_label=ref_label)
+                             ref_rows=ref_rows, ref_label=ref_label,
+                             rank_reference_variants=rank_reference_variants)
     out_err   = _plot_metric(rows, step_name, "error_delta_pct",
                              ylabel="error Δ % (symlog)", title_suffix="error Δ (whisker: max blob)",
                              out_suffix="error", zero_line=True, include_neg=True,
                              whisker_blob_key="error_delta_blob_pct",
                              ylim=ERROR_DELTA_YLIM,
-                             symlog_linthresh=1.0, prev_winner=prev_winner,
+                             symlog_linthresh=3.0, prev_winner=prev_winner,
                              winners=winners, inherited=inherited,
-                             ref_rows=ref_rows, ref_label=ref_label)
+                             ref_rows=ref_rows, ref_label=ref_label,
+                             rank_reference_variants=rank_reference_variants)
     out_noise = _plot_metric(rows, step_name, "noise_delta_pct",
                              ylabel="noise Δ % (symlog)", title_suffix="noise Δ",
                              out_suffix="noise", zero_line=True, include_neg=True,
                              ylim=NOISE_DELTA_YLIM,
                              symlog_linthresh=1.0, prev_winner=prev_winner,
                              winners=winners, inherited=inherited,
-                             ref_rows=ref_rows, ref_label=ref_label)
+                             ref_rows=ref_rows, ref_label=ref_label,
+                             rank_reference_variants=rank_reference_variants)
     out_combined = _plot_combined(rows, step_name, prev_winner=prev_winner,
+                                   rank_reference_variants=rank_reference_variants,
                                    winners=winners, inherited=inherited,
                                    ref_rows=ref_rows, ref_label=ref_label)
     return [out_rays, out_err, out_noise, out_combined]
 
 
 def _plot_combined(rows, step_name, prev_winner=None, out_suffix="", title_suffix="",
-                    winners=None, inherited=None, ref_rows=None, ref_label=None):
+                    winners=None, inherited=None, ref_rows=None, ref_label=None,
+                    rank_reference_variants=None):
     """3-panel stacked plot sharing x-axis: rays (top), error Δ (mid), noise Δ (bottom).
     Each panel uses _plot_metric with whiskers on the signed metrics. Single legend
     on the right applies to all three panels.
@@ -1275,22 +1397,25 @@ def _plot_combined(rows, step_name, prev_winner=None, out_suffix="", title_suffi
                  ylabel="rays traced %", title_suffix="rays traced",
                  out_suffix="rays", ylim=RAYS_YLIM,
                  ax=axes[0], save=False, winners=winners, inherited=inherited,
-                 ref_rows=ref_rows, ref_label=ref_label)
+                 ref_rows=ref_rows, ref_label=ref_label,
+                 rank_reference_variants=rank_reference_variants)
     _plot_metric(rows, step_name, "error_delta_pct",
                  ylabel="error Δ % (symlog)", title_suffix="error Δ (whisker: max blob)",
                  out_suffix="error", zero_line=True, include_neg=True,
                  whisker_blob_key="error_delta_blob_pct",
                  ylim=ERROR_DELTA_YLIM,
-                 symlog_linthresh=1.0,
+                 symlog_linthresh=3.0,
                  ax=axes[1], save=False, winners=winners, inherited=inherited,
-                 ref_rows=ref_rows, ref_label=ref_label)
+                 ref_rows=ref_rows, ref_label=ref_label,
+                 rank_reference_variants=rank_reference_variants)
     legend_handles = _plot_metric(rows, step_name, "noise_delta_pct",
                                   ylabel="noise Δ % (symlog)", title_suffix="noise Δ",
                                   out_suffix="noise", zero_line=True, include_neg=True,
                                   ylim=NOISE_DELTA_YLIM,
                                   symlog_linthresh=1.0,
                                   ax=axes[2], save=False, winners=winners, inherited=inherited,
-                                  ref_rows=ref_rows, ref_label=ref_label)
+                                  ref_rows=ref_rows, ref_label=ref_label,
+                                  rank_reference_variants=rank_reference_variants)
 
     step_main = _step_title(step_name)
     suptitle = f"Step {step_name}" + (f" — {step_main}" if step_main else "")
@@ -1521,7 +1646,7 @@ def plot_baseline_overviews(step_name="00"):
     return [out_err, out_noise, out]
 
 
-def plot_ladder_progress(steps=None):
+def plot_ladder_progress(steps=None, spp=1):
     """Cross-step progression plot: for each step, look up its carried
     winner (picks.json when present, else live auto-pick) and render
     rays / error+blob / noise for that winner across scenes plus a bold
@@ -1537,10 +1662,11 @@ def plot_ladder_progress(steps=None):
     fit the companion series, noise shorter because its range is narrow.
 
     steps: optional ordered list of step numbers. Default: every two-digit
-    step dir under captures/ladder/ with a stats.csv (extends automatically
-    as new steps land, including legacy 10/11/14).
+    step dir under captures/ladder/ with a stats.csv, excluding the
+    WIP-bucket list (11, 14).
+    spp: which SPP tier to plot. Default 1; pass 4 for the x4 companion.
 
-    Output: captures/ladder/ladder_progress.png.
+    Output: captures/ladder/ladder_progress_x<spp>.png.
     """
     import json, csv, glob
     import matplotlib
@@ -1548,11 +1674,19 @@ def plot_ladder_progress(steps=None):
     import matplotlib.pyplot as plt
 
     ladder_root = "captures/ladder"
+    # Steps excluded from the progression plot by default. Kept in the ladder
+    # root (their CSVs still exist) but not shown here — e.g. WIP multi-level
+    # expansions that would distort the per-scene comparison against the
+    # single-level spine. Callers can pass `steps=` explicitly to override.
+    _exclude = {"14"}
     if steps is None:
         steps = []
         for p in sorted(glob.glob(os.path.join(ladder_root,
                                                   "[0-9][0-9]", "stats.csv"))):
-            steps.append(os.path.basename(os.path.dirname(p)))
+            step_num = os.path.basename(os.path.dirname(p))
+            if step_num in _exclude:
+                continue
+            steps.append(step_num)
     if not steps:
         print("[progress] No step stats.csv files found.")
         return None
@@ -1588,10 +1722,10 @@ def plot_ladder_progress(steps=None):
         with open(rows_path, newline="") as f:
             for r in csv.DictReader(f):
                 try:
-                    spp = int(r.get("spp") or 1)
+                    row_spp = int(r.get("spp") or 1)
                 except ValueError:
-                    spp = 1
-                if spp != 1:
+                    row_spp = 1
+                if row_spp != spp:
                     continue
                 def _f(k, default=None):
                     v = r.get(k, "")
@@ -1653,12 +1787,12 @@ def plot_ladder_progress(steps=None):
                               sharex=True, constrained_layout=True,
                               gridspec_kw={"height_ratios": [1.0, 1.3, 0.6]})
     metric_defs = [
-        ("rays",  "rays traced %",   False, None,    None),
-        ("err",   "error Δ %",       True,  "symlog", "blob"),
-        ("noise", "noise Δ %",       True,  "symlog", None),
+        ("rays",  "rays traced %",   False, None,    None,  RAYS_YLIM,           1.0),
+        ("err",   "error Δ %",       True,  "symlog", "blob", ERROR_DELTA_YLIM,   3.0),
+        ("noise", "noise Δ %",       True,  "symlog", None,  NOISE_DELTA_YLIM,    1.0),
     ]
     scene_colors = plt.cm.turbo([0.10, 0.35, 0.65, 0.90])
-    for ax, (mkey, ylabel, zeroline, yscale, companion_mkey) in zip(axes, metric_defs):
+    for ax, (mkey, ylabel, zeroline, yscale, companion_mkey, ylim, lin_thresh) in zip(axes, metric_defs):
         # Per-scene thin lines.
         for i, scene in enumerate(all_scenes):
             ys = [series[s].get(scene, {}).get(mkey) for s in step_keys]
@@ -1703,10 +1837,10 @@ def plot_ladder_progress(steps=None):
                 all_whiskers.append((si, lo, hi))
         for (si, lo, hi) in all_whiskers:
             ax.vlines(si, lo, hi, color="#000000", alpha=0.5,
-                      linewidth=1.2, zorder=4)
+                      linewidth=1.0, zorder=4)
             ax.hlines(hi, si - tick_half, si + tick_half,
-                      color="#000000", linewidth=2.8, zorder=5)
-        ax.plot(x, all_ys, marker="D", linewidth=3.5, markersize=10,
+                      color="#000000", linewidth=1.8, zorder=5)
+        ax.plot(x, all_ys, marker="D", linewidth=2.0, markersize=7,
                 color="#000000", zorder=6, label="All (weighted, 32PL×3)")
 
         # Companion series (blob on error panel): dashed + triangle marker.
@@ -1738,23 +1872,189 @@ def plot_ladder_progress(steps=None):
                     ws.append(_scene_weight(scene))
                 comp_all_ys.append(sum(v * w for v, w in zip(vals, ws)) / sum(ws)
                                     if ws else None)
-            ax.plot(x, comp_all_ys, marker="^", linewidth=2.5, markersize=9,
+            ax.plot(x, comp_all_ys, marker="^", linewidth=1.6, markersize=7,
                     linestyle="--", color="#000000", zorder=6,
                     label=f"All {companion_mkey} (weighted)")
 
         if zeroline:
             ax.axhline(0.0, color="#888", linewidth=0.8, linestyle="--", zorder=0)
         if yscale == "symlog":
-            ax.set_yscale("symlog", linthresh=1.0)
+            ax.set_yscale("symlog", linthresh=lin_thresh)
+            from matplotlib.ticker import ScalarFormatter
+            fmt = ScalarFormatter()
+            fmt.set_scientific(False)
+            ax.yaxis.set_major_formatter(fmt)
+            ax.yaxis.set_minor_formatter(ScalarFormatter(useOffset=False))
+        if ylim is not None:
+            ax.set_ylim(*ylim)
         ax.set_ylabel(ylabel)
         ax.grid(True, alpha=0.3)
     axes[-1].set_xticks(x)
     axes[-1].set_xticklabels([f"step {s}\n{winners_label.get(s, '')[-30:]}"
                                for s in step_keys], fontsize=8, rotation=0)
-    axes[0].legend(loc="upper right", fontsize=8)
-    fig.suptitle("Ladder progression (x1 SPP)", fontsize=11)
+    axes[0].legend(loc="upper right", fontsize=10)
+    fig.suptitle(f"Ladder progression (x{spp} SPP)", fontsize=11)
 
-    out = os.path.join(ladder_root, "ladder_progress.png")
+    out = os.path.join(ladder_root, f"ladder_progress_x{spp}.png")
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[progress] {out}")
+    return out
+
+
+def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
+    """Compact cross-step progression: one weighted-"All" line per SPP
+    (SCENE_WEIGHTS — 32PL × 3). Strips the per-scene lines, whiskers, and
+    companion blob series that make the per-SPP plots dense — here the
+    only purpose is to compare convergence behaviour across the ladder at
+    different sample counts on a single figure.
+
+    Output: captures/ladder/ladder_progress_combined.png.
+    """
+    import json, csv, glob
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    ladder_root = "captures/ladder"
+    _exclude = {"14"}
+    if steps is None:
+        steps = []
+        for p in sorted(glob.glob(os.path.join(ladder_root,
+                                                  "[0-9][0-9]", "stats.csv"))):
+            step_num = os.path.basename(os.path.dirname(p))
+            if step_num in _exclude:
+                continue
+            steps.append(step_num)
+    if not steps:
+        print("[progress-combined] No step stats.csv files found.")
+        return None
+
+    # per_spp_series[spp][step] = {"rays":..., "err":..., "blob":..., "noise":...}
+    per_spp_series = {s: {} for s in spps}
+    winners_label = {}
+
+    for step in steps:
+        winner = None
+        picks_path = os.path.join(ladder_root, step, "picks.json")
+        if os.path.exists(picks_path):
+            with open(picks_path) as f:
+                meta = json.load(f)
+            carried = meta.get("carried") or {}
+            names = [n for vs in carried.values() for n in vs]
+            if names:
+                winner = names[0]
+        if winner is None:
+            picks = pick_top_variants_per_bvariant(step, n_top=1, spp=1)
+            names = [v for vs in picks.values() for v in vs]
+            if names:
+                winner = names[0]
+        if winner is None:
+            continue
+        winners_label[step] = winner
+        rows_path = _step_csv(step)
+        if not os.path.exists(rows_path):
+            continue
+        buckets = {s: {"rays": [], "err": [], "blob": [], "noise": [],
+                        "weights": []} for s in spps}
+        with open(rows_path, newline="") as f:
+            for r in csv.DictReader(f):
+                try:
+                    row_spp = int(r.get("spp") or 1)
+                except ValueError:
+                    row_spp = 1
+                if row_spp not in buckets:
+                    continue
+                if r["variant"] != winner:
+                    continue
+                def _f(k):
+                    v = r.get(k, "")
+                    try:
+                        return float(v) if v not in ("", None) else None
+                    except ValueError:
+                        return None
+                b = buckets[row_spp]
+                for mk, ck in (("rays", "rays_traced_pct"),
+                                ("err", "error_delta_pct"),
+                                ("blob", "error_delta_blob_pct"),
+                                ("noise", "noise_delta_pct")):
+                    v = _f(ck)
+                    if v is not None:
+                        b[mk].append(v * _scene_weight(r["scene"]))
+                    else:
+                        b[mk].append(None)
+                b["weights"].append(_scene_weight(r["scene"]))
+
+        for s in spps:
+            b = buckets[s]
+            if not b["weights"]:
+                continue
+            wsum = sum(b["weights"])
+            entry = {}
+            for mk in ("rays", "err", "blob", "noise"):
+                vals = [v for v in b[mk] if v is not None]
+                if vals and wsum > 0:
+                    entry[mk] = sum(vals) / wsum
+            if entry:
+                per_spp_series[s][step] = entry
+
+    # Synthetic step-00 anchor (rays=100, err/noise/blob=0 by definition).
+    for s in spps:
+        if "00" in steps and "00" not in per_spp_series[s]:
+            per_spp_series[s]["00"] = {"rays": 100.0, "err": 0.0,
+                                         "blob": 0.0, "noise": 0.0}
+    if "00" in steps and "00" not in winners_label:
+        winners_label["00"] = "vanilla (baseline)"
+
+    all_step_keys = [st for st in steps if any(st in per_spp_series[s] for s in spps)]
+    if not all_step_keys:
+        print("[progress-combined] No winner metrics found for any step.")
+        return None
+    x = list(range(len(all_step_keys)))
+
+    fig, axes = plt.subplots(3, 1, figsize=(max(8, len(all_step_keys) * 2.0), 8),
+                              sharex=True, constrained_layout=True,
+                              gridspec_kw={"height_ratios": [1.0, 1.3, 0.6]})
+    metric_defs = [
+        ("rays",  "rays traced %",   False, None,    None,   RAYS_YLIM,          1.0),
+        ("err",   "error Δ %",       True,  "symlog", "blob", ERROR_DELTA_YLIM,   3.0),
+        ("noise", "noise Δ %",       True,  "symlog", None,   NOISE_DELTA_YLIM,   1.0),
+    ]
+    # Distinct hues per SPP — avoid recycling turbo since users expect SPP
+    # to read "low → high sample count" monotonically.
+    spp_colors = {1: "#1f77b4", 4: "#d62728", 16: "#2ca02c"}
+    for ax, (mkey, ylabel, zeroline, yscale, companion_mkey, ylim, lin_thresh) in zip(axes, metric_defs):
+        for s in spps:
+            ys = [per_spp_series[s].get(st, {}).get(mkey) for st in all_step_keys]
+            color = spp_colors.get(s, "#555555")
+            ax.plot(x, ys, marker="D", linewidth=2.0, markersize=7,
+                    color=color, label=f"x{s} SPP (All weighted)")
+            if companion_mkey:
+                cys = [per_spp_series[s].get(st, {}).get(companion_mkey)
+                       for st in all_step_keys]
+                ax.plot(x, cys, marker="^", linewidth=1.5, markersize=6,
+                        linestyle="--", color=color, alpha=0.8,
+                        label=f"x{s} {companion_mkey} (weighted)")
+        if zeroline:
+            ax.axhline(0.0, color="#888", linewidth=0.8, linestyle="--", zorder=0)
+        if yscale == "symlog":
+            ax.set_yscale("symlog", linthresh=lin_thresh)
+            from matplotlib.ticker import ScalarFormatter
+            fmt = ScalarFormatter(); fmt.set_scientific(False)
+            ax.yaxis.set_major_formatter(fmt)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+        ax.set_ylabel(ylabel)
+        ax.grid(True, alpha=0.3)
+    axes[-1].set_xticks(x)
+    axes[-1].set_xticklabels([f"step {st}\n{winners_label.get(st, '')[-30:]}"
+                               for st in all_step_keys],
+                              fontsize=8, rotation=0)
+    axes[0].legend(loc="upper right", fontsize=10, ncol=2)
+    fig.suptitle(f"Ladder progression — weighted All, x{'+x'.join(str(s) for s in spps)} SPP",
+                 fontsize=11)
+
+    out = os.path.join(ladder_root, "ladder_progress_combined.png")
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"[progress] {out}")
@@ -1771,7 +2071,8 @@ def finalize_baseline(step_name="00"):
 
 def finalize_step(step_name, prev_winner=None, carried_winners=None,
                    inherited_winners=None, skip_overview=False,
-                   ref_step=None, ref_variant=None, ref_label=None):
+                   ref_step=None, ref_variant=None, ref_label=None,
+                   variant_filter=None):
     """Standard end-of-step footer: emit the per-metric overview plots and
     mirror summary PNGs to the ladder root. Also refreshes the cross-step
     ladder_progress.png so every finalize keeps it current.
@@ -1798,14 +2099,20 @@ def finalize_step(step_name, prev_winner=None, carried_winners=None,
                        carried_winners=carried_winners,
                        inherited_winners=inherited_winners,
                        ref_step=ref_step, ref_variant=ref_variant,
-                       ref_label=ref_label)
+                       ref_label=ref_label,
+                       variant_filter=variant_filter)
     copy_summary_to_root(step_name)
     # Cross-step progression stays in sync — it reads every step's CSV +
     # picks.json, so refreshing after each finalize keeps the ladder-root
-    # summary consistent with latest per-step updates. Wrapped in try/except
-    # so a progression-plot failure doesn't abort a successful step run.
+    # summary consistent with latest per-step updates. Per-SPP plots (x1,
+    # x4, x16) plus a compact combined-All overlay. Steps without x16 rows
+    # simply show nothing on the x16 plot. Wrapped in try/except so a
+    # progression-plot failure doesn't abort a successful step run.
     try:
-        plot_ladder_progress()
+        plot_ladder_progress(spp=1)
+        plot_ladder_progress(spp=4)
+        plot_ladder_progress(spp=16)
+        plot_ladder_progress_combined(spps=(1, 4, 16))
     except Exception as e:
         print(f"[progress] skipped: {e}")
 
@@ -2404,13 +2711,13 @@ def _add_adaptive_legend(target, handles, figlevel=False):
     if n > 100:
         return
     if n <= 40:
-        ncol, fs = 1, 6
+        ncol, fs = 1, 9
     elif n <= 60:
-        ncol, fs = 2, 5
+        ncol, fs = 2, 8
     elif n <= 80:
-        ncol, fs = 3, 5
+        ncol, fs = 3, 7
     else:
-        ncol, fs = 4, 4
+        ncol, fs = 4, 6
     kwargs = dict(handles=handles, fontsize=fs, ncol=ncol, borderaxespad=0)
     if figlevel:
         target.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), **kwargs)
@@ -2620,8 +2927,22 @@ def plot_overviews_per_bvariant(step_name, prev_winner=None, variant_filter=None
     b_variants = sorted({_b_core(r["variant"]) for r in rows if _b_core(r["variant"])})
     if len(b_variants) <= 1:
         return None
-    picks = pick_top_variants_per_bvariant(step_name, n_top=1, spp=1)
-    winners = {v for vs in picks.values() for v in vs}
+    # Prefer picks.json (records manual overrides) over the live auto-picker.
+    import json
+    picks_path = os.path.join("captures", "ladder", step_name, "picks.json")
+    if os.path.exists(picks_path):
+        with open(picks_path) as f:
+            meta = json.load(f)
+        carried = meta.get("carried") or {}
+        winners = {n for vs in carried.values() for n in vs}
+    else:
+        picks = pick_top_variants_per_bvariant(step_name, n_top=1, spp=1)
+        winners = {v for vs in picks.values() for v in vs}
+    # Rank-reference = the full step's variants so qA/qB/qD/qd rank maps are
+    # identical across all B-variant splits. Without this, qA024 in `pos`
+    # (ranked 2/4) would land a different hue than qA024 in `dir_dist`
+    # (ranked 2/3 after the plot-subset filter).
+    all_variants = sorted({r["variant"] for r in rows})
     outs = []
     for bv in b_variants:
         sub = [r for r in rows if _b_core(r["variant"]) == bv]
@@ -2633,7 +2954,8 @@ def plot_overviews_per_bvariant(step_name, prev_winner=None, variant_filter=None
         title = f"B-variant pos_norm__{bv}  ({n_variants} configs)"
         out = _plot_combined(sub, step_name, prev_winner=prev_winner,
                               out_suffix=f"_{bv}", title_suffix=title,
-                              winners=winners)
+                              winners=winners,
+                              rank_reference_variants=all_variants)
         outs.append(out)
     return outs
 
@@ -2657,11 +2979,15 @@ def plot_top3_comparison(step_name, prev_winner=None, n_top=3):
     sub = [r for r in rows if r["variant"] in all_top]
     if not sub:
         return None
+    # Rank-reference = full step's variants so the top-N palette matches the
+    # per-B-variant split plots (qA024 has the same hue in every plot).
+    all_variants = sorted({r["variant"] for r in rows})
     title = (f"Top-{n_top} quant per B-variant (ranked by median-gated rays "
              "savings at x1; x1 + x4 SPP shown)")
     out = _plot_combined(sub, step_name, prev_winner=prev_winner,
                           out_suffix=f"_top{n_top}", title_suffix=title,
-                          winners=best_per_bv)
+                          winners=best_per_bv,
+                          rank_reference_variants=all_variants)
     return out
 
 
@@ -2699,6 +3025,67 @@ def write_picks_meta(step_name, inherited_from=None, inherited=None,
         json.dump(payload, f, indent=2)
     print(f"[picks] {out}")
     return out
+
+
+# Variant-name tag parser — maps tag tokens (qA024, qB036, th2, jf05, vt020,
+# …) back to the override-dict keys and values that produced them. Keeps
+# variant names as the single source of truth for downstream steps: a step
+# reads upstream picks.json → gets the carried variant name → parse_variant_tags
+# rebuilds the numeric overrides, no hardcoded mirror of the upstream config.
+_VARIANT_TAG_PATTERNS = {
+    "posACoarse":    (r"qA(\d+)", lambda s: int(s) / 100.0),
+    "posBCoarse":    (r"qB(\d+)", lambda s: int(s) / 100.0),
+    "dirBCoarse":    (r"qD(\d+)", lambda s: float(s)),
+    "distBCoarse":   (r"qd(\d+)", lambda s: int(s) / 100.0),
+    "bootThreshold": (r"__ct(\d+)(?:__|$)", lambda s: int(s)),
+    "jitterFilter":  (r"jf(\d+)", lambda s: int(s) / 10.0),
+    "jitterCell":    (r"jc(\d+)", lambda s: int(s) / 10.0),
+    # vt0 = 0.0001 ("trace on any non-zero variance modulo eps"); vt<N> = N/100.
+    "varThreshold":  (r"vt(\d+)",
+                      lambda s: 0.0001 if s == "0" else int(s) / 100.0),
+    # se<N> = N/100 (stderrThreshold). se0 = 0.0001 sentinel.
+    "stderrThreshold":  (r"se(\d+)",
+                          lambda s: 0.0001 if s == "0" else int(s) / 100.0),
+    # ad<N> = N/100 (accelDecayDisagreeThresh).
+    "accelDecayDisagreeThresh": (r"ad(\d+)", lambda s: int(s) / 100.0),
+    # hc0 / hc1 — hierarchicalConsistency off/on.
+    "enableHierarchicalConsistency": (r"hc(\d+)", lambda s: bool(int(s))),
+}
+
+
+def parse_variant_tags(name):
+    """Reconstruct an override dict from a variant name.
+
+    Recognises the standard tag tokens (qA/qB/qD/qd for quant, th for boot
+    threshold, jf/jc for jitter, vt for varThreshold). Silently skips tokens
+    that aren't present — callers merge this into their own base preset.
+    """
+    import re
+    out = {}
+    for key, (pat, cast) in _VARIANT_TAG_PATTERNS.items():
+        m = re.search(pat, name)
+        if m:
+            out[key] = cast(m.group(1))
+    return out
+
+
+def read_carried_winner(step_name, b_variant="pos"):
+    """Return the first carried variant name from a step's picks.json, or
+    None if no picks.json exists / no carried entry for the B-variant.
+
+    Intentionally does NOT fall back to the auto-picker — manual carries
+    are meant to override the picker, so callers that want the auto result
+    should call pick_top_variants_per_bvariant directly.
+    """
+    import json
+    path = os.path.join("captures", "ladder", step_name, "picks.json")
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        meta = json.load(f)
+    carried = meta.get("carried") or {}
+    names = carried.get(b_variant) or []
+    return names[0] if names else None
 
 
 # Text reconstruction complete — .pyc fallback retired 2026-04-22.

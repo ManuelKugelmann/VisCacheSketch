@@ -8,12 +8,15 @@ variance regions (especially shadow penumbrae on hard-light scenes, where
 cells stay variance-heavy and the default 0.10 effectively forces full
 tracing near edges).
 
-Sweep values: {0.10, 0.20, 0.40} — 2× stepping at and above the default
-0.10. Tag encodes the value ×100 zero-padded: vt010, vt020, vt040.
+Sweep values: {0.0001, 0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.60}. Dense around
+the default 0.10 sweet spot, with `vt0` (0.0001) as the "trust only if
+variance = 0 modulo eps" extreme probe — mirrors the step 11 vt0 run so
+single-level and multi-level behaviour at that extreme are comparable.
+Tag: `vt0` for 0.0001, `vt<value×100 pad-3>` otherwise (vt005, vt010, …).
 
-Step-05 winner baked in: pos_norm__pos + qA024_qB036 + th2.
+Step-05 winner inherited via read_carried_winner("05") → parse_variant_tags.
 
-  3 varThresh × 2 SPP = 6 runs/scene
+  8 varThresh × 2 SPP = 16 runs/scene
 
 Usage:
     Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder06.py
@@ -22,30 +25,36 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, write_picks_meta, pick_top_variants_per_bvariant, \
+    read_carried_winner, parse_variant_tags, \
     _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
 
 STEP = "06"
 res = int(os.environ.get("RES", "512"))
 
-WINNER_QUANT_TAG = "qA024_qB036"
-WINNER_QUANT = {"posACoarse": 0.24, "posBCoarse": 0.36}
-WINNER_THRESH_TAG = "th2"
-WINNER_THRESH = {"bootThreshold": 2, "matureThreshold": 128}
+WINNER_NAME = read_carried_winner("05")
+if WINNER_NAME is None:
+    raise RuntimeError("[06] step 05 picks.json missing — run step 05 first.")
+WINNER_OVERRIDES = parse_variant_tags(WINNER_NAME)
 NORMAL_A = 60.0
 
-WINNER_NAME = f"pos_norm__pos__{WINNER_QUANT_TAG}__{WINNER_THRESH_TAG}"
 WINNER_BASE = {
     **PRESET_MINIMAL,
     "enableVisCacheDirDistAddr": False,
     "enableVisCacheNormalAddr": True,
     "normalACoarse": NORMAL_A,
-    **WINNER_QUANT,
-    **WINNER_THRESH,
+    "matureThreshold": 128,
+    **WINNER_OVERRIDES,
 }
 
-VAR_THRESH_VALUES = [0.10, 0.20, 0.40]
+VAR_THRESH_VALUES = [0.0001, 0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.60]
 
-def _vt_tag(v): return f"vt{int(round(v * 100)):03d}"
+def _vt_tag(v):
+    # `vt0` = 0.0001: semantic "trust only if variance = 0 modulo eps".
+    # Matches the step-11 convention; the numeric parser in LadderCommon
+    # maps vt0 → 0.0001 (sentinel) to avoid the shader collapsing to 0.0.
+    if v <= 0.005:
+        return "vt0"
+    return f"vt{int(round(v * 100)):03d}"
 
 VARIANTS_06 = [
     (f"{WINNER_NAME}__{_vt_tag(vt)}",
@@ -75,7 +84,9 @@ for scene_file in get_scenes():
         step_overrides=STEP_OVERRIDES,
     )
 
-finalize_step(STEP, inherited_winners=[WINNER_NAME])
+finalize_step(STEP, inherited_winners=[WINNER_NAME],
+              ref_step="05", ref_variant=WINNER_NAME,
+              ref_label="step-05 carry (pre-varThreshold)")
 _carried_06 = pick_top_variants_per_bvariant(STEP, n_top=1, spp=1)
 write_picks_meta(STEP, inherited_from="05", inherited=[WINNER_NAME],
                   carried=_carried_06, rule=_DEFAULT_PICKER_RULE,

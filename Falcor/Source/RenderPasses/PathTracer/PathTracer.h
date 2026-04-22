@@ -219,7 +219,7 @@ private:
              float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
              float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
              float normalACoarse=0, normalAFine=0;
-             float footprintScale=0;
+             float bootThresholdFactorFootprintPx=0;
              float jitterFilter=0, jitterCell=0;
              uint32_t diagAccumWindow=128; } mVCParams;
 

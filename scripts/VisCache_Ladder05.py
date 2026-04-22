@@ -60,15 +60,15 @@ print(f"[05] Inherited quantAB candidates from step 03: "
       f"{[t for t, _ in QUANT_CANDIDATES]}")
 
 # Boot threshold sweep. Tag encodes actual boot value. Mature fixed at 128.
-# th1 = trust the cache immediately after first sample (no boot gate). th0
+# ct1 = trust the cache immediately after first sample (no boot gate). th0
 # would mean "trust even with zero samples" — that's a pure guess/default
 # mu=0.5 estimate, not a cache read, so we start the sweep at 1 rather
 # than 0.
 THRESH_SWEEP = [
-    ("th1", {"bootThreshold": 1, "matureThreshold": 128}),
-    ("th2", {"bootThreshold": 2, "matureThreshold": 128}),
-    ("th4", {"bootThreshold": 4, "matureThreshold": 128}),
-    ("th8", {"bootThreshold": 8, "matureThreshold": 128}),
+    ("ct1", {"bootThreshold": 1, "matureThreshold": 128}),
+    ("ct2", {"bootThreshold": 2, "matureThreshold": 128}),
+    ("ct4", {"bootThreshold": 4, "matureThreshold": 128}),
+    ("ct8", {"bootThreshold": 8, "matureThreshold": 128}),
 ]
 
 NORMAL_A = 60.0
@@ -110,18 +110,33 @@ for scene_file in get_scenes():
         step_overrides=STEP_OVERRIDES,
     )
 
-# Resolve step-05's carry-forward from its own picker — step 06 will pick
-# this up via its inherited_winners list.
-_picks_05 = pick_top_variants_per_bvariant(STEP, n_top=1, spp=1)
-_carry_05 = [v for vs in _picks_05.values() for v in vs]
+# Manual carry — auto-picker's top-1 at x1 is qA024_qB036__ct1 (most
+# aggressive rays savings), but downstream steps (06 varThresh, 09 jitter,
+# 10 multi-level) have been using qA024_qB036__ct2 as the stable reference:
+# ct1 trusts a single sample (boot gate off) which is too eager as the
+# basis for further sweeps. ct2 keeps the same quant but requires one
+# confirming sample before trusting the cell. Ranked #3 in the picker's
+# ordering, selected manually as the step-05 carry. All downstream steps
+# read this via read_carried_winner("05").
+CARRY_05 = "pos_norm__pos__qA024_qB036__ct2"
 
 _inherited_05 = [f"pos_norm__pos__{t}" for t, _ in QUANT_CANDIDATES]
+# Red-star reference: step-03 pos top-1 (no bootThreshold applied yet) — shows
+# what this step's threshold sweep adds over the plain quant picker.
+_REF_03 = _inherited_05[0] if _inherited_05 else None
 finalize_step(STEP,
               inherited_winners=_inherited_05,
-              carried_winners=_carry_05)
+              carried_winners=[CARRY_05],
+              ref_step="03", ref_variant=_REF_03,
+              ref_label="step-03 pos top-1 (no threshold)")
 write_picks_meta(STEP,
                   inherited_from="03",
                   inherited=_inherited_05,
-                  carried=_picks_05,
-                  rule=_DEFAULT_PICKER_RULE)
+                  carried={"pos": [CARRY_05]},
+                  rule=_DEFAULT_PICKER_RULE,
+                  notes="Manual carry: qA024_qB036__ct2. Auto-picker's top-1 "
+                        "is qA024_qB036__ct1 (ranked by rays-pct asc) but ct1 "
+                        "trusts after a single sample — too eager as the "
+                        "basis for further sweeps. ct2 = same quant, one "
+                        "confirming sample before trust.")
 _HEADLESS_SCRIPT_DONE = True

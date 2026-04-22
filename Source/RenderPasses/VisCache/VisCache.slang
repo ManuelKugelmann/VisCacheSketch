@@ -196,8 +196,16 @@ cbuffer VisCacheParams
     float  gDistBFine;       ///< distance finest cell size (auto-derived)
     float  gNormalACoarse;   ///< normal coarsest cell size (degrees, like dirBCoarse)
     float  gNormalAFine;     ///< normal finest cell size (auto-derived)
-    float  gFootprintScale;  ///< K: footprint trust scale. 0 = off (pure bootThreshold),
+    float  gBootThresholdFactorFootprintPx;  ///< K: footprint trust scale. 0 = off (pure bootThreshold),
                              ///< 1 = log2(cellPixels) floor, >1 = aggressive.
+    uint   gForceDescendFootprintPx; ///< Cell-footprint (px²) above which vhfLookup always
+                                     ///< descends past convergence — defends penumbra at big
+                                     ///< near-camera cells. 0 = off (prior early-stop behaviour).
+    float  gStderrThreshold;          ///< Bernoulli stderr gate — trust iff sqrt(var/N) ≤ this.
+                                      ///< 0 = off (fall back to gVarThreshold).
+    uint   gEnableHierarchicalConsistency; ///< 1 = peek next level μ for agreement check.
+    float  gHierarchicalMuTolerance;  ///< |μ_next − μ_this| gate for the hierarchical check.
+    float  gAccelDecayDisagreeThresh; ///< |sample − μ| that triggers in-insert half-decay. 0 = off.
     float  gJitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
     float  gJitterCell;      ///< F: per-cell-index-seed jitter scale [Binder 2018] (per-cell shift, hard boundaries). 0 = off.
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
@@ -750,14 +758,14 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         float mu  = float(vis) / float(total);
         float var = mu * (1.0f - mu);  // Bernoulli variance
 
-        // Footprint-aware trust: gFootprintScale * log2(cellPixels) gives a
+        // Footprint-aware trust: gBootThresholdFactorFootprintPx * log2(cellPixels) gives a
         // conservative spatial diversity requirement that scales with cell
         // size. Examples at scale=1: cellPx=4→2, 64→6, 1024→10, 6889→13.
         // scale=0 collapses the floor to 0 → max(bootThreshold,0) = bootThreshold
         // (old fpOff behaviour). scale=1 matches the prior fpOn formula.
         // Larger scales put more pressure on big cells.
         uint cellPx = vhfCellPixels(lvl, posA);
-        uint diversityReq = uint(gFootprintScale * log2(max(float(cellPx), 1.f)));
+        uint diversityReq = uint(gBootThresholdFactorFootprintPx * log2(max(float(cellPx), 1.f)));
         uint footprintReq = max(gBootThreshold, diversityReq);
         uint required = uint(float(footprintReq) * (1.f + var * 4.f));
 
@@ -776,8 +784,69 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         best.qb    = qb;
         best.valid = true;
 
-        // Converged at this level — finer cells would produce the same mu.
-        if (var <= gVarThreshold) break;
+        // Determine "converged" via whichever gate is active:
+        //   stderr gate (preferred): sqrt(var/N) ≤ gStderrThreshold. Principled
+        //     Bernoulli standard-error criterion — combines "low variance" and
+        //     "enough samples" into one. Rejects few-sample cells with spurious
+        //     low var (the x16-correlation pathology).
+        //   varThreshold (legacy): var ≤ gVarThreshold, ignores N.
+        bool converged;
+        if (gStderrThreshold > 0.f)
+        {
+            // stderr² = var / N. Gate: stderr² ≤ gStderrThreshold².
+            float invN   = 1.f / max(float(total), 1.f);
+            float stderr2 = var * invN;
+            converged = stderr2 <= gStderrThreshold * gStderrThreshold;
+        }
+        else
+        {
+            converged = var <= gVarThreshold;
+        }
+
+        if (converged)
+        {
+            // Force-descent overrides: big cells must always refine.
+            if (gForceDescendFootprintPx != 0u && cellPx > gForceDescendFootprintPx)
+            {
+                // Keep descending — cell too big to trust on low variance.
+            }
+            // Hierarchical consistency: peek the next finer level; if its μ
+            // disagrees with this one, the current convergence is suspect
+            // (likely a penumbra boundary where coarse/fine differ). Keep
+            // descending to the more refined estimate. Costs one extra hash
+            // probe per converged level.
+            else if (gEnableHierarchicalConsistency != 0u && lvl + 1 < int(gNumLevels))
+            {
+                int   nextLvl = lvl + 1;
+                float nextCs  = vhfPosASize(nextLvl);
+                int3  nqa, nqb;
+                vhfQuantizePair(posA, posB, nextCs, uint(nextLvl), nqa, nqb, normalA);
+                uint nfp   = vhfFingerprint(nqa, nqb, uint(nextLvl), uint(nextLvl), uint(nextLvl));
+                uint naddr = vhfAddr(nqa, nqb, uint(nextLvl), uint(nextLvl), uint(nextLvl));
+                uint nProbe;
+                int  nslot = vhfFindSlot(naddr, nfp, /*allowInsert=*/false, nProbe);
+                if (nslot >= 0)
+                {
+                    VHFEntry ne = gVHFTable[nslot];
+                    uint ntot = ne.packed & 0xFFFFu;
+                    if (ntot > 0u)
+                    {
+                        float nmu = float(ne.packed >> 16u) / float(ntot);
+                        if (abs(nmu - mu) > gHierarchicalMuTolerance)
+                        {
+                            // Disagreement — don't trust this level, keep descending.
+                            continue;
+                        }
+                    }
+                }
+                // No next entry or agreement — accept convergence.
+                break;
+            }
+            else
+            {
+                break;
+            }
+        }
         // Else: high variance (penumbra) — descend to refine.
     }
 
@@ -1229,6 +1298,31 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
                 uint seedPacked = (seedVis << 16u) | seedTotal;
                 uint dummy;
                 InterlockedExchange(gVHFTable[slot].packed, seedPacked, dummy);
+            }
+        }
+
+        // Accelerated decay (optional): if the incoming sample disagrees
+        // strongly with the cell's current μ, halve the counters before
+        // adding. Outlier evidence gets amplified weight — stale / wrong
+        // cell means decay faster toward the new evidence. Skip on fresh
+        // slots (no prior data). Race-tolerant: multiple threads half-
+        // decaying converges to zero without underflow because (packed & 0xFFFF)
+        // shifts by 1 each half-decay, not arithmetic subtract of a const.
+        if (gAccelDecayDisagreeThresh > 0.f && !claimedEmpty)
+        {
+            uint curPacked = gVHFTable[slot].packed;
+            uint curTotal  = curPacked & 0xFFFFu;
+            if (curTotal >= 2u)
+            {
+                float curMu = float(curPacked >> 16u) / float(curTotal);
+                if (abs(float(visVal) - curMu) > gAccelDecayDisagreeThresh)
+                {
+                    uint subVis   = (curPacked >> 16u) >> 1;
+                    uint subTotal = curTotal          >> 1;
+                    uint sub      = (subVis << 16u) | subTotal;
+                    uint dummy;
+                    InterlockedAdd(gVHFTable[slot].packed, 0u - sub, dummy);
+                }
             }
         }
 

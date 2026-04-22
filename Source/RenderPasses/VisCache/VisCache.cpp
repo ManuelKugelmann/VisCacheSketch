@@ -79,7 +79,12 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
     if (props.has("enableVisCacheBootstrapBreak"))  mParams.enableVisCacheBootstrapBreak  = props["enableVisCacheBootstrapBreak"];
     if (props.has("enableVisCacheParentPreinit"))   mParams.enableVisCacheParentPreinit   = props["enableVisCacheParentPreinit"];
-    if (props.has("footprintScale"))                mParams.footprintScale                = props["footprintScale"];
+    if (props.has("bootThresholdFactorFootprintPx"))                mParams.bootThresholdFactorFootprintPx                = props["bootThresholdFactorFootprintPx"];
+    if (props.has("forceDescendFootprintPx"))       mParams.forceDescendFootprintPx       = props["forceDescendFootprintPx"];
+    if (props.has("stderrThreshold"))               mParams.stderrThreshold               = props["stderrThreshold"];
+    if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
+    if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
+    if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
@@ -128,7 +133,12 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheDirDistAddr"))     mParams.enableVisCacheDirDistAddr     = props["enableVisCacheDirDistAddr"];
     if (props.has("enableVisCacheBootstrapBreak"))  mParams.enableVisCacheBootstrapBreak  = props["enableVisCacheBootstrapBreak"];
     if (props.has("enableVisCacheParentPreinit"))   mParams.enableVisCacheParentPreinit   = props["enableVisCacheParentPreinit"];
-    if (props.has("footprintScale"))                mParams.footprintScale                = props["footprintScale"];
+    if (props.has("bootThresholdFactorFootprintPx"))                mParams.bootThresholdFactorFootprintPx                = props["bootThresholdFactorFootprintPx"];
+    if (props.has("forceDescendFootprintPx"))       mParams.forceDescendFootprintPx       = props["forceDescendFootprintPx"];
+    if (props.has("stderrThreshold"))               mParams.stderrThreshold               = props["stderrThreshold"];
+    if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
+    if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
+    if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
@@ -173,7 +183,12 @@ Properties VisCache::getProperties() const
     p["enableVisCacheDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
     p["enableVisCacheBootstrapBreak"]  = mParams.enableVisCacheBootstrapBreak;
     p["enableVisCacheParentPreinit"]   = mParams.enableVisCacheParentPreinit;
-    p["footprintScale"]                = mParams.footprintScale;
+    p["bootThresholdFactorFootprintPx"]                = mParams.bootThresholdFactorFootprintPx;
+    p["forceDescendFootprintPx"]       = mParams.forceDescendFootprintPx;
+    p["stderrThreshold"]               = mParams.stderrThreshold;
+    p["enableHierarchicalConsistency"] = mParams.enableHierarchicalConsistency;
+    p["hierarchicalMuTolerance"]       = mParams.hierarchicalMuTolerance;
+    p["accelDecayDisagreeThresh"]      = mParams.accelDecayDisagreeThresh;
     p["subframeN"]                     = mParams.subframeN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
@@ -367,7 +382,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                        | (mParams.enableVisCacheNormalAddr ? 2u : 0u)
                        | (mParams.enableVisCacheBootstrapBreak ? 4u : 0u)
                        | (mParams.enableVisCacheParentPreinit ? 8u : 0u);
-    gpu.footprintScale = mParams.footprintScale;
+    gpu.bootThresholdFactorFootprintPx = mParams.bootThresholdFactorFootprintPx;
+    gpu.forceDescendFootprintPx = mParams.forceDescendFootprintPx;
+    gpu.stderrThreshold = mParams.stderrThreshold;
+    gpu.enableHierarchicalConsistency = mParams.enableHierarchicalConsistency ? 1u : 0u;
+    gpu.hierarchicalMuTolerance = mParams.hierarchicalMuTolerance;
+    gpu.accelDecayDisagreeThresh = mParams.accelDecayDisagreeThresh;
     gpu.jitterFilter   = mParams.jitterFilter;
     gpu.jitterCell     = mParams.jitterCell;
     gpu.posACoarse    = posACoarseScaled;
@@ -422,12 +442,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
         logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
-        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterFilter={:.3f} jitterCell={:.3f} adaptPMin={} dirDistAddr={} footprintScale={:.3f} bootstrapBreak={} parentPreinit={}",
+        logInfo("[VisCache] visCheck={} lightSel={} warpRed={} varGate={} decay={} pressEvict={} jitterFilter={:.3f} jitterCell={:.3f} adaptPMin={} dirDistAddr={} bootThresholdFactorFootprintPx={:.3f} bootstrapBreak={} parentPreinit={}",
                 mParams.enableVisCacheVisibilityCheck, mParams.enableVisCacheLightSelection,
                 mParams.enableVisCacheWarpReduction, mParams.enableVisCacheVarianceGate,
                 mParams.enableVisCacheDecay, mParams.enableVisCachePressureEvict,
                 mParams.jitterFilter, mParams.jitterCell, mParams.enableVisCacheAdaptivePMin,
-                mParams.enableVisCacheDirDistAddr, mParams.footprintScale,
+                mParams.enableVisCacheDirDistAddr, mParams.bootThresholdFactorFootprintPx,
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
                 gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
@@ -485,7 +505,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableDirDistAddr"]     = mParams.enableVisCacheDirDistAddr;
     dict["vhfEnableBootstrapBreak"]  = mParams.enableVisCacheBootstrapBreak;
     dict["vhfEnableParentPreinit"]   = mParams.enableVisCacheParentPreinit;
-    dict["vhfParam_footprintScale"]  = mParams.footprintScale;
+    dict["vhfParam_bootThresholdFactorFootprintPx"]  = mParams.bootThresholdFactorFootprintPx;
+    dict["vhfParam_forceDescendFootprintPx"] = mParams.forceDescendFootprintPx;
     dict["vhfSubframeN"]        = std::max(1u, mParams.subframeN);
     dict["vhfWarmupSlotsFirst"] = mParams.warmupSlotsFirst;
     dict["vhfWarmupSlotsRun"]   = mParams.warmupSlotsRun;
@@ -797,7 +818,12 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("§5: bootstrap-break", mParams.enableVisCacheBootstrapBreak);
         g.checkbox("§5: parent-preinit",  mParams.enableVisCacheParentPreinit);
         g.checkbox("G: Dir+dist addressing", mParams.enableVisCacheDirDistAddr);
-        g.var("K: footprintScale (0=off)", mParams.footprintScale, 0.f, 8.f, 0.1f);
+        g.var("K: bootThresholdFactorFootprintPx (0=off)", mParams.bootThresholdFactorFootprintPx, 0.f, 8.f, 0.1f);
+        g.var("forceDescend cellPx (0=off)", mParams.forceDescendFootprintPx, 0u, 1u << 16);
+        g.var("stderrThreshold (0=off)", mParams.stderrThreshold, 0.f, 1.f, 0.01f);
+        g.checkbox("Hierarchical consistency check", mParams.enableHierarchicalConsistency);
+        g.var("hierarchical μ tolerance", mParams.hierarchicalMuTolerance, 0.f, 1.f, 0.05f);
+        g.var("accelDecay |Δ| thresh (0=off)", mParams.accelDecayDisagreeThresh, 0.f, 1.f, 0.05f);
         g.var("M: Subframe N (1 = off)",  mParams.subframeN,        1u, 8u);
         g.var("L: warmupSlots (frame 0)", mParams.warmupSlotsFirst, 0u, 64u);
         g.var("L: warmupSlots (running)", mParams.warmupSlotsRun,   0u, 64u);

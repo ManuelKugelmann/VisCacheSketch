@@ -1,126 +1,387 @@
 # VisCache Dev Log
 
-Systematic ladder test results. One entry per ladder step.
-Full plates and stats in each step's subfolder.
-
 **Diagnostic plate layout** (4×3 grid):
 
-| | col 1 | col 2 | col 3 | col 4 |
-|---|---|---|---|---|
-| **r1** | render | accum raysTraced | GT-err Δ vs vanilla | noise Δ vs vanilla |
-| **r2** | frame level | accum maturity | accum mean | accum variance |
-| **r3** | accum coldmiss | frame qAHash | frame qBHash | frame probeSteps |
+|           | col 1          | col 2              | col 3         | col 4            |
+| --------- | -------------- | ------------------ | ------------- | ---------------- |
+| **row 1** | render         | accum raysTraced % | error Δ vs GT | noise Δ vs GT    |
+| **row 2** | frame level    | accum maturity     | accum mean    | accum variance   |
+| **row 3** | accum coldmiss | frame qAHash       | frame qBHash  | frame probeSteps |
 
-Both r1c3 and r1c9 use the same continuous bipolar ramp anchored at viridis(0) = dark purple for Δ = 0. Positive values (VisCache degraded / noisier) walk the full **viridis** palette (purple → blue → green → yellow); negative values (VisCache better / smoother) fade from purple toward **black**. Darker-than-purple = better; brighter-than-purple = worse. Plate labels report mean and per-pixel `[min … max]` signed %.
+Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same continuous bipolar ramp anchored at viridis(0) = dark purple for Δ = 0. Positive values (VisCache degraded / noisier) walk the full **viridis** palette (purple → blue → green → yellow); negative values (VisCache better / smoother) fade from purple toward **black**. Darker-than-purple = better; brighter-than-purple = worse. Plate labels report mean and per-pixel [min … max] signed %.
 
-- **r1c3 GT-err Δ** = OkLabDistance(viscache, GT) − OkLabDistance(vanilla\_xN, GT) at matched SPP — perceptual error vs ground truth, relative to same-SPP vanilla.
-- **r1c9 noise Δ** = bilateral\_noise(viscache LDR) − bilateral\_noise(vanilla\_xN LDR) at matched SPP — screen-space noise difference, independent of GT.
-- Step 00 also emits per-SPP `{tag}_vanilla_gterr.png` — vanilla\_xN's absolute OkLab error vs GT — as the reference noise floor the viscache delta is measured against.
+- **error Δ** = OkLabDistance(viscache, GT) − OkLabDistance(vanilla_xN, GT) at matched SPP — perceptual error vs ground truth, relative to same-SPP vanilla.
+- **noise Δ** = bilateral_noise(viscache LDR) − bilateral_noise(vanilla_xN LDR) at matched SPP — screen-space noise difference, relative to same-SPP vanilla. Step 00 also emits per-SPP absolute OkLab error vs GT as the reference noise floor the noise Δ is measured against.
+
+## Narrowing chain at a glance
+
+| step | axis under sweep              | decision made                                       | carried forward                        |
+| ---- | ----------------------------- | --------------------------------------------------- | -------------------------------------- |
+| 00   | vanilla SPP 1..4096           | error + noise references                            | GT EXRs (not a config)                 |
+| 01   | subframe N × warmup           | 2×2 + ≥1 warmup fixes tile artifact                 | `SUBFRAME_2x2`                         |
+| 02   | B-side addressing shape       | collapsed-B variants fail multi-light               | `pos` `dir_dist1` `dir_dist`           |
+| 03   | per-axis quant                | top-3 per B-branch by median-gated rays             | 3 quants × pos / dir_dist1 / dir_dist  |
+| 04   | SPP × step-03 top-3           | winners don't degrade with SPP                      | keep quants                            |
+| 05   | bootThreshold × quantAB       | select `qA024_qB036__ct2`, `ct1` is noise           | `qA024_qB036__ct2`                     |
+| 06   | varThreshold (expanded vt0..vt060) | tightening vt improves blob monotonically (single-level) | `vt005`                          |
+| 09   | jitter f / c × fine companion | slightly worse but adds graceful degradation        | (likely `jf05_jc05`, pending review)   |
+| 10   | multi-level quant × threshold | multi-level beats single-level                      | multi-level                            |
+| 11   | vt × ct × fp (expanded) on step-10 carry | `vt005` beats `vt010` on every blob at matched 32PL rays; fp≥0.2 regresses rays | `qa012__ct4_vt005_fp0`  |
+| 12   | ct × warmup × force-descend on step-11 carry (x1/x4/x16) | `ct16` + `w=2` cuts 1PL blob 2.4× (41→17) at 2.3× 32PL rays; x16 stress test shows blob still grows 2–5× with SPP (residual bias), force-descend & fp no-ops | `qa012__ct16_vt005_fp0_fd0` (w=2) |
 
 ---
 
 ## [Step 00 — Vanilla Baselines](step00/STEP00.md)
 
-Vanilla PathTracer (no VisCache) at x1 / x16 / x4096 SPP. Error and ground-truth reference for downstream steps.
+**What it looks at.** Vanilla PathTracer (no VisCache) at x1 / x2 / x4 / x8 / x16 SPP plus x4096 ground truth per scene. Produces two things every later step measures against:
 
-| x1 SPP | x16 SPP | x4096 SPP |
-|--------|---------|-----------|
+- `error Δ` reference = OkLab distance from the matched-SPP vanilla
+- `noise Δ` reference = bilateral noise from the matched-SPP vanilla
+- `vanilla_xN_gterr` floors = absolute OkLab vs the x4096 GT, the noise floor the Δ rides on top of.
+
+**Narrowing.** None — this step is purely reference generation. Every per-scene ladder plot's error/noise panel is a *delta against* this step's EXRs.
+
+| x1 SPP                                           | x16 SPP                                           | x4096 SPP                                           |
+| ------------------------------------------------ | ------------------------------------------------- | --------------------------------------------------- |
 | ![](step00/renders/CornellBox_1AreaLight_x1.png) | ![](step00/renders/CornellBox_1AreaLight_x16.png) | ![](step00/renders/CornellBox_1AreaLight_x4096.png) |
 
----
+Full four-scene gallery in [STEP00.md](step00/STEP00.md).
 
-## [Step 01 — Cold-Start Tiling + Subframe Mitigation](step01/STEP01.md)
-
-`PRESET_MINIMAL` + `RR_ADAPTIVE` + `FOOTPRINT_OFF`, `QUANT_MID`, 1 logical frame, 1 spp. Sweep: 1×1 (artifact
-baseline), 2×2 (+warmup 0/1/2), 4×4 (+warmup 0/1/8). Subframe gate disperses per-pixel cell writes across
-N² Bayer sub-dispatches, breaking the tile-local first-writer-wins pattern while preserving warp coherence.
-
-A **subval** control variant (`pMin=2.0`, bootThreshold/matureThreshold = 1 << 20) runs alongside — pins RR
-to always-trace, isolating Bayer-dispatch + accumulation plumbing from cache-skip effects. noise_blob=0.00
-across all N and scenes: the subframe path is bitwise-stable vs vanilla accumulation.
-
-**Insight — RR skip activity is cell-count-bound, not subframe-bound**: on single-light scenes (1AreaLight,
-1PointLight) 1×1 main sees ~2-4% RR skips at stock `bootThreshold=8`; multi-light scenes (3AreaLights,
-32PointLights) stay at 100% trace because QUANT_MID's fine cells never reach maturity in 1 logical frame.
-2×2 / 4×4 see no skips either — dispersion doesn't change the total per-cell sample count, only the order.
-
-**Insight — CV+RRR estimator variance shows up as noise in main-sweep plates**: cells where `0.01 < p < 1`
-and we happen to trace (`xi < p`) feed `mu + (V − mu)/p` into the contribution. When `p < 1`, that's a
-genuine unbiased estimator with variance, not a bug — shows up as modest noise_blob elevation in 1AL 2×2
-(+54%) vs the subval plumbing baseline (0). Structural; not a plumbing issue.
-
-**Open points / possible improvements**:
-- Step 01's current cell size (`QUANT_MID`) no longer exposes the cold-start tile artifact that was the
-  original motivation for this step — cells are too fine to mature in 1 frame. Reintroducing a coarser
-  `QUANT_01` variant (e.g. posA=0.5) would make the demo meaningful again on multi-light scenes.
-- Subval carries a small per-scene constant err_blob bias (+0.7–2.5%), invariant across N. Attributable to
-  `Lr * visWeight` vs bare `Lr` emission divergence and diagnostic UAV scheduling in the `USE_VISCACHE_VISIBILITYCHECK=1`
-  compiled shader. A true bitwise-vanilla control requires gating the whole NEE path on `#ifdef`, not a runtime flag.
-
-![](step01/plates/CornellBox_32PointLights_s_0_1_x1_sub1x1_512x512_pos_norm1__pos1_plate.png)
+![](step00/overview_summary_00.png)
 
 ---
 
-## [Step 02 — Initial Exploration](step02/STEP02.md)
+## Step 01 — Cold-Start Tiling + Subframe Mitigation
 
-Naive first pass: single level, uniform QUANT_SMALL, all 10 variants (pos_norm1 + pos_norm families), 4 scenes × x1 SPP.
-Warmup-write-only ON, footprint OFF, no cascade.
+**What it looks at.** One logical frame, cold cache, coarse `QUANT_01` cells (posA 0.12, posB 0.36, distB 0.96 — deliberately coarser than the step-02+ baseline to expose the tile artifact). Sweeps 1×1 (baseline, artifact visible), 2×2 (+warmup slots 0/1/2), 4×4 (+warmup 0/1/8). Runs only `pos_norm__pos1`. A parallel `subval` control variant forces pMin=1.0 + huge thresholds → always-trace → isolates the Bayer-dispatch plumbing from any cache-skip effect.
 
-![](step02/overview_rays_02.png)
+**Artifact vs fix** (CornellBox_1PointLight, x1 SPP, cold cache). 1PL is chosen because its hard shadow produces crisp, high-contrast boundaries — any erroneous RR-skip inside the penumbra shows up directly in the render (r1c1) and in the error Δ (r1c3), not just as a diagnostic raysTraced pattern. Multi-light scenes blend the artifact into soft shadow overlaps and mask it.
 
-Best variant: **pos_norm__dir1_dist1** — 39.6% rays traced (60.4% savings), 0.2% cold miss.
+| 1×1, no warmup — **tile-boundary artifact** | 2×2 + 1 warmup slot — **fixed**             |
+| ------------------------------------------- | ------------------------------------------- |
+| ![](step01/plates/artifact_1x1.png)         | ![](step01/plates/fixed_1PointLight.png)    |
 
-![](step02/plates/CornellBox_1AreaLight_s_1_1_x1_512x512_pos_norm__dir1_dist1_plate.png)
+In the 1×1 plate, a regular grid of bright/dark patches aligned to the dispatch tile boundaries is visible in the render and the error Δ — cells straddling tile edges read as "trusted" (RR-skipped with a stale-or-empty mean) because the neighbour tile's pixel-parallel writes committed before the query read — a first-writer-wins race, not real cache maturity. In the 2×2+warmup plate, writes disperse across N² subframes and the first subframe is write-only; the grid vanishes and the render matches vanilla modulo cache-gate noise.
 
----
+**Fixed config across scenes — 2×2 + 1 warmup slot (x1 SPP):**
 
-## [Step 03 — Adaptive RR + Quantization Sweep](step03/STEP03.md)
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step01/plates/fixed_1PointLight.png) | ![](step01/plates/fixed_1AreaLight.png) | ![](step01/plates/fixed_3AreaLights.png) | ![](step01/plates/fixed_32PointLights.png) |
 
-PRESET_MINIMAL + RR_ADAPTIVE. 4 quantization settings (qA→qD, posA 0.03→0.24 geometric) × 3 non-collapsed
-norm-active B-side variants (pos, dir_dist1, dir_dist). 12 runs per scene.
-Variant names: `pos_norm__<bside>__<qtag>`. Footprint still OFF.
+**Subval control.** `noise_blob = 0.00` across every N and scene — the subframe path is bitwise-stable vs vanilla accumulation. Any non-zero delta in the main sweep is a cache-gate effect, not plumbing noise.
 
-> **Note (2026-04-14):** The original step 03 included a fourth variant `dir_nearest` (later renamed
-> `dir_cleardist`) that collapsed the distance bin and stored a per-cell distance signal for a short-ray
-> visibility override. The concept was useable under the surface-target assumption but the complexity
-> (second per-slot buffer, eviction-reset coupling, bin-homogeneity caveats, firefly risk on mispredictions)
-> outweighed the expected gain over proper `dir_dist` binning. Moved to future work — see paper
-> conclusion, "Per-cell distance prior for collapsed-distance addressing". Step 03 reruns at 12 variants.
+**Why we narrow.** 2×2 is enough to break the tile pattern and doesn't slow the step 02+ runs. Every later ladder step adopts `SUBFRAME_2x2` as a fixed baseline. Warmup defaults (≥1 slot write-only) are carried too.
+
+![](step01/overview_summary_01.png)
 
 ---
 
-## [Step 04 — Norm1 vs Norm, SPP Convergence](step04/STEP04.md)
+## Step 02 — B-side Addressing Shape
 
-Fine B-side only × norm vs norm1, x1 and x16 SPP, 4 scenes each.
-**Finding: norm vs norm1 makes no measurable difference** on convex geometry.
-**Decision: proceed with `pos_norm` only** — uncollapsed normals handle thin-plate geometry
-correctly; the CornellBox is too convex to expose the alias risk of `norm1`.
-Best: **pos_norm__pos** at 23.4% mean rays x16 (76.6% savings).
+**What it looks at.** `PRESET_MINIMAL + RR_ADAPTIVE + SUBFRAME_2x2`, intentionally coarse B-quant (posB 0.72, dirB 20°, distB 1.0) so each cell aggregates many samples at x1 — exposes shape differences before quantization becomes the dominant knob. Sweeps 4 B-side addressing variants under the single `pos_norm` A-side: `pos1`, `pos`, `dir_dist1`, `dir_dist`. (The 5th original variant `dir1_dist1` was dropped — it's numerically identical to `pos1` on every scene and SPP since both collapse all of B into a single bin, and only the A-side carries addressing signal.)
 
-![](step04/overview_rays_04.png)
+**Results (CornellBox_32PointLights, rays traced %):**
 
-![](step04/plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm__pos_plate.png)
+| B-variant   |  x4 rays |  x16 rays | x4 err Δ | x4 blob |
+| ----------- | -------: | --------: | -------: | ------: |
+| `pos`       | **80.8** |  **50.9** |    −3.92 |    3.17 |
+| `dir_dist1` |     82.6 |      57.6 |    −3.88 |    4.34 |
+| `dir_dist`  |     85.6 |      54.6 |    −3.92 |    3.17 |
+| `pos1`      |     91.9 |      90.8 |    −3.86 |    3.17 |
 
----
+Collapsed-B `pos1` plateaus near 91% rays on multi-light scenes and the gap widens with SPP: at x4 the cost is 11 pp over full-position `pos` (91.9 vs 80.8); at x16 it's 40 pp (90.8 vs 50.9). The collapsed cell can't tell two distant visibility targets apart at the same A-cell, so RR rarely finds a cell variance low enough to skip — and the mixed-target variance *floor* doesn't fall as SPP grows. Full-position B is clearly the winner on multi-light scenes; `dir_dist` and `dir_dist1` sit between and differ only in distance-axis quantization.
 
-## [Step 05 — Threshold Sweep, `footprintScale = 0`](step05/STEP05.md)
+**Why we narrow.** Collapsed-B `pos1` is dropped; step 03 enumerates per-axis quant for `pos`, `dir_dist1`, and `dir_dist` only. The dense sweep lives on 3 B-branches, not 4.
 
-Single level, `footprintScale = 0` (pure bootThreshold gate, no footprint-aware trust). Sweeps bootThreshold over {4, 8, 16} with matureThreshold fixed. x1 / x4 SPP.
+**Winner `pos_norm__pos` across scenes (x4 SPP):**
 
-**Key observation — depth gradient in maturity**: the `r1c4_accum_maturity` column shows a clear depth gradient under all three threshold values — near-camera cells (large `cellPixels`, many parallel writes per dispatch) reach bootThreshold in one or two frames and read as "mature" (bright), while far cells (small `cellPixels`, sparse writes) stay immature (dark) much longer. This is the tile-boundary artifact that the footprint-aware trust gate is designed to fix: near cells *look* mature after one dispatch not because their estimates are actually stable, but because many threads wrote to the same cell within a single frame without producing spatial diversity.
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step02/plates/1PointLight.png) | ![](step02/plates/1AreaLight.png) | ![](step02/plates/3AreaLights.png) | ![](step02/plates/32PointLights.png) |
 
-**Motivates the footprint addition** (step 06): scaling the trust floor by `log2(cellPixels)` lifts near-camera cells' maturity bar so they have to collect writes across *frames* (where camera jitter provides genuine spatial diversity), not just within one dispatch. Far cells' trust threshold stays at `bootThreshold` as before.
-
----
-
-## [Step 06 — Multi-Level Cascade + Footprint](step06/STEP06.md)
-
-Adds `LEVELS_MULTI` + auto-tuned cell sizes on top of step 05.
-Cascade descent lets fine levels correct coarse-level early trust decisions.
+![](step02/overview_summary_02.png)
 
 ---
 
-## [Step 07 — Quality Threshold Sensitivity](step07/STEP07.md)
+## Step 03 — Per-Axis Quantization Sweep
 
-Same as step 06 with `THRESH_HIGH` (bootThreshold=64, varThreshold=0.20 — higher than step 06's 8/0.10).
-Isolates the effect of demanding more samples before trusting an entry.
+**What it looks at.** 68 variants in one logical step:
+
+- `pos_norm__pos` — qA × qB = 4×4 = 16
+- `pos_norm__dir_dist1` — qA × qD_FINE = 4×4 = 16 (distB collapsed)
+- `pos_norm__dir_dist` — qA × qD × qd = 4×3×3 = 36
+
+**Results.** Winner rule: *"err ≤ 0 OR ≤ median+25% AND blob ≤ 0 OR ≤ median+50%"* (weighted across scenes with 32PointLights×3), then ranked by rays-pct asc. Top-3 per B-branch flow into step 04. Current top-1 per branch (32PL x4):
+
+| B-branch    | top-1 name         | rays % | err Δ | blob |
+| ----------- | ------------------ | -----: | ----: | ---: |
+| `pos`       | `qA024_qB036`      | 31.9   | −3.91 | 3.17 |
+| `dir_dist1` | `qA024_qD60`       | 75.2   | −3.89 | 3.16 |
+| `dir_dist`  | `qA012_qD60_qd192` | 72.4   | −3.88 | 3.16 |
+
+`pos` already crushes the other two B-branches on rays — visibility-relevant dimensions clearly live in position, not direction. `dir_dist` / `dir_dist1` nonetheless stay in the ladder through step 04 to confirm the gap survives SPP convergence before they're parked.
+
+**Why we narrow.** Per-axis picker enforces "no variant that degrades err/blob above the cohort median", so aggressive-quant variants only survive if they stay close to the group norm. Gives us 3 quants × 3 B-branches = 9 candidates entering step 04.
+
+**Pos top-1 `qA024_qB036` across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step03/plates/1PointLight.png) | ![](step03/plates/1AreaLight.png) | ![](step03/plates/3AreaLights.png) | ![](step03/plates/32PointLights.png) |
+
+**Per-B-branch overview split** (variants in the combined overview are too dense for a single plot; each branch gets its own):
+
+- `pos_norm__pos`:
+  ![](step03/overview_summary_03_pos.png)
+- `pos_norm__dir_dist1`:
+  ![](step03/overview_summary_03_dir_dist1.png)
+- `pos_norm__dir_dist` (3×2×2 plot subset):
+  ![](step03/overview_summary_03_dir_dist.png)
+
+**Top-3 per B-branch — best-of comparison:**
+
+![](step03/overview_summary_03_top3.png)
+
+---
+
+## Step 04 — SPP Convergence on Step-03 Top-3
+
+**What it looks at.** The 9 candidates from step 03 (top-3 per B-branch) re-rendered at x1 / x4 / x16 SPP. Validates that step 03's winners don't have pathological convergence behaviour as sample count climbs.
+
+**Results.** The ranking is stable — picker re-runs on step-04 rows yield substantially the same set. `dir_dist__qA024_qD30_qd048` drops to 53.5% rays on 32PL x4 with `err = −3.91`, `blob = 3.18`. No variant flips from qualifying to disqualifying across SPP, no variant's rays-pct regresses as SPP grows.
+
+**Why we narrow.** Confirms step 03's per-axis winners are SPP-insensitive → safe to carry the pos-branch winners into step 05 (threshold sweep). `dir_dist` / `dir_dist1` branches are parked — the full-position `pos` branch gives the largest consistent rays savings, and step 05+ goes deep on it rather than splitting attention across all three.
+
+**SPP-converged pos winner `qA024_qB036` across scenes (x16 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step04/plates/1PointLight.png) | ![](step04/plates/1AreaLight.png) | ![](step04/plates/3AreaLights.png) | ![](step04/plates/32PointLights.png) |
+
+![](step04/overview_summary_04.png)
+
+---
+
+## Step 05 — bootThreshold × quantAB, pos Single-Level
+
+**What it looks at.** Crosses step 03's top-3 pos quants (qA024_qB018 / qA024_qB036 / qA024_qB072) with 4 boot thresholds (ct1 / ct2 / ct4 / ct8). `matureThreshold = 128` fixed. 12 variants × 2 SPP = 24 runs/scene. First step where the "trust gate" knob is sized against a chosen cell size.
+
+**Results — auto-picker top-3 (ranked by weighted rays-pct asc across scenes with 32PL×3). 32PL x4 numbers shown:**
+
+| variant                                          | rays % | err Δ | blob |
+| ------------------------------------------------ | -----: | ----: | ---: |
+| `qA024_qB036__ct1` (picker #1)                   | 19.7   | −3.72 | 9.37 |
+| `qA024_qB018__ct2` (picker #2)                   | 18.9   | −3.79 | 5.96 |
+| `qA024_qB036__ct2` (picker #3, **manual carry**) | 21.2   | −3.79 | 5.75 |
+
+The `ct1` variants pair every "most aggressive rays" with a much higher blob (9.4 vs 5.8) — cells are being trusted after a single sample, so the per-cell mean is an outlier-prone estimate and worst-region error jumps accordingly. The `ct2` variants keep blob at ~5.8 and cost only 1–2pp more rays.
+
+**Why we narrow — and why the manual carry.** `ct1` = "trust the cell after a single sample" = boot gate effectively off. It wins the picker on rays alone (the picker rule lets high-blob variants through if they're inside median+50%, which they are here — the cohort's median is carried upward by the ct1 rows themselves), but it's too eager as the basis for the downstream sweeps that stack jitter, varThreshold, and multi-level on top. `ct2` (one confirming sample before trust) is manually carried: same quant, blob cut 40%, rays cost only 1.5pp.
+
+**Manual carry `qA024_qB036__ct2` across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step05/plates/1PointLight.png) | ![](step05/plates/1AreaLight.png) | ![](step05/plates/3AreaLights.png) | ![](step05/plates/32PointLights.png) |
+
+![](step05/overview_summary_05.png)
+
+---
+
+## Step 06 — varThreshold Sweep
+
+**What it looks at.** Step-05 carry baked in, sweeps the RR variance gate: `varThreshold ∈ {vt0 = 0.0001, 0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.60}`. When cell variance drops below `varThreshold`, RR trusts the cached μ and skips the trace; above it, the ray always traces. Raising the threshold → more skips in high-variance regions. `vt0` is the extreme "trust only if variance = 0 modulo eps" probe, included to mirror step 11's multi-level run so the two regimes are directly comparable.
+
+**Results — 32PL x4 (carry scene) vs 1PL x4 (hard-shadow blob canary):**
+
+| variant | 32PL rays | 32PL blob | 1PL blob |
+|---------|----------:|----------:|---------:|
+| `vt0` | 22.3 | 5.89 | **16.86** |
+| `vt005` (**carry**) | 22.2 | **3.43** | **16.86** |
+| `vt010` | 21.9 | 5.80 | 23.24 |
+| `vt015` | 21.3 | 5.91 | 28.78 |
+| `vt020` | 20.7 | 6.02 | 32.17 |
+| `vt030` | 17.7 | 7.04 | 33.23 |
+| `vt040` | 15.5 | 7.82 | 43.66 |
+| `vt060` | 13.4 | 8.42 | 67.41 |
+
+**Key finding — tightening vt monotonically improves 1PL blob on single-level.** vt060 → vt0 cuts 1PL blob from 67 → 17 (4× better). `vt005` takes the corner: best 32PL blob in the sweep (3.43 vs 5.80 at vt010 and 6.02 at vt020) AND lowest 1PL blob tied with vt0 (16.86), at essentially the same rays as vt010 (22.2 vs 21.9). The cost of tight-vt on 32PL is minimal (~1.5pp extra rays vs vt020) because single-level cells have reliable per-cell variance estimates.
+
+**Key negative — contrast with step 11 multi-level.** On the *multi-level cascade* (step 11), tightening to `vt0` does the *opposite*: 1PL blob jumps to 86 because coarse-level cells with few samples over a penumbra spuriously read as "zero variance" and get fraudulently trusted. Single-level has no such over-trust pathway — all cells at one resolution, and the variance estimate reflects sample stability. The same vt knob has opposite optimal values at the two cascade regimes.
+
+**Why we narrow.** Carry `vt005`. The auto-picker's top-1 was `vt030` (minimises rays at 17.7% and blob qualifies under median+50%), but `vt030`'s 1PL blob (33.23) is exactly the kind of regression the "blob > 10 means artifact" rule flags. Manual override to `vt005`: best 32PL blob, tied-best 1PL blob, rays cost ~1.5pp.
+
+**Carry `…__ct2__vt005` across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step06/plates/1PointLight.png) | ![](step06/plates/1AreaLight.png) | ![](step06/plates/3AreaLights.png) | ![](step06/plates/32PointLights.png) |
+
+![](step06/overview_summary_06.png)
+
+---
+
+## Step 09 — Jitter Sweep (single level)
+
+**What it looks at.** Step-05 carry plus a companion fine quant with posA/posB halved (step-03 quant grid is power-of-2 spaced, so /2 = "one step finer"). Sweeps the two jitter flavors 3×3:
+
+- `jitterFilter` — per-position-seed jitter (`asuint(pos)` seed). Stochastic grid per sample → acts as a 3D reconstruction kernel; soft cell boundaries.
+- `jitterCell` — per-cell-index-seed jitter (`baseIdx` seed, Binder 2018). Whole-cell offset → boundaries stay hard but land at new positions.
+
+2 quants × 3×3 jitter = 18 variants. Scales are in cell units (1.0 = ±0.5 cell).
+
+**What the data hints at.** jf-only softens boundaries without adding firefly noise. jc-only shifts the visible grid but keeps hard edges. Stacking both at full scale (`jf10_jc10`) adds firefly noise and rays without a clearer visible gain over either axis alone. Mid strength (`jf05`, `jc05`) on each looks like the sweet spot.
+
+**Why there's no carry yet.** Jitter is a visual/artifact call, not a rays+err call — the picker rule is silent on "does the image look right across frames". Likely `jf05_jc05`, pending visual inspection. Step 09 only feeds step 14 (combined multi-level sweep), and step 14 currently composes jitter off a fixed guess; carry fixation lands once the plates are reviewed.
+
+**Likely-carry `jf05_jc05` across scenes (x4 SPP, step-05 carry quant):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step09/plates/1PointLight.png) | ![](step09/plates/1AreaLight.png) | ![](step09/plates/3AreaLights.png) | ![](step09/plates/32PointLights.png) |
+
+![](step09/overview_summary_09.png)
+
+---
+
+## Step 10 — Quant × Threshold, Multi-Level
+
+**What it looks at.** Multi-level mirror of step 05: `LEVELS_MULTI + autoTuneCells`, no jitter, no footprint. QUANT_SWEEP (qa006 / qa012 / qa036) × threshold (ct2 / ct4 / ct16) = 9 variants. Step-05 single-level carry (`qA024_qB036__ct2`) overlaid as reference for direct gain comparison.
+
+**Results (32PL x4):**
+
+| variant                        | rays %   | err Δ | blob |
+| ------------------------------ | -------: | ----: | ---: |
+| `qa012__ct2`                   | 11.6     | −3.48 | 7.54 |
+| `qa036__ct2`                   | 11.6     | −3.46 | 7.87 |
+| `qa006__ct2`                   | 11.7     | −3.53 | 9.19 |
+| `qa036__ct4`                   | 17.6     | −3.77 | 3.86 |
+| `qa012__ct4`                   | **17.7** | −3.78 | 3.52 |
+| step-05 ref `qA024_qB036__ct2` | 21.2     | −3.79 | 5.75 |
+
+The cascade cuts rays roughly in half vs single-level at matched quality: `qa012__ct4` lands at 17.7% rays with `blob = 3.52` — better blob **and** better rays than the single-level step-05 reference (21.2%, blob 5.75).
+
+**Why we narrow.** The cascade lets fine levels correct coarse-level early-trust decisions: coarse level fires an RR skip when its variance is low; if it's wrong, the next cascade step down at a finer resolution catches it. `ct4` tuning is more stable at multi-level than `ct2` because the coarser levels have genuinely more samples per cell to back the trust decision — `ct2` at multi-level over-trusts coarse levels and lets blob climb (7.5–9.2) even as it drives rays down. Step 11 onward inherits the multi-level spine.
+
+**Multi-level winner `qa012__ct4` across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step10/plates/1PointLight.png) | ![](step10/plates/1AreaLight.png) | ![](step10/plates/3AreaLights.png) | ![](step10/plates/32PointLights.png) |
+
+![](step10/overview_summary_10.png)
+
+---
+
+## Step 11 — varThreshold sweep at ct4 fp0 on step-10 carry
+
+**What it looks at.** Step 10's winner (`qa012__ct4`, multi-level) has a 1PL failure — 81.44 blob on x4 — from coarse-level RR over-trust at the hard shadow penumbra. Step 11 anchors on that carry's quant (`qa012`) and sweeps three defenses, expanded to the full step-06 `vt` range + paper-style footprint scaling:
+
+- `varThreshold ∈ {vt0=0.0001, 0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.60}` — full step-06 range. Tighter → block coarse cells from RR-skipping when their within-cell variance is spuriously low (few samples averaged over both sides of a penumbra edge).
+- `bootThreshold ∈ {ct2, ct4}` — sample-count gate. `ct4` was step-10's pick; verify it still wins once vt+fp shift.
+- `footprintScale ∈ {0.0, 0.1, 0.2}` — scale the trust floor by `log2(cellPixels)` so larger near-camera cells demand more samples. `fp0.5` was tested in a prior v1 and scrapped (destroys 32PL rays 17→95%); the milder probes test whether footprint is salvageable.
+
+8 vt × 2 ct × 3 fp = 48 variants × 2 SPP = 96 runs/scene. Chunked 4× via `CHUNKS_PER_STEP` to stay under Mogwai's GPU-memory ceiling.
+
+**Results — top variants sorted by 1PL x4 blob asc (carry-worthy rows):**
+
+| variant | 32PL rays | 32PL blob | 1PL blob | 1AL blob | 3AL blob |
+|---------|----------:|----------:|---------:|---------:|---------:|
+| `ct4_vt005_fp0` (**carry**) | **17.8** | 4.58 | **22.9** | **17.4** | 22.5 |
+| `ct4_vt005_fp01` | 17.8 | 4.28 | 22.9 | 18.0 | 22.5 |
+| `ct4_vt0_fp01` | 17.7 | 4.56 | 25.6 | 16.8 | 22.5 |
+| `ct4_vt010_fp0` (prior carry) | 17.8 | 3.50 | 26.7 | 25.1 | 23.8 |
+| `ct4_vt005_fp02` | 58.0 | 3.17 | 19.3 | 15.3 | 22.3 |
+| `ct4_vt0_fp02` | 59.4 | 3.17 | 22.1 | 15.3 | 22.3 |
+| step-10 ref `qa012__ct4` | 17.7 | 3.52 | 8.4 (rays) / **81.4** | 31.2 | 22.5 |
+
+**Key finding — vt005 beats vt010 on every blob at matched 32PL rays.** Tightening the variance gate one step further (0.10 → 0.05) drops 1PL blob 26.7 → 22.9, 1AL blob 25.1 → 17.4, 3AL blob 23.8 → 22.5 — all at identical 32PL rays (17.8%). Small regression on 32PL blob (3.50 → 4.58) is cheap vs the wholesale blob-Δ improvements on the other three scenes. Mirrors the single-level step-06 finding (vt005 the corner there too).
+
+**Key finding — fp is near-a-no-op under vt005 / ct4, except at fp≥0.2 where it regresses rays.** `fp0.1` and `fp0` are visually identical at this operating point (1PL blob 22.9 in both, 32PL rays 17.8). `fp0.2` lowers 1PL blob to 19.3 but triples 32PL rays (17.8 → 58.0) — not worth it. Footprint-scaling is the wrong tool for this problem; variance-gate tightening is. This reinforces the v1 finding that `fp0.5` was catastrophic (not just too aggressive — wrong axis).
+
+**Negative finding — `vt0` (0.0001) still over-tightens even with fp.** `ct4_vt0_fp0` has 1PL blob 71+ (cells with few samples register variance ≈ 0 and get fraudulently trusted). fp doesn't rescue it. The variance gate has a sweet spot around `vt005`, not monotonic.
+
+**Why we narrow.** Carry `qa012__ct4_vt005_fp0`. Single axis change from the prior carry (`vt010 → vt005`) delivers the improvement on three scenes at zero cost to 32PL. fp is parked as "wrong lever"; the multi-level blob defense is vt-based.
+
+**Carry `qa012__ct4_vt005_fp0` across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step11/plates/1PointLight.png) | ![](step11/plates/1AreaLight.png) | ![](step11/plates/3AreaLights.png) | ![](step11/plates/32PointLights.png) |
+
+![](step11/overview_summary_11.png)
+
+---
+
+## Step 12 — ct × warmup × force-descend on step-11 carry
+
+**What it looks at.** Step 11's carry (`qa012__ct4_vt005_fp0`) still has 1PL x4 blob ≈ 27, above the "artifact" threshold. Step 12 anchors on it and probes three penumbra-defense mechanisms:
+
+- `ct ∈ {2, 4, 8, 16, 32}` — sample-count gate. ct2 baseline, ct4 prior carry, ct8/16/32 probe whether a stricter gate forces big near-camera cells (the penumbra straddlers) to mature from a larger sample pool.
+- `warmup_first ∈ {1, 2}` — how many 2×2 Bayer subframes are write-only before any query. w=1 is the standard mitigation from step 01; w=2 doubles the pre-query dispersion.
+- `forceDescendFootprintPx ∈ {0, 1024}` — **new shader knob this step**. When a cell's screen-space footprint exceeds 1024 px (≈32×32 pixel patch), `vhfLookup` refuses the convergence early-stop and descends to refine. Targets "big cells over hard shadow" directly. `fd=0` is the prior behaviour.
+
+5 ct × 2 warmup × 2 fd = 20 variants × 2 SPP = 40 runs/scene × 4 scenes = 160 runs. Single-chunk run, ~28 min total.
+
+**Results — 1PL x4 blob (the target) sorted by ct:**
+
+| ct | fd | w | 1PL rays | 1PL blob | 32PL rays | 32PL blob |
+|---:|---:|--:|---------:|---------:|----------:|----------:|
+| 2  | 0 | 1 | 6.9 | 86.2 | 11.4 | 9.4 |
+| 2  | 0 | 2 | 7.9 | 78.6 | 11.5 | 9.0 |
+| 4  | 0 | 1 | 7.8 | 41.0 | 17.5 | 3.5 |
+| 4  | 0 | 2 | 8.3 | 86.1 | 17.6 | 4.2 |
+| 8  | 0 | 1 | 8.1 | 85.9 | 27.3 | 3.2 |
+| 8  | 0 | 2 | 8.9 | 85.8 | 27.3 | 3.2 |
+| 16 | 0 | 1 | 10.5 | 55.4 | 40.4 | 3.2 |
+| **16** | **0** | **2** | **12.4** | **17.2** | **40.5** | **3.2** |
+| 32 | 0 | 2 | 14.2 | 27.7 | 57.7 | 3.2 |
+
+**Key finding — warmup=2 is useless at low ct, dramatic at high ct.** At `ct4` with `w=2`, 1PL blob gets *worse* (41→86), 1AL even worse (27→117). At `ct16` with `w=2`, 1PL blob collapses (55→17). Mechanism: low ct + w=2 lets cells mature *during* the 2 write-only subframes from spatially-biased early samples (same pixels keep writing the same cell). High ct + w=2 forces cells to require query-subframe contributions too → maturity comes from spatially-diverse samples.
+
+**Key negative — force-descend (`fd=1024`) is a no-op or slight regression here.** At `ct16+w2`, `fd=0` gives 1PL blob 17.2; `fd=1024` gives 71.7. The shader knob promotes finer-level reads over converged coarse ones, but the finer levels share the same "spurious-low-variance with few samples" pathology that hurt coarse reads. Level-switching doesn't help when the problem is sample-count-dependent. Paper's "skip coarse levels" idea (also the write-side half, not yet implemented) might still have table-pressure benefits but won't fix blob on its own.
+
+**Key negative — `fp` axis was parked in step 11 for the same reason.** Changing *which* cells participate in trust is the wrong lever; *how many samples* must land before trust is the right lever.
+
+**Why we narrow.** Carry `qa012__ct16_vt005_fp0_fd0` with `warmup=2`. The rays cost on 32PL is real (17.5% → 40.5%, 2.3× more) but 1PL/1AL blob drop 2×+ cuts the visible-artifact regime. The alternative — stay at `ct4` carry — keeps 32PL cheap but the 1PL artifact persists. Framework decision, not a free lunch.
+
+**x16 stress test — the carry's `err Δ` win is SPP-bounded.** At x16, vanilla converges and VisCache's residual bias surfaces. Carry metrics (1PL / 1AL / 3AL / 32PL) across SPP:
+
+| SPP | 1PL rays | 1PL blob | 1AL blob | 3AL blob | 32PL rays | 32PL blob |
+| --: | -------: | -------: | -------: | -------: | --------: | --------: |
+|  x1 |     29.1 |     18.4 |      8.8 |      5.9 |      83.2 |       2.6 |
+|  x4 |     12.4 |     17.2 |     15.3 |     22.3 |      40.5 |       3.2 |
+| x16 |      5.2 | **81.5** | **31.1** |     26.9 |      19.9 | **14.3** |
+
+Rays keep falling (the cache matures further), but blob on every scene grows 2–5× from x4 to x16. The error-Δ metric is measured vs same-SPP vanilla, which converges as SPP grows — meaning VisCache's systematic bias (that vanilla's x4 noise floor was masking) becomes visible at x16. Implication: the ct16+w=2 carry handles the x4 operating point but isn't adding real accuracy at higher SPP; the RR trust decision is still biasing the mean. Next round of ablations (bootstrap-break, parent-preinit) should target this directly.
+
+**Carry `qa012__ct16_vt005_fp0_fd0` (w=2) across scenes (x4 SPP):**
+
+| 1PointLight | 1AreaLight | 3AreaLights | 32PointLights |
+| --- | --- | --- | --- |
+| ![](step12/plates/1PointLight.png) | ![](step12/plates/1AreaLight.png) | ![](step12/plates/3AreaLights.png) | ![](step12/plates/32PointLights.png) |
+
+![](step12/overview_summary_12.png)
+
+---
+
+## Cross-step ladder progress
+
+Per-scene thin lines + bold weighted-"All" across all ladder steps in three panels (rays / error+blob / noise). Red halos mark each step's carried winner; whiskers show per-scene min→max of all variants at that step. One plot per SPP tier — x1 is the noisiest floor, x4 is the convergence check, x16 the high-SPP regime (only steps that run x16 show dots there; others are empty at that tier). Steps 11 and 14 are excluded until their multi-level expansions settle.
+
+**x1 SPP:**
+
+![](ladder_progress_x1.png)
+
+**x4 SPP:**
+
+![](ladder_progress_x4.png)
+
+**x16 SPP:**
+
+![](ladder_progress_x16.png)
+
+**Compact overlay — weighted "All" only, x1 + x4 + x16:**
+
+![](ladder_progress_combined.png)

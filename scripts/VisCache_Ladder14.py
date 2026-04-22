@@ -22,14 +22,14 @@ STEP = "14"
 res = int(os.environ.get("RES", "512"))
 
 THRESHOLDS = {
-    "th4":  {"bootThreshold":  4, "matureThreshold": 128},
-    "th16": {"bootThreshold": 16, "matureThreshold": 128},
+    "ct4":  {"bootThreshold":  4, "matureThreshold": 128},
+    "ct16": {"bootThreshold": 16, "matureThreshold": 128},
 }
 
 FOOTPRINTS = {
-    "fp0":   {"footprintScale": 0.0},
-    "fp025": {"footprintScale": 0.25},
-    "fp05":  {"footprintScale": 0.5},
+    "fp0":   {"bootThresholdFactorFootprintPx": 0.0},
+    "fp025": {"bootThresholdFactorFootprintPx": 0.25},
+    "fp05":  {"bootThresholdFactorFootprintPx": 0.5},
 }
 
 QUANTS = ["qa012", "qa036"]
@@ -71,5 +71,8 @@ for scene_file in get_scenes(default=MULTI_LEVEL_SCENES):
         step_overrides=STEP_OVERRIDES,
     )
 
-finalize_step(STEP, prev_winner=WINNER_11)
+finalize_step(STEP, prev_winner=WINNER_11,
+              ref_step="12",
+              ref_variant="pos_norm__pos__qa012__ct16_vt005_fp0_fd0",
+              ref_label="step-12 carry")
 _HEADLESS_SCRIPT_DONE = True

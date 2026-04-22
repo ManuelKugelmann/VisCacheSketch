@@ -97,5 +97,5 @@ for scene_file in get_scenes():
             wipe_captures=False,
         )
 
-finalize_step(STEP)
+finalize_step(STEP, carried_winners=[])  # plumbing demo — nothing carried
 _HEADLESS_SCRIPT_DONE = True

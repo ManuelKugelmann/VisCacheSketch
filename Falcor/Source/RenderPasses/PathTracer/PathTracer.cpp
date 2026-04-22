@@ -1250,7 +1250,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
             mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
             mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
-            mVCParams.footprintScale = dict.getValue<float>("vhfParam_footprintScale");
+            mVCParams.bootThresholdFactorFootprintPx = dict.getValue<float>("vhfParam_bootThresholdFactorFootprintPx");
             mVCParams.jitterFilter   = dict.keyExists("vhfParam_jitterFilter") ? dict.getValue<float>("vhfParam_jitterFilter") : 0.f;
             mVCParams.jitterCell     = dict.keyExists("vhfParam_jitterCell")   ? dict.getValue<float>("vhfParam_jitterCell")   : 0.f;
             mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
@@ -1469,7 +1469,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
         var["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
         var["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        var["VisCacheParams"]["gFootprintScale"] = mVCParams.footprintScale;
+        var["VisCacheParams"]["gBootThresholdFactorFootprintPx"] = mVCParams.bootThresholdFactorFootprintPx;
         var["VisCacheParams"]["gJitterFilter"]   = mVCParams.jitterFilter;
         var["VisCacheParams"]["gJitterCell"]     = mVCParams.jitterCell;
         var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;

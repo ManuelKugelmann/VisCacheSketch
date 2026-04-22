@@ -1,8 +1,9 @@
 """
-VisCache_Ladder06.py — Step 06: jitter-before-quantize head-to-head.
+VisCache_Ladder09.py — Step 09: jitter sweep (single level).
 
-Takes the step-05 winner (pos_norm__pos + picked quantAB + boot threshold)
-and overlays the two jitter flavors:
+Inherits the step-05 carry via read_carried_winner("05") + parse_variant_tags,
+plus a companion quant with posA/posB halved relative to that carry.
+Sweeps both jitter flavors on each:
 
   jitterFilter  — per-position-seed jitter (asuint(pos) seed). Soft cell
                   boundaries. Each sample gets independent jitter → stochastic
@@ -12,82 +13,79 @@ and overlays the two jitter flavors:
                   Each cell redirects by a fixed offset → grid shifts per
                   cell → boundaries stay hard but land at new positions.
 
-3×3 = 9 variants × {x1, x4 SPP}: jitterFilter ∈ {0.0, 0.5, 1.0} × jitterCell ∈
-{0.0, 0.5, 1.0}. Tag convention is jf<val×10 pad-2> so jf00=0.0, jf05=0.5,
-jf10=1.0 (same for jc).
+2 quant × 3×3 jitter = 18 variants × {x1, x4 SPP}: jitterFilter ∈ {0.0, 0.5,
+1.0} × jitterCell ∈ {0.0, 0.5, 1.0}. Tag convention is jf<val×10 pad-2> so
+jf00=0.0, jf05=0.5, jf10=1.0 (same for jc).
 
   jf00_jc00  no jitter                   (reference / step-05 reprint)
   jf10_jc00  filter-only, full scale      (3D reconstruction kernel)
   jf00_jc10  cell-only, full scale        (Binder-style grid shift)
-  jf10_jc10  both, offsets summed (±1)   (stacked)
+  jf10_jc10  both, offsets summed (±1)    (stacked)
   …plus the 5 mid-scale combinations with 0.5 offsets.
 
 Scales are in "cells": 1.0 = standard ±0.5-cell offset at the current level's
 cellSize. Jitter defaults to 0 in every earlier step — this is the first
 ladder step where it is non-zero.
 
-Step-05 winner baked in: pos_norm__pos + qA024_qB036 + th2 (see WINNER_*
-constants below for the selection criterion — best ray savings subject to
-err ≤ median+25% AND blob ≤ median+25%, noise informational only).
+Companion fine quant tests whether halving cell size compensates the
+jitter-induced blur across cell boundaries.
 
 Usage:
-    Mogwai.exe --headless -s scripts/VisCache/VisCache_Ladder06.py
+    Mogwai.exe --headless -s scripts/VisCache_Ladder09.py
 """
-import os, sys
+import os, sys, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, write_picks_meta, pick_top_variants_per_bvariant, \
+    read_carried_winner, parse_variant_tags, \
     _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
 
 STEP = "09"
 res = int(os.environ.get("RES", "512"))
 
-# Step-05 winner: qA024_qB036 + th2. Selection criterion:
-#   best ray savings (lowest rays_traced_pct in the weighted "All" column,
-#   with 32PointLights × 3) subject to err and blob both being non-positive
-#   OR <= median+25%. qA024_qB036__th2 wins with rays=40.1, err=-1.43, blob=8.4
-#   — lowest rays among qualifying. Noise is informational, not gated.
-WINNER_QUANT_TAG = "qA024_qB036"
-WINNER_QUANT = {"posACoarse": 0.24, "posBCoarse": 0.36}
-WINNER_THRESH_TAG = "th2"
-WINNER_THRESH = {"bootThreshold": 2, "matureThreshold": 128}
+INHERITED_NAME = read_carried_winner("05")
+if INHERITED_NAME is None:
+    raise RuntimeError("[09] step 05 picks.json missing — run step 05 first.")
+INHERITED_OVERRIDES = parse_variant_tags(INHERITED_NAME)
 NORMAL_A = 60.0
 
-WINNER_NAME = f"pos_norm__pos__{WINNER_QUANT_TAG}__{WINNER_THRESH_TAG}"
-WINNER_BASE = {
+INHERITED_BASE = {
     **PRESET_MINIMAL,
     "enableVisCacheDirDistAddr": False,
     "enableVisCacheNormalAddr": True,
     "normalACoarse": NORMAL_A,
-    **WINNER_QUANT,
-    **WINNER_THRESH,
+    "matureThreshold": 128,
+    **INHERITED_OVERRIDES,
 }
 
-# Companion quant one step finer on both axes — jitter blurs across cell
-# boundaries, effectively coarsening the accumulation window. Running a
-# variant where qA and qB are each one step smaller (0.12 / 0.18 vs the
-# step-05 0.24 / 0.36 winner) tests whether halving the cell size
-# compensates for the jitter-induced blur.
-FINE_QUANT_TAG = "qA012_qB018"
-FINE_QUANT = {"posACoarse": 0.12, "posBCoarse": 0.18}
-FINE_NAME = f"pos_norm__pos__{FINE_QUANT_TAG}__{WINNER_THRESH_TAG}"
-FINE_BASE = {**WINNER_BASE, **FINE_QUANT}
+# Companion: halve posA / posB off the inherited carry. The step-03 quant
+# grid is power-of-2 spaced, so /2 is "one step finer" on both axes.
+FINE_OVERRIDES = dict(INHERITED_OVERRIDES)
+FINE_OVERRIDES["posACoarse"] = INHERITED_OVERRIDES["posACoarse"] / 2.0
+FINE_OVERRIDES["posBCoarse"] = INHERITED_OVERRIDES["posBCoarse"] / 2.0
+FINE_NAME = re.sub(
+    r"qA\d+_qB\d+",
+    f"qA{int(round(FINE_OVERRIDES['posACoarse'] * 100)):03d}"
+    f"_qB{int(round(FINE_OVERRIDES['posBCoarse'] * 100)):03d}",
+    INHERITED_NAME,
+)
+FINE_BASE = {**INHERITED_BASE, **FINE_OVERRIDES}
 
 QUANT_FLAVORS = [
-    (WINNER_NAME, WINNER_BASE),
-    (FINE_NAME,   FINE_BASE),
+    (INHERITED_NAME, INHERITED_BASE),
+    (FINE_NAME,      FINE_BASE),
 ]
 
 JITTER_VALUES = [0.0, 0.5, 1.0]
 
 def _jt(v): return f"{int(round(v * 10)):02d}"
 
-VARIANTS_06 = []
+VARIANTS_09 = []
 for (qbase_name, qbase_ovr) in QUANT_FLAVORS:
     for jf in JITTER_VALUES:
         for jc in JITTER_VALUES:
             tag = f"jf{_jt(jf)}_jc{_jt(jc)}"
-            VARIANTS_06.append((f"{qbase_name}__{tag}",
+            VARIANTS_09.append((f"{qbase_name}__{tag}",
                                 {**qbase_ovr,
                                  "jitterFilter": jf,
                                  "jitterCell":   jc}))
@@ -108,24 +106,21 @@ for scene_file in get_scenes():
         step_name=STEP,
         frame_configs=[(1, 0, 1, 1), (1, 0, 1, 4)],
         scene_file=scene_file,
-        variants=VARIANTS_06,
+        variants=VARIANTS_09,
         resX=res, resY=res,
         mogwai_globals=globals(),
         step_overrides=STEP_OVERRIDES,
     )
 
-# Step 06's picker output feeds the upcoming multi-level step 10.
-# Manual carry: jf05_jc00 on the step-05 winner quant — filter jitter at mid
-# strength softens cell boundaries without the grid-shift cost of jc; stacking
-# jc on top adds rays and firefly noise without visible artifact benefit.
-# Overrides the auto-picker's ranking because jitter is a visual/artifact call,
-# not purely a rays+err metric.
-CARRY_06 = f"{WINNER_NAME}__jf05_jc00"
-finalize_step(STEP, inherited_winners=[WINNER_NAME, FINE_NAME],
-              carried_winners=[CARRY_06])
-write_picks_meta(STEP, inherited_from="05", inherited=[WINNER_NAME, FINE_NAME],
-                  carried={"pos": [CARRY_06]}, rule=_DEFAULT_PICKER_RULE,
-                  notes="Manual carry: jf05_jc00 on step-05 winner quant — "
-                        "filter jitter at mid strength softens boundaries "
-                        "without the extra rays/firefly cost of stacking jc.")
+# No carry yet — jitter is a visual/artifact call that still wants eyes on
+# the plates before picking. Likely choice is jf05_jc05 (both at mid strength)
+# but pending inspection. finalize_step without carried_winners still renders
+# the inherited-winner halos; picks.json records the step with carried empty.
+finalize_step(STEP, inherited_winners=[INHERITED_NAME, FINE_NAME],
+              ref_step="05", ref_variant=INHERITED_NAME,
+              ref_label="step-05 carry (no jitter)")
+write_picks_meta(STEP, inherited_from="05",
+                  inherited=[INHERITED_NAME, FINE_NAME],
+                  carried={}, rule=_DEFAULT_PICKER_RULE,
+                  notes="No carry yet — awaiting visual pick (likely jf05_jc05).")
 _HEADLESS_SCRIPT_DONE = True

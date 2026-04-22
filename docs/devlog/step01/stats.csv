@@ -1,5 +1,0 @@
-key,scene,variant,spp,warmup,averaging,rays_traced_pct,coldmiss_pct,timestamp
-CornellBox_1AreaLight_s_0_1_x1_512x512_pos_norm1__pos1,CornellBox_1AreaLight,pos_norm1__pos1,1,0,1,42.1536,42.8157,2026-04-14T12:15:17
-CornellBox_1PointLight_s_0_1_x1_512x512_pos_norm1__pos1,CornellBox_1PointLight,pos_norm1__pos1,1,0,1,21.5006,47.6665,2026-04-14T12:15:24
-CornellBox_3AreaLights_s_0_1_x1_512x512_pos_norm1__pos1,CornellBox_3AreaLights,pos_norm1__pos1,1,0,1,80.2027,34.5664,2026-04-14T12:15:37
-CornellBox_32PointLights_s_0_1_x1_512x512_pos_norm1__pos1,CornellBox_32PointLights,pos_norm1__pos1,1,0,1,95.3554,38.3971,2026-04-14T12:15:45

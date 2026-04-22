@@ -133,16 +133,25 @@ for scene_file in get_scenes():
 # 03 skips the combined overview (too crowded at 45 variants) and produces
 # only the per-variant subsets + the top-3 comparison.
 if CHUNK_IDX == CHUNK_COUNT - 1:
-    # Old CSVs may contain the 4×4×4=64 dir_dist sweep; filter plot to the
-    # trimmed 4×3×3=36 subset so the legend fits (QD ∈ QD_VALUES,
-    # qd ∈ QD_DIST_VALUES). Keep dir_dist1 + pos unfiltered.
-    qD_tags = {f"_{_qD(v)}_"  for v in QD_VALUES}
-    qd_tags = {f"_{_qd(v)}"   for v in QD_DIST_VALUES}
-    def _dir_dist_ok(r):
-        v = r["variant"]
-        return (any(t in v for t in qD_tags)
-                and any(v.endswith(t) for t in qd_tags))
-    plot_overviews_per_bvariant(STEP, variant_filter={"dir_dist": _dir_dist_ok})
+    # Plot subset for dir_dist: trim to 3×2×2 = 12 so the legend stays
+    # readable. Drops the tails (qA048 aggressive, qD08 fine, qd024 fine);
+    # keeps the current top-1 winner qA012_qD60_qd192. CSV / sweep are
+    # untouched — this filter affects plotting only. Non-dir_dist rows
+    # (pos, dir_dist1) pass through unfiltered; plot_overviews_per_bvariant
+    # applies this callable within each B-variant grouping.
+    QA_PLOT       = [0.06, 0.12, 0.24]
+    QD_PLOT       = [30.0, 60.0]
+    QD_DIST_PLOT  = [0.96, 1.92]
+    _qA_tags = {f"_{_qA(v)}_" for v in QA_PLOT}
+    _qD_tags = {f"_{_qD(v)}_" for v in QD_PLOT}
+    _qd_tags = {f"_{_qd(v)}"  for v in QD_DIST_PLOT}
+    def _variant_ok(name):
+        if "__dir_dist__" not in name:
+            return True
+        return (any(t in name for t in _qA_tags)
+                and any(t in name for t in _qD_tags)
+                and any(name.endswith(t) for t in _qd_tags))
+    plot_overviews_per_bvariant(STEP, variant_filter=_variant_ok)
     plot_top3_comparison(STEP, n_top=3)
     finalize_step(STEP, skip_overview=True)
     _carried_03 = pick_top_variants_per_bvariant(STEP, n_top=3, spp=1)
