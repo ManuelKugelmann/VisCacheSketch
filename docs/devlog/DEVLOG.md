@@ -548,6 +548,35 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 24 — ct × vt003 × pm010 cross-sweep — ct+vt are orthogonal bias defenses
+
+**What it looks at.** Step 21 found ct=4+pm010 unlocks massive rays savings (32PL halved, Bistro -20pp) but regresses Sponza x4 err (+2.3 → +7.0). Step 23 found vt003+pm010 achieves Sponza x4 err parity with vanilla (+0.17%). Direct question: does vt003 rescue Sponza at ct=4, giving us the universal win?
+
+Three variants: `ct4_vt003_pm010`, `ct8_vt003_pm010`, `ct16_vt003_pm010`. 3 × 6 × 7 = 126 runs.
+
+**Result — vt003 does NOT rescue Sponza at ct=4.**
+
+Sponza under vt003:
+
+| regime | ct4 err | ct8 err | ct16 err |
+|---|---:|---:|---:|
+| x4 w1 | +3.85 | +3.03 | **+1.42** |
+| x4 w2 | +4.54 | +4.40 | **+0.89** |
+| x16 w1 | +13.98 | +11.79 | **+8.26** |
+| x16 w2 | +12.95 | +11.51 | **+8.49** |
+
+Sponza err is **monotone in ct** — tighter vt didn't absolve ct. The scene-regime split (step 21) is robust: bias-dominated scenes need high ct AND tight vt. They fight bias through different mechanisms (ct = "wait for enough samples to stabilize cell mean", vt = "distrust cells with ambiguous μ") and combine additively, not substitutively.
+
+Meanwhile 32PL rays scale exactly as expected: ct4 halves rays (x1 83→45, x4 40→17) with ~0.15% err cost. The rays prize on variance-dominated scenes stays gated behind Sponza's quality need.
+
+**Why we narrow.** No carry change. Step-23 `qa012__ct16_vt003_fp0_fd0_pm010` remains. ct4+vt003 would be the right carry *if* Sponza were out of scope. For a universal carry, ct=16 is the required trade.
+
+Details in `captures/ladder/24/picks.json`.
+
+![](step24/overview_summary_24.png)
+
+---
+
 ## Step 23 — varThreshold × pm010 — **positive carry: vt003**
 
 **What it looks at.** `varThreshold` has been pinned at 0.05 since step 6. It was tuned under the old pMin=0.05 floor. Now that step-20's pm010 provides rate-defense independent of vt, the trade-off landscape should have shifted. Sweep vt ∈ {0.03, 0.05, 0.08} at step-20 carry. 3 × 6 × 7 = 126 runs.
