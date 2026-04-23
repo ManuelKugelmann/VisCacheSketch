@@ -38,9 +38,9 @@ from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
 STEP = "21"
 res = int(os.environ.get("RES", "512"))
 
-INHERITED_NAME = read_carried_winner("12")
+INHERITED_NAME = read_carried_winner("22") or read_carried_winner("18") or read_carried_winner("12")
 if INHERITED_NAME is None:
-    raise RuntimeError("[21] step 12 picks.json missing.")
+    raise RuntimeError("[21] need step 22/18/12 picks.json")
 
 _qa_tag = None
 for tok in INHERITED_NAME.split("__"):
@@ -69,7 +69,7 @@ FB_SWEEP = [("fb001", 0.01), ("fb005", 0.05), ("fb010", 0.10), ("fb020", 0.20)]
 VARIANTS_21 = []
 for (name, base_overrides) in BASE_21:
     for (suffix, fb) in FB_SWEEP:
-        VARIANTS_21.append((f"{name}__ct{CT_INH}_vt{int(round(VT_INH*100)):03d}_fp0_fd0_pm{int(round(PM_INH*100)):03d}_{suffix}", {
+        VARIANTS_21.append((f"{name}__ct{CT_INH}_vt{int(round(VT_INH*100)):03d}_fp0_fd0_pm{int(round(PM_INH*100)):03d}_sub4_{suffix}", {
             **base_overrides,
             **NO_JITTER,
             "bootThreshold":                 CT_INH,
@@ -82,9 +82,10 @@ for (name, base_overrides) in BASE_21:
             "accelDecayDisagreeThresh":      0.0,
             "pMin":                          PM_INH,
             "fireflyBudget":                 fb,
+            "subframeN":                     4,  # step-18 carry is sub4
         }))
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
+STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI,
                   "tableCapacity": 1 << 25}
 
 MF_CONFIGS = [(1, 0, 1, 1),  (1, 0, 4, 1),  (1, 0, 16, 1),

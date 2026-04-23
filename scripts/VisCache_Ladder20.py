@@ -28,9 +28,9 @@ from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
 STEP = "20"
 res = int(os.environ.get("RES", "512"))
 
-INHERITED_NAME = read_carried_winner("12")
+INHERITED_NAME = read_carried_winner("22") or read_carried_winner("18") or read_carried_winner("12")
 if INHERITED_NAME is None:
-    raise RuntimeError("[20] step 12 picks.json missing.")
+    raise RuntimeError("[20] need step 22/18/12 picks.json")
 
 _qa_tag = None
 for tok in INHERITED_NAME.split("__"):
@@ -58,12 +58,12 @@ MATURE_SWEEP = [("m32", 32), ("m64", 64), ("m128", 128), ("m512", 512)]
 
 VARIANTS_20 = []
 for (name, base_overrides) in BASE_20:
-    for (suffix, m) in MATURE_SWEEP:
-        VARIANTS_20.append((f"{name}__ct{CT_INH}_vt{int(round(VT_INH*100)):03d}_fp0_fd0_pm{int(round(PM_INH*100)):03d}_{suffix}", {
+    for (suffix, _mt) in MATURE_SWEEP:
+        VARIANTS_20.append((f"{name}__ct{CT_INH}_vt{int(round(VT_INH*100)):03d}_fp0_fd0_pm{int(round(PM_INH*100)):03d}_sub4_{suffix}", {
             **base_overrides,
             **NO_JITTER,
             "bootThreshold":                 CT_INH,
-            "matureThreshold":               m,
+            "matureThreshold":               _mt,
             "varThreshold":                  VT_INH,
             "bootThresholdFactorFootprintPx": 0.0,
             "forceDescendFootprintPx":       0,
@@ -71,9 +71,10 @@ for (name, base_overrides) in BASE_20:
             "enableHierarchicalConsistency": False,
             "accelDecayDisagreeThresh":      0.0,
             "pMin":                          PM_INH,
+            "subframeN":                     4,  # step-18 carry is sub4
         }))
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
+STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI,
                   "tableCapacity": 1 << 25}
 
 MF_CONFIGS = [(1, 0, 1, 1),  (1, 0, 4, 1),  (1, 0, 16, 1),
