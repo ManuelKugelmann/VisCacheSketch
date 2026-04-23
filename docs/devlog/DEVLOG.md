@@ -367,6 +367,29 @@ Rays keep falling (the cache matures further), but blob on every scene grows 2�
 
 ![](step12/overview_summary_12.png)
 
+**Big-scene supplement (Bistro + Sponza)** — step 12 carry validated on real-world geometry:
+
+| scene | x4 rays | x4 err Δ | x4 blob | x16 rays | x16 err Δ |
+|---|---:|---:|---:|---:|---:|
+| BistroInterior | 53.6 | **−17.3%** | 293.9 | 43.3 | **−9.0%** |
+| BistroExterior | 46.2 | **−69.5%** | 365.9 | 40.5 | **−61.9%** |
+| Sponza | 32.5 | +2.4% | 211.2 | 23.6 | +10.0% |
+| 32PL (Cornell) | 40.5 | −3.9 | 3.2 | 19.9 | −0.4 |
+
+**On Bistro Exterior x4, viscache traces 46% of rays AND reduces mean GT-error by 69.5%** vs matched-SPP vanilla — the canonical "cache pays off" result: complex lighting where aggregation across frames delivers real per-pixel quality improvement. Bistro Interior shows a similar 17% mean improvement. Sponza is the outlier — slight regression (+2.4% err at x4, +10% at x16) that widens with SPP.
+
+**Scene-dependent ct tradeoff (BistroInterior x4, w=2, fd0):**
+
+| ct | rays | err Δ | blob |
+|---:|---:|---:|---:|
+| 2 | 16.0 | **−17.7** | 293.5 |
+| 4 | 25.1 | −16.6 | 293.6 |
+| 8 | 39.3 | −16.8 | 293.5 |
+| **16 (carry)** | 53.6 | −17.3 | 293.9 |
+| 32 | 63.9 | −17.4 | 293.5 |
+
+**ct is nearly irrelevant on Bistro** — err stays at −17 and blob at 293 across the ct sweep; only rays change (16% at ct2 → 64% at ct32). The step-12 carry's `ct=16` was chosen to fix Cornell 1PL blob (41 → 17) but that mechanism isn't activating on Bistro — the cache is already doing its job at any ct. On Bistro, `ct=2` would deliver the same quality at 38pp fewer rays. A scene-aware or per-level ct strategy is on the table for future investigation.
+
 ---
 
 ## Step 07 — stderrThreshold pure sensitivity curve (single-level)
