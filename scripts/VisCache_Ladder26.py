@@ -1,16 +1,24 @@
 """
-VisCache_Ladder26.py — Step 26: tableCapacity sweep at sub4 carry.
+VisCache_Ladder26.py — Step 26: footprint factor (fp) sweep at sub4 carry.
 
-tableCapacity has been pinned at 1<<25 (32M entries × 8 bytes = 256MB)
-since the multi-level switch at step 10. Test whether smaller (memory
-savings) or larger (fewer hash collisions) capacities matter.
+User observation: Sponza shows large cells that don't get refined.
+The bootThresholdFactorFootprintPx (fp) parameter scales trust
+threshold by `fp * log2(cellPx)` — making large cells require many
+more samples before trust, forcing cascade descent to finer levels.
 
-Three variants:
-  tc24 — 16M entries (128MB) — half memory
-  tc25 — 32M entries (256MB) — current baseline
-  tc26 — 64M entries (512MB) — double memory
+Currently fp=0 (off) in the carry. Archive step 17 v2 tested fd
+(force-descend) at ct=4 with mixed Cornell/Bistro results. Now under
+sub4 carry (which already fixed Sponza err to -3.7%), test if
+footprint factor reduces the residual large-cell visibility blob
+that's still 145-160 on Sponza.
 
-3 × 12 configs × 7 scenes = 252 runs.
+Four variants at sub4 carry:
+  fp00       — baseline (current carry)
+  fp10       — paper default (fp=1.0)
+  fp20       — aggressive (fp=2.0)
+  fp10_fd1k  — fp=1.0 + force-descend at cellPx>1024
+
+4 × 3 spp × 7 scenes = 84 runs. Uses w=0 per step-25 finding.
 
 Usage:
     runtime/pythondist/python.exe scripts/run_ladder.py -s 26
@@ -51,34 +59,36 @@ BASE_26 = [v for v in make_norm_variants(quant=QUANT_WINNER,
                                            quant_tag=_qa_tag)
            if v[0] == WINNER_NAME]
 
-TC_VARIANTS = [
-    ("tc24", 1 << 24),
-    ("tc25", 1 << 25),
-    ("tc26", 1 << 26),
+# (suffix, fp factor, fd px²)
+FP_VARIANTS = [
+    ("fp00",       0.0,    0),
+    ("fp10",       1.0,    0),
+    ("fp20",       2.0,    0),
+    ("fp10_fd1k",  1.0, 1024),
 ]
 
 VARIANTS_26 = []
 for (name, base_overrides) in BASE_26:
-    for (suffix, tc) in TC_VARIANTS:
-        VARIANTS_26.append((f"{name}__ct{CT_INH}_vt{int(round(VT_INH*100)):03d}_fp0_fd0_pm{int(round(PM_INH*100)):03d}_sub4_{suffix}", {
+    for (suffix, fp, fd) in FP_VARIANTS:
+        VARIANTS_26.append((f"{name}__ct{CT_INH}_vt{int(round(VT_INH*100)):03d}_pm{int(round(PM_INH*100)):03d}_sub4_{suffix}", {
             **base_overrides,
             **NO_JITTER,
             "bootThreshold":                 CT_INH,
             "matureThreshold":               128,
             "varThreshold":                  VT_INH,
-            "bootThresholdFactorFootprintPx": 0.0,
-            "forceDescendFootprintPx":       0,
+            "bootThresholdFactorFootprintPx": fp,
+            "forceDescendFootprintPx":       fd,
             "stderrThreshold":               0.0,
             "enableHierarchicalConsistency": False,
             "accelDecayDisagreeThresh":      0.0,
             "pMin":                          PM_INH,
             "subframeN":                     4,
-            "tableCapacity":                 tc,
         }))
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI}  # tableCapacity per-variant
+STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI,
+                  "tableCapacity": 1 << 25}
 
-# Use w=0 as step-25 finding suggested
+# w=0 per step-25 finding
 MF_CONFIGS = [(0, 0, 1, 1),  (0, 0, 4, 1),  (0, 0, 16, 1)]
 
 for scene_file in get_scenes(default=list(ALL_SCENES)):
@@ -103,12 +113,14 @@ for scene_file in get_scenes(default=list(ALL_SCENES)):
 
 finalize_step(STEP, inherited_winners=[INHERITED_NAME],
               ref_step="22", ref_variant=INHERITED_NAME,
-              ref_label="step-22 carry (tc25)")
+              ref_label="step-22 carry (fp=0)")
 write_picks_meta(STEP, inherited_from="22", inherited=[INHERITED_NAME],
                   carried={}, rule=_DEFAULT_PICKER_RULE,
-                  notes="tableCapacity sweep at sub4 carry. tc24=128MB, "
-                        "tc25=256MB (baseline), tc26=512MB. Tests whether "
-                        "smaller table costs quality (collisions) or larger "
-                        "table helps. Also first step using w=0 default per "
-                        "step-25 finding.")
+                  notes="Footprint factor (bootThresholdFactorFootprintPx) "
+                        "sweep at sub4 carry. User observation: Sponza has "
+                        "large cells that don't get refined. fp scales "
+                        "trust threshold by fp*log2(cellPx) so big cells "
+                        "demand more samples before trust, forcing finer-"
+                        "level descent. Tests fp=1.0 (paper default), "
+                        "fp=2.0 (aggressive), and fp+fd=1024 stack.")
 _HEADLESS_SCRIPT_DONE = True
