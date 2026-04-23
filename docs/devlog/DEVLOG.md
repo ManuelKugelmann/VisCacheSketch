@@ -548,6 +548,38 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 21 — ct efficiency test at pm010 — confirms scene-regime split
+
+**What it looks at.** Step 12 raised ct from 4 to 16 to defend 1PL/Sponza quality, at the cost of +23pp rays on 32PL x4 (17.5→40.4). Step 20 showed pMin is a rate-defense that independently reduces 1PL blob. Question: if pMin now defends bias, can ct drop back to 4 and recover the rays savings?
+
+Two variants: `ct4_pm010` vs `ct16_pm010`. 2 × 6 × 7 = 84 runs.
+
+**Result — confirms the bias-vs-variance regime split.** Selected (scene, spp, wf) cells:
+
+| scene | regime | Δrays | Δerr% | Δblob | verdict |
+|---|---|---:|---:|---:|---|
+| 32PL | x1 w1 | **−37.7** | +0.03 | +4.7 | massive rays save, tiny cost |
+| 32PL | x4 w1 | **−22.9** | +0.16 | +0.5 | massive rays save |
+| 32PL | x16 w1 | **−11.5** | +0.18 | 0 | massive rays save |
+| BistroInt | x4 w1 | **−26.6** | **−0.9** (better) | 0 | rays save + quality win |
+| BistroExt | x4 w1 | **−19.2** | −0.9 (better) | 0 | rays save + quality win |
+| 3AL | x4 w1 | −10.9 | +0.4 | 0 | rays save, mild regression |
+| **Sponza** | **x4 w1** | −14.6 | **+4.7** (3× worse) | +43 | **dealbreaker** |
+| **Sponza** | **x16 w1** | −9.8 | **+3.4** | +49 | **dealbreaker** |
+| **1PL** | **x1 w1** | −6.2 | +0.5 | **+35** | significant regression |
+
+**Interpretation — bias-dominated scenes need high ct.** Sponza's low-frequency illumination makes cache cells with mixed vis=0/1 samples common, and a low ct floor trusts those bimodal cells after just 4 samples — exactly when the mean is most likely to be non-representative of individual pixels. ct=16 forces enough warmup to stabilize cell means before trust. pm010's rate-defense fixes bias AT trusted cells (corrective samples), but doesn't prevent premature trust.
+
+**ct=16 + pm010** remains the right trade: we pay +23pp rays on 32PL to keep Sponza error at +2.4% instead of +7.0% and protect 1PL x1 blob. For Bistro-only workloads, ct=4+pm010 is *much* cheaper with *better* quality — flagged as a potential scene-adaptive ct opportunity (out of scope for the current carry chain).
+
+**Why we narrow.** No carry change. Step-20 `qa012__ct16_vt005_fp0_fd0_pm010` remains.
+
+Details in `captures/ladder/21/picks.json`.
+
+![](step21/overview_summary_21.png)
+
+---
+
 ## Step 20 — pMin floor sweep at step-12 carry — **positive carry: pm010**
 
 **What it looks at.** After 5 consecutive negative gate-tuning sweeps (16/17/18/19), revisit the one RR lever pinned since step 5 and never probed at the current multi-level carry: `pMin`. The RR floor controls how often the adaptive-pMin formula can drop the forced-trace rate for "confident" cells (high N, low var). Hypothesis: confident-but-biased cells at penumbra edges (where μ≈0.02 for most pixels in the cell but some pixels in the cell are actually in light) benefit from a higher floor — raising pMin recovers the quality that adaptive-pMin sacrifices for efficiency.
