@@ -32,6 +32,7 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | 13   | stderr × hierarchical × accel-decay, single-level | **negative**: no variant strictly beats vt005; best-x4 se10+hc cuts 1PL x4 blob 17→10 but regresses x1 13→50 | no carry (keep step-06 vt005) |
 | 15   | stderr × hierarchical × accel-decay, multi-level + x16 | **negative** on Cornell; **big-scene supplement (Bistro/Sponza) shows viscache cuts mean GT-err 18–70% on Bistro** — first real-scene data, gate mechanisms near-irrelevant there | no carry (keep step-11 ct4_vt005_fp0) |
 | 16   | per-level ct (bootThreshold coarse, bootThresholdFine) | **negative**: asymmetric ct has non-monotonic mid-level regimes — (16,4) regresses 1AL 21→112; fine ct rarely consulted on dense Bistro so doesn't recover rays | no carry |
+| 17   | insert-side level-skip (paper win-win idea) | **negative**: fd>0 at insert skips big-cell writes AND disrupts parent-preinit chain → 1AL blob 17→117 at fd=4096; 1PL mixed (46 at fd=4096 vs 56 baseline); ~10% Bistro rays savings at fd=1024 | no carry |
 
 ---
 
@@ -498,6 +499,38 @@ Sweep 8 (coarse, fine) pairs on step-11 multi-level lineage: (2,2), (4,4), (8,4)
 **Why we narrow.** No carry — step-11 `qa012__ct4_vt005_fp0` remains the multi-level carry. Per-level ct infrastructure (new `bootThresholdFine` shader param) stays in place — might be useful as a future lever if paired with hierarchical consistency checking or insert-side level skipping. Details in `captures/ladder/16/picks.json`.
 
 ![](step16/overview_summary_16.png)
+
+---
+
+## Step 17 — insert-side level skipping (paper win-win idea) — negative result
+
+**What it looks at.** Paper's "skip coarse levels for big footprints" idea + step-12 spinoff. The existing `forceDescendFootprintPx` already makes lookup refuse to stop on convergence at big cells — step 17 extends it to the *insert* side: if `cellPx > forceDescendFootprintPx`, skip the write at that level too. Hypothesis: reduced coarse-level hash pressure + no fraudulent-low-variance cells at penumbras.
+
+Sweep: `fd ∈ {0, 1024, 4096}` (px² threshold). 3 × 2 SPP × 7 scenes = 42 runs.
+
+**Result — unintended consequence dominates.** x4 blob:
+
+| scene | fd=0 | fd=1024 | fd=4096 |
+|---|---:|---:|---:|
+| 32PL | 3.6 | 4.2 | 4.5 |
+| 1PL | 56 | **86** | **46** |
+| 1AL | 17 | 27 | **117** |
+| 3AL | 22.5 | 22.5 | 22.5 |
+| Bistro Interior | 294 (rays 26) | 294 (rays **24**) | 294 |
+| Bistro Exterior | 366 | 366 | 366 |
+| Sponza | 211 | 211 | 211 |
+
+**Key negative — parent-preinit chain disruption.** The existing insert pass seeds each cell's freshly-claimed slot with the parent level's `(vis, total) >> 3` via the parent-preinit mechanism (paper §5). My insert-skip resets `parentVis = parentTotal = 0` when skipping, breaking the chain for every subsequent level. 1AL at fd=4096 shows the catastrophic case (blob 17 → 117) — fine cells inherit a zero parent-seed instead of the inherited ratio.
+
+**Minor positive** — `fd=1024` on BistroInterior saves 2.4pp rays (26.3 → 23.9) with no quality change. Too small to be a carry; too big to ignore as noise.
+
+**Why we narrow.** No carry — step-11 `qa012__ct4_vt005_fp0` remains. The paper's win-win intuition is still sound, but the implementation has to preserve parent-preinit across skipped levels. Candidate fixes for future investigation:
+1. Pass the parent's vis/total through the skip (fetch coarse cell data without writing, use for next-level preinit).
+2. Independent gate: only skip once per cascade, at the coarsest level where cell is "too big" — preserve the majority of the cascade for preinit chain continuity.
+
+Details in `captures/ladder/17/picks.json`.
+
+![](step17/overview_summary_17.png)
 
 ---
 
