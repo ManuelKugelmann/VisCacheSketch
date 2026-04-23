@@ -548,6 +548,37 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 23 — varThreshold × pm010 — **positive carry: vt003**
+
+**What it looks at.** `varThreshold` has been pinned at 0.05 since step 6. It was tuned under the old pMin=0.05 floor. Now that step-20's pm010 provides rate-defense independent of vt, the trade-off landscape should have shifted. Sweep vt ∈ {0.03, 0.05, 0.08} at step-20 carry. 3 × 6 × 7 = 126 runs.
+
+**Result — vt003 is a big Sponza-x4 win.**
+
+| scene | regime | err_vt003 | err_vt005 | err_vt008 |
+|---|---|---:|---:|---:|
+| **Sponza** | **x4 w1** | **+0.65** | +2.85 | +7.07 |
+| **Sponza** | **x4 w2** | **+0.17** | +3.56 | +5.96 |
+| Sponza | x16 w1 | +8.32 | +10.33 | +12.70 |
+| Sponza | x1 w1 | +12.89 | +12.68 | +13.21 (vt005 ties) |
+| BistroInt | x1 w2 | **−28.81** | −28.26 | −28.08 |
+| BistroInt | x4 w2 | **−17.67** | −17.33 | −16.84 |
+| 1PL | x1 w1 | **31.0** blob | 51.2 | 58.0 |
+| 1PL | x4 w2 | 85.9 blob | 59.9 | **28.3** ↗ |
+
+**Sponza x4 goes from +2.85% error (3× worse than vanilla) to +0.17% (parity)** — the biggest signal-per-delta change in the entire ladder. The bias-dominated scene that has been this project's Achilles heel becomes essentially neutral vs vanilla at the x4 benchmark regime. BistroInterior also gains 0.6-0.9% err. Cost: +1.7pp rays average (+3.7pp on BistroExterior).
+
+**Interpretation.** The step-12 era `vt=0.05` was a compromise — loose enough to trust mature cells efficiently, tight enough to keep the RR p formula `var/vt` meaningful for noisy cells. Once pm010 took over rate-defense, the vt formula's efficiency role became redundant: the floor already ensures forced tracing. Tightening vt to 0.03 now *purely* reduces false convergence (the bias case at penumbra edges) without ripping rays away from noisy regions. Monotonic Sponza improvement (vt008 +10.8% → vt003 +7.2% aggregate) confirms the mechanism.
+
+**Tradeoffs accepted.** 1AL blob swings 26→50 (volatile scene, known 1AL resonance), 1PL blob regresses ~10% (penumbra slightly noisier without the vt005 p=1 force-trace at low-var cells).
+
+**Carry:** `qa012__ct16_vt003_fp0_fd0_pm010` — step-20 carry + tighter variance gate.
+
+Details in `captures/ladder/23/picks.json`.
+
+![](step23/overview_summary_23.png)
+
+---
+
 ## Step 22 — finer pMin granularity (pm008 / pm010 / pm012) — pm010 near-optimum
 
 **What it looks at.** Step 20's pm010 was a big win. Probe the local landscape: is pm010 the sweet spot, or do pm008/pm012 recover more? 3 variants × 6 spp/wf × 7 scenes = 126 runs.
