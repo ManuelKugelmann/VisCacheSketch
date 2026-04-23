@@ -548,6 +548,33 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 18 — stderr × ct16+w2 stack test — negative result
+
+**What it looks at.** Steps 7 and 12 identified the two best single-knob levers found so far: step 7's stderr-gate (single-level, ct=4) and step 12's ct16+w=2 carry (multi-level, no stderr). They had never been combined — step 15's stderr sweep used ct=4, step 12 had no stderr. This step is minimal: 2 variants × 6 (spp × wf) × 7 scenes, asking "does stderr=0.05 stack with the ct16 carry or not?"
+
+Variants: `ct16_vt005_fp0_fd0_se0` vs `ct16_vt005_fp0_fd0_se05`. Everything else matches step 12 exactly.
+
+**Result — volatile, does not stack cleanly.** Selected spp/wf per scene (error blob Δ vs se=0):
+
+| scene | x4 w2 | x16 w2 | x1 w2 | x4 w1 | x16 w1 |
+|---|---:|---:|---:|---:|---:|
+| 1PL | **−54 (win)** | −0 | +28 (loss) | +52 (loss) | +0 |
+| 1AL | −0 | **+86 (loss)** | +18 (loss) | +0 | +13 (loss) |
+| 3AL / 32PL | ±0 | ±0 | ±0 | ±0 | ±0 |
+| Bistro / Sponza | ±0 | ±0 | ±0 | ±0 | +0 |
+
+**Key finding — the 1PL x4 w2 blob does drop from 85.84 → 31.85** (the same scene/spp that step 7 identified as stderr's signature win). But that win comes paired with a catastrophic **1AL x16 w2** regression (blob 31.12 → 117.05) and a symmetric 1PL x1 w2 loss (30 → 58). Sponza x4 shows a small error-Δ improvement (+4.65% → +2.58%) — the only multi-SPP win outside Cornell 1PL.
+
+**Interpretation.** The stderr gate is too volatile to carry: its direction (help/hurt) flips depending on which scene × spp × wf cell the gate fires on. At low-contributor counts (boot phase) the gate rejects real but noisy cells; at high-contributor-count but still-wrong cells (1AL x16 w2) it lets bad μ's through because stderr is artificially tight from correlated samples. This matches the known x16 sample-correlation pathology — stderr confidence is a lie when contributing samples are correlated (`memory/project_cell_mean_defenses.md`).
+
+**Why we narrow.** No carry — step-12 `qa012__ct16_vt005_fp0_fd0` remains the multi-level reference. The stderr gate is confirmed as a single-level lever only; at multi-level with ct=16 it is a net wash with unacceptable worst-case regressions.
+
+Details in `captures/ladder/18/picks.json`.
+
+![](step18/overview_summary_18.png)
+
+---
+
 **Next frontier** (in `memory/project_cell_mean_defenses.md`): correlation-specific defenses — per-cell writer-source diversity tracking (refuse trust if too few distinct pixels have contributed) or split-halves agreement (two independent accumulators per cell, trust iff their μ's agree).
 
 **Big-scene supplement (Bistro + Sponza)**
