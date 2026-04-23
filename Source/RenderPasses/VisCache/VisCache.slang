@@ -1279,6 +1279,22 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
             continue;
         }
 
+        // Gate 1b: insert-side level skip for big footprints. Paired with
+        // gForceDescendFootprintPx on the lookup side — lookup already
+        // refuses to trust big coarse cells, so populating them is pure
+        // hash-table pressure. Skip writes at levels where cellPx exceeds
+        // the threshold. Never skip the finest level.
+        if (!isFinestLevel && gForceDescendFootprintPx != 0u)
+        {
+            uint cellPx = vhfCellPixels(lvl, posA);
+            if (cellPx > gForceDescendFootprintPx)
+            {
+                parentVis   = 0u;
+                parentTotal = 0u;
+                continue;
+            }
+        }
+
         uint _ps;
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true, _ps);
         if (slot < 0) continue;  // Table full at this probe depth
