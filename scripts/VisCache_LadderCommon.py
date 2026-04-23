@@ -3050,6 +3050,8 @@ _VARIANT_TAG_PATTERNS = {
     "accelDecayDisagreeThresh": (r"ad(\d+)", lambda s: int(s) / 100.0),
     # hc0 / hc1 — hierarchicalConsistency off/on.
     "enableHierarchicalConsistency": (r"hc(\d+)", lambda s: bool(int(s))),
+    # ctf<N> = bootThresholdFine (per-level fine variant of ct). 0 = off.
+    "bootThresholdFine": (r"ctf(\d+)", lambda s: int(s)),
 }
 
 

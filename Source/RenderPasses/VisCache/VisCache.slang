@@ -206,6 +206,11 @@ cbuffer VisCacheParams
     uint   gEnableHierarchicalConsistency; ///< 1 = peek next level μ for agreement check.
     float  gHierarchicalMuTolerance;  ///< |μ_next − μ_this| gate for the hierarchical check.
     float  gAccelDecayDisagreeThresh; ///< |sample − μ| that triggers in-insert half-decay. 0 = off.
+    uint   gBootThresholdFine;        ///< Per-level-fine variant of gBootThreshold. When nonzero,
+                                      ///< the effective required-sample count at level L is a
+                                      ///< linear interp from gBootThreshold (coarse, L=0) to
+                                      ///< gBootThresholdFine (fine, L=numLevels-1). 0 = off
+                                      ///< (uniform gBootThreshold across all levels, legacy).
     float  gJitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
     float  gJitterCell;      ///< F: per-cell-index-seed jitter scale [Binder 2018] (per-cell shift, hard boundaries). 0 = off.
     uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
@@ -758,15 +763,30 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         float mu  = float(vis) / float(total);
         float var = mu * (1.0f - mu);  // Bernoulli variance
 
+        // Per-level bootThreshold — linear interp from gBootThreshold (coarse,
+        // level 0) to gBootThresholdFine (fine, level numLevels-1). When
+        // gBootThresholdFine == 0, all levels use gBootThreshold (legacy).
+        // Enables "coarse HIGH, fine LOW" configurations where the coarse
+        // level demands more samples before trust (defends against spurious
+        // low-variance at penumbra-straddling cells) while finer levels can
+        // trust faster (they see less data per cell but their variance
+        // estimate reflects genuine uniformity).
+        uint ctLvl = gBootThreshold;
+        if (gBootThresholdFine != 0u && gNumLevels > 1u)
+        {
+            float t = float(lvl) / float(gNumLevels - 1u);
+            ctLvl = uint(lerp(float(gBootThreshold), float(gBootThresholdFine), t));
+        }
+
         // Footprint-aware trust: gBootThresholdFactorFootprintPx * log2(cellPixels) gives a
         // conservative spatial diversity requirement that scales with cell
         // size. Examples at scale=1: cellPx=4→2, 64→6, 1024→10, 6889→13.
-        // scale=0 collapses the floor to 0 → max(bootThreshold,0) = bootThreshold
+        // scale=0 collapses the floor to 0 → max(ctLvl,0) = ctLvl
         // (old fpOff behaviour). scale=1 matches the prior fpOn formula.
         // Larger scales put more pressure on big cells.
         uint cellPx = vhfCellPixels(lvl, posA);
         uint diversityReq = uint(gBootThresholdFactorFootprintPx * log2(max(float(cellPx), 1.f)));
-        uint footprintReq = max(gBootThreshold, diversityReq);
+        uint footprintReq = max(ctLvl, diversityReq);
         uint required = uint(float(footprintReq) * (1.f + var * 4.f));
 
         // Too sparse: don't trust this level, and finer levels will be sparser
