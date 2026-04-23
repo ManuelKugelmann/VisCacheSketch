@@ -165,11 +165,10 @@ PRESET_MINIMAL = {**LEVELS_SINGLE, **THRESH_MID, **RR_OFF, **FEATURES_OFF,
 # Picker + plotter tuning constants
 # ===========================================================================
 
-# Scene weights: 32PointLights is the hardest occlusion test so it counts 3×
-# in the cross-scene "All" value (both picker ranking and plot "All" column).
-SCENE_WEIGHTS = {
-    "CornellBox_32PointLights": 3.0,
-}
+# Scene weights: unweighted across all scenes (per-scene outlier gate
+# replaces prior 32PL×3 weighted-mean rule). Kept as an empty dict so
+# downstream _scene_weight() returns 1.0 for every scene.
+SCENE_WEIGHTS = {}
 
 def _scene_weight(scene_name):
     return SCENE_WEIGHTS.get(scene_name, 1.0)
@@ -191,16 +190,17 @@ def _qd_tag(v): return f"qd{int(round(v * 100)):03d}"
 # Default picker rule used by pick_top_variants_per_bvariant and recorded in
 # picks.json for every step's finalize pass.
 _DEFAULT_PICKER_RULE = (
-    "err non-positive OR <= median+25%, blob non-positive OR <= median+50% "
-    "(weighted across scenes, 32PointLights × 3); noise informational only; "
-    "rank by rays_traced_pct asc"
+    "per-scene outlier gate: for EVERY scene, err <= 0 OR err <= median+25% "
+    "AND blob <= 0 OR blob <= median+50% (medians computed per-scene across "
+    "variants). Noise informational only. Rank surviving variants by "
+    "unweighted mean rays_traced_pct asc."
 )
 
 # Y-axis limits for the step overview plots (shared across all steps so
 # cross-step visual comparison stays consistent).
 RAYS_YLIM        = (0, 105)
-ERROR_DELTA_YLIM = (-10, 100)
-NOISE_DELTA_YLIM = (-1, 1)
+ERROR_DELTA_YLIM = (-100, 200)
+NOISE_DELTA_YLIM = (-30, 10)
 ERROR_ABS_YLIM   = (0, 200)
 NOISE_ABS_YLIM   = (0, 100)
 
@@ -571,8 +571,8 @@ def stitch_baseline_plate(captureDir, xN_tag, out_path, err_stats=None, noise_st
 # compared directly (and differences are not masked by per-step autoscaling).
 # Spans cover the observed-ranges headroom (~-1.5 → 150% error, ~75% noise).
 RAYS_YLIM         = (0, 105)
-ERROR_DELTA_YLIM  = (-10, 100)
-NOISE_DELTA_YLIM  = (-1, 1)
+ERROR_DELTA_YLIM  = (-100, 200)
+NOISE_DELTA_YLIM  = (-30, 10)
 # Baseline (step 00): absolute error/noise (unsigned).
 ERROR_ABS_YLIM    = (0, 200)
 NOISE_ABS_YLIM    = (0, 100)
@@ -746,13 +746,18 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
                         return t
         return None
 
-    def _qA_of(v): return _axis_token(v, "qA")
-    def _qB_of(v): return _axis_token(v, "qB")
+    # qa/qb lowercase (step 14 naming) treated as qA/qB. Other axes follow
+    # their original case.
+    def _qA_of(v): return _axis_token(v, "qA") or _axis_token(v, "qa")
+    def _qB_of(v): return _axis_token(v, "qB") or _axis_token(v, "qb")
     def _qD_of(v): return _axis_token(v, "qD")
     def _qd_of(v): return _axis_token(v, "qd")
     def _jf_of(v): return _axis_token(v, "jf")
     def _jc_of(v): return _axis_token(v, "jc")
     def _vt_of(v): return _axis_token(v, "vt")
+    def _se_of(v): return _axis_token(v, "se")
+    def _hc_of(v): return _axis_token(v, "hc")
+    def _ad_of(v): return _axis_token(v, "ad")
 
     def _axis_val(tok, prefix, scale_factor):
         """Numeric value from an axis token (e.g. 'qA012' → 0.12 with factor 0.01;
@@ -852,7 +857,10 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
     _thr_rank, _thr_n = _build_rank(_ct_val(_ct_of(v)) for v in rank_variants)
     _vt_rank, _vt_n = _build_rank(_axis_val(_vt_of(v), "vt", 0.01) for v in rank_variants)
     _fp_rank, _fp_n = _build_rank(_fp_scale_val(_fp_of(v)) for v in rank_variants)
-    _new_schema = _qA_n > 0 or _jf_n > 0
+    _se_rank, _se_n = _build_rank(_axis_val(_se_of(v), "se", 0.01) for v in rank_variants)
+    _hc_rank, _hc_n = _build_rank(_axis_val(_hc_of(v), "hc", 1.0)  for v in rank_variants)
+    _ad_rank, _ad_n = _build_rank(_axis_val(_ad_of(v), "ad", 0.01) for v in rank_variants)
+    _new_schema = _qA_n > 0 or _jf_n > 0 or _se_n > 0
 
     # Dynamic hue/sat axis selection — pick the most-varying axis for hue,
     # second-most for sat. Keeps every variant visually distinct even when
@@ -863,6 +871,9 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
         ("qA", _qA_n, _qA_rank, lambda v: _axis_val(_qA_of(v), "qA", 0.01)),
         ("ct", _thr_n, _thr_rank, lambda v: _ct_val(_ct_of(v))),
         ("vt", _vt_n, _vt_rank, lambda v: _axis_val(_vt_of(v), "vt", 0.01)),
+        ("se", _se_n, _se_rank, lambda v: _axis_val(_se_of(v), "se", 0.01)),
+        ("hc", _hc_n, _hc_rank, lambda v: _axis_val(_hc_of(v), "hc", 1.0)),
+        ("ad", _ad_n, _ad_rank, lambda v: _axis_val(_ad_of(v), "ad", 0.01)),
         ("qB", _qB_n, _qB_rank, lambda v: _axis_val(_qB_of(v), "qB", 0.01)),
         ("qD", _qD_n, _qD_rank, lambda v: _axis_val(_qD_of(v), "qD", 1.0)),
     ]
@@ -927,14 +938,17 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
             if _jf_n > 0:
                 jf_v = _axis_val(_jf_of(vname), "jf", 0.1)
                 jc_v = _axis_val(_jc_of(vname), "jc", 0.1)
-                hue_frac = _axis_frac(_jf_rank.get(jf_v, 0), max(_jf_n, 1), 0.05, 0.95)
-                sat_frac = _axis_frac(_jc_rank.get(jc_v, 0), max(_jc_n, 1), 0.50, 1.00)
+                # viridis (perceptually uniform, no rainbow) reads better than
+                # turbo for the 3×3 jf×jc grid. Narrower hue band (0.15–0.90)
+                # avoids the darkest/lightest extremes that hurt legibility.
+                hue_frac = _axis_frac(_jf_rank.get(jf_v, 0), max(_jf_n, 1), 0.15, 0.90)
+                sat_frac = _axis_frac(_jc_rank.get(jc_v, 0), max(_jc_n, 1), 0.35, 1.00)
                 if _qA_n > 1:
                     qA_v = _axis_val(_qA_of(vname), "qA", 0.01)
                     _JITTER_QUANT_MARKERS = ["o", "s", "D", "^", "v"]
                     marker = _JITTER_QUANT_MARKERS[_qA_rank.get(qA_v, 0)
                                                    % len(_JITTER_QUANT_MARKERS)]
-                base = plt.cm.turbo(hue_frac)
+                base = plt.cm.viridis(hue_frac)
                 return marker, _desaturate(base, sat_frac)
 
             # Quant / threshold / varThresh step: dynamic axis selection.
@@ -1791,13 +1805,18 @@ def plot_ladder_progress(steps=None, spp=1):
         ("err",   "error Δ %",       True,  "symlog", "blob", ERROR_DELTA_YLIM,   3.0),
         ("noise", "noise Δ %",       True,  "symlog", None,  NOISE_DELTA_YLIM,    1.0),
     ]
-    scene_colors = plt.cm.turbo([0.10, 0.35, 0.65, 0.90])
+    # Dynamic turbo spread: N scenes → N distinct hues across [0.05, 0.95],
+    # avoiding the color cycling that happened with the old fixed 4-slot
+    # palette once Bistro / Sponza joined the scene list.
+    import numpy as _np
+    n_sc = max(1, len(all_scenes))
+    scene_colors = plt.cm.turbo(_np.linspace(0.05, 0.95, n_sc))
     for ax, (mkey, ylabel, zeroline, yscale, companion_mkey, ylim, lin_thresh) in zip(axes, metric_defs):
         # Per-scene thin lines.
         for i, scene in enumerate(all_scenes):
             ys = [series[s].get(scene, {}).get(mkey) for s in step_keys]
             ax.plot(x, ys, marker="o", linewidth=1.5, markersize=6,
-                    color=scene_colors[i % 4], alpha=0.85,
+                    color=scene_colors[i], alpha=0.85,
                     label=scene.replace("CornellBox_", ""))
         # Range whiskers per scene: thin colored stem + horizontal tick at max.
         tick_half = 0.12
@@ -1809,7 +1828,7 @@ def plot_ladder_progress(steps=None, spp=1):
                 lo, hi = rng
                 if hi <= lo:
                     continue
-                col = scene_colors[i % 4]
+                col = scene_colors[i]
                 ax.vlines(si, lo, hi, color=col, alpha=0.5,
                           linewidth=1.2, zorder=2)
                 ax.hlines(hi, si - tick_half, si + tick_half,
@@ -1848,7 +1867,7 @@ def plot_ladder_progress(steps=None, spp=1):
             for i, scene in enumerate(all_scenes):
                 ys = [series[s].get(scene, {}).get(companion_mkey) for s in step_keys]
                 ax.plot(x, ys, marker="^", linewidth=1.2, markersize=6,
-                        linestyle="--", color=scene_colors[i % 4], alpha=0.85)
+                        linestyle="--", color=scene_colors[i], alpha=0.85)
                 for si, s in enumerate(step_keys):
                     rng = ranges.get(s, {}).get(scene, {}).get(companion_mkey)
                     if rng is None:
@@ -1856,7 +1875,7 @@ def plot_ladder_progress(steps=None, spp=1):
                     lo, hi = rng
                     if hi <= lo:
                         continue
-                    col = scene_colors[i % 4]
+                    col = scene_colors[i]
                     ax.vlines(si, lo, hi, color=col, alpha=0.35,
                               linewidth=1.0, linestyle=":", zorder=1)
                     ax.hlines(hi, si - tick_half, si + tick_half,
@@ -2839,14 +2858,18 @@ def build_per_axis_quant_variants(base_preset, normal_a=60.0):
 
 
 def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
-    """Pick winners per B-variant by 'best ray savings with no artifacts
-    (limited error and blob)'.
+    """Pick winners per B-variant by 'best ray savings with no scene outliers'.
 
-    Rule:
-      Filter candidates to those where BOTH
-        err  <= 0 OR err  <= median_err  + 25% |median_err|
-        blob <= 0 OR blob <= median_blob + 25% |median_blob|
-      Then rank by weighted rays_traced ascending (SCENE_WEIGHTS — 32PL×3).
+    Rule (per-scene outlier gate, unweighted aggregate ranking):
+      For EACH scene, compute the per-scene median err & blob across variants.
+      A variant qualifies only if at EVERY scene:
+        err  <= 0 OR err  <= median_err_scene  + 25% |median_err_scene|
+        blob <= 0 OR blob <= median_blob_scene + 50% |median_blob_scene|
+      Then rank surviving variants by unweighted mean rays_traced ascending.
+
+    This prevents a variant from winning by being great on average while
+    regressing catastrophically on one scene (the prior weighted-mean rule
+    could mask a per-scene outlier).
 
     Noise is informational only — gating on noise previously excluded
     otherwise-sensible candidates on <0.01 deltas.
@@ -2858,51 +2881,77 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
     if not rows:
         return {}
 
-    def _wmean(pairs):
-        if not pairs:
-            return 0.0
-        ws = sum(w for _, w in pairs)
-        return sum(x * w for x, w in pairs) / ws if ws > 0 else 0.0
-
     result = {}
     b_variants = sorted({_b_core(r["variant"]) for r in rows if _b_core(r["variant"])})
     for bv in b_variants:
-        per_var = {}
+        # per_scene[variant][scene] = {"rays", "err", "blob", "noise"}
+        per_scene = {}
         for r in rows:
             if _b_core(r["variant"]) != bv or r["spp"] != spp:
                 continue
-            w = _scene_weight(r["scene"])
-            d = per_var.setdefault(r["variant"],
-                                   {"rays": [], "err": [], "blob": [], "noise": []})
-            d["rays"].append((r.get("rays_traced_pct") or 0.0, w))
-            e = r.get("error_delta_pct")
-            if e is not None: d["err"].append((e, w))
-            b = r.get("error_delta_blob_pct")
-            if b is not None: d["blob"].append((b, w))
-            n = r.get("noise_delta_pct")
-            if n is not None: d["noise"].append((n, w))
-        means = {}
-        for v, d in per_var.items():
-            if not d["rays"]:
-                continue
-            means[v] = {
-                "rays":  _wmean(d["rays"]),
-                "err":   _wmean(d["err"])   if d["err"]   else 0.0,
-                "blob":  _wmean(d["blob"])  if d["blob"]  else 0.0,
-                "noise": _wmean(d["noise"]) if d["noise"] else 0.0,
+            pv = per_scene.setdefault(r["variant"], {})
+            pv[r["scene"]] = {
+                "rays":  r.get("rays_traced_pct") or 0.0,
+                "err":   r.get("error_delta_pct"),
+                "blob":  r.get("error_delta_blob_pct"),
+                "noise": r.get("noise_delta_pct"),
             }
-        if not means:
+        if not per_scene:
             result[bv] = []
             continue
-        med_err  = stats.median(m["err"]  for m in means.values())
-        med_blob = stats.median(m["blob"] for m in means.values())
-        tol_err  = med_err  + 0.25 * abs(med_err)
-        tol_blob = med_blob + 0.50 * abs(med_blob)
-        def _ok(val, tol_val):
-            return val <= 0.0 or val <= tol_val
-        qualifying = [(v, m) for v, m in means.items()
-                      if _ok(m["err"],  tol_err)
-                      and _ok(m["blob"], tol_blob)]
+
+        # Scenes represented for this B-variant (take superset across variants)
+        all_scenes = sorted({s for pv in per_scene.values() for s in pv.keys()})
+
+        # Per-scene medians + tolerances across variants at that scene
+        scene_tol = {}
+        for scn in all_scenes:
+            errs  = [pv[scn]["err"]  for pv in per_scene.values()
+                     if scn in pv and pv[scn]["err"]  is not None]
+            blobs = [pv[scn]["blob"] for pv in per_scene.values()
+                     if scn in pv and pv[scn]["blob"] is not None]
+            if not errs or not blobs:
+                continue
+            med_e = stats.median(errs)
+            med_b = stats.median(blobs)
+            scene_tol[scn] = (med_e + 0.25 * abs(med_e),
+                              med_b + 0.50 * abs(med_b))
+
+        def _ok(val, tol):
+            if val is None:
+                return True
+            return val <= 0.0 or val <= tol
+
+        # Variant qualifies iff EVERY scene with data passes both gates
+        qualifying = []
+        for v, pv in per_scene.items():
+            all_pass = True
+            for scn in all_scenes:
+                if scn not in pv or scn not in scene_tol:
+                    continue
+                tol_e, tol_b = scene_tol[scn]
+                if not (_ok(pv[scn]["err"], tol_e)
+                        and _ok(pv[scn]["blob"], tol_b)):
+                    all_pass = False
+                    break
+            if not all_pass:
+                continue
+            # Unweighted means over scenes for ranking / info
+            rays_vals = [pv[scn]["rays"] for scn in all_scenes if scn in pv]
+            err_vals  = [pv[scn]["err"]  for scn in all_scenes
+                         if scn in pv and pv[scn]["err"]  is not None]
+            blob_vals = [pv[scn]["blob"] for scn in all_scenes
+                         if scn in pv and pv[scn]["blob"] is not None]
+            nse_vals  = [pv[scn]["noise"] for scn in all_scenes
+                         if scn in pv and pv[scn]["noise"] is not None]
+            if not rays_vals:
+                continue
+            qualifying.append((v, {
+                "rays":  stats.mean(rays_vals),
+                "err":   stats.mean(err_vals)  if err_vals  else 0.0,
+                "blob":  stats.mean(blob_vals) if blob_vals else 0.0,
+                "noise": stats.mean(nse_vals)  if nse_vals  else 0.0,
+            }))
         qualifying.sort(key=lambda kv: kv[1]["rays"])
         result[bv] = [v for v, _ in qualifying[:n_top]]
     return result
