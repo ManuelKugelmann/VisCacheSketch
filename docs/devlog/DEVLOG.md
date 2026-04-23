@@ -532,6 +532,20 @@ Details in `captures/ladder/17/picks.json`.
 
 ![](step17/overview_summary_17.png)
 
+**Step 17 v2 — preinit-preserving insert-skip (commit `3f07d73`):** re-tested after fixing the chain disruption (read-only probe of existing cell state, pass μ forward). Results:
+
+| scene | fd=0 rays/blob | fd=1024 rays/blob | fd=4096 rays/blob |
+|---|---|---|---|
+| 32PL | 17.5 / 3.7 | 17.5 / 3.6 | 17.6 / 3.7 |
+| 1PL | 8.4 / 35 | 7.9 / 73 | 7.7 / 86 |
+| 1AL | 15.9 / 33 | 17.4 / **17.6** | 17.5 / 33 |
+| 3AL | 17.2 / 22.6 | 17.3 / 22.5 | 17.0 / 22.5 |
+| BistroInterior | 26.4 / 294 | **24.2** / 294 | 24.8 / 294 |
+| BistroExterior | 29.6 / 366 | **25.3** / 366 | 27.6 / 366 |
+| Sponza | 17.5 / 254 | 16.6 / 254 | 18.0 / 253 |
+
+v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd=1024` emerges as a **conditional win on real scenes**: saves 2–4pp rays on Bistro + defends 1AL blob (33 → 17.6) at zero Bistro blob cost. But 1PL blob regresses 35 → 73 — the hard-shadow penumbra is still sensitive to reduced coarse-level data availability. Not a clean universal carry but a promising lever for Bistro-profile content.
+
 ---
 
 **Next frontier** (in `memory/project_cell_mean_defenses.md`): correlation-specific defenses — per-cell writer-source diversity tracking (refuse trust if too few distinct pixels have contributed) or split-halves agreement (two independent accumulators per cell, trust iff their μ's agree).
