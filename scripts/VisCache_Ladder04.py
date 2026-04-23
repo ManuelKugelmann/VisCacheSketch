@@ -74,7 +74,7 @@ for scene_file in get_scenes():
 
     run_variants(
         step_name=STEP,
-        frame_configs=[(1, 0, 1, 1), (1, 0, 1, 4), (1, 0, 1, 16)],
+        frame_configs=[(1, 0, 1, 1), (1, 0, 4, 1), (1, 0, 16, 1)],
         scene_file=scene_file,
         variants=VARIANTS_04,
         resX=res, resY=res,

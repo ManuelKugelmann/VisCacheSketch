@@ -104,6 +104,12 @@ public:
                                            ///< (coarse, L=0) to bootThresholdFine (fine, L=N-1).
                                            ///< "Coarse HIGH, fine LOW" defends Cornell 1PL blob
                                            ///< without costing Bistro rays.
+        float    preinitAmbiguityCutoff;   ///< Parent-preinit ambiguity gate: skip child seeding
+                                           ///< when parent μ ∈ [cutoff, 1-cutoff]. Prevents
+                                           ///< boundary-straddling parents from propagating
+                                           ///< their biased μ into fresh child cells.
+                                           ///< 0 = unconditional preinit (legacy). 0.3 = skip
+                                           ///< preinit when parent μ ∈ [0.3, 0.7].
         float    jitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
         float    jitterCell;      ///< F: per-cell-index-seed jitter scale (Binder 2018, hard boundaries shift per cell). 0 = off.
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
@@ -176,6 +182,7 @@ public:
         float    hierarchicalMuTolerance     = 0.20f; ///< |μ_next − μ_this| above which trust is refused.
         float    accelDecayDisagreeThresh    = 0.0f;  ///< |sample−μ| that triggers in-insert half-decay; 0 = off.
         uint32_t bootThresholdFine           = 0u;    ///< Per-level fine bootThreshold; 0 = uniform legacy.
+        float    preinitAmbiguityCutoff      = 0.0f;  ///< Preinit ambiguity gate; 0 = unconditional preinit.
         uint32_t subframeN                     = 1u;    ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); disperses cell writes across frames
         uint32_t warmupSlotsFirst              = 0u;    ///< L: # of Bayer slots [0,N²) write-only in frame 0 (force trace, no RR)
         uint32_t warmupSlotsRun                = 0u;    ///< L: # of Bayer slots write-only in every subsequent frame

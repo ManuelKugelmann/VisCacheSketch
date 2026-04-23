@@ -2376,7 +2376,7 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
 
     append_stats_csv(
         step_name, scene_name, prefix, variant_name,
-        spp, frames, warmup_first, warmup_run, subframe_n,
+        effective_spp, frames, warmup_first, warmup_run, subframe_n,
         stats["rays_traced_pct"], stats["coldmiss_pct"],
         stats.get("error_delta_pct"),
         stats.get("error_delta_min_pct"), stats.get("error_delta_max_pct"),
@@ -2438,7 +2438,10 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             spp = fc_entry[3] if len(fc_entry) > 3 else 1
             subN = overrides.get("subframeN", 1)
             render_frames = frames
-            tag = f"s_{frames}_x{spp}_{warmupFirst}o{warmupRun}o{subN}x{subN}_{res_tag}"
+            # Tag encodes effective SPP (frames*spp). Capture filenames,
+            # CSV key, and plot-group key all align on total samples/pixel.
+            effective_spp = frames * spp
+            tag = f"s_{frames}_x{effective_spp}_{warmupFirst}o{warmupRun}o{subN}x{subN}_{res_tag}"
             csv_key = f"{scene_name}_{tag}_{variant_name}"
             if csv_key in completed_keys:
                 print(f"[{step_name}] Skip (resume): {variant_name} {tag}")
@@ -3101,6 +3104,14 @@ _VARIANT_TAG_PATTERNS = {
     "enableHierarchicalConsistency": (r"hc(\d+)", lambda s: bool(int(s))),
     # ctf<N> = bootThresholdFine (per-level fine variant of ct). 0 = off.
     "bootThresholdFine": (r"ctf(\d+)", lambda s: int(s)),
+    # pm<N> = pMin (RR forced-trace floor). N/100. pm010=0.10, pm005=0.05.
+    "pMin":                   (r"pm(\d+)", lambda s: int(s) / 100.0),
+    # pa<N> = preinitAmbiguityCutoff (skip preinit if parent μ in
+    # [cutoff, 1-cutoff]). pa0 = 0 = off; pa30 = 0.30.
+    "preinitAmbiguityCutoff": (r"pa(\d+)", lambda s: int(s) / 100.0),
+    # fd<N> = forceDescendFootprintPx (px^2 threshold). fd0 = off.
+    "forceDescendFootprintPx": (r"fd(\d+k?)",
+                                lambda s: int(s[:-1]) * 1024 if s.endswith("k") else int(s)),
 }
 
 

@@ -86,6 +86,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
     if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
     if (props.has("bootThresholdFine"))             mParams.bootThresholdFine             = props["bootThresholdFine"];
+    if (props.has("preinitAmbiguityCutoff"))        mParams.preinitAmbiguityCutoff        = props["preinitAmbiguityCutoff"];
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
@@ -141,6 +142,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
     if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
     if (props.has("bootThresholdFine"))             mParams.bootThresholdFine             = props["bootThresholdFine"];
+    if (props.has("preinitAmbiguityCutoff"))        mParams.preinitAmbiguityCutoff        = props["preinitAmbiguityCutoff"];
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
@@ -192,6 +194,7 @@ Properties VisCache::getProperties() const
     p["hierarchicalMuTolerance"]       = mParams.hierarchicalMuTolerance;
     p["accelDecayDisagreeThresh"]      = mParams.accelDecayDisagreeThresh;
     p["bootThresholdFine"]             = mParams.bootThresholdFine;
+    p["preinitAmbiguityCutoff"]        = mParams.preinitAmbiguityCutoff;
     p["subframeN"]                     = mParams.subframeN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
@@ -392,6 +395,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.hierarchicalMuTolerance = mParams.hierarchicalMuTolerance;
     gpu.accelDecayDisagreeThresh = mParams.accelDecayDisagreeThresh;
     gpu.bootThresholdFine = mParams.bootThresholdFine;
+    gpu.preinitAmbiguityCutoff = mParams.preinitAmbiguityCutoff;
     gpu.jitterFilter   = mParams.jitterFilter;
     gpu.jitterCell     = mParams.jitterCell;
     gpu.posACoarse    = posACoarseScaled;
@@ -829,6 +833,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("hierarchical μ tolerance", mParams.hierarchicalMuTolerance, 0.f, 1.f, 0.05f);
         g.var("accelDecay |Δ| thresh (0=off)", mParams.accelDecayDisagreeThresh, 0.f, 1.f, 0.05f);
         g.var("bootThresholdFine (0=uniform)", mParams.bootThresholdFine, 0u, 256u);
+        g.var("preinit ambiguity cutoff (0=always preinit)", mParams.preinitAmbiguityCutoff, 0.f, 0.5f, 0.05f);
         g.var("M: Subframe N (1 = off)",  mParams.subframeN,        1u, 8u);
         g.var("L: warmupSlots (frame 0)", mParams.warmupSlotsFirst, 0u, 64u);
         g.var("L: warmupSlots (running)", mParams.warmupSlotsRun,   0u, 64u);

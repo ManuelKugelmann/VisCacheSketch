@@ -36,7 +36,7 @@ VARIANTS_02 = [v for v in _make_variants(quant=QUANT_02, base=PRESET_MINIMAL)
 for scene_file in get_scenes():
     run_variants(
         step_name=STEP,
-        frame_configs=[(1, 0, 1, 1), (1, 0, 1, 4), (1, 0, 1, 16)],
+        frame_configs=[(1, 0, 1, 1), (1, 0, 4, 1), (1, 0, 16, 1)],
         scene_file=scene_file,
         variants=VARIANTS_02,
         resX=res, resY=res,
