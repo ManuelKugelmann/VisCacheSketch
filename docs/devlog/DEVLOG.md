@@ -548,6 +548,38 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 22 — finer pMin granularity (pm008 / pm010 / pm012) — pm010 near-optimum
+
+**What it looks at.** Step 20's pm010 was a big win. Probe the local landscape: is pm010 the sweet spot, or do pm008/pm012 recover more? 3 variants × 6 spp/wf × 7 scenes = 126 runs.
+
+**Result — per-scene trade-offs, no clean global winner.**
+
+| scene | mean blob 008 | mean blob 010 | mean blob 012 | winner |
+|---|---:|---:|---:|---|
+| 1AL | 35.08 | **22.63** | 28.20 | pm010 |
+| 1PL | 58.76 | 58.73 | **55.85** | pm012 |
+| 32PL | 6.66 | 6.66 | 6.66 | tied |
+| 3AL | 18.38 | 18.74 | 18.38 | tied (pm008/012) |
+| BistroInt | 233.69 | 233.69 | 233.66 | tied |
+| BistroExt | **316.87** | 317.53 | 317.41 | pm008 (tiny) |
+| **Sponza** | **188.70** | 196.94 | 203.80 | **pm008 (monotone)** |
+
+Per-scene mean error delta:
+- Sponza: **pm008 +7.41%**, pm010 +8.40%, pm012 +8.51% — pm008 saves 1% err on the bias-dominated scene
+- 1PL: pm008 +0.704%, pm010 +0.692%, pm012 +0.655% — pm012 saves 0.05%
+
+**Interpretation.** pm008 monotonically improves Sponza (bias-dominated), pm012 monotonically improves 1PL (penumbra), and pm010 wins 1AL (which is a specific hotspot scene). No single value wins universally — the optimal pMin depends on scene regime for the same reason ct does.
+
+At this granularity, a 0.02 pMin shift produces blob swings of 20–80 points on Cornell single-light scenes, suggesting resonance effects (e.g., 1AL x16 w2 blob 116 at pm008 vs 18 at pm010 vs 31 at pm012 is not a smooth function of pMin). pm010 remains the safest general-purpose value.
+
+**Why we narrow.** No carry change. Step-20 `qa012__ct16_vt005_fp0_fd0_pm010` remains. The pm008-Sponza signal is noted for the deferred scene-adaptive knob list (alongside scene-adaptive ct from step 21).
+
+Details in `captures/ladder/22/picks.json`.
+
+![](step22/overview_summary_22.png)
+
+---
+
 ## Step 21 — ct efficiency test at pm010 — confirms scene-regime split
 
 **What it looks at.** Step 12 raised ct from 4 to 16 to defend 1PL/Sponza quality, at the cost of +23pp rays on 32PL x4 (17.5→40.4). Step 20 showed pMin is a rate-defense that independently reduces 1PL blob. Question: if pMin now defends bias, can ct drop back to 4 and recover the rays savings?
