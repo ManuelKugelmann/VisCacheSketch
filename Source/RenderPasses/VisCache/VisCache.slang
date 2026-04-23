@@ -1284,13 +1284,38 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         // refuses to trust big coarse cells, so populating them is pure
         // hash-table pressure. Skip writes at levels where cellPx exceeds
         // the threshold. Never skip the finest level.
+        //
+        // Preserve parent-preinit chain: read-only probe for any existing
+        // entry at the coarse cell and pass its μ forward to the next
+        // level's preinit. Addresses the step-17 regression where naive
+        // skip (reset parent chain to zero) caused fine cells to inherit
+        // wrong-seeded state.
         if (!isFinestLevel && gForceDescendFootprintPx != 0u)
         {
             uint cellPx = vhfCellPixels(lvl, posA);
             if (cellPx > gForceDescendFootprintPx)
             {
-                parentVis   = 0u;
-                parentTotal = 0u;
+                uint _ps;
+                int readSlot = vhfFindSlot(addr, fp, /*allowInsert=*/false, _ps);
+                if (readSlot >= 0)
+                {
+                    VHFEntry existing = gVHFTable[readSlot];
+                    uint eTotal = existing.packed & 0xFFFFu;
+                    uint eVis   = existing.packed >> 16u;
+                    if (eTotal > 0u)
+                    {
+                        parentVis   = eVis;
+                        parentTotal = eTotal;
+                    }
+                    else
+                    {
+                        parentVis = 0u; parentTotal = 0u;
+                    }
+                }
+                else
+                {
+                    parentVis = 0u; parentTotal = 0u;
+                }
                 continue;
             }
         }
