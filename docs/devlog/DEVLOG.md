@@ -31,6 +31,7 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | 12   | ct × warmup × force-descend on step-11 carry (x1/x4/x16) | `ct16` + `w=2` cuts 1PL blob 2.4× (41→17) at 2.3× 32PL rays; x16 stress test shows blob still grows 2–5× with SPP (residual bias), force-descend & fp no-ops | `qa012__ct16_vt005_fp0_fd0` (w=2) |
 | 13   | stderr × hierarchical × accel-decay, single-level | **negative**: no variant strictly beats vt005; best-x4 se10+hc cuts 1PL x4 blob 17→10 but regresses x1 13→50 | no carry (keep step-06 vt005) |
 | 15   | stderr × hierarchical × accel-decay, multi-level + x16 | **negative** on Cornell; **big-scene supplement (Bistro/Sponza) shows viscache cuts mean GT-err 18–70% on Bistro** — first real-scene data, gate mechanisms near-irrelevant there | no carry (keep step-11 ct4_vt005_fp0) |
+| 16   | per-level ct (bootThreshold coarse, bootThresholdFine) | **negative**: asymmetric ct has non-monotonic mid-level regimes — (16,4) regresses 1AL 21→112; fine ct rarely consulted on dense Bistro so doesn't recover rays | no carry |
 
 ---
 
@@ -470,6 +471,35 @@ Every multi-level variant **regresses** 1PL x4 blob from 22.88 → 32+. At x16 S
 **Diagnosis.** The x16 pathology is sample *correlation*, not sample *paucity*. At x16 SPP each pixel fires 16 rays through slightly-jittered directions; all 16 land on the same side of a hard shadow penumbra from that pixel's perspective, yielding variance ≈ 0 and μ wrong in a direction that happens to match the local pixel. The stderr gate can't distinguish this from a genuine converged cell — `√(var/N) = 0/√16 = 0` is "infinite confidence". Hierarchical check can't either — finer levels see the same correlated samples. Accel decay can't either — incoming samples agree with the current wrong μ.
 
 **Carry: none** — step-11 `ct4_vt005_fp0` remains the active multi-level carry. Details and rationale in `captures/ladder/15/picks.json`.
+
+---
+
+## Step 16 — per-level ct (bootThresholdFine) — negative result
+
+**What it looks at.** Step 12's big-scene supplement showed ct has opposite optima: Cornell 1PL wants high ct (blob defense), Bistro wants low ct (rays savings). Per-level ct is the design response: coarse level high ct, fine level low ct — geometrically interpolated via new `bootThresholdFine` shader param. Default 0 = uniform legacy behaviour.
+
+Sweep 8 (coarse, fine) pairs on step-11 multi-level lineage: (2,2), (4,4), (8,4), (16,4), (16,2), (32,2), (32,4), (64,4). 8 variants × 2 SPP × 7 scenes = 112 runs.
+
+**Result — asymmetric ct has non-monotonic regressions.** x4 blob matrix (rays / blob):
+
+| (c,f) | 32PL | 1PL | 1AL | 3AL | BistroInt | BistroExt |
+|---|---:|---:|---:|---:|---:|---:|
+| (2,2) | 11/10 | 7/73 | 13/117 | 15/25 | 16/294 | 17/366 |
+| (4,4) | 18/4 | 7/73 | 17/**21** | 17/23 | 27/294 | 27/366 |
+| (16,4) | 40/3 | 11/**24** | 27/**112** | 28/22 | 53/294 | 48/366 |
+| (64,4) | 78/3 | 18/**15** | 38/**15** | 40/22 | 72/294 | 58/366 |
+
+**Key negative — (16,4) regresses 1AL from 21 to 112.** The mid-level ct interp `lerp(16, 4, t)` produces intermediate ct values at intermediate levels. On 1AL these mid-level cells hit exactly the "converged enough to trust but not enough for variance estimate" regime. Fine asymmetry is not a free monotonic knob.
+
+**Key negative — fine ct doesn't recover Bistro rays.** `(16,4)` on BistroInterior = 53% rays, same as uniform ct=16 (53%). The cascade matures at the coarse level on dense Bistro and never descends to the fine level — so `fine_ct=4` relaxation is unreachable.
+
+**Only `(64,4)` defends all Cornell penumbra scenes (blob ≤ 25)** — but at 78% 32PL rays (4× the step-11 baseline).
+
+**Why we narrow.** No carry — step-11 `qa012__ct4_vt005_fp0` remains the multi-level carry. Per-level ct infrastructure (new `bootThresholdFine` shader param) stays in place — might be useful as a future lever if paired with hierarchical consistency checking or insert-side level skipping. Details in `captures/ladder/16/picks.json`.
+
+![](step16/overview_summary_16.png)
+
+---
 
 **Next frontier** (in `memory/project_cell_mean_defenses.md`): correlation-specific defenses — per-cell writer-source diversity tracking (refuse trust if too few distinct pixels have contributed) or split-halves agreement (two independent accumulators per cell, trust iff their μ's agree).
 
