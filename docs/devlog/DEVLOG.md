@@ -548,6 +548,35 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 19 — fd=1024 × ct16+w2 (insert-skip shader re-test) — negative result
+
+**What it looks at.** Step 12 originally tested fd=1024 × ct=16+w=2 and noted "force-descend is a no-op here" — but that was under the *lookup-only* fd shader. Step 17 v2 extended `forceDescendFootprintPx` to the insert side too (with preinit-preservation). Step 17 v2 showed fd=1024 saves 2–4pp rays on Bistro *with ct=4* but regresses 1PL blob 35→73. This step asks: does ct=16 (step-12 carry's higher sample-count floor) cushion the fine-level data starvation so fd=1024 becomes universally usable?
+
+Two variants: `ct16_vt005_fp0_fd0` vs `ct16_vt005_fp0_fd1k`. Full 7-scene × 3 spp × 2 wf matrix = 84 runs.
+
+**Result — rays savings vanish at ct=16.**
+
+| scene | x4 w1 Δrays | x4 w2 Δrays | best blob change |
+|---|---:|---:|---|
+| BistroInterior | +1.17 | +0.03 | none (293.5 both) |
+| BistroExterior | **−2.07** | +0.10 | +0.03 blob |
+| Sponza | −0.36 | +1.30 | Sponza x1 w2 err **12.4→8.3** |
+| 1AL | −0.24 | −0.61 | **symmetric flip**: x4 w1 blob 111→27, x4 w2 blob 25→115 |
+| 1PL | −0.58 | −0.49 | x4 w2 blob 72→53, x16 w1 blob 60→87 |
+| 32PL / 3AL | ±0 | ±0 | no-op |
+
+**Interpretation.** ct=16 populates coarse cells with enough samples that skipping them *costs* rays (the finer cells have to work harder, no lookup-side savings) rather than saves them. Step 17 v2's Bistro savings were specific to ct=4 — under ct=16 the coarse cells were already compacted enough that the skip net-doubles work. The Cornell 1AL x4 symmetric blob flip (w=1 fixed, w=2 catastrophic) mirrors step 18's volatility pattern — insert-skip at ct=16 produces unstable fine-level seeding depending on when the skip fires relative to the warmup pattern.
+
+**One standout** — Sponza x1 w2: err Δ +12.36% → +8.28% (33% relative improvement), blob 248 → 203. Only scene/spp/wf cell that showed a real win. Consistent with Sponza being bias-dominated: the low-SPP + long-warmup regime starves coarse cells enough that insert-skip prevents wrong-μ propagation. Too narrow for a general carry.
+
+**Why we narrow.** No carry — step-12 `qa012__ct16_vt005_fp0_fd0` remains. fd=1024 confirmed as conditional-on-ct=4 lever only. The step-17-v2 Bistro rays savings + 1AL blob defense cannot be stacked with ct=16's sample-count floor.
+
+Details in `captures/ladder/19/picks.json`.
+
+![](step19/overview_summary_19.png)
+
+---
+
 ## Step 18 — stderr × ct16+w2 stack test — negative result
 
 **What it looks at.** Steps 7 and 12 identified the two best single-knob levers found so far: step 7's stderr-gate (single-level, ct=4) and step 12's ct16+w=2 carry (multi-level, no stderr). They had never been combined — step 15's stderr sweep used ct=4, step 12 had no stderr. This step is minimal: 2 variants × 6 (spp × wf) × 7 scenes, asking "does stderr=0.05 stack with the ct16 carry or not?"
