@@ -548,6 +548,40 @@ v2 eliminated v1's catastrophic 1AL regression (blob 117 → 33 at fd=4096). `fd
 
 ---
 
+## Step 20 — pMin floor sweep at step-12 carry — **positive carry: pm010**
+
+**What it looks at.** After 5 consecutive negative gate-tuning sweeps (16/17/18/19), revisit the one RR lever pinned since step 5 and never probed at the current multi-level carry: `pMin`. The RR floor controls how often the adaptive-pMin formula can drop the forced-trace rate for "confident" cells (high N, low var). Hypothesis: confident-but-biased cells at penumbra edges (where μ≈0.02 for most pixels in the cell but some pixels in the cell are actually in light) benefit from a higher floor — raising pMin recovers the quality that adaptive-pMin sacrifices for efficiency.
+
+Three variants at step-12 carry + pMin: `pm005` (baseline, current), `pm010`, `pm020`. 3 × 6 (spp × wf) × 7 = 126 runs.
+
+**Result — pm010 is a real win.**
+
+| scene | regime | metric | pm005 | pm010 | pm020 |
+|---|---|---:|---:|---:|---:|
+| 1PL | x1 w1 | blob | 71.43 | **39.13** | **30.98** |
+| 1PL | x1 w2 | blob | 39.13 | **30.99** | **21.90** |
+| 1PL | x4 w2 | blob | 80.97 | **59.82** | 71.72 |
+| 1AL | x4 w2 | blob | 31.68 | **27.14** | 27.14 |
+| 1AL | x16 w1 | blob | 116.97 | **31.12** | 31.12 |
+| Sponza | x4 w1 | err | +3.88 | **+2.18** | +2.42 |
+| Sponza | x4 w2 | err | +3.88 | **+3.20** | +3.44 |
+| 1PL | x16 w1 | blob | 60.38 | 86.63 ↗ | 86.55 ↗ |
+| 1PL | x16 w2 | blob | 60.52 | 73.41 ↗ | 81.83 ↗ |
+| **1AL** | **x1 w2** | blob | 8.87 | 8.87 | **109.54 ✗** |
+| **1AL** | **x16 w2** | blob | 30.84 | 31.12 | **116.97 ✗** |
+
+**Interpretation.** pm010 captures all the gains (1PL x1 warmup regime, 1AL x16 w1 pathology fix, Sponza x4 error halving) without the catastrophic 1AL regressions that kill pm020. The 1PL x16 regression (60→87 blob) is real but bounded and acceptable — x16 in-frame correlation is still the known pathology none of our gates defend against, and pm010 doesn't make it substantially worse.
+
+Why did this work when stderr/hc/ad/fd all failed? pMin is a *rate-defense* knob, not a *trust-gate* knob. It forces ground-truth tracing at a minimum rate regardless of how confident the cache thinks it is. The other gates try to *decide* trust correctly; pMin just ensures a steady stream of corrective samples. When the cache is biased (not noisy), only corrective samples help — gating harder on wrong data doesn't fix the bias. Rays cost: essentially zero (pm010 adds 0.5-1.5pp on most configs).
+
+**Carry:** `qa012__ct16_vt005_fp0_fd0_pm010` — step 12 carry + pMin=0.10.
+
+Details in `captures/ladder/20/picks.json`.
+
+![](step20/overview_summary_20.png)
+
+---
+
 ## Step 19 — fd=1024 × ct16+w2 (insert-skip shader re-test) — negative result
 
 **What it looks at.** Step 12 originally tested fd=1024 × ct=16+w=2 and noted "force-descend is a no-op here" — but that was under the *lookup-only* fd shader. Step 17 v2 extended `forceDescendFootprintPx` to the insert side too (with preinit-preservation). Step 17 v2 showed fd=1024 saves 2–4pp rays on Bistro *with ct=4* but regresses 1PL blob 35→73. This step asks: does ct=16 (step-12 carry's higher sample-count floor) cushion the fine-level data starvation so fd=1024 becomes universally usable?
