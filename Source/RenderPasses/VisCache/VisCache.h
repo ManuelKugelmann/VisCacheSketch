@@ -120,6 +120,7 @@ public:
         uint32_t subframeN;        ///< N×N Bayer gate (1 = disabled)
         uint32_t warmupSlotsFirst; ///< # Bayer slots write-only in frame 0
         uint32_t warmupSlotsRun;   ///< # Bayer slots write-only in every subsequent frame
+        uint32_t cascadeVisitCount;///< # cascade strides per trace (levelStride = (N-1)/this)
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -186,6 +187,8 @@ public:
         uint32_t subframeN                     = 1u;    ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); disperses cell writes across frames
         uint32_t warmupSlotsFirst              = 0u;    ///< L: # of Bayer slots [0,N²) write-only in frame 0 (force trace, no RR)
         uint32_t warmupSlotsRun                = 0u;    ///< L: # of Bayer slots write-only in every subsequent frame
+        uint32_t cascadeVisitCount             = 32u;   ///< # cascade strides per trace (levelStride = (N-1)/this).
+                                                        ///< Lower = bigger cell-size step per stride, more samples per cell.
     };
 
     const Params& getParams() const { return mParams; }

@@ -90,6 +90,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
+    if (props.has("cascadeVisitCount"))             mParams.cascadeVisitCount             = props["cascadeVisitCount"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -146,6 +147,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
+    if (props.has("cascadeVisitCount"))             mParams.cascadeVisitCount             = props["cascadeVisitCount"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -198,6 +200,7 @@ Properties VisCache::getProperties() const
     p["subframeN"]                     = mParams.subframeN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
+    p["cascadeVisitCount"]             = mParams.cascadeVisitCount;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -442,6 +445,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.subframeN        = std::max(1u, mParams.subframeN);
     gpu.warmupSlotsFirst = mParams.warmupSlotsFirst;
     gpu.warmupSlotsRun   = mParams.warmupSlotsRun;
+    gpu.cascadeVisitCount = std::max(1u, mParams.cascadeVisitCount);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();

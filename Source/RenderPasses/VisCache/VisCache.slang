@@ -223,6 +223,10 @@ cbuffer VisCacheParams
     uint   gSubframeN;        ///< N×N Bayer gate (1 = disabled)
     uint   gWarmupFirst;      ///< # Bayer slots write-only in frame 0 (force trace, no RR)
     uint   gWarmupRun;        ///< # Bayer slots write-only in every subsequent frame
+    uint   gCascadeVisitCount;///< Number of effective cascade strides per trace. levelStride
+                              ///< = (numLevels-1) / gCascadeVisitCount. Default 32 → ~25%
+                              ///< cell-size step. Lower = fewer, bigger-ratio cells (more
+                              ///< samples per cell); higher = finer target precision.
 };
 
 // ---------------------------------------------------------------------------
@@ -774,12 +778,14 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     //
     // levelStride: at large N, consecutive levels share quant indices
     // (cell size barely changed). We iterate in strides so a fixed number
-    // of effective cascade visits happens regardless of N. Target 32 cascade
-    // steps (matching the old N=32 configuration that produced -20% err on
-    // 32PL). That means each stride corresponds to ~(totalRatio)^(1/32)
-    // cell-size step — about a 25% step at kTotalRatio=1024.
+    // of effective cascade visits happens regardless of N. The count is
+    // driven by gCascadeVisitCount (set by VisCacheParams) — 32 is the
+    // default (matches old N=32 config producing 25% cell-size step per
+    // stride at kTotalRatio=1024). Lower count = fewer cells overall =
+    // more samples per cell = faster μ convergence; higher count = finer
+    // target-level precision.
     float lookupLogRatio = log(max(gPosAFine, 1e-6f) / max(gPosACoarse, 1e-6f));
-    int levelStride = max(1, int((int(gNumLevels) - 1) / 32));
+    int levelStride = max(1, int((int(gNumLevels) - 1) / int(max(gCascadeVisitCount, 1u))));
 
     int startLvl = 0;
     if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
@@ -1315,7 +1321,7 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
     // strides) so writes populate coarse-neighbor levels, enabling lookup
     // early-stop at coarse when μ converges there. Per-pixel, depth-dep.
     float insertLogRatio = log(max(gPosAFine, 1e-6f) / max(gPosACoarse, 1e-6f));
-    int levelStride = max(1, int((int(gNumLevels) - 1) / 32));
+    int levelStride = max(1, int((int(gNumLevels) - 1) / int(max(gCascadeVisitCount, 1u))));
 
     int startLvl = 0;
     if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && insertLogRatio < -1e-6f)
