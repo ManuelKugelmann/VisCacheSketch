@@ -23,9 +23,29 @@ _last_loaded_scene = None
 
 def _load_scene_if_needed(m, scene_file, resX, resY):
     """Load scene after addGraph. Mogwai requires loadScene after each addGraph
-    to rebind scene resources to the new render graph's passes."""
+    to rebind scene resources to the new render graph's passes.
+
+    After load, explicitly select our VisCacheDefault camera when present so
+    FBX-embedded cameras (Bistro has animated ones) don't get picked up and
+    make the camera viewpoint drift between runs.
+    """
     m.loadScene(resolve_scene(scene_file))
     m.resizeFrameBuffer(resX, resY)
+    try:
+        scene = m.scene
+        if scene is not None:
+            cameras = getattr(scene, 'cameras', None) or []
+            for idx, cam in enumerate(cameras):
+                if getattr(cam, 'name', None) == 'VisCacheDefault':
+                    scene.selectCamera(idx)
+                    break
+            # Also stop any scene animation so the selected camera stays fixed
+            try:
+                scene.animated = False
+            except (AttributeError, RuntimeError):
+                pass
+    except (AttributeError, RuntimeError):
+        pass
 
 def resolve_scene(scene_file):
     """Resolve scene path: check PROJECT_ROOT/scenes/ and known data dirs (source mode), else pass through."""
@@ -169,6 +189,26 @@ PRESET_MINIMAL = {**LEVELS_SINGLE, **THRESH_MID, **RR_OFF, **FEATURES_OFF,
 # replaces prior 32PL×3 weighted-mean rule). Kept as an empty dict so
 # downstream _scene_weight() returns 1.0 for every scene.
 SCENE_WEIGHTS = {}
+
+# Canonical scene ordering for plots + plate filename prefixes. Scenes
+# listed here get a 2-digit position prefix (01_, 02_, ...) so plate
+# files sort alphabetically into the same order as the plots.
+SCENE_ORDER = [
+    "CornellBox_1PointLight",
+    "CornellBox_1AreaLight",
+    "CornellBox_3AreaLights",
+    "CornellBox_32PointLights",
+    "BistroInterior",
+    "BistroExterior",
+    "Sponza",
+]
+
+def _scene_prefix(scene_name):
+    """Return 2-digit position prefix for a scene (e.g. '01_') or empty
+    string for unknown scenes."""
+    if scene_name in SCENE_ORDER:
+        return f"{SCENE_ORDER.index(scene_name) + 1:02d}_"
+    return ""
 
 def _scene_weight(scene_name):
     return SCENE_WEIGHTS.get(scene_name, 1.0)
@@ -493,7 +533,7 @@ def stitch_plate(captureDir, prefix, variant_name, stats=None):
 
     scene_name = os.path.basename(captureDir)
     plate_dir = os.path.dirname(captureDir)
-    out = _out(plate_dir, "plate", f"{scene_name}_{prefix}")
+    out = _out(plate_dir, "plate", f"{_scene_prefix(scene_name)}{scene_name}_{prefix}")
     plate.save(out)
     print(f"  [plate] {os.path.basename(out)}")
     return out
@@ -2552,7 +2592,7 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
               f"-> {os.path.basename(noise_path)}")
 
     plate_out = os.path.join(os.path.dirname(captureDir),
-                             f"{scene_name}_{xN_tag}_vanilla_plate.png")
+                             f"{_scene_prefix(scene_name)}{scene_name}_{xN_tag}_vanilla_plate.png")
     stitch_baseline_plate(captureDir, xN_tag, plate_out,
                            err_stats=err_stats, noise_stats=noise_stats)
 
