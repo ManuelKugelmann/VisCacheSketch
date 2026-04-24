@@ -315,6 +315,37 @@ All x4 and x16 ladder runs up to step 27 used `(frames=1, spp=N)` — a single M
   - Attack Sponza bias as the primary open problem (not a side-quest).
   - Avoid re-testing the negative shader mechanisms unless there is a reason specific to multi-frame.
 
+## Steps 31–37 — cascade restructuring + HC peek + dir_dist addressing
+
+**Phase A** (step 31): restructured the cascade to allow arbitrarily large `numLevels`.
+- `deriveFine` changed from `coarse / 4^sqrt(N-1)` (astronomical at large N) to `coarse / 1024` (constant span).
+- `vhfLookup` / `vhfInsert` loops stride by `(N-1)/32` so 32 effective cascade steps run regardless of N. `numLevels` bumped to **32000** — cascade granularity without per-ray cost exploding.
+- Analytical entry level: both loops compute `startLvl` from per-pixel footprint (`targetCellSize = depth · pixelSize · √fd`) in a single log-based formula, skipping coarse-level work for near-camera cells.
+- Hierarchical-consistency peek now probes one *stride* ahead (= one cell-size doubling) instead of `lvl+1`, which shared quant indices at large N. Disagreement between coarse μ and the finer strided cell flags a penumbra boundary and triggers descent.
+
+**Result (pos addressing, step 31 e_fd0_hcOn):** Sponza x4 blob **184 → 91 (−50%)**, Sponza x1 blob 148 → ~100 (−30%). Cornell scenes unchanged or marginally better. Committed in `251a6c0`.
+
+**Phase B** (steps 32–35): knob sweeps at the step-31 carry.
+- Step 32 tolerance sweep: `hierarchicalMuTolerance=0.20` is near-optimal; tightening to 0.05–0.15 doesn't help consistently, 0.30 is too loose.
+- Step 33 stderr gate: Sponza x1 blob 160 → 103 with se=0.03 but regressed x4 129 → 193. Mixed, not carried.
+- Step 34 accelDecay: Sponza x16 blob 201 → 148 at `accelDecayDisagreeThresh=0.30` (−26%). Run-to-run variance too high on Sponza to separate from noise.
+- Step 35 stacking (stderr + accelDecay): no synergy.
+
+**Phase C** (steps 36–37): B-side addressing.
+- Step 36 swap pos → dir_dist (view-cone cells indexed by direction × distance instead of endpoint position):
+  - Sponza x1 blob **170 → 86 (−49%)**, Sponza x16 blob **193 → 124 (−35%)**.
+  - 1PL x4 blob **30 → 18 (−41%)**.
+  - Cost: ~50% more rays traced on Sponza (17% → 22%).
+  - Trade-offs: 1AL x4 blob 19 → 26 (+35%), Sponza x4 159 → 191 (+20%). dir_dist helps scenes with hard shadows / complex geometry, hurts soft-area-light scenes.
+- Step 37 dirB/distB tuning on dir_dist:
+  - `distB=0.24` (finer distance cells) at `dirB=15°`: Sponza x4 blob **191 → 110 (−42%)**, 1PL x4 blob 30 → 21 (−30%).
+  - Same config regresses Sponza x16 (121 → 213). Finer distance cells fragment the sample pool at high SPP.
+- No universal winner — `dir_dist + dirB=15 + distB=0.48` (step 36 default) is the most balanced across Sponza SPPs; `distB=0.24` is strictly better at x4 but worse at x16.
+
+**Sponza reproducibility caveat:** same config across different runs shows ±70% variance on blob metrics (GPU atomic ordering). Differences below that threshold are noise; only the dir_dist swap and HC peek survive the noise as robust wins.
+
+**Open on Sponza x16:** blob plateau at 150–200% across all step-31+ variants. Appears intrinsic to the pos-addressing bias-trap regime. dir_dist addressing cuts it to 124% (step 36); further gains likely need per-scene addressing selection or a new bias-correction mechanism that doesn't drown in high-SPP sample floods.
+
 ## Cross-step ladder progress
 
 Per-scene thin lines + bold unweighted "All" across all ladder steps in three panels (rays / error+blob / noise). Red halos mark each step's carried winner; whiskers show per-scene min→max of all variants at that step. One plot per SPP tier.
