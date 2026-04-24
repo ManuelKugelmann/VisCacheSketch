@@ -463,28 +463,22 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 //   Distance quantization is coarse (4× coarsest cell size, log-scaled).
 //   No canonicalization — direction is asymmetric (V(A→B) ≠ V(B→A) key).
 // ---------------------------------------------------------------------------
+/// Sentinel distance encoding "env ray" in the pos cascade. Picked finite
+/// and large-but-safe-int32 (posB coord stays ≤ 1e6 × dir which quantizes
+/// fine at any cell size ≥ 1e-10). vhfQuantizePair checks `length(posB-posA)
+/// == kEnvSentinelDist` to switch into direction-binned quantization.
+static const float kEnvSentinelDist = 1.0e6f;
+
 float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 {
-    // Clamp dist to prevent int32 overflow in downstream quantization.
-    // Falcor passes dist = kRayTMax (1e30) or FLT_MAX for env/directional
-    // shadow rays, but `round((posA + dir*1e30) / cellSize)` cast to int
-    // silently wraps. Clamp at 32× max coarse-cell: larger than any in-
-    // scene shadow ray distance (autoTuneCellSize sets coarse ≈ diameter/8),
-    // so finite-distance rays pass through unchanged; env rays cluster
-    // onto a direction-dependent posB that quantizes cleanly.
-    //
-    // Quality comparison (step 45 triple-trial, Sponza ABCD):
-    //   pre-clamp pos  x1 blob 148±22, rays 16%, err -5.76
-    //   post-clamp pos x1 blob 126±8,  rays 56%, err -7.07
-    //   dir_dist       x1 blob 108±20, rays 35%, err -6.57
-    //
-    // Clamp gives a correct-ish cache (err improves from -5.76 to -7.07!)
-    // but gates don't trust it as much (rays 16→56%); dir_dist still wins
-    // on both blob and rays because its distBin path inherently handles
-    // env rays well. Keeping the clamp is a correctness fix; quality
-    // tuning for clamped-pos is future work.
-    const float kMaxShadowDist = 32.f * max(gPosBCoarse, gPosACoarse);
-    return posA + dir * min(dist, kMaxShadowDist);
+    // Env/directional rays: Falcor passes dist = kRayTMax (1e30) / FLT_MAX.
+    // Raw multiply overflows int32 in quantization (blob 148 vs fixed 98 at
+    // Sponza x1). Route env rays onto a sentinel distance that vhfQuantizePair
+    // detects and switches to dir_dist-style direction binning for, matching
+    // how dir_dist addressing handles env correctly via its "infinity" distBin.
+    if (dist > 1e10f)
+        return posA + dir * kEnvSentinelDist;
+    return posA + dir * dist;
 }
 
 // ---------------------------------------------------------------------------
@@ -553,27 +547,39 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
 
 #if USE_VISCACHE_DIRDIST_ADDRESSING
     // Dir+dist: 2D octahedral direction bins + distance bin.
+    // Env rays are routed to the sentinel distance by vhfAddressPosB and
+    // land in an explicit distBin=0 "infinity slot". Previously they
+    // clustered via int32 overflow of round(1e30/distCell), which was a
+    // coincidence not a design.
     {
         float3 edge = posB - posA;
         float dist = length(edge);
         float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
         float angCellOct = vhfDirBSize(lvl) / 90.f;
         float distCell   = vhfDistSize(lvl);
-        qb = vhfQuantizeDirection(dir, angCellOct, dist, distCell);
+        float distForBin = (abs(dist - kEnvSentinelDist) < 1.f) ? 0.f : dist;
+        qb = vhfQuantizeDirection(dir, angCellOct, distForBin, distCell);
     }
 #else
-    // Pos×pos: quantize posB at its own cell size from the B cascade.
-    float posBCell = vhfPosBSize(lvl);
-    qb = jitterQuantize(posB, posBCell, 0xBBu ^ lvl);
+    // Pos×pos: env rays are routed to a sentinel distance (vhfAddressPosB).
+    // Detect via edge magnitude and route them through dir_dist-style direction
+    // binning with distBin=0 — the "infinity slot" matches what dir_dist
+    // addressing inherently does for env rays.
+    float3 edgeB = posB - posA;
+    float distB  = length(edgeB);
+    if (abs(distB - kEnvSentinelDist) < 1.f)
+    {
+        float3 dir = distB > 1e-6f ? edgeB / distB : float3(0.f, 1.f, 0.f);
+        float angCellOct = max(vhfDirBSize(lvl), 1.f) / 90.f;
+        qb = vhfQuantizeDirection(dir, angCellOct, 0.f, 1.f);  // distBin=0 = env slot
+    }
+    else
+    {
+        float posBCell = vhfPosBSize(lvl);
+        qb = jitterQuantize(posB, posBCell, 0xBBu ^ lvl);
+    }
 
     // Canonicalization disabled — asymmetric endpoints (posB coarser, normal on A only).
-    // if (kCanonicalize)
-    // {
-    //     if (vhfCanonicalLess(qb, qa))
-    //     {
-    //         int3 tmp = qa; qa = qb; qb = tmp;
-    //     }
-    // }
 #endif
 }
 
