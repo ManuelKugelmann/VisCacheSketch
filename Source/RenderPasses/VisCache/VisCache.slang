@@ -465,8 +465,27 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 // ---------------------------------------------------------------------------
 float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 {
-    // Endpoint mode (canonical, asymmetric, or dirdist) — posB is the light position.
-    // In dirdist mode, vhfQuantizePair handles direction encoding directly.
+    // KNOWN ISSUE (investigated, no good fix yet): for env/directional lights
+    // Falcor passes dist = kRayTMax (1e30) or FLT_MAX. The posB then has
+    // 1e30-scale components and `round(pos/cellSize)` cast to int32 overflows
+    // silently, scattering every env-ray across random quant cells. This
+    // effectively disables the cache for env rays (cells never mature →
+    // always trace → correct output at full ray cost).
+    //
+    // Tried fixes (step 45, reverted):
+    //   (1) Clamp dist to 32× coarse-cell: env rays cluster → cells mature
+    //       with biased mu (mixes samples from many posA positions sharing a
+    //       direction cluster). Rays skipped but blob got worse.
+    //   (2) Use vhfEncodeDirection(dir) for dist>1e10: matches ReSTIRPTPass
+    //       pattern, but its 45° angular cells are too coarse for this
+    //       cascade — blob regressed (181 vs 148 pre-fix).
+    //
+    // Correct fix requires a dedicated env-cell addressing scheme (finer
+    // angular bins, pixel-independent). Left for future work. Until then,
+    // env rays remain effectively uncached, which explains why dir_dist
+    // (which uses `dir + distBin` — dist overflow collapses to a single
+    // distBin rather than scrambling across many) outperforms pos on scenes
+    // with sun/env lighting (Sponza).
     return posA + dir * dist;
 }
 
