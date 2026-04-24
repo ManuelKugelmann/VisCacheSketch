@@ -26,26 +26,28 @@ def _load_scene_if_needed(m, scene_file, resX, resY):
     to rebind scene resources to the new render graph's passes.
 
     After load, explicitly select our VisCacheDefault camera when present so
-    FBX-embedded cameras (Bistro has animated ones) don't get picked up and
-    make the camera viewpoint drift between runs.
+    FBX-embedded cameras (e.g. Bistro has animated cameras baked in) don't
+    get picked up and make the camera viewpoint drift between runs.
     """
     m.loadScene(resolve_scene(scene_file))
     m.resizeFrameBuffer(resX, resY)
     try:
         scene = m.scene
         if scene is not None:
+            # Force-select VisCacheDefault via the scene.camera setter
+            # (pybind binding: scene.def_property("camera", getCamera, setCamera)
+            # where setCamera finds the matching camera and calls selectCamera).
             cameras = getattr(scene, 'cameras', None) or []
-            for idx, cam in enumerate(cameras):
+            for cam in cameras:
                 if getattr(cam, 'name', None) == 'VisCacheDefault':
-                    scene.selectCamera(idx)
+                    scene.camera = cam
                     break
-            # Also stop any scene animation so the selected camera stays fixed
-            try:
-                scene.animated = False
-            except (AttributeError, RuntimeError):
-                pass
-    except (AttributeError, RuntimeError):
-        pass
+            # Disable scene animation so the selected camera doesn't drift
+            # across successive renderFrame calls (scene clock advances per
+            # frame; any animated camera including via parenting would move).
+            scene.animated = False
+    except (AttributeError, RuntimeError) as e:
+        print(f"[scene-camera-lock] warning: {e}")
 
 def resolve_scene(scene_file):
     """Resolve scene path: check PROJECT_ROOT/scenes/ and known data dirs (source mode), else pass through."""
@@ -230,12 +232,13 @@ def _qd_tag(v): return f"qd{int(round(v * 100)):03d}"
 # Default picker rule used by pick_top_variants_per_bvariant and recorded in
 # picks.json for every step's finalize pass.
 _DEFAULT_PICKER_RULE = (
-    "per-scene outlier gate: for EVERY scene, err <= 0 OR err <= median+25% "
-    "AND blob <= 0 OR blob <= median+50% (medians per-scene across variants). "
-    "Rank surviving variants by score = mean(rays_traced) + 2×max(blob-10, 0) "
-    "ascending — quality-weighted rays (variants with a scene blob above 10%  "
-    "visual-artifact cap get their rays score penalized 2pp per blob% over, "
-    "so cheap-but-artifact variants lose to clean-but-expensive ones)."
+    "per-scene outlier gate (err <= 0 OR err <= median+25%, blob <= 0 OR "
+    "blob <= median+50%) + hard rejects: any scene err > 1%, blob > 25%, "
+    "or mean rays > 50%. (err cap is absolute: signed mean-err can go "
+    "negative from denoising while concentrated artifacts exist; >1% "
+    "means the cache demonstrably makes a scene worse.) Rank survivors "
+    "by balance score = rays_mean + 1.5×max(scene_blob) + "
+    "2.0×max(scene_err); noise informational."
 )
 
 # Y-axis limits for the step overview plots (shared across all steps so
@@ -331,7 +334,7 @@ def make_norm_variants(quant=None, base=None, quant_tag=None):
 # ---------------------------------------------------------------------------
 # key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + frames + warmupSub + subframeN + res + variant
 _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warmup_run", "subframe_n",
-               "rays_traced_pct", "coldmiss_pct",
+               "rays_traced_pct", "coldmiss_pct", "mean_level",
                "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
                "error_delta_blob_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
@@ -346,7 +349,7 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      error_delta_pct=None, error_delta_min_pct=None, error_delta_max_pct=None,
                      error_delta_blob_pct=None,
                      noise_delta_pct=None, noise_delta_min_pct=None, noise_delta_max_pct=None,
-                     noise_delta_blob_pct=None):
+                     noise_delta_blob_pct=None, mean_level=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -373,6 +376,7 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "subframe_n":   str(subframe_n),
         "rays_traced_pct": f"{rays_traced_pct:.4f}",
         "coldmiss_pct":    f"{coldmiss_pct:.4f}",
+        "mean_level":      f"{mean_level:.3f}" if mean_level is not None else "",
         "error_delta_pct":      f"{error_delta_pct:.4f}"      if error_delta_pct      is not None else "",
         "error_delta_min_pct":  f"{error_delta_min_pct:.4f}"  if error_delta_min_pct  is not None else "",
         "error_delta_max_pct":  f"{error_delta_max_pct:.4f}"  if error_delta_max_pct  is not None else "",
@@ -470,7 +474,7 @@ PLATE_LAYOUT = [
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
      ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% blob{error_delta_blob_pct:+.1f}%"),
      ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}% blob{noise_delta_blob_pct:+.1f}%")],
-    [("r2c1_frame_level",      "level"),
+    [("r2c1_frame_level",      "level μ{mean_level:.2f}"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
      ("r1c6_accum_variance",   "variance")],
@@ -2221,7 +2225,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     nd_frame = load_diag_mask(exrs, mode="nodata_frame")
 
     # --- Compute global stats from EXR data ---
-    stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0,
+    stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0, "mean_level": None,
              "error_delta_pct": None, "error_delta_min_pct": None, "error_delta_max_pct": None,
              "error_delta_blob_pct": None, "noise_delta_blob_pct": None,
              "noise_delta_pct": None, "noise_delta_min_pct": None, "noise_delta_max_pct": None}
@@ -2285,6 +2289,16 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
                 nd_nohit = nd_frame * nohit
             else:
                 nd_nohit = nohit
+        # Mean cascade level across pixels that actually looked up the cache
+        # (i.e. not cold-miss, not nodata). Channel 0 of FrameLevelProbesSamplesCold.
+        lv_data = cm_data  # already read above
+        if lv_data is not None and lv_data.shape[2] >= 4:
+            level_img = lv_data[:, :, 0]
+            lv_mask = (nd_nohit > 0.5) if nd_nohit is not None else None
+            if lv_mask is not None and lv_mask.any():
+                stats["mean_level"] = float(level_img[lv_mask].mean())
+            else:
+                stats["mean_level"] = float(level_img.mean())
         _wc(exr, 0, o("r2c1_frame_level"),       nodata=nd_nohit)
         _wc(exr, 2, o("r2c3_frame_samplecount"), nodata=nd_nohit)
         _wc(exr, 3, o("r2c7_frame_coldmiss"),    nodata=nd_frame)  # coldmiss itself uses nodata only
@@ -2426,6 +2440,7 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         stats.get("noise_delta_pct"),
         stats.get("noise_delta_min_pct"), stats.get("noise_delta_max_pct"),
         stats.get("noise_delta_blob_pct"),
+        mean_level=stats.get("mean_level"),
     )
 
     stats["variant"] = variant_name
@@ -2971,32 +2986,53 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
                 return True
             return val <= 0.0 or val <= tol
 
-        # Absolute artifact threshold: blob > 10% = visual artifact.
-        # Variants with any scene blob above this cap are still considered,
-        # but they need to justify the cost with extra rays savings — the
-        # ranking weights rays reduction less when a blob is outside target
-        # quality. (Penalty per blob-point-over-cap added to rays_mean in
-        # the ranking key below.)
-        BLOB_ARTIFACT_CAP = 10.0
-        BLOB_OVER_CAP_PENALTY = 2.0  # rays-percentage-points added per blob% over cap
+        # Thresholds:
+        #   ERR_HARD_CAP     — positive err delta above this is a reject. Signed
+        #                      err can be misleading (average can go negative
+        #                      from denoising while concentrated artifacts
+        #                      exist), so this cap reflects "cache must not
+        #                      hurt any scene more than 1% on average".
+        #   BLOB_HARD_CAP    — visible artifact; variants exceeding on any
+        #                      scene are rejected outright
+        #   RAYS_HARD_CAP    — rays above this defeat the purpose of caching
+        #                      (variant is near-vanilla); rejected outright
+        # Weighted score for surviving variants:
+        #   score = rays_mean + BLOB_WEIGHT × max_scene_blob + ERR_WEIGHT × max_scene_err
+        ERR_HARD_CAP  = 1.0
+        BLOB_HARD_CAP = 25.0
+        RAYS_HARD_CAP = 50.0
+        BLOB_WEIGHT   = 1.5   # a blob=10 worst scene adds 15pp to rays score
+        ERR_WEIGHT    = 2.0   # a +5% err worst scene adds 10pp to rays score
 
-        # Variant qualifies iff EVERY scene with data passes both relative gates
+        # Variant qualifies iff EVERY scene with data passes relative gates
+        # AND every scene blob <= BLOB_HARD_CAP
+        # AND aggregate rays <= RAYS_HARD_CAP.
         qualifying = []
         for v, pv in per_scene.items():
             all_pass = True
-            max_blob_over_cap = 0.0
+            max_scene_blob = 0.0
+            max_scene_err  = 0.0
             for scn in all_scenes:
                 if scn not in pv or scn not in scene_tol:
                     continue
                 tol_e, tol_b = scene_tol[scn]
                 blob_val = pv[scn]["blob"]
-                if not (_ok(pv[scn]["err"], tol_e)
+                err_val  = pv[scn]["err"]
+                if not (_ok(err_val, tol_e)
                         and _ok(blob_val, tol_b)):
                     all_pass = False
                     break
-                if blob_val is not None and blob_val > BLOB_ARTIFACT_CAP:
-                    max_blob_over_cap = max(max_blob_over_cap,
-                                            blob_val - BLOB_ARTIFACT_CAP)
+                if blob_val is not None:
+                    max_scene_blob = max(max_scene_blob, blob_val)
+                    if blob_val > BLOB_HARD_CAP:
+                        all_pass = False
+                        break
+                if err_val is not None:
+                    if err_val > 0:
+                        max_scene_err = max(max_scene_err, err_val)
+                    if err_val > ERR_HARD_CAP:
+                        all_pass = False
+                        break
             if not all_pass:
                 continue
             # Unweighted means over scenes for ranking / info
@@ -3009,21 +3045,21 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
                          if scn in pv and pv[scn]["noise"] is not None]
             if not rays_vals:
                 continue
+            mean_rays = stats.mean(rays_vals)
+            if mean_rays > RAYS_HARD_CAP:
+                continue
+            # Balance score: rays + blob-penalty + err-penalty. Lower = better.
+            score = (mean_rays
+                     + BLOB_WEIGHT * max_scene_blob
+                     + ERR_WEIGHT  * max_scene_err)
             qualifying.append((v, {
-                "rays":  stats.mean(rays_vals),
+                "rays":  mean_rays,
                 "err":   stats.mean(err_vals)  if err_vals  else 0.0,
                 "blob":  stats.mean(blob_vals) if blob_vals else 0.0,
                 "noise": stats.mean(nse_vals)  if nse_vals  else 0.0,
-                # Score = rays + penalty × (blob-over-cap). Variants with a
-                # scene blob above BLOB_ARTIFACT_CAP get their effective
-                # rays-score pushed up by 2 points per % blob over 10 — so
-                # a variant with perfect rays but blob=20 ranks as though
-                # it traced +20 extra pp rays. Keeps rank-by-rays efficient
-                # for good variants while preventing 'cheap but artifacts'
-                # from winning over 'pays more rays for clean image'.
-                "score": stats.mean(rays_vals)
-                         + BLOB_OVER_CAP_PENALTY * max_blob_over_cap,
-                "max_blob_over_cap": max_blob_over_cap,
+                "max_scene_blob": max_scene_blob,
+                "max_scene_err":  max_scene_err,
+                "score": score,
             }))
         qualifying.sort(key=lambda kv: kv[1]["score"])
         result[bv] = [v for v, _ in qualifying[:n_top]]
