@@ -346,7 +346,20 @@ All x4 and x16 ladder runs up to step 27 used `(frames=1, spp=N)` — a single M
   - x1:  86 / 147 / 111  (range 61)
   - x4:  110 / 109 / 202 (range 93, ~100% spread)
   - x16: 168 / 209 / 121 (range 88, ~72% spread)
-The GPU atomic ordering noise floor on Sponza blob is ~90 units. This means many of the −30% to −50% improvements claimed from single-run step-31-41 findings sit near the noise. Directionally the wins likely still real (HC peek and dir_dist show effects larger than a single σ across many runs), but absolute magnitudes reported from individual ladder steps are not reliable. Cornell scenes are more stable.
+The GPU atomic ordering noise floor on Sponza blob is ~90 units. This means many of the −30% to −50% improvements claimed from single-run step-31-41 findings sit near the noise.
+
+**Step 43 ABCD triple-trial definitive results:** ran 4 variants × 3 trials on Sponza:
+  | variant | x1 blob μ±σ | x4 blob μ±σ | x16 blob μ±σ |
+  |---------|-------------|-------------|--------------|
+  | pos addressing, no HC, no decay | 148±22 | 183±23 | 203±6 |
+  | pos + HC peek | 130±38 | 171±22 | 192±36 |
+  | **dir_dist + HC peek** | **86±0** | 129±33 | **122±2** |
+  | dir_dist + HC + decay dp15 | 91±9 | **121±19** | 172±33 |
+
+- **dir_dist is the only step-31-41 finding that survives triple-trial scrutiny.** Blob deltas vs pos are −62 / −54 / −81 at every SPP, >>1σ. Err also consistently better (−6.7 vs −5.8). Cost: +40–80% more rays.
+- HC peek on pos (second row vs first): blob deltas −18 / −12 / −11, all within σ. Possibly real but small.
+- Decay pass (fourth vs third row): stacks benefit at x4 (−8) but hurts x16 (+50). Mixed.
+- dir_dist x1/x16 blob σ = 0–2 vs pos σ = 6–38. Addressing choice is load-bearing; HC/decay amplitudes are noise-dominated.
 
 **Open on Sponza x16:** blob plateau at 150–200% across all step-31+ variants. Appears intrinsic to the pos-addressing bias-trap regime. dir_dist addressing cuts it to 124% (step 36); further gains likely need per-scene addressing selection or a new bias-correction mechanism that doesn't drown in high-SPP sample floods.
 
