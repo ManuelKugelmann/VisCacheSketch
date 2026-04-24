@@ -465,28 +465,26 @@ int3 jitterQuantize(float3 pos, float cellSize, uint seed)
 // ---------------------------------------------------------------------------
 float3 vhfAddressPosB(float3 posA, float3 dir, float dist)
 {
-    // KNOWN ISSUE (investigated, no good fix yet): for env/directional lights
-    // Falcor passes dist = kRayTMax (1e30) or FLT_MAX. The posB then has
-    // 1e30-scale components and `round(pos/cellSize)` cast to int32 overflows
-    // silently, scattering every env-ray across random quant cells. This
-    // effectively disables the cache for env rays (cells never mature →
-    // always trace → correct output at full ray cost).
+    // Clamp dist to prevent int32 overflow in downstream quantization.
+    // Falcor passes dist = kRayTMax (1e30) or FLT_MAX for env/directional
+    // shadow rays, but `round((posA + dir*1e30) / cellSize)` cast to int
+    // silently wraps. Clamp at 32× max coarse-cell: larger than any in-
+    // scene shadow ray distance (autoTuneCellSize sets coarse ≈ diameter/8),
+    // so finite-distance rays pass through unchanged; env rays cluster
+    // onto a direction-dependent posB that quantizes cleanly.
     //
-    // Tried fixes (step 45, reverted):
-    //   (1) Clamp dist to 32× coarse-cell: env rays cluster → cells mature
-    //       with biased mu (mixes samples from many posA positions sharing a
-    //       direction cluster). Rays skipped but blob got worse.
-    //   (2) Use vhfEncodeDirection(dir) for dist>1e10: matches ReSTIRPTPass
-    //       pattern, but its 45° angular cells are too coarse for this
-    //       cascade — blob regressed (181 vs 148 pre-fix).
+    // Quality comparison (step 45 triple-trial, Sponza ABCD):
+    //   pre-clamp pos  x1 blob 148±22, rays 16%, err -5.76
+    //   post-clamp pos x1 blob 126±8,  rays 56%, err -7.07
+    //   dir_dist       x1 blob 108±20, rays 35%, err -6.57
     //
-    // Correct fix requires a dedicated env-cell addressing scheme (finer
-    // angular bins, pixel-independent). Left for future work. Until then,
-    // env rays remain effectively uncached, which explains why dir_dist
-    // (which uses `dir + distBin` — dist overflow collapses to a single
-    // distBin rather than scrambling across many) outperforms pos on scenes
-    // with sun/env lighting (Sponza).
-    return posA + dir * dist;
+    // Clamp gives a correct-ish cache (err improves from -5.76 to -7.07!)
+    // but gates don't trust it as much (rays 16→56%); dir_dist still wins
+    // on both blob and rays because its distBin path inherently handles
+    // env rays well. Keeping the clamp is a correctness fix; quality
+    // tuning for clamped-pos is future work.
+    const float kMaxShadowDist = 32.f * max(gPosBCoarse, gPosACoarse);
+    return posA + dir * min(dist, kMaxShadowDist);
 }
 
 // ---------------------------------------------------------------------------
