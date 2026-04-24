@@ -741,7 +741,19 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     best.qa = int3(0);
     best.qb = int3(0);
 
-    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
+    // gForceDescendFootprintPx as cascade entry-level selector: skip coarse
+    // levels entirely where cellPx > threshold. Per-pixel (depth dependent).
+    // Saves reads at skipped levels AND removes the "fallback to coarse best"
+    // pathology where fd-rejected cells leaked back as the return value.
+    int startLvl = 0;
+    if (gForceDescendFootprintPx != 0u)
+    {
+        while (startLvl < int(gNumLevels) - 1
+               && vhfCellPixels(startLvl, posA) > gForceDescendFootprintPx)
+            startLvl++;
+    }
+
+    for (int lvl = startLvl; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfPosASize(lvl);
         int3 qa, qb;
@@ -825,17 +837,13 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
 
         if (converged)
         {
-            // Force-descent overrides: big cells must always refine.
-            if (gForceDescendFootprintPx != 0u && cellPx > gForceDescendFootprintPx)
-            {
-                // Keep descending — cell too big to trust on low variance.
-            }
-            // Hierarchical consistency: peek the next finer level; if its μ
-            // disagrees with this one, the current convergence is suspect
-            // (likely a penumbra boundary where coarse/fine differ). Keep
-            // descending to the more refined estimate. Costs one extra hash
-            // probe per converged level.
-            else if (gEnableHierarchicalConsistency != 0u && lvl + 1 < int(gNumLevels))
+            // fd already enforced via entry-level selection above; no in-loop
+            // fd branch needed. Hierarchical consistency: peek the next finer
+            // level; if its μ disagrees with this one, the current convergence
+            // is suspect (likely a penumbra boundary where coarse/fine differ).
+            // Keep descending to the more refined estimate. Costs one extra
+            // hash probe per converged level.
+            if (gEnableHierarchicalConsistency != 0u && lvl + 1 < int(gNumLevels))
             {
                 int   nextLvl = lvl + 1;
                 float nextCs  = vhfPosASize(nextLvl);
@@ -1256,7 +1264,19 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
     uint parentVis   = 0u;
     uint parentTotal = 0u;
 
-    for (int lvl = 0; lvl < int(gNumLevels); lvl++)
+    // fd entry-level: skip writes at coarse levels entirely. No reads, no
+    // writes, no preinit probes at skipped levels — pure hash-table pressure
+    // relief. Per-pixel via vhfCellPixels(lvl, posA) depth dependence.
+    int startLvl = 0;
+    if (gForceDescendFootprintPx != 0u)
+    {
+        int last = int(gNumLevels) - 1;
+        while (startLvl < last
+               && vhfCellPixels(startLvl, posA) > gForceDescendFootprintPx)
+            startLvl++;
+    }
+
+    for (int lvl = startLvl; lvl < int(gNumLevels); lvl++)
     {
         float cs = vhfPosASize(lvl);
         int3 qa, qb;
@@ -1279,46 +1299,7 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
             continue;
         }
 
-        // Gate 1b: insert-side level skip for big footprints. Paired with
-        // gForceDescendFootprintPx on the lookup side — lookup already
-        // refuses to trust big coarse cells, so populating them is pure
-        // hash-table pressure. Skip writes at levels where cellPx exceeds
-        // the threshold. Never skip the finest level.
-        //
-        // Preserve parent-preinit chain: read-only probe for any existing
-        // entry at the coarse cell and pass its μ forward to the next
-        // level's preinit. Addresses the step-17 regression where naive
-        // skip (reset parent chain to zero) caused fine cells to inherit
-        // wrong-seeded state.
-        if (!isFinestLevel && gForceDescendFootprintPx != 0u)
-        {
-            uint cellPx = vhfCellPixels(lvl, posA);
-            if (cellPx > gForceDescendFootprintPx)
-            {
-                uint _ps;
-                int readSlot = vhfFindSlot(addr, fp, /*allowInsert=*/false, _ps);
-                if (readSlot >= 0)
-                {
-                    VHFEntry existing = gVHFTable[readSlot];
-                    uint eTotal = existing.packed & 0xFFFFu;
-                    uint eVis   = existing.packed >> 16u;
-                    if (eTotal > 0u)
-                    {
-                        parentVis   = eVis;
-                        parentTotal = eTotal;
-                    }
-                    else
-                    {
-                        parentVis = 0u; parentTotal = 0u;
-                    }
-                }
-                else
-                {
-                    parentVis = 0u; parentTotal = 0u;
-                }
-                continue;
-            }
-        }
+        // fd already enforced via startLvl above — no in-loop fd check.
 
         uint _ps;
         int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/true, _ps);
