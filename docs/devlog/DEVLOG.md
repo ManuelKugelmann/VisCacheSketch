@@ -342,7 +342,11 @@ All x4 and x16 ladder runs up to step 27 used `(frames=1, spp=N)` — a single M
   - Same config regresses Sponza x16 (121 → 213). Finer distance cells fragment the sample pool at high SPP.
 - No universal winner — `dir_dist + dirB=15 + distB=0.48` (step 36 default) is the most balanced across Sponza SPPs; `distB=0.24` is strictly better at x4 but worse at x16.
 
-**Sponza reproducibility caveat:** same config across different runs shows ±70% variance on blob metrics (GPU atomic ordering). Differences below that threshold are noise; only the dir_dist swap and HC peek survive the noise as robust wins.
+**Sponza reproducibility caveat (step 42 triple-trial):** identical config run 3 times on Sponza yielded blob:
+  - x1:  86 / 147 / 111  (range 61)
+  - x4:  110 / 109 / 202 (range 93, ~100% spread)
+  - x16: 168 / 209 / 121 (range 88, ~72% spread)
+The GPU atomic ordering noise floor on Sponza blob is ~90 units. This means many of the −30% to −50% improvements claimed from single-run step-31-41 findings sit near the noise. Directionally the wins likely still real (HC peek and dir_dist show effects larger than a single σ across many runs), but absolute magnitudes reported from individual ladder steps are not reliable. Cornell scenes are more stable.
 
 **Open on Sponza x16:** blob plateau at 150–200% across all step-31+ variants. Appears intrinsic to the pos-addressing bias-trap regime. dir_dist addressing cuts it to 124% (step 36); further gains likely need per-scene addressing selection or a new bias-correction mechanism that doesn't drown in high-SPP sample floods.
 
