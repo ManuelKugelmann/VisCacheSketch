@@ -370,6 +370,28 @@ Reversal: **pos addressing after the clamp fix is now better than dir_dist at x1
 
 Clamp fix is a correctness win regardless; efficiency comparison (blob per ray) still favors dir_dist (34% rays vs 57% rays for comparable blob).
 
+**Step 47–48: ct=16 + stderrThreshold=0.02 — universal blob −54 to −89%.**
+
+User diagnosis (steps 47/48): "we are missing sharp shadow boundaries on Sponza. we trust too early, we do not trace enough rays per cell. accept a higher % of rays." Correct. With the default `bootThreshold=4` and no stderr gate, a cell whose first 4 rays happen to all land on the lit side of a penumbra trusts `mu=1.0` before the boundary is sampled at all. Raise `bootThreshold` to 16 and gate on `sqrt(var/N) ≤ stderrThreshold=0.02` (requires N ≥ var/se² — at mu=0.5 that's 625 samples before trust).
+
+Triple-trial Sponza + single-run Cornell (step 48):
+
+| scene / spp | baseline blob | ct=16+se=0.02 blob | change |
+|-------------|---------------|--------------------|--------|
+| Sponza x1 | 154±68 | **67±1** | **−56%** (σ collapse) |
+| Sponza x4 | 195±26 | 81±36 | −58% |
+| 1AL x4 | 19.5 | 2.9 | −85% |
+| 1PL x4 | 33.9 | 8.9 | −74% |
+| 1PL x16 | 46.2 | 12.8 | −72% |
+| 32PL x4 | 6.3 | 0.7 | −89% |
+| 3AL x4 | 15.5 | 6.4 | −59% |
+
+Err improved on every scene too (Sponza x1: −5.9 → −8.3; 1PL x4: +0.47 → +0.06). Rays traced approximately doubles — explicitly accepted as the cost of reliable boundary resolution.
+
+The x16 plateau narrows but doesn't close (Sponza x16 143, 32PL x16 16.4). At x16 SPP cells have hundreds of samples so the "under-sampled trust" issue largely resolves itself via pure volume; remaining blob is bias in the biased-mu regime documented in earlier steps.
+
+Conclusion: the pre-step-47 default was under-sampling every scene at penumbrae. Cornell blob was low enough in absolute terms that it looked acceptable, but the *relative* improvement is massive. **New baseline: `bootThreshold=16, stderrThreshold=0.02`, rest unchanged.**
+
 **Open on Sponza x16:** blob plateau at 150–200% across all step-31+ variants. Appears intrinsic to the pos-addressing bias-trap regime. dir_dist addressing cuts it to 124% (step 36); further gains likely need per-scene addressing selection or a new bias-correction mechanism that doesn't drown in high-SPP sample floods.
 
 ## Cross-step ladder progress
