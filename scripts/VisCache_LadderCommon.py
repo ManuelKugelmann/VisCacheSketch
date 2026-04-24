@@ -364,7 +364,8 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
     error_delta_blob_pct: signed worst-blob value (Gaussian-blurred delta, sign preserved).
     noise_delta_pct: signed mean-% (noise_vis − noise_van) / noise_van × 100 (bilateral screen noise).
     noise_delta_{min,max}_pct: per-pixel min/max of the same signed delta.
-    noise_delta_blob_pct: signed worst-blob value of the same bilateral-noise delta.
+    noise_delta_blob_pct: worst-blob of bilateral noise delta — flags fireflies
+        (localized bright pixels not caught by mean-noise metric).
     """
     import csv, datetime
     path = _step_csv(step)
@@ -390,7 +391,6 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
         "noise_delta_min_pct":  f"{noise_delta_min_pct:.4f}"  if noise_delta_min_pct  is not None else "",
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
-        "noise_delta_blob_pct": f"{noise_delta_blob_pct:.4f}" if noise_delta_blob_pct is not None else "",
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -479,7 +479,7 @@ PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
      ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% blob{error_delta_blob_pct:+.1f}% sum{error_delta_blob_sum_pct:+.2f}"),
-     ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}% blob{noise_delta_blob_pct:+.1f}%")],
+     ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}%")],
     [("r2c1_frame_level",      "level μ{mean_level:.2f}"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
@@ -2256,7 +2256,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     # --- Compute global stats from EXR data ---
     stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0, "mean_level": None,
              "error_delta_pct": None, "error_delta_min_pct": None, "error_delta_max_pct": None,
-             "error_delta_blob_pct": None, "noise_delta_blob_pct": None,
+             "error_delta_blob_pct": None,
              "noise_delta_pct": None, "noise_delta_min_pct": None, "noise_delta_max_pct": None}
     from viscache_exr import read_exr
     import numpy as np
@@ -2404,7 +2404,6 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["noise_delta_pct"]      = r["noise_delta_pct"]
             stats["noise_delta_min_pct"]  = r["noise_delta_min_pct"]
             stats["noise_delta_max_pct"]  = r["noise_delta_max_pct"]
-            stats["noise_delta_blob_pct"] = r.get("noise_delta_blob_pct")
         print(f"  [noise] {os.path.basename(o('r1c9_accum_noise'))}")
     elif render_path:
         compute_render_noise(render_path, o("r1c9_accum_noise"))
@@ -2469,7 +2468,6 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         stats.get("error_delta_blob_pct"),
         stats.get("noise_delta_pct"),
         stats.get("noise_delta_min_pct"), stats.get("noise_delta_max_pct"),
-        stats.get("noise_delta_blob_pct"),
         mean_level=stats.get("mean_level"),
         error_delta_blob_sum_pct=stats.get("error_delta_blob_sum_pct"),
     )
@@ -2864,8 +2862,7 @@ def _load_step_rows(step_name):
             for k in ("coldmiss_pct",
                       "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
                       "error_delta_blob_pct",
-                      "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
-                      "noise_delta_blob_pct"):
+                      "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct"):
                 v = row.get(k, "")
                 try:
                     row[k] = float(v) if v not in ("", None) else None

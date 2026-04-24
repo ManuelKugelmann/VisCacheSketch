@@ -312,7 +312,11 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
     # Normalize to fixed bilateral-noise max (1.0 — cov is clipped to [0,1]).
     # Same scale the image colormap uses; avoids double-counting vanilla.
     denom  = 1.0
-    blob_pct = _signed_blob_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
+    # Noise blob = firefly detector. Wider Gaussian than error blob so
+    # single-pixel bright spikes become visible clusters (firefly = a few
+    # bright outlier pixels in a shadowed region; narrow sigma makes the
+    # blob a single pixel and the metric reads same as max).
+    blob_pct = _signed_blob_pct(signed, mask, NOISE_BLOB_SIGMA, denom)
     return {
         "noise_vis_mean":       n_vis,
         "noise_van_mean":       n_van,
@@ -525,6 +529,12 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
 # Gaussian σ for the "max-blob" windowed-max stat on correlated-error maps.
 # ~σ×3 radius (~12 px) captures tile-scale hot spots (16 px tile) coherently.
 ERR_WINDOW_SIGMA = 4.0
+
+# Larger window for the noise (firefly) blob — fireflies are single-pixel
+# spikes whose bilateral-noise delta is very localized. A wider Gaussian
+# smooths them into recognizable blobs and de-emphasizes isolated-pixel
+# noise that doesn't represent a visual artifact cluster.
+NOISE_BLOB_SIGMA = 12.0
 
 
 def _signed_blob_pct(signed, mask, sigma, denom):
