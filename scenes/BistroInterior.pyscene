@@ -16,14 +16,15 @@ if not _os.path.exists(_fbx):
     _fbx = 'BistroInterior.fbx'
 sceneBuilder.importScene(_fbx)
 
-# Camera — elevated view over the dining area looking toward the bar
-# Probed multiple positions to avoid foreground amphora pots; this one clears
-# the pots and frames dining tables, chairs and bar/wine racks in the back.
+# Camera — position copied from the animated FBX camera at ~frame 32 of its
+# walkthrough (matches TestRender.py output), with a static look-at toward
+# the back of the restaurant. Previous (-1.7, 5.3, 4.2) position was
+# stuck inside a wall/staircase on cold ladder runs.
 camera = Camera('VisCacheDefault')
-camera.position = float3(-1.7, 5.3,  4.2)
-camera.target   = float3( 3.3, 1.5, -2.4)
+camera.position = float3( 9.8, 2.0,  0.4)
+camera.target   = float3( 0.0, 1.5, -5.0)
 camera.up       = float3( 0.0, 1.0,  0.0)
-camera.focalLength = 15.0
+camera.focalLength = 35.0
 sceneBuilder.addCamera(camera)
 
 # Boost all emissive materials (FBX defaults are far too dim)

@@ -46,6 +46,17 @@ for scene_name_raw in scene_names:
     print(f"\n[testrender] ===== {scene_name} =====")
     m.loadScene(scene_file)
 
+    # Match ladder: prefer VisCacheDefault + freeze animation so testrender
+    # output is reproducible and framing matches what ladder measures.
+    scene = m.scene
+    if scene is not None:
+        cameras = getattr(scene, 'cameras', None) or []
+        for cam in cameras:
+            if getattr(cam, 'name', None) == 'VisCacheDefault':
+                scene.camera = cam
+                break
+        scene.animated = False
+
     print(f"[testrender] {warmup} warmup frames x {spp} spp @ {res}x{res} ({warmup*spp} total samples)")
     for _ in range(warmup):
         m.renderFrame()
@@ -54,6 +65,27 @@ for scene_name_raw in scene_names:
     fc.baseFilename = scene_name
     fc.capture()
     m.renderFrame()
+
+    # Document settings next to each render so the camera and light state
+    # can be inspected without rerunning Mogwai.
+    try:
+        cam = scene.camera
+        info = [
+            f"scene = {scene_name}",
+            f"camera.name = {getattr(cam, 'name', '?')}",
+            f"camera.position = {cam.position}",
+            f"camera.target   = {cam.target}",
+            f"camera.up       = {cam.up}",
+            f"camera.focalLength = {cam.focalLength}",
+            f"resolution = {res}x{res}",
+            f"warmup frames = {warmup}",
+            f"spp = {spp}",
+            f"animated = {getattr(scene, 'animated', '?')}",
+        ]
+        with open(os.path.join(out_dir, f"{scene_name}.settings.txt"), "w", encoding="utf-8") as _f:
+            _f.write("\n".join(info) + "\n")
+    except Exception as _e:
+        print(f"[testrender] settings dump failed: {_e}")
 
     print(f"[testrender] → {out_dir}/{scene_name}.*")
 

@@ -368,6 +368,14 @@ def _linear_to_srgb(c):
     return np.where(c <= 0.0031308, c * 12.92, 1.055 * np.abs(c) ** (1.0/2.4) - 0.055).astype(np.float32)
 
 
+def _reinhard_tone_map(c):
+    """HDR → [0,1) Reinhard: x / (1+x). Perceptual compression of highlights
+    so error metrics don't get dominated by bright HDR regions (e.g. Sponza
+    sun-lit floor). Linear in the toe, log-like in the shoulder.
+    """
+    return (c / (1.0 + np.abs(c))).astype(np.float32)
+
+
 def _oklab_distance_hdr(a_exr, b_exr):
     """Structural perceptual error between two HDR EXRs — Gaussian-smoothed
     OkLab distance (2× L weight) plus a scaled per-pixel residual.
@@ -388,23 +396,28 @@ def _oklab_distance_hdr(a_exr, b_exr):
     b_lin = b_data.get("RGBA", b_data.get("RGB"))
     if a_lin is None or b_lin is None or a_lin.shape[:2] != b_lin.shape[:2]:
         return None
-    a_lin = np.clip(a_lin[:, :, :3], 0, 10)
-    b_lin = np.clip(b_lin[:, :, :3], 0, 10)
+    # Tone-map HDR values before OkLab distance so brightly-lit regions
+    # (Sponza sun-lit floor) don't dominate the metric. Reinhard x/(1+x)
+    # maps [0, inf) → [0, 1), compressing highlights perceptually. Without
+    # this, a 10x brighter floor contributes 10x more L distance for the
+    # same relative difference.
+    a_ldr = _reinhard_tone_map(a_lin[:, :, :3])
+    b_ldr = _reinhard_tone_map(b_lin[:, :, :3])
 
     # Pixel ΔE
-    lab_a_p = _srgb_to_oklab(_linear_to_srgb(a_lin))
-    lab_b_p = _srgb_to_oklab(_linear_to_srgb(b_lin))
+    lab_a_p = _srgb_to_oklab(_linear_to_srgb(a_ldr))
+    lab_b_p = _srgb_to_oklab(_linear_to_srgb(b_ldr))
     dL_p = lab_a_p[..., 0] - lab_b_p[..., 0]
     da_p = lab_a_p[..., 1] - lab_b_p[..., 1]
     db_p = lab_a_p[..., 2] - lab_b_p[..., 2]
     err_p = np.sqrt(4.0 * dL_p**2 + da_p**2 + db_p**2).astype(np.float32)
 
-    # Structural ΔE: blur linear RGB (not OkLab — keeps Gaussian symmetric in
-    # photon space), then OkLab on the smoothed result.
-    a_blur = _gaussian_blur_2d(a_lin, STRUCTURAL_SIGMA)
-    b_blur = _gaussian_blur_2d(b_lin, STRUCTURAL_SIGMA)
-    lab_a_s = _srgb_to_oklab(_linear_to_srgb(np.clip(a_blur, 0, 10)))
-    lab_b_s = _srgb_to_oklab(_linear_to_srgb(np.clip(b_blur, 0, 10)))
+    # Structural ΔE: blur tone-mapped RGB (Gaussian symmetric in LDR space
+    # after compression), then OkLab on the smoothed result.
+    a_blur = _gaussian_blur_2d(a_ldr, STRUCTURAL_SIGMA)
+    b_blur = _gaussian_blur_2d(b_ldr, STRUCTURAL_SIGMA)
+    lab_a_s = _srgb_to_oklab(_linear_to_srgb(np.clip(a_blur, 0, 1)))
+    lab_b_s = _srgb_to_oklab(_linear_to_srgb(np.clip(b_blur, 0, 1)))
     dL_s = lab_a_s[..., 0] - lab_b_s[..., 0]
     da_s = lab_a_s[..., 1] - lab_b_s[..., 1]
     db_s = lab_a_s[..., 2] - lab_b_s[..., 2]
