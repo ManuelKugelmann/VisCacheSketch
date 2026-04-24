@@ -507,6 +507,7 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
     # (already in the numerator) and blew up in near-zero regions.
     denom    = 1.4
     blob_pct = _signed_blob_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
+    blob_sum_pct = _signed_blob_sum_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
     return {
         "err_vis_gt_mean":    err_vis,
         "err_van_gt_mean":    err_van,
@@ -517,6 +518,7 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         "err_delta_min_pct":  100.0 * s_min / denom,
         "err_delta_max_pct":  100.0 * s_max / denom,
         "err_delta_blob_pct": blob_pct,
+        "err_delta_blob_sum_pct": blob_sum_pct,
     }
 
 
@@ -541,6 +543,34 @@ def _signed_blob_pct(signed, mask, sigma, denom):
     except (ValueError, RuntimeWarning):
         return None
     return 100.0 * max(0.0, pos) / max(denom, 1e-6)
+
+
+def _signed_blob_sum_pct(signed, mask, sigma, denom, threshold_pct=2.0):
+    """Area-fraction × mean magnitude of concentrated-artifact regions.
+
+    blob_pct (above) is a single worst-case peak — a variant with one
+    bad pixel and a variant with thousands of bad pixels both report the
+    same value. blob_sum_pct reports the fraction of the image with
+    blurred delta above `threshold_pct`, weighted by how far each pixel
+    is over the threshold. Units: percentage-points, where 1.0 means
+    "1% of the image is ~1pp over threshold".
+
+    Use alongside blob_pct: max tells you peak severity; sum tells you
+    how much of the image is affected.
+    """
+    blob = _gaussian_blur_2d(signed, sigma)
+    b = np.where(mask, blob, np.nan)
+    # Raw-to-pct factor matches blob_pct semantics
+    raw = b / max(denom, 1e-6) * 100.0  # pct per pixel
+    over = raw - threshold_pct
+    over = np.where(np.isfinite(over) & (over > 0), over, 0.0)
+    n_valid = int(np.count_nonzero(mask))
+    if n_valid == 0:
+        return 0.0
+    # integrate the over-threshold "volume" then normalize by valid pixel count
+    # gives: average pct-excess per valid pixel. If 5% of image is 3pp over
+    # threshold → 0.05 × 3 = 0.15 pct-pt.
+    return float(over.sum() / n_valid)
 
 
 def _map_stats(arr, mask=None, blob_sigma=None, norm=1.0):

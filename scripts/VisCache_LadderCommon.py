@@ -336,7 +336,7 @@ def make_norm_variants(quant=None, base=None, quant_tag=None):
 _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warmup_run", "subframe_n",
                "rays_traced_pct", "coldmiss_pct", "mean_level",
                "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
-               "error_delta_blob_pct",
+               "error_delta_blob_pct", "error_delta_blob_sum_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
                "noise_delta_blob_pct",
                "timestamp"]
@@ -349,7 +349,8 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      error_delta_pct=None, error_delta_min_pct=None, error_delta_max_pct=None,
                      error_delta_blob_pct=None,
                      noise_delta_pct=None, noise_delta_min_pct=None, noise_delta_max_pct=None,
-                     noise_delta_blob_pct=None, mean_level=None):
+                     noise_delta_blob_pct=None, mean_level=None,
+                     error_delta_blob_sum_pct=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -381,6 +382,7 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "error_delta_min_pct":  f"{error_delta_min_pct:.4f}"  if error_delta_min_pct  is not None else "",
         "error_delta_max_pct":  f"{error_delta_max_pct:.4f}"  if error_delta_max_pct  is not None else "",
         "error_delta_blob_pct": f"{error_delta_blob_pct:.4f}" if error_delta_blob_pct is not None else "",
+        "error_delta_blob_sum_pct": f"{error_delta_blob_sum_pct:.4f}" if error_delta_blob_sum_pct is not None else "",
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
         "noise_delta_min_pct":  f"{noise_delta_min_pct:.4f}"  if noise_delta_min_pct  is not None else "",
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
@@ -472,7 +474,7 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% blob{error_delta_blob_pct:+.1f}%"),
+     ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% blob{error_delta_blob_pct:+.1f}% sum{error_delta_blob_sum_pct:+.2f}"),
      ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}% blob{noise_delta_blob_pct:+.1f}%")],
     [("r2c1_frame_level",      "level μ{mean_level:.2f}"),
      ("r1c4_accum_maturity",   "maturity"),
@@ -2352,6 +2354,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["error_delta_min_pct"]  = r["err_delta_min_pct"]
             stats["error_delta_max_pct"]  = r["err_delta_max_pct"]
             stats["error_delta_blob_pct"] = r.get("err_delta_blob_pct")
+            stats["error_delta_blob_sum_pct"] = r.get("err_delta_blob_sum_pct")
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
@@ -2441,6 +2444,7 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         stats.get("noise_delta_min_pct"), stats.get("noise_delta_max_pct"),
         stats.get("noise_delta_blob_pct"),
         mean_level=stats.get("mean_level"),
+        error_delta_blob_sum_pct=stats.get("error_delta_blob_sum_pct"),
     )
 
     stats["variant"] = variant_name
