@@ -1712,6 +1712,55 @@ def plot_baseline_overviews(step_name="00"):
     return [out_err, out_noise, out]
 
 
+def _pick_step_winner_for_plot(step, ladder_root="captures/ladder"):
+    """Progression-plot winner selection with a 3-level fallback:
+      1. picks.json `carried` field (manual override)
+      2. pick_top_variants_per_bvariant auto-picker (hard caps applied)
+      3. Lowest weighted-score variant at spp=1 regardless of caps
+
+    Level 3 ensures every step shows a data point on the progression plot
+    even when no variant survives the absolute blob/err/rays caps (e.g.
+    Sponza-era steps where every variant has blob > 25%).
+    """
+    import json, csv
+    winner = None
+    picks_path = os.path.join(ladder_root, step, "picks.json")
+    if os.path.exists(picks_path):
+        with open(picks_path) as f:
+            meta = json.load(f)
+        carried = meta.get("carried") or {}
+        names = [n for vs in carried.values() for n in vs]
+        if names:
+            winner = names[0]
+    if winner is None:
+        picks = pick_top_variants_per_bvariant(step, n_top=1, spp=1)
+        names = [v for vs in picks.values() for v in vs]
+        if names:
+            winner = names[0]
+    if winner is None:
+        rows_path = _step_csv(step)
+        if os.path.exists(rows_path):
+            variant_score = {}
+            with open(rows_path, newline="") as f:
+                for r in csv.DictReader(f):
+                    try:
+                        row_spp = int(r.get("spp") or 1)
+                    except ValueError:
+                        row_spp = 1
+                    if row_spp != 1:
+                        continue
+                    v = r.get("variant")
+                    rays = float(r.get("rays_traced_pct") or 100.0)
+                    err  = float(r.get("error_delta_pct") or 0.0)
+                    blob = float(r.get("error_delta_blob_pct") or 0.0)
+                    sc = rays + 1.5 * max(blob, 0.0) + 2.0 * max(err, 0.0)
+                    variant_score.setdefault(v, []).append(sc)
+            if variant_score:
+                means = {v: sum(ss) / len(ss) for v, ss in variant_score.items()}
+                winner = min(means, key=means.get)
+    return winner
+
+
 def plot_ladder_progress(steps=None, spp=1):
     """Cross-step progression plot: for each step, look up its carried
     winner (picks.json when present, else live auto-pick) and render
@@ -1763,20 +1812,7 @@ def plot_ladder_progress(steps=None, spp=1):
     ranges = {}
     winners_label = {}
     for step in steps:
-        winner = None
-        picks_path = os.path.join(ladder_root, step, "picks.json")
-        if os.path.exists(picks_path):
-            with open(picks_path) as f:
-                meta = json.load(f)
-            carried = meta.get("carried") or {}
-            names = [n for vs in carried.values() for n in vs]
-            if names:
-                winner = names[0]
-        if winner is None:
-            picks = pick_top_variants_per_bvariant(step, n_top=1, spp=1)
-            names = [v for vs in picks.values() for v in vs]
-            if names:
-                winner = names[0]
+        winner = _pick_step_winner_for_plot(step, ladder_root)
         if winner is None:
             continue
         winners_label[step] = winner
@@ -2006,20 +2042,7 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
     winners_label = {}
 
     for step in steps:
-        winner = None
-        picks_path = os.path.join(ladder_root, step, "picks.json")
-        if os.path.exists(picks_path):
-            with open(picks_path) as f:
-                meta = json.load(f)
-            carried = meta.get("carried") or {}
-            names = [n for vs in carried.values() for n in vs]
-            if names:
-                winner = names[0]
-        if winner is None:
-            picks = pick_top_variants_per_bvariant(step, n_top=1, spp=1)
-            names = [v for vs in picks.values() for v in vs]
-            if names:
-                winner = names[0]
+        winner = _pick_step_winner_for_plot(step, ladder_root)
         if winner is None:
             continue
         winners_label[step] = winner
