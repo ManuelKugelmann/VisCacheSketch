@@ -348,18 +348,27 @@ All x4 and x16 ladder runs up to step 27 used `(frames=1, spp=N)` — a single M
   - x16: 168 / 209 / 121 (range 88, ~72% spread)
 The GPU atomic ordering noise floor on Sponza blob is ~90 units. This means many of the −30% to −50% improvements claimed from single-run step-31-41 findings sit near the noise.
 
-**Step 43 ABCD triple-trial definitive results:** ran 4 variants × 3 trials on Sponza:
+**Step 43 ABCD triple-trial — pre-clamp-fix numbers:** ran 4 variants × 3 trials on Sponza:
   | variant | x1 blob μ±σ | x4 blob μ±σ | x16 blob μ±σ |
   |---------|-------------|-------------|--------------|
   | pos addressing, no HC, no decay | 148±22 | 183±23 | 203±6 |
   | pos + HC peek | 130±38 | 171±22 | 192±36 |
-  | **dir_dist + HC peek** | **86±0** | 129±33 | **122±2** |
-  | dir_dist + HC + decay dp15 | 91±9 | **121±19** | 172±33 |
+  | dir_dist + HC peek | 86±0 | 129±33 | 122±2 |
+  | dir_dist + HC + decay dp15 | 91±9 | 121±19 | 172±33 |
 
-- **dir_dist is the only step-31-41 finding that survives triple-trial scrutiny.** Blob deltas vs pos are −62 / −54 / −81 at every SPP, >>1σ. Err also consistently better (−6.7 vs −5.8). Cost: +40–80% more rays.
-- HC peek on pos (second row vs first): blob deltas −18 / −12 / −11, all within σ. Possibly real but small.
-- Decay pass (fourth vs third row): stacks benefit at x4 (−8) but hurts x16 (+50). Mixed.
-- dir_dist x1/x16 blob σ = 0–2 vs pos σ = 6–38. Addressing choice is load-bearing; HC/decay amplitudes are noise-dominated.
+Pre-fix, dir_dist looked like the clear winner. **But step 45 then found the cause — an int32 overflow bug in `vhfAddressPosB` for env/sun rays** (Falcor passes tMax=1e30 → `int(round(pos/cellSize))` wraps silently). Fixed by clamping dist to 32× max coarse-cell before the multiply (commit `f9460e3`).
+
+**Step 45 post-fix ABCD triple-trial** (same protocol, with clamp fix applied):
+  | variant | x1 blob μ±σ | x4 blob μ±σ | x16 blob μ±σ | rays x1 |
+  |---------|-------------|-------------|--------------|---------|
+  | pos addressing | **122±7** | 164±20 | 187±43 | 57% |
+  | pos + HC peek | 143±26 | 173±36 | 195±36 | 56% |
+  | dir_dist | 147±39 | 170±19 | **139±13** | 34% |
+  | dir_dist + HC + decay dp15 | 123±32 | **129±21** | 180±44 | 34% |
+
+Reversal: **pos addressing after the clamp fix is now better than dir_dist at x1 and comparable at x4**; dir_dist only wins at x16 (and uses far fewer rays throughout). The pre-fix dir_dist "magic" on Sponza x1 (86 blob) was an artifact of the rest of the pipeline compensating for garbage env cells by always tracing — which is why dir_dist had lower σ (6–38 pos vs 0–2 dir_dist) in the pre-fix data.
+
+Clamp fix is a correctness win regardless; efficiency comparison (blob per ray) still favors dir_dist (34% rays vs 57% rays for comparable blob).
 
 **Open on Sponza x16:** blob plateau at 150–200% across all step-31+ variants. Appears intrinsic to the pos-addressing bias-trap regime. dir_dist addressing cuts it to 124% (step 36); further gains likely need per-scene addressing selection or a new bias-correction mechanism that doesn't drown in high-SPP sample floods.
 
