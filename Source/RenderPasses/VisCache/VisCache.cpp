@@ -370,10 +370,17 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     const float posBCoarseScaled = mParams.posBCoarse  * sceneScale;
     const float distBCoarseScaled = mParams.distBCoarse * sceneScale;
 
-    // Derive fine values from coarse + numLevels
-    static constexpr float kMaxRatio = 4.f;
+    // Derive fine values from coarse + numLevels. Previous formula was
+    // coarse / pow(4, sqrt(N-1)) — fine at N=32 was coarse/1060, at N=32000
+    // it would be coarse/4^179 (astronomically small). With the analytical
+    // entry-level selection in the shader, level count is cascade granularity
+    // not physical range, so keep the coarse→fine span fixed. 1024x gives
+    // ~10 bits of refinement at any N; target cell size (depth·px·√fd) lands
+    // naturally somewhere in between via the log-based entry formula.
+    static constexpr float kTotalRatio = 1024.f;
     auto deriveFine = [&](float coarse, uint32_t N) -> float {
-        return coarse / std::pow(kMaxRatio, std::sqrt(float(N - 1)));
+        if (N <= 1u) return coarse;
+        return coarse / kTotalRatio;
     };
 
     GPUParams gpu = {};

@@ -108,7 +108,11 @@ def get_scenes(default=None):
 
 # --- Levels ----------------------------------------------------------------
 LEVELS_SINGLE = {"numLevels": 1, "autoTuneCells": False}
-LEVELS_MULTI  = {"numLevels": 8, "autoTuneCells": True}
+# numLevels is cascade granularity. Stride = max(1,(N-1)/32) keeps effective
+# cascade visits at ~32 regardless of N. At N=32000 the analytical entry
+# (vhfLookup/vhfInsert startLvl formula) has continuous precision; at N=32
+# the strided and sequential loops coincide. deriveFine = coarse/1024.
+LEVELS_MULTI  = {"numLevels": 32000, "autoTuneCells": True}
 
 # --- Thresholds ------------------------------------------------------------
 # Naming is neutral (low/mid/high refers to numeric boot/mature values, not

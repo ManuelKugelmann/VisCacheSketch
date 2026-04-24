@@ -741,19 +741,42 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     best.qa = int3(0);
     best.qb = int3(0);
 
-    // gForceDescendFootprintPx as cascade entry-level selector: skip coarse
-    // levels entirely where cellPx > threshold. Per-pixel (depth dependent).
-    // Saves reads at skipped levels AND removes the "fallback to coarse best"
-    // pathology where fd-rejected cells leaked back as the return value.
+    // fd selects a per-pixel TARGET level where cellPx ≤ threshold.
+    // Entry starts ~2 doublings coarser than target so neighboring coarse
+    // levels get populated and the cascade can early-stop at coarse if μ
+    // already converged. Analytical formula (log-based) avoids a linear
+    // scan so numLevels can be huge (e.g. 32000) without cost. "2 steps
+    // back" is expressed in doublings-of-cell-size so the prefill breadth
+    // stays constant regardless of numLevels.
+    //
+    // levelStride: at large N, consecutive levels share quant indices
+    // (cell size barely changed). We iterate in strides so a fixed number
+    // of effective cascade visits happens regardless of N. Target 32 cascade
+    // steps (matching the old N=32 configuration that produced -20% err on
+    // 32PL). That means each stride corresponds to ~(totalRatio)^(1/32)
+    // cell-size step — about a 25% step at kTotalRatio=1024.
+    float lookupLogRatio = log(max(gPosAFine, 1e-6f) / max(gPosACoarse, 1e-6f));
+    int levelStride = max(1, int((int(gNumLevels) - 1) / 32));
+
     int startLvl = 0;
-    if (gForceDescendFootprintPx != 0u)
+    if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
     {
-        while (startLvl < int(gNumLevels) - 1
-               && vhfCellPixels(startLvl, posA) > gForceDescendFootprintPx)
-            startLvl++;
+        float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
+        float depth = max(length(posA - camPos), 0.001f);
+        float pixelSize = depth * gPixelSize1;
+        float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
+        if (targetCellSize < gPosACoarse)
+        {
+            float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
+            int targetLvl = int(ceil(t * float(gNumLevels - 1u)));
+            // Prefill 2 cascade strides coarser than target — analogous to
+            // "target minus 2 levels" in the old N=32 configuration.
+            int stepsBack = 2 * levelStride;
+            startLvl = clamp(targetLvl - stepsBack, 0, int(gNumLevels) - 1);
+        }
     }
 
-    for (int lvl = startLvl; lvl < int(gNumLevels); lvl++)
+    for (int lvl = startLvl; lvl < int(gNumLevels); lvl += levelStride)
     {
         float cs = vhfPosASize(lvl);
         int3 qa, qb;
@@ -838,14 +861,15 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         if (converged)
         {
             // fd already enforced via entry-level selection above; no in-loop
-            // fd branch needed. Hierarchical consistency: peek the next finer
-            // level; if its μ disagrees with this one, the current convergence
-            // is suspect (likely a penumbra boundary where coarse/fine differ).
-            // Keep descending to the more refined estimate. Costs one extra
-            // hash probe per converged level.
-            if (gEnableHierarchicalConsistency != 0u && lvl + 1 < int(gNumLevels))
+            // fd branch needed. Hierarchical consistency: peek the next
+            // cascade stride ahead (= 1 cell-size doubling finer); if its μ
+            // disagrees with this one, the current convergence is suspect
+            // (likely a penumbra boundary where coarse/fine differ). Keep
+            // descending to the refined estimate. Costs one extra hash
+            // probe per converged level.
+            if (gEnableHierarchicalConsistency != 0u && lvl + levelStride < int(gNumLevels))
             {
-                int   nextLvl = lvl + 1;
+                int nextLvl = min(lvl + levelStride, int(gNumLevels) - 1);
                 float nextCs  = vhfPosASize(nextLvl);
                 int3  nqa, nqb;
                 vhfQuantizePair(posA, posB, nextCs, uint(nextLvl), nqa, nqb, normalA);
@@ -1264,19 +1288,29 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
     uint parentVis   = 0u;
     uint parentTotal = 0u;
 
-    // fd entry-level: skip writes at coarse levels entirely. No reads, no
-    // writes, no preinit probes at skipped levels — pure hash-table pressure
-    // relief. Per-pixel via vhfCellPixels(lvl, posA) depth dependence.
+    // Same analytical entry-level as vhfLookup (target minus 2 cascade
+    // strides) so writes populate coarse-neighbor levels, enabling lookup
+    // early-stop at coarse when μ converges there. Per-pixel, depth-dep.
+    float insertLogRatio = log(max(gPosAFine, 1e-6f) / max(gPosACoarse, 1e-6f));
+    int levelStride = max(1, int((int(gNumLevels) - 1) / 32));
+
     int startLvl = 0;
-    if (gForceDescendFootprintPx != 0u)
+    if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && insertLogRatio < -1e-6f)
     {
-        int last = int(gNumLevels) - 1;
-        while (startLvl < last
-               && vhfCellPixels(startLvl, posA) > gForceDescendFootprintPx)
-            startLvl++;
+        float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
+        float depth = max(length(posA - camPos), 0.001f);
+        float pixelSize = depth * gPixelSize1;
+        float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
+        if (targetCellSize < gPosACoarse)
+        {
+            float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / insertLogRatio;
+            int targetLvl = int(ceil(t * float(gNumLevels - 1u)));
+            int stepsBack = 2 * levelStride;
+            startLvl = clamp(targetLvl - stepsBack, 0, int(gNumLevels) - 1);
+        }
     }
 
-    for (int lvl = startLvl; lvl < int(gNumLevels); lvl++)
+    for (int lvl = startLvl; lvl < int(gNumLevels); lvl += levelStride)
     {
         float cs = vhfPosASize(lvl);
         int3 qa, qb;
@@ -1289,7 +1323,9 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         // Decay periodically un-matures entries for revalidation.
         // Never skip the finest level — always keep it populated for
         // maximum spatial resolution at shadow boundaries.
-        bool isFinestLevel = (lvl == int(gNumLevels) - 1);
+        // With strided iteration lvl may never exactly equal N-1; treat the
+        // last visited level as "finest" (no further stride fits).
+        bool isFinestLevel = (lvl + levelStride >= int(gNumLevels));
         if (!isFinestLevel && vhfIsMature(addr, fp))
         {
             // Mature parent — cascade continues but preinit chain resets
