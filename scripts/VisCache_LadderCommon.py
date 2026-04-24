@@ -231,9 +231,11 @@ def _qd_tag(v): return f"qd{int(round(v * 100)):03d}"
 # picks.json for every step's finalize pass.
 _DEFAULT_PICKER_RULE = (
     "per-scene outlier gate: for EVERY scene, err <= 0 OR err <= median+25% "
-    "AND blob <= 0 OR blob <= median+50% (medians computed per-scene across "
-    "variants). Noise informational only. Rank surviving variants by "
-    "unweighted mean rays_traced_pct asc."
+    "AND blob <= 0 OR blob <= median+50% (medians per-scene across variants). "
+    "Rank surviving variants by score = mean(rays_traced) + 2×max(blob-10, 0) "
+    "ascending — quality-weighted rays (variants with a scene blob above 10%  "
+    "visual-artifact cap get their rays score penalized 2pp per blob% over, "
+    "so cheap-but-artifact variants lose to clean-but-expensive ones)."
 )
 
 # Y-axis limits for the step overview plots (shared across all steps so
@@ -2903,16 +2905,20 @@ def build_per_axis_quant_variants(base_preset, normal_a=60.0):
 def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
     """Pick winners per B-variant by 'best ray savings with no scene outliers'.
 
-    Rule (per-scene outlier gate, unweighted aggregate ranking):
+    Rule (per-scene relative-best gate + absolute blob cap, unweighted rank):
       For EACH scene, compute the per-scene median err & blob across variants.
       A variant qualifies only if at EVERY scene:
         err  <= 0 OR err  <= median_err_scene  + 25% |median_err_scene|
         blob <= 0 OR blob <= median_blob_scene + 50% |median_blob_scene|
+        AND blob <= 10.0 (absolute artifact cap: any blob > 10% is
+                          outside target visual quality regardless of
+                          how poorly other variants score)
       Then rank surviving variants by unweighted mean rays_traced ascending.
 
     This prevents a variant from winning by being great on average while
-    regressing catastrophically on one scene (the prior weighted-mean rule
-    could mask a per-scene outlier).
+    regressing catastrophically on one scene. The absolute blob cap
+    prevents a "best of a bad batch" carry when NO variant is actually
+    close to target quality on some scene.
 
     Noise is informational only — gating on noise previously excluded
     otherwise-sensible candidates on <0.01 deltas.
@@ -2965,18 +2971,32 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
                 return True
             return val <= 0.0 or val <= tol
 
-        # Variant qualifies iff EVERY scene with data passes both gates
+        # Absolute artifact threshold: blob > 10% = visual artifact.
+        # Variants with any scene blob above this cap are still considered,
+        # but they need to justify the cost with extra rays savings — the
+        # ranking weights rays reduction less when a blob is outside target
+        # quality. (Penalty per blob-point-over-cap added to rays_mean in
+        # the ranking key below.)
+        BLOB_ARTIFACT_CAP = 10.0
+        BLOB_OVER_CAP_PENALTY = 2.0  # rays-percentage-points added per blob% over cap
+
+        # Variant qualifies iff EVERY scene with data passes both relative gates
         qualifying = []
         for v, pv in per_scene.items():
             all_pass = True
+            max_blob_over_cap = 0.0
             for scn in all_scenes:
                 if scn not in pv or scn not in scene_tol:
                     continue
                 tol_e, tol_b = scene_tol[scn]
+                blob_val = pv[scn]["blob"]
                 if not (_ok(pv[scn]["err"], tol_e)
-                        and _ok(pv[scn]["blob"], tol_b)):
+                        and _ok(blob_val, tol_b)):
                     all_pass = False
                     break
+                if blob_val is not None and blob_val > BLOB_ARTIFACT_CAP:
+                    max_blob_over_cap = max(max_blob_over_cap,
+                                            blob_val - BLOB_ARTIFACT_CAP)
             if not all_pass:
                 continue
             # Unweighted means over scenes for ranking / info
@@ -2994,8 +3014,18 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
                 "err":   stats.mean(err_vals)  if err_vals  else 0.0,
                 "blob":  stats.mean(blob_vals) if blob_vals else 0.0,
                 "noise": stats.mean(nse_vals)  if nse_vals  else 0.0,
+                # Score = rays + penalty × (blob-over-cap). Variants with a
+                # scene blob above BLOB_ARTIFACT_CAP get their effective
+                # rays-score pushed up by 2 points per % blob over 10 — so
+                # a variant with perfect rays but blob=20 ranks as though
+                # it traced +20 extra pp rays. Keeps rank-by-rays efficient
+                # for good variants while preventing 'cheap but artifacts'
+                # from winning over 'pays more rays for clean image'.
+                "score": stats.mean(rays_vals)
+                         + BLOB_OVER_CAP_PENALTY * max_blob_over_cap,
+                "max_blob_over_cap": max_blob_over_cap,
             }))
-        qualifying.sort(key=lambda kv: kv[1]["rays"])
+        qualifying.sort(key=lambda kv: kv[1]["score"])
         result[bv] = [v for v, _ in qualifying[:n_top]]
     return result
 
