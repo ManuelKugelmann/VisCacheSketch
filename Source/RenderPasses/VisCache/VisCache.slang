@@ -788,6 +788,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     int levelStride = max(1, int((int(gNumLevels) - 1) / int(max(gCascadeVisitCount, 1u))));
 
     int startLvl = 0;
+    int minTrustLvl = 0;  // cells coarser than this are visited but never returned as `best`
     if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
     {
         float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
@@ -798,10 +799,15 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         {
             float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
             int targetLvl = int(ceil(t * float(gNumLevels - 1u)));
-            // Prefill 2 cascade strides coarser than target — analogous to
-            // "target minus 2 levels" in the old N=32 configuration.
+            // Prefill 2 cascade strides coarser than target so coarse parent
+            // levels carry converged μ that parent-preinit can seed into
+            // children. But TRUST (return as `best`) only from targetLvl
+            // onward — coarse cells cover many pixels, mature quickly with
+            // diluted μ, and if we trust them the cache's predictions become
+            // coarse-grained. (User-observed: qA hash cells ~1/8 of screen.)
             int stepsBack = 2 * levelStride;
             startLvl = clamp(targetLvl - stepsBack, 0, int(gNumLevels) - 1);
+            minTrustLvl = targetLvl;
         }
     }
 
@@ -859,14 +865,19 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
 
         // Mature: record and keep `best` at this level. Only overwrite on
         // mature hits so we never pair a coarse valid mu with a finer
-        // immature one.
-        best.mu    = mu;
-        best.var   = var;
-        best.level = lvl;
-        best.N     = total;
-        best.qa    = qa;
-        best.qb    = qb;
-        best.valid = true;
+        // immature one. Additional gate: don't let coarser-than-target cells
+        // become `best` — they dilute μ across too many pixels and produce
+        // coarse-grained predictions. Finer levels can still overwrite.
+        if (lvl >= minTrustLvl)
+        {
+            best.mu    = mu;
+            best.var   = var;
+            best.level = lvl;
+            best.N     = total;
+            best.qa    = qa;
+            best.qb    = qb;
+            best.valid = true;
+        }
 
         // Determine "converged" via whichever gate is active:
         //   stderr gate (preferred): sqrt(var/N) ≤ gStderrThreshold. Principled
@@ -1339,7 +1350,18 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         }
     }
 
-    for (int lvl = startLvl; lvl < int(gNumLevels); lvl += levelStride)
+    // Cap insert iterations to a small neighborhood around the analytical
+    // entry level. Without a cap the loop would continue past N-startLvl
+    // mature levels doing wasted hash probes on cells that are either
+    // already converged (continue) or in empty space below the data's
+    // actual depth. Lookup naturally breaks on cold levels; insert uses
+    // `continue` so it needs an explicit cap. kMaxInsertDepth=8 strides
+    // covers ~2 doublings of cell size past the entry level, matching
+    // "refinement should resolve to sub-pixel" heuristic (see devlog §47).
+    const int kMaxInsertDepth = 8;
+    int endLvl = min(startLvl + kMaxInsertDepth * levelStride, int(gNumLevels));
+
+    for (int lvl = startLvl; lvl < endLvl; lvl += levelStride)
     {
         float cs = vhfPosASize(lvl);
         int3 qa, qb;
@@ -1352,9 +1374,7 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         // Decay periodically un-matures entries for revalidation.
         // Never skip the finest level — always keep it populated for
         // maximum spatial resolution at shadow boundaries.
-        // With strided iteration lvl may never exactly equal N-1; treat the
-        // last visited level as "finest" (no further stride fits).
-        bool isFinestLevel = (lvl + levelStride >= int(gNumLevels));
+        bool isFinestLevel = (lvl + levelStride >= endLvl);
         if (!isFinestLevel && vhfIsMature(addr, fp))
         {
             // Mature parent — cascade continues but preinit chain resets

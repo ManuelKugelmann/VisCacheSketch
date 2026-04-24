@@ -338,7 +338,8 @@ def make_norm_variants(quant=None, base=None, quant_tag=None):
 # ---------------------------------------------------------------------------
 # key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + frames + warmupSub + subframeN + res + variant
 _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warmup_run", "subframe_n",
-               "rays_traced_pct", "coldmiss_pct", "mean_level",
+               "rays_traced_pct", "coldmiss_pct",
+               "mean_level", "min_level", "max_level",
                "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
                "error_delta_blob_pct", "error_delta_blob_sum_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
@@ -354,7 +355,8 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      error_delta_blob_pct=None,
                      noise_delta_pct=None, noise_delta_min_pct=None, noise_delta_max_pct=None,
                      noise_delta_blob_pct=None, mean_level=None,
-                     error_delta_blob_sum_pct=None):
+                     error_delta_blob_sum_pct=None,
+                     min_level=None, max_level=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -383,6 +385,8 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "rays_traced_pct": f"{rays_traced_pct:.4f}",
         "coldmiss_pct":    f"{coldmiss_pct:.4f}",
         "mean_level":      f"{mean_level:.3f}" if mean_level is not None else "",
+        "min_level":       f"{min_level:.3f}"  if min_level  is not None else "",
+        "max_level":       f"{max_level:.3f}"  if max_level  is not None else "",
         "error_delta_pct":      f"{error_delta_pct:.4f}"      if error_delta_pct      is not None else "",
         "error_delta_min_pct":  f"{error_delta_min_pct:.4f}"  if error_delta_min_pct  is not None else "",
         "error_delta_max_pct":  f"{error_delta_max_pct:.4f}"  if error_delta_max_pct  is not None else "",
@@ -480,7 +484,7 @@ PLATE_LAYOUT = [
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
      ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% blob{error_delta_blob_pct:+.1f}% sum{error_delta_blob_sum_pct:+.2f}"),
      ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}%")],
-    [("r2c1_frame_level",      "level μ{mean_level:.2f}"),
+    [("r2c1_frame_level",      "level [{min_level:.0f}..{max_level:.0f}] μ{mean_level:.0f}"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
      ("r1c6_accum_variance",   "variance")],
@@ -2255,6 +2259,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
 
     # --- Compute global stats from EXR data ---
     stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0, "mean_level": None,
+             "min_level": None, "max_level": None,
              "error_delta_pct": None, "error_delta_min_pct": None, "error_delta_max_pct": None,
              "error_delta_blob_pct": None,
              "noise_delta_pct": None, "noise_delta_min_pct": None, "noise_delta_max_pct": None}
@@ -2318,17 +2323,34 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
                 nd_nohit = nd_frame * nohit
             else:
                 nd_nohit = nohit
-        # Mean cascade level across pixels that actually looked up the cache
-        # (i.e. not cold-miss, not nodata). Channel 0 of FrameLevelProbesSamplesCold.
+        # Raw cascade level channel 0. Shader now writes raw g.level (not
+        # pre-normalized) so we can stretch display to the observed min/max
+        # range — makes narrow-band strided cascade usage visible.
         lv_data = cm_data  # already read above
         if lv_data is not None and lv_data.shape[2] >= 4:
+            import numpy as np
             level_img = lv_data[:, :, 0]
             lv_mask = (nd_nohit > 0.5) if nd_nohit is not None else None
-            if lv_mask is not None and lv_mask.any():
-                stats["mean_level"] = float(level_img[lv_mask].mean())
+            valid = level_img >= 0  # shader writes -1 for coldmiss
+            if lv_mask is not None:
+                valid = valid & lv_mask
+            if valid.any():
+                stats["mean_level"] = float(level_img[valid].mean())
+                stats["min_level"]  = float(level_img[valid].min())
+                stats["max_level"]  = float(level_img[valid].max())
+                # Normalize to [0,1] using observed range for colormap.
+                lo = stats["min_level"]; hi = stats["max_level"]
+                rng = max(hi - lo, 1.0)
+                level_norm = np.where(valid, (level_img - lo) / rng, 0.0).astype(np.float32)
+                # Write normalized level PNG directly (bypass _wc so we use the
+                # normalized array rather than re-reading the EXR).
+                from viscache_exr import viridis_png
+                viridis_png(level_norm, o("r2c1_frame_level"), nodata=nd_nohit)
             else:
                 stats["mean_level"] = float(level_img.mean())
-        _wc(exr, 0, o("r2c1_frame_level"),       nodata=nd_nohit)
+                _wc(exr, 0, o("r2c1_frame_level"), nodata=nd_nohit)
+        else:
+            _wc(exr, 0, o("r2c1_frame_level"),       nodata=nd_nohit)
         _wc(exr, 2, o("r2c3_frame_samplecount"), nodata=nd_nohit)
         _wc(exr, 3, o("r2c7_frame_coldmiss"),    nodata=nd_frame)  # coldmiss itself uses nodata only
         _wc(exr, 1, o("r2c9_frame_probesteps"),  nodata=nd_nohit)
@@ -2470,6 +2492,8 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         stats.get("noise_delta_min_pct"), stats.get("noise_delta_max_pct"),
         mean_level=stats.get("mean_level"),
         error_delta_blob_sum_pct=stats.get("error_delta_blob_sum_pct"),
+        min_level=stats.get("min_level"),
+        max_level=stats.get("max_level"),
     )
 
     stats["variant"] = variant_name

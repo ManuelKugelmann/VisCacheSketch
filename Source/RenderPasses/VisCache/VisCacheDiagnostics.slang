@@ -60,11 +60,13 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
             noEntry ? 0.f : float(g.N)                                     // A: raw sample count
         );
 
-        // LOD level: log-scale so low levels are visible with many numLevels
-        float levelNorm = noEntry ? 0.f
-            : log2(float(g.level + 2)) / log2(float(gNumLevels + 1));
+        // Raw cascade level (not normalized). Postprocess rescales to the
+        // frame's observed [min, max] range so small variations are visible
+        // even when all pixels land in a narrow band of levels (typical with
+        // strided cascade where only ~32 discrete level values get used).
+        float levelRaw = noEntry ? -1.f : float(g.level);
         gVCFrameLevelProbesSamplesCold[pixel] = float4(
-            levelNorm,                                                                // R: LOD level (log scale)
+            levelRaw,                                                                 // R: LOD level (raw; postprocess normalizes)
             noEntry ? 0.f : saturate(float(g.probeSteps) / float(kMaxProbe * uint(g.level + 1))),   // G: avg probe steps per level
             noEntry ? 0.f : saturate(float(g.N) / float(gBootThreshold * 8u)),  // B: sample count
             coldmiss                                                             // A: cold miss
