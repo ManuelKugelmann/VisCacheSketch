@@ -336,11 +336,16 @@ This step required two infrastructure fixes that surfaced from the camera-render
 > - **BistroInterior x16** is precisely tied (cache 11.05 vs vanilla 11.14) — the firefly story still holds; both are equally far from GT, and the old metric's "blob 14.6" was reporting *the noise pattern of the comparison*, not real cache degradation.
 > - The "blob 14.6 invariant" finding from steps 19–24 was largely a metric artifact: pMin / fp / HC / cell-size / accelDecay all looked like no-ops because they couldn't move a number that was anchored to vanilla's noise. Under the new metric, they still mostly tie, but step 18's ct=128 was a real breakthrough (clear absolute error reduction on every bias scene).
 
-**Practical conclusion (final, with multi-scale artifact metric and merge-order fix):**
+**Practical conclusion (final, after user-calibrated picker rule 25pp delta on d5/d11):**
 
-Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct256_vt0030_pm010`** — fully clean (no scene/SPP exceeds 1.2× vanilla artifact_3) across all 5 scenes; ~30–100% rays.
+Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct064_vt0030_pm010`** — clean across all 5 scenes at all SPP under the user's visual artifact threshold (cache − vanilla median artifact delta ≤ 25pp on d5 and d11; d3 fine-scale ignored — it picks up firefly-like noise that blends with sampling noise visually).
 
-A leaner alternative: **`ct128_vt0030_pm010`** is borderline-acceptable (Sponza x16 only 11% above vanilla a3, not flagged) at ~25–100% rays.
+Per-SPP cheapest:
+- **x1**: ct=16 (~50% rays)
+- **x4**: ct=64 (~58% rays)
+- **x16**: ct=64 (~36% rays — saves substantially)
+
+ct=128 / ct=256 are stricter alternatives if "delta ≤ 5pp" is required, but at much higher ray cost (~85% / 95%).
 
 **ct=16 has real artifacts on Sponza/Bistro x16** under the new artifact metric (Sponza x4 cache_a3=104 vs vanilla=66, **!!!**). The earlier "ct=16 is Pareto-best" claim was an artifact of the old Gaussian-blob metric softening cluster-shaped artifacts into "noise". The multi-scale median metric reveals them.
 
