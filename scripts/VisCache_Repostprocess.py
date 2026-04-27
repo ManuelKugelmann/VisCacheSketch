@@ -58,7 +58,13 @@ def _repostprocess_step(step):
         prefix = key[len(scene) + 1:] + "_"
 
         frames       = _int_or(row, "frames",       1)
-        spp          = _int_or(row, "spp",          1)
+        # The CSV "spp" column stores the *effective* SPP (frames * raw_spp,
+        # written by append_stats_csv). postprocess_variant multiplies frames
+        # × spp internally, so we have to pass the *raw* spp here, not the
+        # effective. Recover raw_spp = effective / frames (assumes positive
+        # frames; clamp at 1 to avoid div-by-zero on malformed rows).
+        eff_spp      = _int_or(row, "spp",          1)
+        raw_spp      = max(1, eff_spp // max(1, frames))
         subframe_n   = _int_or(row, "subframe_n",   1)
         warmup_first = _int_or(row, "warmup_first", 0)
         warmup_run   = _int_or(row, "warmup_run",   0)
@@ -75,7 +81,7 @@ def _repostprocess_step(step):
         print(f"[repost] step {step} {scene} {variant_name}")
         postprocess_variant(
             step, scene, capture_dir, prefix, variant_name,
-            frames=frames, spp=spp,
+            frames=frames, spp=raw_spp,
             warmup_first=warmup_first, warmup_run=warmup_run, subframe_n=subframe_n,
         )
         count += 1
