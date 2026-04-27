@@ -499,44 +499,76 @@ def _valid_mask_from_nodata(nodata, shape):
 
 def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath, nodata=None,
                                      vanilla_err_cache=None):
-    """Signed HDR GT-error delta: err(render, GT) − err(vanilla_xN, GT) in OkLab (2× L).
-    Negative (purple→black) = VisCache denoised at this SPP; positive (viridis) = degraded.
-    Both errors use identical clamping + OkLab metric so the delta is unit-consistent.
+    """Absolute HDR GT-error: OkLab(2×L) distance from render to x4096 GT.
 
-    Returns dict with mean stats, or None on failure:
-      err_vis_gt_mean:  mean OkLabDistance(viscache, GT) over valid pixels
-      err_van_gt_mean:  mean OkLabDistance(vanilla_xN, GT) over valid pixels
-      err_delta_mean:   mean of (err_vis − err_van) over valid pixels (signed, OkLab units)
-      err_delta_pct:    100 × err_delta_mean / max(err_van_gt_mean, eps) — signed % of vanilla's error
+    The metric is **noise-independent** — it does not subtract vanilla_xN's
+    per-SPP sampling noise. err_pct and err_blob_pct are pure cache quality
+    numbers vs GT; vanilla_err_pct / vanilla_err_blob_pct are vanilla's same
+    numbers for side-by-side comparison.
+
+    `vanilla_xN_exr` is retained in the signature for parallel viewing — its
+    error map is computed separately and the deltas are reported alongside,
+    but the primary `err_*_pct` outputs are absolute vs GT.
+
+    Returns dict with mean stats, or None on failure. Field names kept for
+    pipeline compatibility but **semantics changed**:
+      err_vis_gt_mean:    mean OkLabDistance(viscache, GT) over valid pixels
+      err_van_gt_mean:    mean OkLabDistance(vanilla_xN, GT) over valid pixels
+      err_delta_mean:     err_vis_gt_mean (NOT a delta — absolute mean err vs GT)
+      err_delta_pct:      100 × err_vis_gt_mean / 1.4 (% of OkLab max, always >=0)
+      err_delta_min_pct:  100 × p1(err_vis_gt) / 1.4 (1st percentile)
+      err_delta_max_pct:  100 × p99(err_vis_gt) / 1.4 (99th percentile)
+      err_delta_blob_pct: 100 × max(smoothed(err_vis_gt)) / 1.4 (worst region vs GT)
+      err_delta_blob_sum_pct: area-weighted blob magnitude vs GT
     """
-    # vanilla-vs-GT is identical across all variants at a given scene+SPP; cache it.
     err_render  = _oklab_distance_hdr(render_exr, gt_exr)
     err_vanilla = oklab_distance_hdr_cached(vanilla_xN_exr, gt_exr, vanilla_err_cache)
-    if err_render is None or err_vanilla is None:
-        print(f"[viscache_exr] WARNING: cannot compute signed HDR error (missing or mismatched inputs)")
+    if err_render is None:
+        print(f"[viscache_exr] WARNING: cannot compute HDR error (missing or mismatched inputs)")
         return None
-    if err_render.shape != err_vanilla.shape:
-        print(f"[viscache_exr] WARNING: err shape mismatch, skipping signed error")
-        return None
-    signed = err_render - err_vanilla
-    _signed_error_png(signed, outpath, nodata=nodata)
+    # Visualize absolute err map (viridis from 0 to denom) — replaces signed PNG.
+    # Vanilla map written to a sibling path with .vanilla suffix for compare.
     mask = _valid_mask_from_nodata(nodata, err_render.shape)
     if not mask.any():
         mask = np.ones_like(mask)
-    vals = signed[mask]
-    err_vis  = float(np.nanmean(err_render[mask]))
-    err_van  = float(np.nanmean(err_vanilla[mask]))
-    s_m      = float(np.nanmean(vals))
-    # Robust min/max: 1st and 99th percentile. True min/max get dominated by
-    # a handful of firefly / discontinuity pixels and produce nonsense pcts.
+    denom = 1.4
+    viridis_png(np.clip(err_render / denom, 0.0, 1.0), outpath, nodata=nodata)
+    if err_vanilla is not None and err_vanilla.shape == err_render.shape:
+        van_path = outpath.replace(".png", ".vanilla.png") if outpath.endswith(".png") else outpath + ".vanilla"
+        viridis_png(np.clip(err_vanilla / denom, 0.0, 1.0), van_path, nodata=nodata)
+
+    vals = err_render[mask]
+    err_vis  = float(np.nanmean(vals))
+    err_van  = float(np.nanmean(err_vanilla[mask])) if err_vanilla is not None else None
+    s_m      = err_vis  # "delta_mean" name kept; semantics is absolute mean err vs GT
     s_min    = float(np.nanpercentile(vals, 1))
     s_max    = float(np.nanpercentile(vals, 99))
-    # Normalize to fixed OkLab max (1.4) — same scale the image colormap uses.
-    # Previously normalized by mean(err_vanilla), which double-counts vanilla
-    # (already in the numerator) and blew up in near-zero regions.
-    denom    = 1.4
-    blob_pct = _signed_blob_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
-    blob_sum_pct = _signed_blob_sum_pct(signed, mask, ERR_WINDOW_SIGMA, denom)
+    # Absolute-blob: max of Gaussian-blurred err_render (no signed clamping needed
+    # since err is non-negative). Reports worst-region cache distance to GT,
+    # independent of vanilla's per-SPP noise pattern.
+    blur = _gaussian_blur_2d(err_render, ERR_WINDOW_SIGMA)
+    bvals = np.where(mask, blur, np.nan)
+    try:
+        blob_peak = float(np.nanmax(bvals))
+    except (ValueError, RuntimeWarning):
+        blob_peak = 0.0
+    blob_pct = 100.0 * max(0.0, blob_peak) / max(denom, 1e-6)
+    blob_sum_pct = _signed_blob_sum_pct(err_render, mask, ERR_WINDOW_SIGMA, denom)
+
+    # Vanilla's same numbers — for side-by-side comparison at the same SPP.
+    van_err_pct = None
+    van_blob_pct = None
+    if err_vanilla is not None and err_vanilla.shape == err_render.shape:
+        vvals = err_vanilla[mask]
+        van_err_pct = 100.0 * float(np.nanmean(vvals)) / denom
+        van_blur = _gaussian_blur_2d(err_vanilla, ERR_WINDOW_SIGMA)
+        van_bvals = np.where(mask, van_blur, np.nan)
+        try:
+            van_blob_peak = float(np.nanmax(van_bvals))
+        except (ValueError, RuntimeWarning):
+            van_blob_peak = 0.0
+        van_blob_pct = 100.0 * max(0.0, van_blob_peak) / max(denom, 1e-6)
+
     return {
         "err_vis_gt_mean":    err_vis,
         "err_van_gt_mean":    err_van,
@@ -548,6 +580,9 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         "err_delta_max_pct":  100.0 * s_max / denom,
         "err_delta_blob_pct": blob_pct,
         "err_delta_blob_sum_pct": blob_sum_pct,
+        # Vanilla baseline at same SPP — side-by-side comparison vs GT, not subtracted.
+        "vanilla_err_pct":      van_err_pct,
+        "vanilla_err_blob_pct": van_blob_pct,
     }
 
 
