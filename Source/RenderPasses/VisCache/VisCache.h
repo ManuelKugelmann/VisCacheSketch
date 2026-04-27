@@ -120,7 +120,6 @@ public:
         uint32_t subframeN;        ///< N×N Bayer gate (1 = disabled)
         uint32_t warmupSlotsFirst; ///< # Bayer slots write-only in frame 0
         uint32_t warmupSlotsRun;   ///< # Bayer slots write-only in every subsequent frame
-        uint32_t cascadeVisitCount;///< # cascade strides per trace (levelStride = (N-1)/this)
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,

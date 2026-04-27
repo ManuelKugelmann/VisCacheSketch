@@ -90,7 +90,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
-    if (props.has("cascadeVisitCount"))             mParams.cascadeVisitCount             = props["cascadeVisitCount"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -147,7 +146,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
-    if (props.has("cascadeVisitCount"))             mParams.cascadeVisitCount             = props["cascadeVisitCount"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -200,7 +198,6 @@ Properties VisCache::getProperties() const
     p["subframeN"]                     = mParams.subframeN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
-    p["cascadeVisitCount"]             = mParams.cascadeVisitCount;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -373,17 +370,25 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     const float posBCoarseScaled = mParams.posBCoarse  * sceneScale;
     const float distBCoarseScaled = mParams.distBCoarse * sceneScale;
 
-    // Derive fine values from coarse + numLevels. Previous formula was
-    // coarse / pow(4, sqrt(N-1)) — fine at N=32 was coarse/1060, at N=32000
-    // it would be coarse/4^179 (astronomically small). With the analytical
-    // entry-level selection in the shader, level count is cascade granularity
-    // not physical range, so keep the coarse→fine span fixed. 1024x gives
-    // ~10 bits of refinement at any N; target cell size (depth·px·√fd) lands
-    // naturally somewhere in between via the log-based entry formula.
-    static constexpr float kTotalRatio = 1024.f;
+    // Derive fine cell size from a constant per-level step factor (1.25 →
+    // 25% smaller per level, the lower bound on cascade granularity user
+    // wants — finer would create near-identical neighboring cells with
+    // independent fingerprints, fragmenting samples). Upper bound 3.0 is
+    // for sanity (larger jump would skip useful intermediate cell sizes).
+    //
+    // fine = coarse / 1.25^(N-1).
+    //   N=16  → fine = coarse / 35       (4.5 bits of refinement)
+    //   N=32  → fine = coarse / 1057     (10 bits — old default)
+    //   N=64  → fine = coarse / 1.12e6   (20 bits — extra zoom headroom)
+    //
+    // Levels above N are clamped at fine; the analytical entry uses
+    // ceil(log(target/coarse)/log(0.8) · (N-1)/(N-1)) = lvl directly, so
+    // raw level number maps to a cell-size invariant of N (level 5 always
+    // means cell ≈ coarse * 0.8^5 regardless of N).
+    static constexpr float kStepFactor = 0.8f;  // = 1/1.25
     auto deriveFine = [&](float coarse, uint32_t N) -> float {
         if (N <= 1u) return coarse;
-        return coarse / kTotalRatio;
+        return coarse * std::pow(kStepFactor, float(N - 1));
     };
 
     GPUParams gpu = {};
@@ -445,7 +450,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.subframeN        = std::max(1u, mParams.subframeN);
     gpu.warmupSlotsFirst = mParams.warmupSlotsFirst;
     gpu.warmupSlotsRun   = mParams.warmupSlotsRun;
-    gpu.cascadeVisitCount = std::max(1u, mParams.cascadeVisitCount);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
