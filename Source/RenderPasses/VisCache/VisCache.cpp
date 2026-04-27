@@ -54,6 +54,11 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("pMin"))             mParams.pMin             = props["pMin"];
     if (props.has("fireflyBudget"))    mParams.fireflyBudget    = props["fireflyBudget"];
     if (props.has("numLevels"))        mParams.numLevels        = props["numLevels"];
+    // autoTuneCells FIRST so the explicit posACoarse below can force it
+    // false at the end (variant-level quant choice wins over LEVELS_MULTI's
+    // autoTuneCells=True default).
+    if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
+    if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("posACoarse"))     { mParams.posACoarse       = props["posACoarse"];  mParams.autoTuneCells = false; }
     if (props.has("posBCoarse"))       mParams.posBCoarse       = props["posBCoarse"];
     if (props.has("dirBCoarse"))       mParams.dirBCoarse       = props["dirBCoarse"];
@@ -61,8 +66,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("normalACoarse"))    mParams.normalACoarse    = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
-    if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
-    if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
     if (props.has("enableDecayAutoTune")) mParams.enableDecayAutoTune = props["enableDecayAutoTune"];
 
@@ -113,6 +116,11 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("pMin"))             mParams.pMin             = props["pMin"];
     if (props.has("fireflyBudget"))    mParams.fireflyBudget    = props["fireflyBudget"];
     if (props.has("numLevels"))        mParams.numLevels        = props["numLevels"];
+    // autoTuneCells FIRST so the explicit posACoarse below can force it
+    // false at the end (variant-level quant choice wins over LEVELS_MULTI's
+    // autoTuneCells=True default).
+    if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
+    if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("posACoarse"))     { mParams.posACoarse       = props["posACoarse"];  mParams.autoTuneCells = false; }
     if (props.has("posBCoarse"))       mParams.posBCoarse       = props["posBCoarse"];
     if (props.has("dirBCoarse"))       mParams.dirBCoarse       = props["dirBCoarse"];
@@ -120,8 +128,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("normalACoarse"))    mParams.normalACoarse    = props["normalACoarse"];
     if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
-    if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
-    if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
     if (props.has("enableDecayAutoTune")) mParams.enableDecayAutoTune = props["enableDecayAutoTune"];
 
