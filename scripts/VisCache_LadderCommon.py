@@ -3240,7 +3240,20 @@ def write_picks_meta(step_name, inherited_from=None, inherited=None,
     if inherited is not None:
         payload["inherited"] = list(inherited)
     if carried is not None:
-        payload["carried"] = {k: list(v) for k, v in carried.items()}
+        # Preserve manual carries: an empty dict (the step-script default)
+        # never wipes out a hand-edited carries section. Re-running a step
+        # to extend its scene coverage would otherwise erase the picks.
+        if carried:
+            payload["carried"] = {k: list(v) for k, v in carried.items()}
+        elif os.path.exists(out):
+            try:
+                with open(out) as f_old:
+                    old = json.load(f_old)
+                payload["carried"] = old.get("carried") or {}
+            except (json.JSONDecodeError, OSError):
+                payload["carried"] = {}
+        else:
+            payload["carried"] = {}
     if notes:
         payload["notes"] = notes
     with open(out, "w") as f:
