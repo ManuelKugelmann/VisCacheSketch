@@ -3104,12 +3104,15 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
     if not rows:
         return {}
 
-    # "Be better than vanilla" rule: cache must not exceed vanilla on the
-    # artifact metric by more than ARTIFACT_DELTA_MARGIN percentage points
-    # at any scene/spp/scale. Reads the cache − vanilla delta directly;
-    # negative deltas mean cache is already better than vanilla (good).
-    # Margin allows tiny positive deltas to absorb run-to-run metric noise.
-    ARTIFACT_DELTA_MARGIN = 5.0
+    # "Be better than vanilla" rule. Cache may exceed vanilla by at most
+    # ARTIFACT_DELTA_MARGIN percentage points at any scale (3/5/11 px
+    # median artifact). Calibrated to user's visual call that ct=64 at
+    # Sponza x16 (d3=+28, d5=+12, d11=+16) is acceptable; 25pp single
+    # threshold passes that on d5/d11 and admits ct=64 (d3=+28 just
+    # over but not penalized — d3 picks up firefly-like fine noise that
+    # blends with sampling noise). Roughly matches the legacy 25%
+    # blob hard-reject rule.
+    ARTIFACT_DELTA_MARGIN = 25.0
 
     result = {}
     b_variants = sorted({_b_core(r["variant"]) for r in rows if _b_core(r["variant"])})
@@ -3141,7 +3144,10 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
                 if scn not in pv:
                     continue
                 d = pv[scn]
-                for k in ("d3", "d5", "d11"):
+                # Use d5 and d11 (skip d3 — fine-scale fireflies blend
+                # with sampling noise and don't represent visual artifacts
+                # at the user's calibration).
+                for k in ("d5", "d11"):
                     raw = d.get(k)
                     if raw is None or raw == "":
                         continue
