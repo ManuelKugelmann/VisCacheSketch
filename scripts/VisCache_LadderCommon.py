@@ -238,13 +238,14 @@ def _qd_tag(v): return f"qd{int(round(v * 100)):03d}"
 # Default picker rule used by pick_top_variants_per_bvariant and recorded in
 # picks.json for every step's finalize pass.
 _DEFAULT_PICKER_RULE = (
-    "per-scene outlier gate (err <= 0 OR err <= median+25%, blob <= 0 OR "
-    "blob <= median+50%) + hard rejects: any scene err > 1%, blob > 25%, "
-    "or mean rays > 50%. (err cap is absolute: signed mean-err can go "
-    "negative from denoising while concentrated artifacts exist; >1% "
-    "means the cache demonstrably makes a scene worse.) Rank survivors "
-    "by balance score = rays_mean + 1.5×max(scene_blob) + "
-    "2.0×max(scene_err); noise informational."
+    "no-artifacts-then-rays: HARD REJECT if any (scene, spp) has "
+    "cache_artifact_N > 1.2 × vanilla_artifact_N for any scale "
+    "N ∈ {3, 5, 11} (multi-scale median-based — sustained-cluster "
+    "discriminator robust to firefly outliers). Among survivors, "
+    "minimize mean rays_traced_pct across scenes — the 'cheapest "
+    "no-artifact carry'. Mean error vs GT is informational; "
+    "absolute err is reported alongside vanilla's same numbers, "
+    "not subtracted (noise-independent metric)."
 )
 
 # Y-axis limits for the step overview plots (shared across all steps so
@@ -3059,25 +3060,20 @@ def build_per_axis_quant_variants(base_preset, normal_a=60.0):
 
 
 def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
-    """Pick winners per B-variant by 'best ray savings with no scene outliers'.
+    """Pick winners by 'no artifacts at any scale, then minimize rays'.
 
-    Rule (per-scene relative-best gate + absolute blob cap, unweighted rank):
-      For EACH scene, compute the per-scene median err & blob across variants.
-      A variant qualifies only if at EVERY scene:
-        err  <= 0 OR err  <= median_err_scene  + 25% |median_err_scene|
-        blob <= 0 OR blob <= median_blob_scene + 50% |median_blob_scene|
-        AND blob <= 10.0 (absolute artifact cap: any blob > 10% is
-                          outside target visual quality regardless of
-                          how poorly other variants score)
-      Then rank surviving variants by unweighted mean rays_traced ascending.
+    Hard rule: for every (scene) covered, every artifact scale (3px/5px/11px)
+    must satisfy `cache_artifact_N <= 1.2 × vanilla_artifact_N` (cache may
+    not introduce localized artifact clusters that vanilla doesn't already
+    have; 1.2× tolerates noise within the comparison itself).
 
-    This prevents a variant from winning by being great on average while
-    regressing catastrophically on one scene. The absolute blob cap
-    prevents a "best of a bad batch" carry when NO variant is actually
-    close to target quality on some scene.
+    Among survivors, rank by ascending mean rays_traced_pct — the
+    'cheapest no-artifact carry'.
 
-    Noise is informational only — gating on noise previously excluded
-    otherwise-sensible candidates on <0.01 deltas.
+    The artifact metric is multi-scale median-based (see
+    compute_render_error_signed_hdr): max err where the median of a
+    NxN neighborhood is at least that high. Robust to firefly outliers,
+    sensitive to localized clusters where most pixels are bad.
 
     Returns {b_variant: [variant_name, ...]} — empty dict if CSV missing.
     """
@@ -3086,10 +3082,22 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
     if not rows:
         return {}
 
+    # Multi-scale artifact tolerance: cache passes if EITHER condition holds:
+    #   (a) ratio: cache <= ARTIFACT_TOLERANCE × vanilla (relative — for
+    #       scenes where vanilla itself has substantial noise/firefly
+    #       presence; cache may not amplify by >20%).
+    #   (b) absolute: cache <= vanilla + ARTIFACT_ABS_MARGIN (absolute —
+    #       for scenes where vanilla is near zero (e.g. Cornell 1PL x16)
+    #       and a small absolute delta blows up the ratio without being
+    #       a visible artifact).
+    # Either pass = OK. Genuine cache-induced clusters typically violate
+    # both at once (large absolute AND high ratio).
+    ARTIFACT_TOLERANCE  = 1.2
+    ARTIFACT_ABS_MARGIN = 5.0
+
     result = {}
     b_variants = sorted({_b_core(r["variant"]) for r in rows if _b_core(r["variant"])})
     for bv in b_variants:
-        # per_scene[variant][scene] = {"rays", "err", "blob", "noise"}
         per_scene = {}
         for r in rows:
             if _b_core(r["variant"]) != bv or r["spp"] != spp:
@@ -3098,111 +3106,59 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
             pv[r["scene"]] = {
                 "rays":  r.get("rays_traced_pct") or 0.0,
                 "err":   r.get("error_delta_pct"),
-                "blob":  r.get("error_delta_blob_pct"),
-                "noise": r.get("noise_delta_pct"),
+                "a3":    r.get("error_artifact_3_pct"),
+                "a5":    r.get("error_artifact_5_pct"),
+                "a11":   r.get("error_artifact_11_pct"),
+                "va3":   r.get("vanilla_err_artifact_3_pct"),
+                "va5":   r.get("vanilla_err_artifact_5_pct"),
+                "va11":  r.get("vanilla_err_artifact_11_pct"),
             }
         if not per_scene:
             result[bv] = []
             continue
 
-        # Scenes represented for this B-variant (take superset across variants)
         all_scenes = sorted({s for pv in per_scene.values() for s in pv.keys()})
 
-        # Per-scene medians + tolerances across variants at that scene
-        scene_tol = {}
-        for scn in all_scenes:
-            errs  = [pv[scn]["err"]  for pv in per_scene.values()
-                     if scn in pv and pv[scn]["err"]  is not None]
-            blobs = [pv[scn]["blob"] for pv in per_scene.values()
-                     if scn in pv and pv[scn]["blob"] is not None]
-            if not errs or not blobs:
-                continue
-            med_e = stats.median(errs)
-            med_b = stats.median(blobs)
-            scene_tol[scn] = (med_e + 0.25 * abs(med_e),
-                              med_b + 0.50 * abs(med_b))
-
-        def _ok(val, tol):
-            if val is None:
-                return True
-            return val <= 0.0 or val <= tol
-
-        # Thresholds:
-        #   ERR_HARD_CAP     — positive err delta above this is a reject. Signed
-        #                      err can be misleading (average can go negative
-        #                      from denoising while concentrated artifacts
-        #                      exist), so this cap reflects "cache must not
-        #                      hurt any scene more than 1% on average".
-        #   BLOB_HARD_CAP    — visible artifact; variants exceeding on any
-        #                      scene are rejected outright
-        #   RAYS_HARD_CAP    — rays above this defeat the purpose of caching
-        #                      (variant is near-vanilla); rejected outright
-        # Weighted score for surviving variants:
-        #   score = rays_mean + BLOB_WEIGHT × max_scene_blob + ERR_WEIGHT × max_scene_err
-        ERR_HARD_CAP  = 1.0
-        BLOB_HARD_CAP = 25.0
-        RAYS_HARD_CAP = 50.0
-        BLOB_WEIGHT   = 1.5   # a blob=10 worst scene adds 15pp to rays score
-        ERR_WEIGHT    = 2.0   # a +5% err worst scene adds 10pp to rays score
-
-        # Variant qualifies iff EVERY scene with data passes relative gates
-        # AND every scene blob <= BLOB_HARD_CAP
-        # AND aggregate rays <= RAYS_HARD_CAP.
+        # Variant qualifies iff EVERY scene satisfies cache <= 1.2*vanilla
+        # at all three artifact scales.
         qualifying = []
         for v, pv in per_scene.items():
             all_pass = True
-            max_scene_blob = 0.0
-            max_scene_err  = 0.0
+            worst_ratio = 0.0
             for scn in all_scenes:
-                if scn not in pv or scn not in scene_tol:
+                if scn not in pv:
                     continue
-                tol_e, tol_b = scene_tol[scn]
-                blob_val = pv[scn]["blob"]
-                err_val  = pv[scn]["err"]
-                if not (_ok(err_val, tol_e)
-                        and _ok(blob_val, tol_b)):
-                    all_pass = False
+                d = pv[scn]
+                for ck, vk in (("a3", "va3"), ("a5", "va5"), ("a11", "va11")):
+                    cv_raw = d.get(ck); vv_raw = d.get(vk)
+                    if cv_raw is None or vv_raw is None:
+                        continue
+                    try:
+                        cv = float(cv_raw); vv = float(vv_raw)
+                    except (TypeError, ValueError):
+                        continue
+                    # Pass if EITHER ratio OR absolute-margin condition holds.
+                    denom = max(vv, 0.5)
+                    ratio = cv / denom
+                    worst_ratio = max(worst_ratio, ratio)
+                    abs_diff = cv - vv
+                    if ratio > ARTIFACT_TOLERANCE and abs_diff > ARTIFACT_ABS_MARGIN:
+                        all_pass = False
+                        break
+                if not all_pass:
                     break
-                if blob_val is not None:
-                    max_scene_blob = max(max_scene_blob, blob_val)
-                    if blob_val > BLOB_HARD_CAP:
-                        all_pass = False
-                        break
-                if err_val is not None:
-                    if err_val > 0:
-                        max_scene_err = max(max_scene_err, err_val)
-                    if err_val > ERR_HARD_CAP:
-                        all_pass = False
-                        break
             if not all_pass:
                 continue
-            # Unweighted means over scenes for ranking / info
+
             rays_vals = [pv[scn]["rays"] for scn in all_scenes if scn in pv]
-            err_vals  = [pv[scn]["err"]  for scn in all_scenes
-                         if scn in pv and pv[scn]["err"]  is not None]
-            blob_vals = [pv[scn]["blob"] for scn in all_scenes
-                         if scn in pv and pv[scn]["blob"] is not None]
-            nse_vals  = [pv[scn]["noise"] for scn in all_scenes
-                         if scn in pv and pv[scn]["noise"] is not None]
             if not rays_vals:
                 continue
-            mean_rays = stats.mean(rays_vals)
-            if mean_rays > RAYS_HARD_CAP:
-                continue
-            # Balance score: rays + blob-penalty + err-penalty. Lower = better.
-            score = (mean_rays
-                     + BLOB_WEIGHT * max_scene_blob
-                     + ERR_WEIGHT  * max_scene_err)
             qualifying.append((v, {
-                "rays":  mean_rays,
-                "err":   stats.mean(err_vals)  if err_vals  else 0.0,
-                "blob":  stats.mean(blob_vals) if blob_vals else 0.0,
-                "noise": stats.mean(nse_vals)  if nse_vals  else 0.0,
-                "max_scene_blob": max_scene_blob,
-                "max_scene_err":  max_scene_err,
-                "score": score,
+                "rays_mean": stats.mean(rays_vals),
+                "worst_artifact_ratio": worst_ratio,
             }))
-        qualifying.sort(key=lambda kv: kv[1]["score"])
+        # Rank by ascending mean rays (cheapest no-artifact carry).
+        qualifying.sort(key=lambda kv: kv[1]["rays_mean"])
         result[bv] = [v for v, _ in qualifying[:n_top]]
     return result
 
