@@ -27,12 +27,11 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | 07   | stderrThreshold pure curve (single-level) | **se005 beats vt005 on 1PL x4 blob 17→11** at matched rays; 32PL blob cost 3.4→5.9 (still below 10) | `qA024_qB036__ct2__se005` |
 | 09   | jitter f / c × fine companion | slightly worse but adds graceful degradation        | (likely `jf05_jc05`, pending review)   |
 | 10   | multi-level quant × threshold | multi-level beats single-level                      | multi-level                            |
-| 11   | vt × ct × fp (expanded) on step-10 carry | `vt005` beats `vt010` on every blob at matched 32PL rays; fp≥0.2 regresses rays | `qa012__ct4_vt005_fp0`  |
-| 12   | ct × warmup × force-descend on step-11 carry (x1/x4/x16) | `ct16` + `w=2` cuts 1PL blob 2.4× (41→17) at 2.3× 32PL rays; x16 stress test shows blob still grows 2–5× with SPP (residual bias), force-descend & fp no-ops | `qa012__ct16_vt005_fp0_fd0` (w=2) |
-| 13   | stderr × hierarchical × accel-decay, single-level | **negative**: no variant strictly beats vt005; best-x4 se10+hc cuts 1PL x4 blob 17→10 but regresses x1 13→50 | no carry (keep step-06 vt005) |
-| 15   | stderr × hierarchical × accel-decay, multi-level + x16 | **negative** on Cornell; **big-scene supplement (Bistro/Sponza) shows viscache cuts mean GT-err 18–70% on Bistro** — first real-scene data, gate mechanisms near-irrelevant there | no carry (keep step-11 ct4_vt005_fp0) |
-| 16   | per-level ct (bootThreshold coarse, bootThresholdFine) | **negative**: asymmetric ct has non-monotonic mid-level regimes — (16,4) regresses 1AL 21→112; fine ct rarely consulted on dense Bistro so doesn't recover rays | no carry |
-| 17   | insert-side level-skip (paper win-win idea) | **negative**: fd>0 at insert skips big-cell writes AND disrupts parent-preinit chain → 1AL blob 17→117 at fd=4096; 1PL mixed (46 at fd=4096 vs 56 baseline); ~10% Bistro rays savings at fd=1024 | no carry |
+| 11   | subframeN × fd (Bayer-cell symmetry)        | (planned)                                              | (TBD)                                  |
+| 12   | ct × stderr (trust requirement)             | (planned)                                              | (TBD)                                  |
+| 13   | pMin × hierarchicalConsistency              | (planned)                                              | (TBD)                                  |
+| 14   | addressing × normalACoarse                  | (planned)                                              | (TBD)                                  |
+| 15   | bootThresholdFactorFootprintPx × matureThreshold | (planned)                                          | (TBD)                                  |
 
 ---
 
@@ -279,120 +278,31 @@ The cascade cuts rays roughly in half vs single-level at matched quality: `qa012
 
 ---
 
-## Steps 11+ — archived (pre-multi-frame regime)
+## Steps 11+ — post-alignment ladder restart
 
-All x4 and x16 ladder runs up to step 27 used `(frames=1, spp=N)` — a single Mogwai frame with N samples per pixel. This traps every sample at the same Bayer slot (slot rotation is per-frame), so the "cache correlation" effects attributed to the algorithm were substantially a measurement artifact of the harness.
+Earlier ladder steps 11–52 (and the previous pre-multiframe attempt) ran on
+versions of the cascade that turned out to have systematic bugs: int32 overflow
+on env/sun rays, stride-induced fingerprint fragmentation, lvl-0 collapse from
+unaligned target-level rounding. Their numbers are not comparable to the current
+shader and are kept under `archive_post_alignment/` for audit only.
 
-**Switching policy going forward:** viscache runs always use `spp=1`, multi-sample via `frames=N`. Vanilla can use multi-SPP as usual.
+Step 10 is the foundation that survives: multi-level cascade with `qa012__ct4`
+addressing/quantization/threshold, validated under the corrected shader. The
+new ladder builds from there with **bounded multi-dimensional sweeps**, the
+**fast pre-test → triple-trial finalist** protocol, and **optimum-in-middle**
+range design.
 
-**Archive locations:**
-- Scripts: `scripts/archive_pre_multiframe/VisCache_Ladder{11..27}.py`
-- Captures: `runtime/captures/ladder/archive_pre_multiframe/{11..27}/`
-- Per-step plates/plots: `docs/devlog/archive_pre_multiframe/step{11..27}/`
+**Static-scene multilevel ladder (steps 11–15):**
+- 11: subframeN × fd — Bayer-cell symmetry hypothesis (sub4 ↔ fd=16, sub2 ↔ fd=4, sub8 ↔ fd=64)
+- 12: ct × stderr — trust requirement / sample evidence demand
+- 13: pMin × hierarchicalConsistency — RR floor × penumbra-disagreement detector
+- 14: addressing × normalACoarse — re-validate dir_dist vs pos with corrected shader
+- 15: bootThresholdFactorFootprintPx × matureThreshold — coarse-cell over-trust caps
 
-**What we learned that carries forward as design intent:**
-
-1. **Multi-level cascade is the spine.** Single-level was a teaching ladder; multi-level consistently saves rays and improves blob.
-2. **pMin is rate-defense, not trust-gate** (step 20). Raising the RR floor from 0.05 to 0.10 broke through 5 consecutive negative gate-tuning results — it ensures corrective tracing at a minimum rate regardless of cache trust. Carried forward.
-3. **Variance gate (vt) and pMin decouple** (step 23). Once pm010 is the rate-defense, `vt` purely controls cascade trust tightness, not RR efficiency. Step 23 tightened vt to 0.03 for another big Sponza win — but see §5 below for the multi-frame re-validation caveat.
-4. **Scene-regime split is real** (step 21). Variance-dominated scenes (Bistro, dense point lights) want low ct (~4) for rays savings; bias-dominated scenes (Sponza, directional sun + hard shadows) want high ct (~16) to stabilize cell means before trust. `ct` and `vt` are orthogonal bias defenses (step 24) — they combine additively, not substitutively.
-5. **Multi-frame re-validation reverses some Cornell pathologies and reveals Sponza bias** (step 27 A/B at step-23 carry):
-   - Cornell 1AL x4 blob: 112 → 4.7 (−96%)
-   - Cornell 1PL x4 w2 blob: 86 → 41 (−53%)
-   - Bistro interior x4 w1 err: −17.7% → −38.6% (quality gain)
-   - **Sponza x4 err: +0.2% → +14.8% (regression — single-frame was masking the bias by never warming the cache enough)**
-   The previous Sponza "parity" was artifactual. True cache behavior emerges under multi-frame; bias on Sponza is substantial and remains the open problem.
-6. **Negative mechanisms that did NOT help** (archived): stderr gate alone or stacked (steps 13, 15, 18), hierarchical-consistency check (13, 15), accel-decay on disagreement (13, 15), per-level bootThresholdFine (16), insert-side level-skip v1/v2 (17), force-descend-footprint × ct16 (19), fine-grained pMin (22). Most of these were fighting correlation artifacts introduced by single-frame testing — under multi-frame they may behave differently, but the case for a new shader mechanism has to be made on top of the multi-frame baseline.
-7. **Picker rule updated** (from step 27): per-scene outlier gate replaces weighted-mean aggregate. A variant qualifies only if every scene passes `err ≤ median+25%` and `blob ≤ median+50%`. Ranking by unweighted mean rays. `SCENE_WEIGHTS` emptied.
-
-### Plan for rebuilding the 11+ ladder on multi-frame
-
-- **Phase A** (infrastructure): steps 4, 5, 6, 9, 10 already exist at `x1/x4/x16`; their x4/x16 data is under the old regime. Re-run those steps with multi-frame configs so the single-level / multi-level foundations have accurate data.
-- **Phase B** (rebuild): new steps 11+ under multi-frame, applying what we learned:
-  - Skip single-level sweeps (multi-level is the spine).
-  - Start from step-10 multi-level carry, probe directly at x1/x4/x16 with pm010 + vt tight.
-  - Re-validate step-20 pm010 and step-23 vt003 findings against multi-frame.
-  - Attack Sponza bias as the primary open problem (not a side-quest).
-  - Avoid re-testing the negative shader mechanisms unless there is a reason specific to multi-frame.
-
-## Steps 31–37 — cascade restructuring + HC peek + dir_dist addressing
-
-**Phase A** (step 31): restructured the cascade to allow arbitrarily large `numLevels`.
-- `deriveFine` changed from `coarse / 4^sqrt(N-1)` (astronomical at large N) to `coarse / 1024` (constant span).
-- `vhfLookup` / `vhfInsert` loops stride by `(N-1)/32` so 32 effective cascade steps run regardless of N. `numLevels` bumped to **32000** — cascade granularity without per-ray cost exploding.
-- Analytical entry level: both loops compute `startLvl` from per-pixel footprint (`targetCellSize = depth · pixelSize · √fd`) in a single log-based formula, skipping coarse-level work for near-camera cells.
-- Hierarchical-consistency peek now probes one *stride* ahead (= one cell-size doubling) instead of `lvl+1`, which shared quant indices at large N. Disagreement between coarse μ and the finer strided cell flags a penumbra boundary and triggers descent.
-
-**Result (pos addressing, step 31 e_fd0_hcOn):** Sponza x4 blob **184 → 91 (−50%)**, Sponza x1 blob 148 → ~100 (−30%). Cornell scenes unchanged or marginally better. Committed in `251a6c0`.
-
-**Phase B** (steps 32–35): knob sweeps at the step-31 carry.
-- Step 32 tolerance sweep: `hierarchicalMuTolerance=0.20` is near-optimal; tightening to 0.05–0.15 doesn't help consistently, 0.30 is too loose.
-- Step 33 stderr gate: Sponza x1 blob 160 → 103 with se=0.03 but regressed x4 129 → 193. Mixed, not carried.
-- Step 34 accelDecay: Sponza x16 blob 201 → 148 at `accelDecayDisagreeThresh=0.30` (−26%). Run-to-run variance too high on Sponza to separate from noise.
-- Step 35 stacking (stderr + accelDecay): no synergy.
-
-**Phase C** (steps 36–37): B-side addressing.
-- Step 36 swap pos → dir_dist (view-cone cells indexed by direction × distance instead of endpoint position):
-  - Sponza x1 blob **170 → 86 (−49%)**, Sponza x16 blob **193 → 124 (−35%)**.
-  - 1PL x4 blob **30 → 18 (−41%)**.
-  - Cost: ~50% more rays traced on Sponza (17% → 22%).
-  - Trade-offs: 1AL x4 blob 19 → 26 (+35%), Sponza x4 159 → 191 (+20%). dir_dist helps scenes with hard shadows / complex geometry, hurts soft-area-light scenes.
-- Step 37 dirB/distB tuning on dir_dist:
-  - `distB=0.24` (finer distance cells) at `dirB=15°`: Sponza x4 blob **191 → 110 (−42%)**, 1PL x4 blob 30 → 21 (−30%).
-  - Same config regresses Sponza x16 (121 → 213). Finer distance cells fragment the sample pool at high SPP.
-- No universal winner — `dir_dist + dirB=15 + distB=0.48` (step 36 default) is the most balanced across Sponza SPPs; `distB=0.24` is strictly better at x4 but worse at x16.
-
-**Sponza reproducibility caveat (step 42 triple-trial):** identical config run 3 times on Sponza yielded blob:
-  - x1:  86 / 147 / 111  (range 61)
-  - x4:  110 / 109 / 202 (range 93, ~100% spread)
-  - x16: 168 / 209 / 121 (range 88, ~72% spread)
-The GPU atomic ordering noise floor on Sponza blob is ~90 units. This means many of the −30% to −50% improvements claimed from single-run step-31-41 findings sit near the noise.
-
-**Step 43 ABCD triple-trial — pre-clamp-fix numbers:** ran 4 variants × 3 trials on Sponza:
-  | variant | x1 blob μ±σ | x4 blob μ±σ | x16 blob μ±σ |
-  |---------|-------------|-------------|--------------|
-  | pos addressing, no HC, no decay | 148±22 | 183±23 | 203±6 |
-  | pos + HC peek | 130±38 | 171±22 | 192±36 |
-  | dir_dist + HC peek | 86±0 | 129±33 | 122±2 |
-  | dir_dist + HC + decay dp15 | 91±9 | 121±19 | 172±33 |
-
-Pre-fix, dir_dist looked like the clear winner. **But step 45 then found the cause — an int32 overflow bug in `vhfAddressPosB` for env/sun rays** (Falcor passes tMax=1e30 → `int(round(pos/cellSize))` wraps silently). Fixed by clamping dist to 32× max coarse-cell before the multiply (commit `f9460e3`).
-
-**Step 45 post-fix ABCD triple-trial** (same protocol, with clamp fix applied):
-  | variant | x1 blob μ±σ | x4 blob μ±σ | x16 blob μ±σ | rays x1 |
-  |---------|-------------|-------------|--------------|---------|
-  | pos addressing | **122±7** | 164±20 | 187±43 | 57% |
-  | pos + HC peek | 143±26 | 173±36 | 195±36 | 56% |
-  | dir_dist | 147±39 | 170±19 | **139±13** | 34% |
-  | dir_dist + HC + decay dp15 | 123±32 | **129±21** | 180±44 | 34% |
-
-Reversal: **pos addressing after the clamp fix is now better than dir_dist at x1 and comparable at x4**; dir_dist only wins at x16 (and uses far fewer rays throughout). The pre-fix dir_dist "magic" on Sponza x1 (86 blob) was an artifact of the rest of the pipeline compensating for garbage env cells by always tracing — which is why dir_dist had lower σ (6–38 pos vs 0–2 dir_dist) in the pre-fix data.
-
-Clamp fix is a correctness win regardless; efficiency comparison (blob per ray) still favors dir_dist (34% rays vs 57% rays for comparable blob).
-
-**Step 47–48: ct=16 + stderrThreshold=0.02 — universal blob −54 to −89%.**
-
-User diagnosis (steps 47/48): "we are missing sharp shadow boundaries on Sponza. we trust too early, we do not trace enough rays per cell. accept a higher % of rays." Correct. With the default `bootThreshold=4` and no stderr gate, a cell whose first 4 rays happen to all land on the lit side of a penumbra trusts `mu=1.0` before the boundary is sampled at all. Raise `bootThreshold` to 16 and gate on `sqrt(var/N) ≤ stderrThreshold=0.02` (requires N ≥ var/se² — at mu=0.5 that's 625 samples before trust).
-
-Triple-trial Sponza + single-run Cornell (step 48):
-
-| scene / spp | baseline blob | ct=16+se=0.02 blob | change |
-|-------------|---------------|--------------------|--------|
-| Sponza x1 | 154±68 | **67±1** | **−56%** (σ collapse) |
-| Sponza x4 | 195±26 | 81±36 | −58% |
-| 1AL x4 | 19.5 | 2.9 | −85% |
-| 1PL x4 | 33.9 | 8.9 | −74% |
-| 1PL x16 | 46.2 | 12.8 | −72% |
-| 32PL x4 | 6.3 | 0.7 | −89% |
-| 3AL x4 | 15.5 | 6.4 | −59% |
-
-Err improved on every scene too (Sponza x1: −5.9 → −8.3; 1PL x4: +0.47 → +0.06). Rays traced approximately doubles — explicitly accepted as the cost of reliable boundary resolution.
-
-The x16 plateau narrows but doesn't close (Sponza x16 143, 32PL x16 16.4). At x16 SPP cells have hundreds of samples so the "under-sampled trust" issue largely resolves itself via pure volume; remaining blob is bias in the biased-mu regime documented in earlier steps.
-
-Conclusion: the pre-step-47 default was under-sampling every scene at penumbrae. Cornell blob was low enough in absolute terms that it looked acceptable, but the *relative* improvement is massive. **New baseline: `bootThreshold=16, stderrThreshold=0.02`, rest unchanged.**
-
-**Open on Sponza x16:** blob plateau at 150–200% across all step-31+ variants. Appears intrinsic to the pos-addressing bias-trap regime. dir_dist addressing cuts it to 124% (step 36); further gains likely need per-scene addressing selection or a new bias-correction mechanism that doesn't drown in high-SPP sample floods.
+Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination
+(maxBounces > 0) are deferred to a separate **temporal-policy ladder** stage
+that uses animated cameras / dynamic lights, where time-varying mechanisms
+have something to react to.
 
 ## Cross-step ladder progress
 

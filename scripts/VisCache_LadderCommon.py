@@ -1798,7 +1798,12 @@ def plot_ladder_progress(steps=None, spp=1):
     # root (their CSVs still exist) but not shown here — e.g. WIP multi-level
     # expansions that would distort the per-scene comparison against the
     # single-level spine. Callers can pass `steps=` explicitly to override.
-    _exclude = {"14"}
+    # Archived steps from the pre-alignment ladder regimes — kept under
+    # captures/ladder/archive_post_alignment/ for audit, excluded from
+    # progression plots so the new ladder visualization isn't polluted
+    # by broken-cascade data points.
+    _exclude = {str(n) for n in [11, 12, 13, 14, 15, 16, 17] +
+                                  list(range(18, 30)) + list(range(31, 53))}
     if steps is None:
         steps = []
         for p in sorted(glob.glob(os.path.join(ladder_root,
@@ -2029,7 +2034,12 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
     import matplotlib.pyplot as plt
 
     ladder_root = "captures/ladder"
-    _exclude = {"14"}
+    # Archived steps from the pre-alignment ladder regimes — kept under
+    # captures/ladder/archive_post_alignment/ for audit, excluded from
+    # progression plots so the new ladder visualization isn't polluted
+    # by broken-cascade data points.
+    _exclude = {str(n) for n in [11, 12, 13, 14, 15, 16, 17] +
+                                  list(range(18, 30)) + list(range(31, 53))}
     if steps is None:
         steps = []
         for p in sorted(glob.glob(os.path.join(ladder_root,
