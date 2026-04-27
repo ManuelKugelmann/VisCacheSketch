@@ -149,6 +149,29 @@ def load_diag_mask(exrs, mode="nodata", total_frames=None):
         return None
 
 
+def _min_filter_2d(img, size):
+    """Local minimum over a size×size window (size must be odd, ≥3).
+    Used for morphological erosion of error maps: the result at each pixel
+    is the smallest value in its neighborhood, so the global max-of-min is
+    'the highest err value such that every pixel in some size×size window
+    is at least that high'. Single-pixel outliers vanish (their min over
+    the window is some surrounding low value); sustained clusters survive.
+    """
+    if size < 3:
+        return img.astype(np.float32, copy=False)
+    radius = size // 2
+    src = img.astype(np.float32, copy=False)
+    pad = np.pad(src, radius, mode="edge")
+    H, W = src.shape
+    out = pad[radius:radius+H, radius:radius+W].copy()
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            if dy == 0 and dx == 0:
+                continue
+            np.minimum(out, pad[radius+dy:radius+dy+H, radius+dx:radius+dx+W], out=out)
+    return out
+
+
 def _gaussian_blur_2d(img, sigma):
     """Separable 1D Gaussian, numpy-only. `img` can be (H,W) or (H,W,C)."""
     if sigma <= 0:
@@ -563,9 +586,22 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
     blob_pct = 100.0 * max(0.0, blob_peak) / max(denom, 1e-6)
     blob_sum_pct = _signed_blob_sum_pct(err_render, mask, ERR_WINDOW_SIGMA, denom)
 
+    # Cluster-blob: max err such that every pixel in a 5x5 neighborhood
+    # also exceeds it. Single-pixel firefly noise is dropped; sustained
+    # localized artifacts dominate. This is the "is this an artifact"
+    # discriminator — preferred for hard-reject in the picker rule.
+    cluster_eroded = _min_filter_2d(err_render, CLUSTER_BLOB_KERNEL)
+    cmasked = np.where(mask, cluster_eroded, np.nan)
+    try:
+        cluster_peak = float(np.nanmax(cmasked))
+    except (ValueError, RuntimeWarning):
+        cluster_peak = 0.0
+    cluster_blob_pct = 100.0 * max(0.0, cluster_peak) / max(denom, 1e-6)
+
     # Vanilla's same numbers — for side-by-side comparison at the same SPP.
     van_err_pct = None
     van_blob_pct = None
+    van_cluster_blob_pct = None
     if err_vanilla is not None and err_vanilla.shape == err_render.shape:
         vvals = err_vanilla[mask]
         van_err_pct = 100.0 * float(np.nanmean(vvals)) / denom
@@ -576,6 +612,13 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         except (ValueError, RuntimeWarning):
             van_blob_peak = 0.0
         van_blob_pct = 100.0 * max(0.0, van_blob_peak) / max(denom, 1e-6)
+        van_cluster = _min_filter_2d(err_vanilla, CLUSTER_BLOB_KERNEL)
+        van_cmasked = np.where(mask, van_cluster, np.nan)
+        try:
+            van_cluster_peak = float(np.nanmax(van_cmasked))
+        except (ValueError, RuntimeWarning):
+            van_cluster_peak = 0.0
+        van_cluster_blob_pct = 100.0 * max(0.0, van_cluster_peak) / max(denom, 1e-6)
 
     return {
         "err_vis_gt_mean":    err_vis,
@@ -588,15 +631,28 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         "err_delta_max_pct":  100.0 * s_max / denom,
         "err_delta_blob_pct": blob_pct,
         "err_delta_blob_sum_pct": blob_sum_pct,
+        # Cluster-blob: artifact discriminator. Max err where ALL pixels in
+        # a 5x5 window exceed it. Localized clusters survive; scattered
+        # firefly noise gets erased by the local min. Use as the hard-
+        # reject signal for "this variant produces visible artifacts".
+        "err_cluster_blob_pct": cluster_blob_pct,
         # Vanilla baseline at same SPP — side-by-side comparison vs GT, not subtracted.
         "vanilla_err_pct":      van_err_pct,
         "vanilla_err_blob_pct": van_blob_pct,
+        "vanilla_err_cluster_blob_pct": van_cluster_blob_pct,
     }
 
 
 # Gaussian σ for the "max-blob" windowed-max stat on correlated-error maps.
 # ~σ×3 radius (~12 px) captures tile-scale hot spots (16 px tile) coherently.
 ERR_WINDOW_SIGMA = 4.0
+
+# Cluster-blob kernel: max err where every pixel in this window also
+# exceeds it. 5x5 = 25 pixels — single firefly-like outliers don't survive
+# (their neighborhood includes a low-err pixel and the min collapses);
+# clusters of 25+ contiguous bad pixels do. The "this region is uniformly
+# bad" detector — what users perceive as a visible artifact.
+CLUSTER_BLOB_KERNEL = 5
 
 # Larger window for the noise (firefly) blob — fireflies are single-pixel
 # spikes whose bilateral-noise delta is very localized. A wider Gaussian
