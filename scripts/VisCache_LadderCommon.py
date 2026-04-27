@@ -2261,8 +2261,22 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     o = lambda name: _out(captureDir, name, prefix)
     # Raw EXRs live either directly in captureDir (fresh capture) or under
     # captureDir/raw/ (post-archival — when re-running postprocess standalone).
-    exrs = glob.glob(os.path.join(captureDir, f"{vn}.*.exr")) \
-         + glob.glob(os.path.join(captureDir, "raw", f"{vn}.*.exr"))
+    # Filter by the effective-spp suffix (`.<spp>.exr` / `.<spp>.RGBA.exr`) so
+    # repost calls don't mix .1/.4/.16 captures and pull the wrong frame's
+    # mask. Live-render captures only have one SPP per dir so the filter is
+    # a no-op there. spp=None disables the filter (legacy callers).
+    raw_exrs = glob.glob(os.path.join(captureDir, f"{vn}.*.exr")) \
+             + glob.glob(os.path.join(captureDir, "raw", f"{vn}.*.exr"))
+    if spp:
+        suf_plain = f".{spp}.exr"
+        suf_rgba  = f".{spp}.RGBA.exr"
+        exrs = [p for p in raw_exrs if p.endswith(suf_plain) or p.endswith(suf_rgba)]
+        # Tolerate the legacy live-render naming (no SPP suffix) by falling
+        # back to the unfiltered list when no SPP-tagged matches exist.
+        if not exrs:
+            exrs = raw_exrs
+    else:
+        exrs = raw_exrs
 
     # No-data masks: accum (fractional, from count+coldmissRate) vs frame (binary, from hashA+B==0)
     nd_accum = load_diag_mask(exrs, mode="nodata", total_frames=total_frames)
