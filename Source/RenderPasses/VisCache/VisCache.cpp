@@ -82,6 +82,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableVisCacheParentPreinit"))   mParams.enableVisCacheParentPreinit   = props["enableVisCacheParentPreinit"];
     if (props.has("bootThresholdFactorFootprintPx"))                mParams.bootThresholdFactorFootprintPx                = props["bootThresholdFactorFootprintPx"];
     if (props.has("forceDescendFootprintPx"))       mParams.forceDescendFootprintPx       = props["forceDescendFootprintPx"];
+    if (props.has("cascadeWindowForward"))          mParams.cascadeWindowForward          = props["cascadeWindowForward"];
     if (props.has("stderrThreshold"))               mParams.stderrThreshold               = props["stderrThreshold"];
     if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
@@ -139,6 +140,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableVisCacheParentPreinit"))   mParams.enableVisCacheParentPreinit   = props["enableVisCacheParentPreinit"];
     if (props.has("bootThresholdFactorFootprintPx"))                mParams.bootThresholdFactorFootprintPx                = props["bootThresholdFactorFootprintPx"];
     if (props.has("forceDescendFootprintPx"))       mParams.forceDescendFootprintPx       = props["forceDescendFootprintPx"];
+    if (props.has("cascadeWindowForward"))          mParams.cascadeWindowForward          = props["cascadeWindowForward"];
     if (props.has("stderrThreshold"))               mParams.stderrThreshold               = props["stderrThreshold"];
     if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
@@ -407,6 +409,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                        | (mParams.enableVisCacheParentPreinit ? 8u : 0u);
     gpu.bootThresholdFactorFootprintPx = mParams.bootThresholdFactorFootprintPx;
     gpu.forceDescendFootprintPx = mParams.forceDescendFootprintPx;
+    gpu.cascadeWindowForward    = mParams.cascadeWindowForward;
     gpu.stderrThreshold = mParams.stderrThreshold;
     gpu.enableHierarchicalConsistency = mParams.enableHierarchicalConsistency ? 1u : 0u;
     gpu.hierarchicalMuTolerance = mParams.hierarchicalMuTolerance;

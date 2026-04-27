@@ -201,6 +201,8 @@ cbuffer VisCacheParams
     uint   gForceDescendFootprintPx; ///< Cell-footprint (px²) above which vhfLookup always
                                      ///< descends past convergence — defends penumbra at big
                                      ///< near-camera cells. 0 = off (prior early-stop behaviour).
+    uint   gCascadeWindowForward;    ///< Levels finer than targetLvl that vhfLookup visits.
+                                     ///< Default 12. 0 = entry-level-only (debug).
     float  gStderrThreshold;          ///< Bernoulli stderr gate — trust iff sqrt(var/N) ≤ this.
                                       ///< 0 = off (fall back to gVarThreshold).
     uint   gEnableHierarchicalConsistency; ///< 1 = peek next level μ for agreement check.
@@ -785,7 +787,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     // for that pixel. The back-window (kCascadeWindowBack) exists only
     // for INSERT to backfill coarser cells (amortization across nearby
     // pixels), but reads must use cells ≤ target footprint size.
-    static const int kCascadeWindowForward = 12;  // levels finer-than-target
+    int kWindowFwd = int(gCascadeWindowForward);  // runtime-tunable; 0=entry-only debug
     float lookupLogRatio = log(max(gPosAFine, 1e-6f) / max(gPosACoarse, 1e-6f));
 
     int startLvl = 0;
@@ -798,10 +800,10 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
         float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
         int targetLvl = int(round(t * float(gNumLevels - 1u)));
-        // Lookup window: [targetLvl, targetLvl + kCascadeWindowForward].
+        // Lookup window: [targetLvl, targetLvl + kWindowFwd].
         // No back-window — never read coarser-than-target cells.
-        startLvl = clamp(targetLvl,                                 0, int(gNumLevels) - 1);
-        endLvl   = clamp(targetLvl + kCascadeWindowForward + 1,     1, int(gNumLevels));
+        startLvl = clamp(targetLvl,                          0, int(gNumLevels) - 1);
+        endLvl   = clamp(targetLvl + kWindowFwd + 1,         1, int(gNumLevels));
     }
 
     for (int lvl = startLvl; lvl < endLvl; lvl++)

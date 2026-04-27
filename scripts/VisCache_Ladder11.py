@@ -1,29 +1,19 @@
 """
-VisCache_Ladder11.py — Step 11 v3: bayer × cell-footprint matrix.
+VisCache_Ladder11.py - Step 11: entry-level-only debug.
 
-Post-archive restart. Cell-size is the first axis to map. User feedback:
-- bayer 1x1 breaks 1spp (no multiframe averaging)
-- bayer 8x8 is too much (64 slots — wasteful)
-- bayer 2x2 and 4x4 are the practical range
-- cell footprint (fd) should span 1x1 to 8x8 to see "matched vs mismatched"
-  Bayer-cell symmetry effects
+Cascade descent disabled (cascadeWindowForward=0). vhfLookup queries ONLY
+at targetLvl - if no cell exists there or it's too sparse, the lookup
+returns no data (falls through to trace). Isolates whether the entry-
+level math produces correctly-sized cells for different fd values.
 
-Sweep: bayer ∈ {2, 4} × fd ∈ {1, 4, 16, 64} = 8 variants. Single ct=64.
+Same bayer x cell-footprint matrix as step 12 (the cascade-on version),
+so we can compare entry-only vs full-descent side-by-side. If the qA
+hash plates show distinct cell sizes per fd here, the entry-level math
+is right and step 12's "cells look uniform" issue is from cascade
+descent collapsing back to a common level.
 
-  bayer  fd   layout
-  2x2    1×1  bayer larger than cell (4 slots, 1 px cell)
-  2x2    2×2  matched (4 slots, 4 px cell)
-  2x2    4×4  cell larger than bayer
-  2x2    8×8  cell much larger than bayer
-  4x4    1×1  bayer much larger than cell
-  4x4    2×2  bayer larger than cell
-  4x4    4×4  matched (16 slots, 16 px cell)
-  4x4    8×8  cell larger than bayer
-
-Diagonals (matched) and off-diagonals tell us how Bayer-cell symmetry
-matters. After cascade-lookup fix that ensures reads stay at-or-finer
-than entry level, the cell-footprint is the actual cache spatial unit
-the lookup queries.
+Sweep: bayer {2x2, 4x4} x fd {1, 4, 16, 64} = 8 variants. ct calibrated
+per cell size (2 frames to mature, ct=2/8/32/128). cascadeWindowForward=0.
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,14 +35,6 @@ QUANT = QUANT_SWEEP[QUANT_TAG]
 NO_JITTER = {"jitterFilter": 0.0, "jitterCell": 0.0}
 VT = 0.03
 PM = 0.10
-# ct calibrated per cell size: ct = K_FRAMES × cell_pixels.
-# Each cell needs the same number of frames to mature regardless of size:
-#   1x1 cell  →  1 sample/frame  → ct = K_FRAMES × 1
-#   2x2 cell  →  4 samples/frame → ct = K_FRAMES × 4
-#   4x4 cell  → 16 samples/frame → ct = K_FRAMES × 16
-#   8x8 cell  → 64 samples/frame → ct = K_FRAMES × 64
-# K_FRAMES = 2 → mature in 2 logical frames at any cell size. Fair
-# comparison: each variant gets the same opportunity to converge.
 K_FRAMES = 2
 
 BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
@@ -60,16 +42,16 @@ BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
            if v[0] == f"pos_norm__pos__{QUANT_TAG}"]
 
 BAYER_VALUES = [2, 4]
-FD_VALUES    = [1, 4, 16, 64]  # 1x1, 2x2, 4x4, 8x8 cells; cell_pixels = fd
+FD_VALUES    = [1, 4, 16, 64]
 
 VARIANTS_11 = []
 for (base_name, base_overrides) in BASE_11:
     for sub_n in BAYER_VALUES:
         for fd in FD_VALUES:
             cell_n = int(round(fd**0.5))
-            ct = K_FRAMES * fd  # ct ∝ cell pixels — fair maturation time
+            ct = K_FRAMES * fd
             tag = f"bayer{sub_n}x{sub_n}_cell{cell_n}x{cell_n}"
-            VARIANTS_11.append((f"{base_name}__{tag}_ct{ct:03d}_vt0030_pm010", {
+            VARIANTS_11.append((f"{base_name}__{tag}_ct{ct:03d}_vt0030_pm010_entry", {
                 **base_overrides,
                 **NO_JITTER,
                 "bootThreshold":                 ct,
@@ -77,6 +59,7 @@ for (base_name, base_overrides) in BASE_11:
                 "varThreshold":                  VT,
                 "bootThresholdFactorFootprintPx": 0.0,
                 "forceDescendFootprintPx":       fd,
+                "cascadeWindowForward":          0,   # entry-only debug
                 "stderrThreshold":               0.0,
                 "enableHierarchicalConsistency": False,
                 "hierarchicalMuTolerance":       0.20,
@@ -116,11 +99,10 @@ finalize_step(STEP, inherited_winners=[INHERITED],
               ref_label="step-10 carry (qa012/ct4)")
 write_picks_meta(STEP, inherited_from="10", inherited=[INHERITED],
                   carried={}, rule=_DEFAULT_PICKER_RULE,
-                  notes="Bayer × cell footprint matrix. bayer {2x2, 4x4} "
-                        "× cell {1x1, 2x2, 4x4, 8x8} = 8 variants. ct "
-                        "calibrated per-variant as 2 × cell_pixels "
-                        "(ct=2/8/32/128 for cells 1x1/2x2/4x4/8x8) so "
-                        "each cell needs the same 2 frames to mature "
-                        "regardless of size. Tests matched vs mismatched "
-                        "Bayer-cell symmetry on a level playing field.")
+                  notes="Entry-level-only debug: cascadeWindowForward=0 "
+                        "disables cascade descent; vhfLookup queries only "
+                        "at targetLvl. Same bayer x cell matrix as step 12. "
+                        "Compare qA hash plates between step 11 (entry-only) "
+                        "and step 12 (full descent) to verify entry-level "
+                        "math produces distinct cell sizes per fd.")
 _HEADLESS_SCRIPT_DONE = True

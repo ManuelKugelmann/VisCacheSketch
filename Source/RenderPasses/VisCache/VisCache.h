@@ -80,6 +80,9 @@ public:
                                           ///< to stop on convergence — always descends to finer
                                           ///< levels. Defends hard-shadow penumbra at big near-
                                           ///< camera cells. 0 = off.
+        uint32_t cascadeWindowForward;    ///< Levels finer than targetLvl the lookup will visit.
+                                          ///< Default 12 — cascade descends up to 12 levels finer.
+                                          ///< 0 = entry-level-only (no descent) for debugging.
         float    stderrThreshold;         ///< Bernoulli standard-error gate: trust only when
                                           ///< sqrt(var/N) ≤ stderrThreshold. 0 = off (falls back
                                           ///< to varThreshold). Principled replacement for vt:
@@ -178,6 +181,9 @@ public:
         bool     enableVisCacheParentPreinit  = false; ///< §5 Parent-preinit: seed new child slot with (parentVis>>3, parentTotal>>3) on first claim.
         float    bootThresholdFactorFootprintPx              = 1.0f; ///< K: Footprint trust scale (floor = k*log2(cellPx)).
                                                       ///< 0 disables (equivalent to prior fpOff).
+        uint32_t cascadeWindowForward        = 12u;   ///< Levels finer than targetLvl that vhfLookup
+                                                      ///< visits during cascade descent. 0 = entry-only
+                                                      ///< (debug; isolates targetLvl correctness).
         uint32_t forceDescendFootprintPx     = 0u;    ///< Cell-footprint (px²) ceiling for convergence
                                                       ///< early-stop in vhfLookup. Cells with cellPx above
                                                       ///< this threshold are not allowed to short-circuit
