@@ -812,6 +812,17 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         int3 qa, qb;
         vhfQuantizePair(posA, posB, cs, uint(lvl), qa, qb, normalA);
 
+        // Always record the queried cell coords/level into best.qa/qb/level
+        // even if no entry exists yet — diag visualization uses these to
+        // show the cell SIZE that was queried (not lvl 0 fallback). The
+        // best.valid flag remains false until a mature entry is found, so
+        // the trust path is unaffected.
+        if (!best.valid) {
+            best.qa    = qa;
+            best.qb    = qb;
+            best.level = lvl;
+        }
+
         uint fp   = vhfFingerprint(qa, qb, uint(lvl), uint(lvl), uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl), uint(lvl), uint(lvl));
         uint lvlProbe;
@@ -1023,7 +1034,11 @@ struct VHFGateResult
     float mu;           ///< Cached visibility mean (passed through to vhfCommit)
     float invP;         ///< 1/p (passed through to vhfCommit for CV+RRR weight)
     float var;          ///< Cached variance mu*(1-mu) (diagnostics)
-    int   level;        ///< LOD level used, -1 = miss (diagnostics)
+    int   level;        ///< LOD level QUERIED (always set; valid_data flags whether
+                        ///< an actual entry was found at that level for trust).
+    bool  valid_data;   ///< true = mature entry found at level (trust path);
+                        ///< false = no entry / sparse cell (level still set to
+                        ///< the queried level for diag visualization).
     uint  N;            ///< Total sample count at matched level (diagnostics)
     uint  probeSteps;   ///< Hash probe steps (diagnostics — collision pressure)
     int3  qa;           ///< Quantized posA cell coords (diagnostics — hash grid vis)
@@ -1062,6 +1077,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.invP        = 1.f;
         g.var         = r.var;
         g.level       = r.level;
+        g.valid_data  = r.valid;
         g.N           = r.N;
         g.probeSteps  = r.probeSteps;
         return g;
@@ -1078,7 +1094,8 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
         g.mu          = r.mu;     // immature mu if entry exists, 0.5 if no entry
         g.invP        = 1.f;
         g.var         = r.var;    // immature var if entry exists, 0.125 if no entry
-        g.level       = r.level;  // -1 if truly no entry, else immature level
+        g.level       = r.level;  // queried level (always set, even if no entry)
+        g.valid_data  = false;
         g.N           = r.N;      // 0 if no entry, else immature sample count
         g.probeSteps  = r.probeSteps;
         return g;
@@ -1120,6 +1137,7 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
     // Pass through diagnostic fields from the lookup result.
     g.var         = r.var;
     g.level       = r.level;
+    g.valid_data  = r.valid;
     g.N           = r.N;
     g.probeSteps  = r.probeSteps;
 

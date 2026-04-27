@@ -43,7 +43,10 @@ RWTexture2D<uint>   gVCAccumTotal;                         ///< Internal: per-pi
 void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
                   float3 posA, float3 posB)
 {
-    bool noEntry = (g.level < 0);
+    // noEntry = no mature/trusted entry was found at the lookup level. The
+    // queried cell coords (g.qa/qb) and level (g.level) ARE always set —
+    // diag visualization can show what was queried even on cold misses.
+    bool noEntry = !g.valid_data;
     float diagVar = noEntry ? 0.f : g.var;
     float coldmiss = noEntry ? 1.f : 0.f;
 
@@ -72,8 +75,10 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
             coldmiss                                                             // A: cold miss
         );
 
-        // Hash vis at the cascade-selected level (qa/qb from vhfLookup).
-        uint diagLvl = noEntry ? 0u : uint(g.level);
+        // Hash vis at the queried level (g.level reflects the lookup's
+        // entry level even when no entry was found, so visualization shows
+        // the cell SIZE that was queried, not a coarse-fallback).
+        uint diagLvl = uint(max(g.level, 0));
         uint posAHash = pcgHashA(g.qa, diagLvl);
         uint posBHash = pcgHashB(g.qb, diagLvl);
         uint combinedHash = posAHash ^ posBHash ^ pcgHashDist(diagLvl);
