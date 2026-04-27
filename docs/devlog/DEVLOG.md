@@ -329,9 +329,14 @@ This step required two infrastructure fixes that surfaced from the camera-render
 
 (format: rays_traced_pct / blob_pct; **bold** = above artifact threshold of 10)
 
-**The cache is usable at x1/x4 on every scene.** x16 is split: Cornell scenes work, BistroInterior/Exterior/Sponza land at blob 14–16. The remaining x16 blob is **structural fireflies**: vanilla x16 captures bright path-traced singular samples (caustics, glossy interreflections) which the cache averages out across the cell. The signed-positive `blob_pct` reports this gap. No trust gate, decay, cell sizing, or temporal mechanism can fix it because the cache architecture fundamentally trades fireflies for smoothness — that's the design intent. See `feedback_blob_artifact_threshold` and `project_x16_firefly_floor` memories.
+> **Metric correction (post-step-25):** the table above used the original signed-delta-vs-vanilla blob metric, which inherits vanilla's per-SPP sampling noise. After fixing the metric to **absolute err vs x4096 GT** (commits `0ad0e12` + `06a7fe1` + `ccc4708`) and reposting all steps, the ladder reads quite differently:
+>
+> - **The cache wins on bias-dominated scenes** (Cornell 32PL, Bistro, Sponza) at every SPP. Step-18 ct=128 vs step-17 vt=0.03 baseline on BiE x4: cache_err 14.48 → 13.69; on Sponza x4: 6.04 → 4.96. Real cumulative improvements through the ladder.
+> - **The cache is roughly tied with vanilla on Cornell 1PL** at low SPP and *slightly worse* at x16 (cache 0.34 vs vanilla 0.14 abs OkLab err) — vanilla converges fast on a single point light, cache adds a small bias from cell-averaging.
+> - **BistroInterior x16** is precisely tied (cache 11.05 vs vanilla 11.14) — the firefly story still holds; both are equally far from GT, and the old metric's "blob 14.6" was reporting *the noise pattern of the comparison*, not real cache degradation.
+> - The "blob 14.6 invariant" finding from steps 19–24 was largely a metric artifact: pMin / fp / HC / cell-size / accelDecay all looked like no-ops because they couldn't move a number that was anchored to vanilla's noise. Under the new metric, they still mostly tie, but step 18's ct=128 was a real breakthrough (clear absolute error reduction on every bias scene).
 
-**Practical conclusion:** the cache provides a real Pareto win at x4 across all scenes (BistroExterior x4: blob 0.2 at 81% rays; Cornell 1PL x4: blob 9.6 at 8% rays — 92% ray savings). At x16 on bias-dominated scenes, the cache is fundamentally "smoother but firefly-poor"; the artifact metric reports this honestly, but it's a property of averaging-based prediction, not a tuning failure.
+**Practical conclusion (corrected):** the cache is a **bias-scene specialist**. It substantially reduces absolute error on multi-light, dense-bounce, and indirect-heavy scenes (32PL/Bistro/Sponza). It is roughly neutral on simple direct-light scenes (Cornell 1PL) where vanilla is already near GT — there the cache adds a small bias from cell-averaging. The artifact threshold logic from earlier (blob > 10 = unusable) remains useful at x1/x4 but shouldn't be applied to x16 where vanilla itself often has blob ≥ 10 on the bias scenes.
 
 Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination
 (maxBounces > 0) are deferred to a separate **temporal-policy ladder** stage
