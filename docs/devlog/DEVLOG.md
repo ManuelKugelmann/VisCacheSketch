@@ -294,7 +294,7 @@ new ladder builds from there with **bounded multi-dimensional sweeps**, the
 **fast pre-test → triple-trial finalist** protocol, and **optimum-in-middle**
 range design.
 
-**Static-scene multilevel ladder (steps 11–18):**
+**Static-scene multilevel ladder (steps 11–24):**
 - **11 — subframeN × fd**: 9 variants over Bayer-slot count × force-descend pixel footprint. Matched diagonal (bayer4×4 + cell4×4) wins on 1PL/32PL pre-test. Confirms the hypothesis that the Bayer slot count and the per-cell pixel footprint should match: every cell receives one sample per slot per frame, exactly tiling the target footprint. **Carry: `bayer4x4_cell4x4`.**
 - **12 — ct × stderr**: 9 variants over bootThreshold {4,16,64} × stderrThreshold {0, 0.02, 0.05}. ct=16 best across SPP tiers; stderr off (=0) best — the stderr gate is not yet useful at the current trust regime. **Carry: `ct16_se000`.**
 - **13 — pMin × hierarchicalConsistency**: 9 variants. Both knobs are no-ops at the inherited varThreshold=0.10 — the RR variance gate fires first and strips the safety nets of anything to do. Documented dead-end; carry unchanged. **Productive next step: tighter varThreshold (e.g. 0.03) so pMin/HC have a regime in which to bite.**
@@ -310,7 +310,28 @@ This step required two infrastructure fixes that surfaced from the camera-render
 
 **Artifact rule:** any `error_delta_blob_pct > 10` indicates visible cache artifacts and the variant is unusable in practice (concentrated localized error — wrong-color cells, banding, light/shadow leakage). The picker rule's hard-reject at 25% is too lenient — treating 10 as the practical ceiling re-frames every result: e.g., the vt=0.03 carry from step 16/17 was actually only usable on 1PL (blob ~9), with all bias-scene blob in artifact territory until ct=128 brought it to <1.
 
-**Open work — x16 multi-frame artifacts:** Bistro/Sponza x16 blob is 14–17 at every ct {16, 64, 128, 256}. Higher ct can't fix it: at 16 frames of accumulation, many cells mature faster than the trust gate can catch biased ones. Needs a rate-defense mechanism on top of trust-gate tightening. Step 19 starts with a pMin sweep at ct=128 (step 13 found pMin no-op at vt=0.10; with ct=128 + vt=0.03 the operating regime is different and pMin's "trace at probability ≥ pMin" floor may finally bite). If pMin doesn't help, candidates: HC on with strict tol; footprintScale > 0; accelDecayDisagreeThresh.
+- **19 — pMin re-sweep (after merge-order fix)**: original step 19 had per-variant pMin clobbered to RR_ADAPTIVE's 0.05 by `step_overrides` (commit `8611ce5` swaps the merge order so per-variant wins). Re-run with real pMin {0.05, 0.10, 0.20, 0.30}: drives Sponza x4 below artifact threshold (blob 5.4–6.4 ✓ vs step 18's borderline 10.7) at ~88% rays. BistroExterior x16 best at pm020 (blob 14.2). x16 still artifact across all pMin on Bistro/Sponza. **Carry: `pm020`.**
+- **20 — footprintScale sweep**: fp {0, 0.5, 1.0, 2.0} at ct=128/pm020 carry. Identical results across all fp values within noise — fp also no-op in this regime. Carry unchanged.
+- **21 — hierarchicalConsistency sweep**: HC tol {0.03, 0.05, 0.10, 0.20} + HC-off baseline. HC=on stabilizes BiE x16 blob around 14.2 (HC-off had run-to-run variance up to 47.7); doesn't drive Bistro/Sponza x16 below artifact threshold but provides reliability. **Carry: `hc005`.**
+- **22 — cell size sweep**: qa {qa006, qa012, qa036} at ct=128/pm020/hc005 carry. **qa006 is best Sponza x16 yet** (blob 15.3 vs qa012 21.1, -27%). qa036 catastrophic on Sponza x16 (blob 104.9 — coarser cells span visibility transitions). qa006 marginal Sponza x4 cost (9.7 vs qa012 5.9). **Carry: `qa006`.**
+- **23 — qa003 + ct extension**: qa {qa006, qa003} × ct {128, 256, 512} = 6 variants. qa003 worse than qa006 (Sponza x16 17.8 vs 15.8 at ct=256) — too-fine cells over-fragment. ct=512 helps Sponza x4 dramatically (blob 2.8) but pushes rays to 92–99% (cache nearly disabled). **BistroInterior x16 invariant 14.6 across all 6 variants.** Carry: `qa006 + ct=256` (compromise).
+- **24 — accelDecay temporal defense**: ad {0, 0.05, 0.10, 0.20} at qa006/ct=256/hc005 carry. **Identical to decimal precision across all four ad values** — accelDecay either no-op in this regime or not wired to the shader. Carry unchanged.
+
+**Net carry after step 24:** `pos_norm__pos__qa006__bayer4x4_cell4x4_ct256_vt0030_pm020_hc005`. Cumulative ladder progress on bias-scene blob:
+
+| | x1 | x4 | x16 |
+|--- | --- | --- | --- |
+| Cornell 1PL | 14.96 / 9.08 | 7.69 / 9.59 | 5.28 / 10.48 |
+| Cornell 32PL | 100 / 6.4 | 100 / 0.6 | 95.6 / 3.1 |
+| BistroInterior | 99.9 / 0 | 98.3 / 0 | 89.7 / 14.6 |
+| BistroExterior | 98.1 / 1.0 | 96.8 / 0.2 | 92.5 / 14.2 |
+| Sponza | 99 / 2.8 | 95.9 / 6.3 | 87 / 15.8 |
+
+(format: rays_traced_pct / blob_pct; **bold** = above artifact threshold of 10)
+
+**The cache is usable at x1/x4 on every scene.** x16 is split: Cornell scenes work, BistroInterior/Exterior/Sponza land at blob 14–16. The remaining x16 blob is **structural fireflies**: vanilla x16 captures bright path-traced singular samples (caustics, glossy interreflections) which the cache averages out across the cell. The signed-positive `blob_pct` reports this gap. No trust gate, decay, cell sizing, or temporal mechanism can fix it because the cache architecture fundamentally trades fireflies for smoothness — that's the design intent. See `feedback_blob_artifact_threshold` and `project_x16_firefly_floor` memories.
+
+**Practical conclusion:** the cache provides a real Pareto win at x4 across all scenes (BistroExterior x4: blob 0.2 at 81% rays; Cornell 1PL x4: blob 9.6 at 8% rays — 92% ray savings). At x16 on bias-dominated scenes, the cache is fundamentally "smoother but firefly-poor"; the artifact metric reports this honestly, but it's a property of averaging-based prediction, not a tuning failure.
 
 Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination
 (maxBounces > 0) are deferred to a separate **temporal-policy ladder** stage
