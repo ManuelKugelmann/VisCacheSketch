@@ -42,17 +42,14 @@ CT_INH = 128
 VT_INH = 0.03
 PM_INH = 0.20
 
-# (qa_tag, posA, posB, dirB, distB) — keep posB/dirB/distB at the qa012 baseline
-QA_CONFIGS = [
-    ("qa012", 0.12, 0.12, 0.0, 0.0),
-    ("qa024", 0.24, 0.24, 0.0, 0.0),
-    ("qa048", 0.48, 0.48, 0.0, 0.0),
-]
+# Sweep top-of-cascade cell size. QUANT_SWEEP keys are qa006 (finest),
+# qa012 (current carry), qa036 (coarser). Smaller posA = finer cells.
+# Format keys: posA / normalA / posB / dirB / distB (not the *Coarse names).
+QA_TAGS = ["qa006", "qa012", "qa036"]
 
 VARIANTS_22 = []
-for qa_tag, posA, posB, dirB, distB in QA_CONFIGS:
-    quant = {"posACoarse": posA, "posBCoarse": posB,
-             "dirBCoarse": dirB, "distBCoarse": distB}
+for qa_tag in QA_TAGS:
+    quant = QUANT_SWEEP[qa_tag]
     base_list = make_norm_variants(quant=quant, base=PRESET_MINIMAL,
                                     quant_tag=qa_tag)
     base = next(v for v in base_list if v[0] == f"pos_norm__pos__{qa_tag}")
