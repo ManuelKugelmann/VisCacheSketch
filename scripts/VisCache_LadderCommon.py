@@ -344,15 +344,19 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                "mean_level", "min_level", "max_level",
                "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
                "error_delta_blob_pct", "error_delta_blob_sum_pct",
-               # Cluster-blob: sustained-artifact discriminator. Max err
-               # where every pixel in a 5x5 window also exceeds it. Single
-               # firefly outliers vanish; localized clusters dominate.
-               # Used as the picker's hard-reject signal.
-               "error_artifact_pct",
+               # Median-based artifact metric at three spatial scales. Each
+               # is the max err where the median of a NxN neighborhood is
+               # at least that high — i.e. there's a region of size NxN
+               # where the MAJORITY of pixels are above this err level.
+               # Robust to firefly outliers (a single low pixel in the
+               # window doesn't drop the score). 3x3 = compact hot spots,
+               # 5x5 = cell-sized artifacts, 11x11 = sustained wrong regions.
+               # Used as picker hard-reject ("no visible artifacts" rule).
+               "error_artifact_3_pct", "error_artifact_5_pct", "error_artifact_11_pct",
                # Vanilla baseline at the same SPP — absolute err vs GT, for
                # side-by-side comparison (not subtracted from cache numbers).
                "vanilla_err_pct", "vanilla_err_blob_pct",
-               "vanilla_err_artifact_pct",
+               "vanilla_err_artifact_3_pct", "vanilla_err_artifact_5_pct", "vanilla_err_artifact_11_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
                "noise_delta_blob_pct",
                "timestamp"]
@@ -369,8 +373,12 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      error_delta_blob_sum_pct=None,
                      min_level=None, max_level=None,
                      vanilla_err_pct=None, vanilla_err_blob_pct=None,
-                     error_artifact_pct=None,
-                     vanilla_err_artifact_pct=None):
+                     error_artifact_3_pct=None,
+                     error_artifact_5_pct=None,
+                     error_artifact_11_pct=None,
+                     vanilla_err_artifact_3_pct=None,
+                     vanilla_err_artifact_5_pct=None,
+                     vanilla_err_artifact_11_pct=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -406,10 +414,14 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "error_delta_max_pct":  f"{error_delta_max_pct:.4f}"  if error_delta_max_pct  is not None else "",
         "error_delta_blob_pct": f"{error_delta_blob_pct:.4f}" if error_delta_blob_pct is not None else "",
         "error_delta_blob_sum_pct": f"{error_delta_blob_sum_pct:.4f}" if error_delta_blob_sum_pct is not None else "",
-        "error_artifact_pct":   f"{error_artifact_pct:.4f}" if error_artifact_pct is not None else "",
+        "error_artifact_3_pct":  f"{error_artifact_3_pct:.4f}"  if error_artifact_3_pct  is not None else "",
+        "error_artifact_5_pct":  f"{error_artifact_5_pct:.4f}"  if error_artifact_5_pct  is not None else "",
+        "error_artifact_11_pct": f"{error_artifact_11_pct:.4f}" if error_artifact_11_pct is not None else "",
         "vanilla_err_pct":      f"{vanilla_err_pct:.4f}"      if vanilla_err_pct      is not None else "",
         "vanilla_err_blob_pct": f"{vanilla_err_blob_pct:.4f}" if vanilla_err_blob_pct is not None else "",
-        "vanilla_err_artifact_pct": f"{vanilla_err_artifact_pct:.4f}" if vanilla_err_artifact_pct is not None else "",
+        "vanilla_err_artifact_3_pct":  f"{vanilla_err_artifact_3_pct:.4f}"  if vanilla_err_artifact_3_pct  is not None else "",
+        "vanilla_err_artifact_5_pct":  f"{vanilla_err_artifact_5_pct:.4f}"  if vanilla_err_artifact_5_pct  is not None else "",
+        "vanilla_err_artifact_11_pct": f"{vanilla_err_artifact_11_pct:.4f}" if vanilla_err_artifact_11_pct is not None else "",
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
         "noise_delta_min_pct":  f"{noise_delta_min_pct:.4f}"  if noise_delta_min_pct  is not None else "",
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
@@ -2459,10 +2471,14 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["error_delta_max_pct"]  = r["err_delta_max_pct"]
             stats["error_delta_blob_pct"] = r.get("err_delta_blob_pct")
             stats["error_delta_blob_sum_pct"] = r.get("err_delta_blob_sum_pct")
-            stats["error_artifact_pct"]   = r.get("err_artifact_pct")
+            stats["error_artifact_3_pct"]  = r.get("err_artifact_3_pct")
+            stats["error_artifact_5_pct"]  = r.get("err_artifact_5_pct")
+            stats["error_artifact_11_pct"] = r.get("err_artifact_11_pct")
             stats["vanilla_err_pct"]      = r.get("vanilla_err_pct")
             stats["vanilla_err_blob_pct"] = r.get("vanilla_err_blob_pct")
-            stats["vanilla_err_artifact_pct"] = r.get("vanilla_err_artifact_pct")
+            stats["vanilla_err_artifact_3_pct"]  = r.get("vanilla_err_artifact_3_pct")
+            stats["vanilla_err_artifact_5_pct"]  = r.get("vanilla_err_artifact_5_pct")
+            stats["vanilla_err_artifact_11_pct"] = r.get("vanilla_err_artifact_11_pct")
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
@@ -2555,8 +2571,12 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         max_level=stats.get("max_level"),
         vanilla_err_pct=stats.get("vanilla_err_pct"),
         vanilla_err_blob_pct=stats.get("vanilla_err_blob_pct"),
-        error_artifact_pct=stats.get("error_artifact_pct"),
-        vanilla_err_artifact_pct=stats.get("vanilla_err_artifact_pct"),
+        error_artifact_3_pct=stats.get("error_artifact_3_pct"),
+        error_artifact_5_pct=stats.get("error_artifact_5_pct"),
+        error_artifact_11_pct=stats.get("error_artifact_11_pct"),
+        vanilla_err_artifact_3_pct=stats.get("vanilla_err_artifact_3_pct"),
+        vanilla_err_artifact_5_pct=stats.get("vanilla_err_artifact_5_pct"),
+        vanilla_err_artifact_11_pct=stats.get("vanilla_err_artifact_11_pct"),
     )
 
     stats["variant"] = variant_name
