@@ -45,27 +45,35 @@ QUANT = QUANT_SWEEP[QUANT_TAG]
 NO_JITTER = {"jitterFilter": 0.0, "jitterCell": 0.0}
 VT = 0.03
 PM = 0.10
-CT = 64
+# ct calibrated per cell size: ct = K_FRAMES × cell_pixels.
+# Each cell needs the same number of frames to mature regardless of size:
+#   1x1 cell  →  1 sample/frame  → ct = K_FRAMES × 1
+#   2x2 cell  →  4 samples/frame → ct = K_FRAMES × 4
+#   4x4 cell  → 16 samples/frame → ct = K_FRAMES × 16
+#   8x8 cell  → 64 samples/frame → ct = K_FRAMES × 64
+# K_FRAMES = 2 → mature in 2 logical frames at any cell size. Fair
+# comparison: each variant gets the same opportunity to converge.
+K_FRAMES = 2
 
 BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
                                           quant_tag=QUANT_TAG)
            if v[0] == f"pos_norm__pos__{QUANT_TAG}"]
 
-# bayer subframeN ∈ {2, 4}, cell footprint fd ∈ {1, 4, 16, 64} = NxN where N ∈ {1,2,4,8}
 BAYER_VALUES = [2, 4]
-FD_VALUES    = [1, 4, 16, 64]  # 1x1, 2x2, 4x4, 8x8
+FD_VALUES    = [1, 4, 16, 64]  # 1x1, 2x2, 4x4, 8x8 cells; cell_pixels = fd
 
 VARIANTS_11 = []
 for (base_name, base_overrides) in BASE_11:
     for sub_n in BAYER_VALUES:
         for fd in FD_VALUES:
             cell_n = int(round(fd**0.5))
+            ct = K_FRAMES * fd  # ct ∝ cell pixels — fair maturation time
             tag = f"bayer{sub_n}x{sub_n}_cell{cell_n}x{cell_n}"
-            VARIANTS_11.append((f"{base_name}__{tag}_ct064_vt0030_pm010", {
+            VARIANTS_11.append((f"{base_name}__{tag}_ct{ct:03d}_vt0030_pm010", {
                 **base_overrides,
                 **NO_JITTER,
-                "bootThreshold":                 CT,
-                "matureThreshold":               max(128, CT),
+                "bootThreshold":                 ct,
+                "matureThreshold":               max(128, ct * 2),
                 "varThreshold":                  VT,
                 "bootThresholdFactorFootprintPx": 0.0,
                 "forceDescendFootprintPx":       fd,
@@ -109,8 +117,10 @@ finalize_step(STEP, inherited_winners=[INHERITED],
 write_picks_meta(STEP, inherited_from="10", inherited=[INHERITED],
                   carried={}, rule=_DEFAULT_PICKER_RULE,
                   notes="Bayer × cell footprint matrix. bayer {2x2, 4x4} "
-                        "× cell {1x1, 2x2, 4x4, 8x8} = 8 variants at "
-                        "ct=64/vt=0.03/pm=0.10. Tests matched vs "
-                        "mismatched symmetry under the corrected cascade-"
-                        "lookup window.")
+                        "× cell {1x1, 2x2, 4x4, 8x8} = 8 variants. ct "
+                        "calibrated per-variant as 2 × cell_pixels "
+                        "(ct=2/8/32/128 for cells 1x1/2x2/4x4/8x8) so "
+                        "each cell needs the same 2 frames to mature "
+                        "regardless of size. Tests matched vs mismatched "
+                        "Bayer-cell symmetry on a level playing field.")
 _HEADLESS_SCRIPT_DONE = True
