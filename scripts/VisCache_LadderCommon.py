@@ -2272,8 +2272,9 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     stats = {"rays_traced_pct": -1.0, "coldmiss_pct": -1.0, "mean_level": None,
              "min_level": None, "max_level": None,
              "error_delta_pct": None, "error_delta_min_pct": None, "error_delta_max_pct": None,
-             "error_delta_blob_pct": None,
-             "noise_delta_pct": None, "noise_delta_min_pct": None, "noise_delta_max_pct": None}
+             "error_delta_blob_pct": None, "error_delta_blob_sum_pct": None,
+             "noise_delta_pct": None, "noise_delta_min_pct": None, "noise_delta_max_pct": None,
+             "noise_delta_blob_pct": None}
     from viscache_exr import read_exr
     import numpy as np
     # Rays traced ratio from accumulated texture (masked to queried pixels)
