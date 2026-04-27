@@ -590,7 +590,7 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
     # also exceeds it. Single-pixel firefly noise is dropped; sustained
     # localized artifacts dominate. This is the "is this an artifact"
     # discriminator — preferred for hard-reject in the picker rule.
-    cluster_eroded = _min_filter_2d(err_render, CLUSTER_BLOB_KERNEL)
+    cluster_eroded = _min_filter_2d(err_render, ARTIFACT_KERNEL)
     cmasked = np.where(mask, cluster_eroded, np.nan)
     try:
         cluster_peak = float(np.nanmax(cmasked))
@@ -612,7 +612,7 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         except (ValueError, RuntimeWarning):
             van_blob_peak = 0.0
         van_blob_pct = 100.0 * max(0.0, van_blob_peak) / max(denom, 1e-6)
-        van_cluster = _min_filter_2d(err_vanilla, CLUSTER_BLOB_KERNEL)
+        van_cluster = _min_filter_2d(err_vanilla, ARTIFACT_KERNEL)
         van_cmasked = np.where(mask, van_cluster, np.nan)
         try:
             van_cluster_peak = float(np.nanmax(van_cmasked))
@@ -635,11 +635,11 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         # a 5x5 window exceed it. Localized clusters survive; scattered
         # firefly noise gets erased by the local min. Use as the hard-
         # reject signal for "this variant produces visible artifacts".
-        "err_cluster_blob_pct": cluster_blob_pct,
+        "err_artifact_pct": cluster_blob_pct,
         # Vanilla baseline at same SPP — side-by-side comparison vs GT, not subtracted.
         "vanilla_err_pct":      van_err_pct,
         "vanilla_err_blob_pct": van_blob_pct,
-        "vanilla_err_cluster_blob_pct": van_cluster_blob_pct,
+        "vanilla_err_artifact_pct": van_cluster_blob_pct,
     }
 
 
@@ -652,7 +652,7 @@ ERR_WINDOW_SIGMA = 4.0
 # (their neighborhood includes a low-err pixel and the min collapses);
 # clusters of 25+ contiguous bad pixels do. The "this region is uniformly
 # bad" detector — what users perceive as a visible artifact.
-CLUSTER_BLOB_KERNEL = 5
+ARTIFACT_KERNEL = 5
 
 # Larger window for the noise (firefly) blob — fireflies are single-pixel
 # spikes whose bilateral-noise delta is very localized. A wider Gaussian

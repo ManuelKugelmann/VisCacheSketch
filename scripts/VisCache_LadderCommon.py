@@ -348,11 +348,11 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                # where every pixel in a 5x5 window also exceeds it. Single
                # firefly outliers vanish; localized clusters dominate.
                # Used as the picker's hard-reject signal.
-               "error_cluster_blob_pct",
+               "error_artifact_pct",
                # Vanilla baseline at the same SPP — absolute err vs GT, for
                # side-by-side comparison (not subtracted from cache numbers).
                "vanilla_err_pct", "vanilla_err_blob_pct",
-               "vanilla_err_cluster_blob_pct",
+               "vanilla_err_artifact_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
                "noise_delta_blob_pct",
                "timestamp"]
@@ -369,8 +369,8 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      error_delta_blob_sum_pct=None,
                      min_level=None, max_level=None,
                      vanilla_err_pct=None, vanilla_err_blob_pct=None,
-                     error_cluster_blob_pct=None,
-                     vanilla_err_cluster_blob_pct=None):
+                     error_artifact_pct=None,
+                     vanilla_err_artifact_pct=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -406,10 +406,10 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "error_delta_max_pct":  f"{error_delta_max_pct:.4f}"  if error_delta_max_pct  is not None else "",
         "error_delta_blob_pct": f"{error_delta_blob_pct:.4f}" if error_delta_blob_pct is not None else "",
         "error_delta_blob_sum_pct": f"{error_delta_blob_sum_pct:.4f}" if error_delta_blob_sum_pct is not None else "",
-        "error_cluster_blob_pct":   f"{error_cluster_blob_pct:.4f}" if error_cluster_blob_pct is not None else "",
+        "error_artifact_pct":   f"{error_artifact_pct:.4f}" if error_artifact_pct is not None else "",
         "vanilla_err_pct":      f"{vanilla_err_pct:.4f}"      if vanilla_err_pct      is not None else "",
         "vanilla_err_blob_pct": f"{vanilla_err_blob_pct:.4f}" if vanilla_err_blob_pct is not None else "",
-        "vanilla_err_cluster_blob_pct": f"{vanilla_err_cluster_blob_pct:.4f}" if vanilla_err_cluster_blob_pct is not None else "",
+        "vanilla_err_artifact_pct": f"{vanilla_err_artifact_pct:.4f}" if vanilla_err_artifact_pct is not None else "",
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
         "noise_delta_min_pct":  f"{noise_delta_min_pct:.4f}"  if noise_delta_min_pct  is not None else "",
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
@@ -2459,10 +2459,10 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["error_delta_max_pct"]  = r["err_delta_max_pct"]
             stats["error_delta_blob_pct"] = r.get("err_delta_blob_pct")
             stats["error_delta_blob_sum_pct"] = r.get("err_delta_blob_sum_pct")
-            stats["error_cluster_blob_pct"]   = r.get("err_cluster_blob_pct")
+            stats["error_artifact_pct"]   = r.get("err_artifact_pct")
             stats["vanilla_err_pct"]      = r.get("vanilla_err_pct")
             stats["vanilla_err_blob_pct"] = r.get("vanilla_err_blob_pct")
-            stats["vanilla_err_cluster_blob_pct"] = r.get("vanilla_err_cluster_blob_pct")
+            stats["vanilla_err_artifact_pct"] = r.get("vanilla_err_artifact_pct")
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
@@ -2555,8 +2555,8 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         max_level=stats.get("max_level"),
         vanilla_err_pct=stats.get("vanilla_err_pct"),
         vanilla_err_blob_pct=stats.get("vanilla_err_blob_pct"),
-        error_cluster_blob_pct=stats.get("error_cluster_blob_pct"),
-        vanilla_err_cluster_blob_pct=stats.get("vanilla_err_cluster_blob_pct"),
+        error_artifact_pct=stats.get("error_artifact_pct"),
+        vanilla_err_artifact_pct=stats.get("vanilla_err_artifact_pct"),
     )
 
     stats["variant"] = variant_name
