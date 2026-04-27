@@ -2409,10 +2409,18 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     baseline_dir = os.path.join(os.path.dirname(captureDir), "..", "00", scene_name)
 
     # Find variant's HDR EXR (pre-tonemapper) — either live or archived.
-    variant_hdr = find_exr(
-        glob.glob(os.path.join(captureDir, f"{vn}.*"))
-      + glob.glob(os.path.join(captureDir, "raw", f"{vn}.*")),
-        "AccumulatePass.output")
+    # The reusable `exrs` list above is already SPP-filtered; if a match is
+    # there, prefer it. Fall back to a fresh glob (legacy live captures
+    # without the SPP suffix) only if no SPP-tagged AccumulatePass EXR was
+    # found — preventing a same-name variant's .1.exr from being read for
+    # an x4/x16 row (was producing identical cache_err across SPP because
+    # all rows ended up reading the .1 EXR).
+    variant_hdr = find_exr(exrs, "AccumulatePass.output")
+    if variant_hdr is None:
+        variant_hdr = find_exr(
+            glob.glob(os.path.join(captureDir, f"{vn}.*"))
+          + glob.glob(os.path.join(captureDir, "raw", f"{vn}.*")),
+            "AccumulatePass.output")
 
     # GT baselines for both error (signed Δ) and noise (absolute).
     gt_baselines = sorted(glob.glob(os.path.join(baseline_dir, "*_vanilla_hdr.exr")))
