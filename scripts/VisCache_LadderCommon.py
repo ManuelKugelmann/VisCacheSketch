@@ -2562,7 +2562,13 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
     all_stats = []
     for (variant_name, overrides) in variants:
         if step_overrides:
-            overrides = {**overrides, **step_overrides}
+            # step_overrides applies step-level defaults (RR mode, cascade
+            # config, table capacity); per-variant overrides explicitly tag
+            # the swept axis (pMin, vt, ct, fp). Per-variant must win — the
+            # earlier merge order silently clobbered every per-variant pMin
+            # setting with RR_ADAPTIVE's pMin=0.05 floor, invalidating the
+            # pMin sweeps in steps 13/16/19 (all variants ran at pMin=0.05).
+            overrides = {**step_overrides, **overrides}
         for fc_entry in frame_configs:
             # Frame config: (warmupFirst, warmupRun, frames, [spp=1])
             # warmupFirst: Bayer slots [0, warmupFirst) are write-only in frame 0
