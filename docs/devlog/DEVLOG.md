@@ -336,9 +336,11 @@ This step required two infrastructure fixes that surfaced from the camera-render
 > - **BistroInterior x16** is precisely tied (cache 11.05 vs vanilla 11.14) — the firefly story still holds; both are equally far from GT, and the old metric's "blob 14.6" was reporting *the noise pattern of the comparison*, not real cache degradation.
 > - The "blob 14.6 invariant" finding from steps 19–24 was largely a metric artifact: pMin / fp / HC / cell-size / accelDecay all looked like no-ops because they couldn't move a number that was anchored to vanilla's noise. Under the new metric, they still mostly tie, but step 18's ct=128 was a real breakthrough (clear absolute error reduction on every bias scene).
 
-**Practical conclusion (corrected, post-step-25 + Cornell validation of ct=128 carry):**
+**Practical conclusion (final, with multi-scale artifact metric and merge-order fix):**
 
-Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct16_vt003_pm010`** — the ct=16 lane of step 18, equivalently the step-16/17 carry. Wins absolute err vs vanilla on every Cornell scene at every SPP (only Cornell 1PL x16 ties within ~7%), wins at every SPP on Bistro and Sponza. Ray cost ~25% on simple scenes, ~50% on bias scenes.
+Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct016_vt0030_pm010`** — the ct=16 lane of step 18 (post-merge-fix). Pareto-clean across all 5 scenes under the median-based artifact metric (a3/a5/a11 below vanilla everywhere), and lowest ray cost (~23% on Cornell 1PL x4 vs ct=128's 41%).
+
+**Note on step 11–17 carries:** their CSV under the new metric shows artifact_3 ≈ 45 on Cornell 1PL (vanilla = 12, **!!!**). That's not a real cache flaw — it's because those steps ran *before* the merge-order fix (commit `8611ce5`), so the per-variant `pMin` was silently clobbered by RR_ADAPTIVE's 0.05 floor. Effective pMin=0.05 was too low and let cells trust early on noise → localized artifact. Step 18 (post-merge-fix) re-ran the same parameters with pMin=0.10 actually applied, and the artifact disappeared at every ct value. **The merge-fix was structurally as important as ct=128**; ct=16 alone is enough once pMin=0.10 is honored.
 
 ct=128 (the "step 18 breakthrough") buys an additional 10–15% absolute err reduction on Bistro/Sponza but at roughly 2× ray cost. It is genuinely better when blob quality matters more than ray budget (e.g., final-frame production); ct=16 is better when rays cost more than the residual blob.
 
