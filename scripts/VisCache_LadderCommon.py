@@ -1809,8 +1809,10 @@ def plot_ladder_progress(steps=None, spp=1):
     # (18-29 + 31-52) are excluded from progression plots — measured under
     # earlier broken-cascade or stride-fragmented regimes, not comparable
     # to the current ladder. The new ladder steps 11-15 are included.
-    _exclude = {str(n) for n in [16, 17] +
-                                  list(range(18, 30)) + list(range(31, 53))}
+    # All step numbers are valid post-archive (steps 11-25+ are the current
+    # ladder restart). The previous exclude list dropped pre-archive 11-52
+    # which no longer exist on disk.
+    _exclude = set()
     if steps is None:
         steps = []
         for p in sorted(glob.glob(os.path.join(ladder_root,
@@ -2045,8 +2047,10 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
     # (18-29 + 31-52) are excluded from progression plots — measured under
     # earlier broken-cascade or stride-fragmented regimes, not comparable
     # to the current ladder. The new ladder steps 11-15 are included.
-    _exclude = {str(n) for n in [16, 17] +
-                                  list(range(18, 30)) + list(range(31, 53))}
+    # All step numbers are valid post-archive (steps 11-25+ are the current
+    # ladder restart). The previous exclude list dropped pre-archive 11-52
+    # which no longer exist on disk.
+    _exclude = set()
     if steps is None:
         steps = []
         for p in sorted(glob.glob(os.path.join(ladder_root,
