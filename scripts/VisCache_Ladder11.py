@@ -1,24 +1,29 @@
 """
-VisCache_Ladder11.py — Step 11 v2: entry-level cell size × ct.
+VisCache_Ladder11.py — Step 11 v3: bayer × cell-footprint matrix.
 
-Post-archive restart on the corrected metric pipeline (cascade-lookup
-fix, log-space tone-map, multi-scale median artifact, cache-vanilla
-deltas). The first axis: get the cell size right.
+Post-archive restart. Cell-size is the first axis to map. User feedback:
+- bayer 1x1 breaks 1spp (no multiframe averaging)
+- bayer 8x8 is too much (64 slots — wasteful)
+- bayer 2x2 and 4x4 are the practical range
+- cell footprint (fd) should span 1x1 to 8x8 to see "matched vs mismatched"
+  Bayer-cell symmetry effects
 
-Entry-level cell footprint (NxN pixels): 1, 2, 4, 8 px-square (= fd
-1, 4, 16, 64 px²). Each paired with subframeN=N for Bayer-cell symmetry
-(every cell receives one sample per slot per frame, exactly tiling the
-target footprint).
+Sweep: bayer ∈ {2, 4} × fd ∈ {1, 4, 16, 64} = 8 variants. Single ct=64.
 
-  (subframeN=1, fd=1)   — 1×1 px cell, no Bayer dispersion
-  (subframeN=2, fd=4)   — 2×2 cell, 4 Bayer slots
-  (subframeN=4, fd=16)  — 4×4 cell, 16 slots (current default)
-  (subframeN=8, fd=64)  — 8×8 cell, 64 slots
+  bayer  fd   layout
+  2x2    1×1  bayer larger than cell (4 slots, 1 px cell)
+  2x2    2×2  matched (4 slots, 4 px cell)
+  2x2    4×4  cell larger than bayer
+  2x2    8×8  cell much larger than bayer
+  4x4    1×1  bayer much larger than cell
+  4x4    2×2  bayer larger than cell
+  4x4    4×4  matched (16 slots, 16 px cell)
+  4x4    8×8  cell larger than bayer
 
-Second axis: ct ∈ {32, 128, 512}, the bootstrap trust threshold.
-Cheaper ct trusts cells earlier; stricter ct waits for more samples.
-
-4 × 3 = 12 variants. Targeted span: 10–60% rays, 0–30% err.
+Diagonals (matched) and off-diagonals tell us how Bayer-cell symmetry
+matters. After cascade-lookup fix that ensures reads stay at-or-finer
+than entry level, the cell-footprint is the actual cache spatial unit
+the lookup queries.
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -38,28 +43,29 @@ QUANT_TAG = "qa012"
 QUANT = QUANT_SWEEP[QUANT_TAG]
 
 NO_JITTER = {"jitterFilter": 0.0, "jitterCell": 0.0}
-VT = 0.03   # mid value; isolated for this sweep
-PM = 0.10   # post-merge-fix default
+VT = 0.03
+PM = 0.10
+CT = 64
 
 BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
                                           quant_tag=QUANT_TAG)
            if v[0] == f"pos_norm__pos__{QUANT_TAG}"]
 
-# (subframe_N, fd_px²) — matched Bayer-cell pairs. NxN cell footprint.
-SIZE_CONFIGS = [(1, 1), (2, 4), (4, 16), (8, 64)]
-CT_VALUES = [32, 128, 512]
+# bayer subframeN ∈ {2, 4}, cell footprint fd ∈ {1, 4, 16, 64} = NxN where N ∈ {1,2,4,8}
+BAYER_VALUES = [2, 4]
+FD_VALUES    = [1, 4, 16, 64]  # 1x1, 2x2, 4x4, 8x8
 
 VARIANTS_11 = []
 for (base_name, base_overrides) in BASE_11:
-    for sub_n, fd in SIZE_CONFIGS:
-        size_tag = f"bayer{sub_n}x{sub_n}_cell{sub_n}x{sub_n}"
-        for ct in CT_VALUES:
-            ct_tag = f"ct{ct:03d}"
-            VARIANTS_11.append((f"{base_name}__{size_tag}_{ct_tag}_vt0030_pm010", {
+    for sub_n in BAYER_VALUES:
+        for fd in FD_VALUES:
+            cell_n = int(round(fd**0.5))
+            tag = f"bayer{sub_n}x{sub_n}_cell{cell_n}x{cell_n}"
+            VARIANTS_11.append((f"{base_name}__{tag}_ct064_vt0030_pm010", {
                 **base_overrides,
                 **NO_JITTER,
-                "bootThreshold":                 ct,
-                "matureThreshold":               max(128, ct),
+                "bootThreshold":                 CT,
+                "matureThreshold":               max(128, CT),
                 "varThreshold":                  VT,
                 "bootThresholdFactorFootprintPx": 0.0,
                 "forceDescendFootprintPx":       fd,
@@ -102,10 +108,9 @@ finalize_step(STEP, inherited_winners=[INHERITED],
               ref_label="step-10 carry (qa012/ct4)")
 write_picks_meta(STEP, inherited_from="10", inherited=[INHERITED],
                   carried={}, rule=_DEFAULT_PICKER_RULE,
-                  notes="entry-level cell size × ct. 4 size pairs (1x1, "
-                        "2x2, 4x4, 8x8 px-square; each subframeN matched) "
-                        "× 3 ct values (32, 128, 512). 12 variants. "
-                        "First axis to map the rays-vs-err tradeoff "
-                        "after the cascade-lookup fix that ensures "
-                        "reads stay at-or-finer than entry level.")
+                  notes="Bayer × cell footprint matrix. bayer {2x2, 4x4} "
+                        "× cell {1x1, 2x2, 4x4, 8x8} = 8 variants at "
+                        "ct=64/vt=0.03/pm=0.10. Tests matched vs "
+                        "mismatched symmetry under the corrected cascade-"
+                        "lookup window.")
 _HEADLESS_SCRIPT_DONE = True
