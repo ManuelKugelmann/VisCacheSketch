@@ -1798,11 +1798,11 @@ def plot_ladder_progress(steps=None, spp=1):
     # root (their CSVs still exist) but not shown here — e.g. WIP multi-level
     # expansions that would distort the per-scene comparison against the
     # single-level spine. Callers can pass `steps=` explicitly to override.
-    # Archived steps from the pre-alignment ladder regimes — kept under
-    # captures/ladder/archive_post_alignment/ for audit, excluded from
-    # progression plots so the new ladder visualization isn't polluted
-    # by broken-cascade data points.
-    _exclude = {str(n) for n in [11, 12, 13, 14, 15, 16, 17] +
+    # Steps 16-17 (skipped/retired) and the archive_post_alignment range
+    # (18-29 + 31-52) are excluded from progression plots — measured under
+    # earlier broken-cascade or stride-fragmented regimes, not comparable
+    # to the current ladder. The new ladder steps 11-15 are included.
+    _exclude = {str(n) for n in [16, 17] +
                                   list(range(18, 30)) + list(range(31, 53))}
     if steps is None:
         steps = []
@@ -2034,11 +2034,11 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
     import matplotlib.pyplot as plt
 
     ladder_root = "captures/ladder"
-    # Archived steps from the pre-alignment ladder regimes — kept under
-    # captures/ladder/archive_post_alignment/ for audit, excluded from
-    # progression plots so the new ladder visualization isn't polluted
-    # by broken-cascade data points.
-    _exclude = {str(n) for n in [11, 12, 13, 14, 15, 16, 17] +
+    # Steps 16-17 (skipped/retired) and the archive_post_alignment range
+    # (18-29 + 31-52) are excluded from progression plots — measured under
+    # earlier broken-cascade or stride-fragmented regimes, not comparable
+    # to the current ladder. The new ladder steps 11-15 are included.
+    _exclude = {str(n) for n in [16, 17] +
                                   list(range(18, 30)) + list(range(31, 53))}
     if steps is None:
         steps = []
