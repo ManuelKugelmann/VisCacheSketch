@@ -6,18 +6,25 @@ Does NOT invoke Mogwai / re-render. Useful when a metric definition changes
 (error formula, mask logic, colormap, plate layout) and you want to re-cut
 the visualisations without re-rendering — typically minutes vs hours.
 
-Reads captures/ladder/<step>/stats.csv to recover each variant's prefix
-(tag + variant_name), subframe, warmup, frames, and SPP parameters — so the
-reconstituted plate labels + CSV rows match the original capture.
+Reads captures/ladder/<step>/stats.csv to recover each variant's prefix.
+Effective-spp / frames / warmup / subframeN are parsed from the KEY column
+(prefix encodes them as `s_<eff_spp>_x<frames>_<wf>o<wr>o<NxN>_<resXxresY>_`)
+rather than from the spp/frames CSV columns — this is robust against the
+old append_stats_csv quirk where the spp column stored *effective* spp,
+and a previous bug double-multiplied frames at the next reprocess.
 
 Usage:
     runtime/pythondist/python.exe scripts/VisCache_Repostprocess.py [step ...]
     # e.g. python VisCache_Repostprocess.py 01 05
     # default: all steps with a stats.csv
 """
-import os, sys, csv, glob
+import os, sys, csv, glob, re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Match the prefix encoding produced by run_variants:
+#   s_<eff_spp>_x<frames>_<warmupFirst>o<warmupRun>o<NxN>_<resXxresY>_
+_KEY_RE = re.compile(r'_s_(\d+)_x(\d+)_(\d+)o(\d+)o(\d+)x\d+_')
 
 # Skip Falcor — only postprocess / plotting side of the common module is needed.
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,17 +64,25 @@ def _repostprocess_step(step):
             continue
         prefix = key[len(scene) + 1:] + "_"
 
-        frames       = _int_or(row, "frames",       1)
-        # The CSV "spp" column stores the *effective* SPP (frames * raw_spp,
-        # written by append_stats_csv). postprocess_variant multiplies frames
-        # × spp internally, so we have to pass the *raw* spp here, not the
-        # effective. Recover raw_spp = effective / frames (assumes positive
-        # frames; clamp at 1 to avoid div-by-zero on malformed rows).
-        eff_spp      = _int_or(row, "spp",          1)
-        raw_spp      = max(1, eff_spp // max(1, frames))
-        subframe_n   = _int_or(row, "subframe_n",   1)
-        warmup_first = _int_or(row, "warmup_first", 0)
-        warmup_run   = _int_or(row, "warmup_run",   0)
+        # Parse capture parameters from the KEY (prefix encodes them).
+        # Falling back to CSV cols would inherit the old append_stats_csv
+        # quirk where spp meant *effective* and risk double-multiplying.
+        m_key = _KEY_RE.search(key)
+        if m_key:
+            eff_spp      = int(m_key.group(1))
+            frames       = int(m_key.group(2))
+            warmup_first = int(m_key.group(3))
+            warmup_run   = int(m_key.group(4))
+            subframe_n   = int(m_key.group(5))
+        else:
+            frames       = _int_or(row, "frames",       1)
+            eff_spp      = _int_or(row, "spp",          1)
+            warmup_first = _int_or(row, "warmup_first", 0)
+            warmup_run   = _int_or(row, "warmup_run",   0)
+            subframe_n   = _int_or(row, "subframe_n",   1)
+        # postprocess_variant multiplies its `frames` × `spp` internally to
+        # get effective_spp; recover raw_spp accordingly.
+        raw_spp = max(1, eff_spp // max(1, frames))
 
         capture_dir = os.path.join(step_dir, scene)
 
