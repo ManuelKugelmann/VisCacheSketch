@@ -168,6 +168,7 @@ QUANT_DEFAULT = QUANT_SMALL
 # "too coarse" regime. Tag names embed in variant names via _make_variants
 # quant_tag argument.
 QUANT_SWEEP = {
+    "qa003": {"posA": 0.03, "normalA": 60.0, "posB": 0.09, "dirB":  4.0, "distB": 0.12},
     "qa006": {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB":  8.0, "distB": 0.24},
     "qa012": {"posA": 0.12, "normalA": 60.0, "posB": 0.36, "dirB": 15.0, "distB": 0.48},
     "qa036": {"posA": 0.36, "normalA": 60.0, "posB": 1.08, "dirB": 45.0, "distB": 1.44},
