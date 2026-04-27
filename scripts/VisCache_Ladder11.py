@@ -1,21 +1,24 @@
 """
-VisCache_Ladder11.py — Step 11: subframeN × fd Bayer-cell symmetry.
+VisCache_Ladder11.py — Step 11 v2: entry-level cell size × ct.
 
-Inherits step-10 carry pos_norm__pos__qa012__ct4 (multi-level cascade,
-qa012 quantization, bootThreshold=4). Sweeps two interrelated params:
+Post-archive restart on the corrected metric pipeline (cascade-lookup
+fix, log-space tone-map, multi-scale median artifact, cache-vanilla
+deltas). The first axis: get the cell size right.
 
-  - subframeN: Bayer slot count from step 01 convention (sub2 = 2x2 Bayer
-    = 4 slots, sub4 = 4x4 = 16 slots, sub8 = 8x8 = 64 slots).
-  - fd (forceDescendFootprintPx): pixel-footprint target for the cascade
-    entry level. Cell-size target = pixelSize * sqrt(fd). fd=4 means 2x2
-    pixel cells, fd=16 means 4x4, fd=64 means 8x8.
+Entry-level cell footprint (NxN pixels): 1, 2, 4, 8 px-square (= fd
+1, 4, 16, 64 px²). Each paired with subframeN=N for Bayer-cell symmetry
+(every cell receives one sample per slot per frame, exactly tiling the
+target footprint).
 
-Hypothesis: matched pairs (sub2,fd=4) / (sub4,fd=16) / (sub8,fd=64) align
-the Bayer slot grid with the target cell footprint — each cell receives
-exactly 1 sample from each Bayer slot per frame. We expect matched pairs
-to outperform mismatched ones, with optimum-in-middle at (sub4, fd=16).
+  (subframeN=1, fd=1)   — 1×1 px cell, no Bayer dispersion
+  (subframeN=2, fd=4)   — 2×2 cell, 4 Bayer slots
+  (subframeN=4, fd=16)  — 4×4 cell, 16 slots (current default)
+  (subframeN=8, fd=64)  — 8×8 cell, 64 slots
 
-3 subframeN x 3 fd = 9 variants. Pre-test on 1PL+32PL (~25 min).
+Second axis: ct ∈ {32, 128, 512}, the bootstrap trust threshold.
+Cheaper ct trusts cells earlier; stricter ct waits for more samples.
+
+4 × 3 = 12 variants. Targeted span: 10–60% rays, 0–30% err.
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,56 +32,49 @@ res = int(os.environ.get("RES", "512"))
 
 INHERITED = read_carried_winner("10")
 if INHERITED is None:
-    raise RuntimeError("[11] step 10 picks.json missing — run step 10 first.")
+    raise RuntimeError("[11] step 10 picks.json missing carried winner.")
 
 QUANT_TAG = "qa012"
 QUANT = QUANT_SWEEP[QUANT_TAG]
 
-# Step-10 carry baseline: pos_norm__pos with qa012__ct4
 NO_JITTER = {"jitterFilter": 0.0, "jitterCell": 0.0}
-CT_INH = 4
+VT = 0.03   # mid value; isolated for this sweep
+PM = 0.10   # post-merge-fix default
 
 BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
-                                           quant_tag=QUANT_TAG)
+                                          quant_tag=QUANT_TAG)
            if v[0] == f"pos_norm__pos__{QUANT_TAG}"]
 
-# (subframeN, fd) — 3 x 3 grid; matched diagonal is (2,4), (4,16), (8,64).
-# Naming follows step 01 NxN convention: sub2x2 / sub4x4 / sub8x8 = Bayer
-# slot grid; cell2x2 / cell4x4 / cell8x8 = target pixel-footprint cell.
-# The matched diagonal is (sub2x2, cell2x2), (sub4x4, cell4x4), (sub8x8, cell8x8).
-SUB_FD_GRID = [
-    (2,  4),   (2, 16),   (2, 64),
-    (4,  4),   (4, 16),   (4, 64),
-    (8,  4),   (8, 16),   (8, 64),
-]
-
-def _cell_tag(fd_value):
-    side = int(round(fd_value ** 0.5))
-    return f"{side}x{side}"
+# (subframe_N, fd_px²) — matched Bayer-cell pairs. NxN cell footprint.
+SIZE_CONFIGS = [(1, 1), (2, 4), (4, 16), (8, 64)]
+CT_VALUES = [32, 128, 512]
 
 VARIANTS_11 = []
 for (base_name, base_overrides) in BASE_11:
-    for (sub, fd) in SUB_FD_GRID:
-        VARIANTS_11.append((f"{base_name}__ct{CT_INH}_bayer{sub}x{sub}_cell{_cell_tag(fd)}", {
-            **base_overrides,
-            **NO_JITTER,
-            "bootThreshold":                 CT_INH,
-            "matureThreshold":               128,
-            "varThreshold":                  0.10,
-            "bootThresholdFactorFootprintPx": 0.0,
-            "forceDescendFootprintPx":       fd,
-            "stderrThreshold":               0.0,
-            "enableHierarchicalConsistency": False,
-            "hierarchicalMuTolerance":       0.20,
-            "accelDecayDisagreeThresh":      0.0,
-            "subframeN":                     sub,
-        }))
+    for sub_n, fd in SIZE_CONFIGS:
+        size_tag = f"bayer{sub_n}x{sub_n}_cell{sub_n}x{sub_n}"
+        for ct in CT_VALUES:
+            ct_tag = f"ct{ct:03d}"
+            VARIANTS_11.append((f"{base_name}__{size_tag}_{ct_tag}_vt0030_pm010", {
+                **base_overrides,
+                **NO_JITTER,
+                "bootThreshold":                 ct,
+                "matureThreshold":               max(128, ct),
+                "varThreshold":                  VT,
+                "bootThresholdFactorFootprintPx": 0.0,
+                "forceDescendFootprintPx":       fd,
+                "stderrThreshold":               0.0,
+                "enableHierarchicalConsistency": False,
+                "hierarchicalMuTolerance":       0.20,
+                "accelDecayDisagreeThresh":      0.0,
+                "pMin":                          PM,
+                "subframeN":                     sub_n,
+                "enableDecayAutoTune":           False,
+            }))
 
 STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI,
                   "tableCapacity": 1 << 25}
 
-# Multi-frame: frames=N, spp=1. Three SPP tiers (x1, x4, x16) for the
-# pre-test; full run can extend if step picker gates pass.
 MF_CONFIGS = [(0, 0, 1, 1),  (0, 0, 4, 1),  (0, 0, 16, 1)]
 
 for scene_file in get_scenes(default=list(ALL_SCENES)):
@@ -103,14 +99,13 @@ for scene_file in get_scenes(default=list(ALL_SCENES)):
 
 finalize_step(STEP, inherited_winners=[INHERITED],
               ref_step="10", ref_variant=INHERITED,
-              ref_label="step-10 carry (qa012__ct4)")
+              ref_label="step-10 carry (qa012/ct4)")
 write_picks_meta(STEP, inherited_from="10", inherited=[INHERITED],
                   carried={}, rule=_DEFAULT_PICKER_RULE,
-                  notes="subframeN x fd Bayer-cell symmetry sweep. Matched "
-                        "diagonal (sub2,fd=4)/(sub4,fd=16)/(sub8,fd=64) "
-                        "tiles target cell with Bayer slots so each cell "
-                        "gets exactly 1 sample per slot per frame. Off-"
-                        "diagonal mismatches predicted to fragment samples "
-                        "or under-fill cells. Optimum-in-middle bet: "
-                        "(sub4, fd=16).")
+                  notes="entry-level cell size × ct. 4 size pairs (1x1, "
+                        "2x2, 4x4, 8x8 px-square; each subframeN matched) "
+                        "× 3 ct values (32, 128, 512). 12 variants. "
+                        "First axis to map the rays-vs-err tradeoff "
+                        "after the cascade-lookup fix that ensures "
+                        "reads stay at-or-finer than entry level.")
 _HEADLESS_SCRIPT_DONE = True
