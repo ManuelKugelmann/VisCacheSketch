@@ -540,8 +540,8 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "error μ{error_delta_pct:.1f} ({err_minus_vanilla_pct:+.1f}) artifact {error_artifact_5_pct:.1f} ({artifact_5_minus_vanilla_pct:+.1f})"),
-     ("r1c9_accum_noise",      "noise μ{noise_delta_pct:.1f} ({noise_minus_vanilla_pct:+.1f})")],
+     ("r1c3_accum_error",      "error μ{error_delta_pct:.1f}% (Δ{err_minus_vanilla_pct:+.1f}%) artifact {error_artifact_5_pct:.1f}% (Δ{artifact_5_minus_vanilla_pct:+.1f}%)"),
+     ("r1c9_accum_noise",      "noise μ{noise_delta_pct:.1f}% (Δ{noise_minus_vanilla_pct:+.1f}%)")],
     [("r2c1_frame_level",      "level [{min_level:.0f}..{max_level:.0f}] μ{mean_level:.0f}"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
