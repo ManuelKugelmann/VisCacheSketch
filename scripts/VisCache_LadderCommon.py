@@ -362,10 +362,15 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                # vanilla; positive = cache worse. The "be better than vanilla"
                # picker rule reads these directly: reject if any artifact delta
                # exceeds a small positive margin.
-               "err_minus_van_pct",
-               "artifact_3_minus_van_pct", "artifact_5_minus_van_pct", "artifact_11_minus_van_pct",
+               "err_minus_vanilla_pct",
+               "artifact_3_minus_vanilla_pct", "artifact_5_minus_vanilla_pct", "artifact_11_minus_vanilla_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
                "noise_delta_blob_pct",
+               # Vanilla baseline noise + signed delta (cache − vanilla).
+               # noise_minus_vanilla_pct < 0 means cache is smoother than vanilla
+               # (denoising), > 0 means cache adds noise.
+               "vanilla_noise_pct", "vanilla_noise_blob_pct",
+               "noise_minus_vanilla_pct", "noise_minus_vanilla_blob_pct",
                "timestamp"]
 
 def _step_csv(step_name):
@@ -386,10 +391,14 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      vanilla_err_artifact_3_pct=None,
                      vanilla_err_artifact_5_pct=None,
                      vanilla_err_artifact_11_pct=None,
-                     err_minus_van_pct=None,
-                     artifact_3_minus_van_pct=None,
-                     artifact_5_minus_van_pct=None,
-                     artifact_11_minus_van_pct=None):
+                     err_minus_vanilla_pct=None,
+                     artifact_3_minus_vanilla_pct=None,
+                     artifact_5_minus_vanilla_pct=None,
+                     artifact_11_minus_vanilla_pct=None,
+                     vanilla_noise_pct=None,
+                     vanilla_noise_blob_pct=None,
+                     noise_minus_vanilla_pct=None,
+                     noise_minus_vanilla_blob_pct=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -433,11 +442,15 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "vanilla_err_artifact_3_pct":  f"{vanilla_err_artifact_3_pct:.4f}"  if vanilla_err_artifact_3_pct  is not None else "",
         "vanilla_err_artifact_5_pct":  f"{vanilla_err_artifact_5_pct:.4f}"  if vanilla_err_artifact_5_pct  is not None else "",
         "vanilla_err_artifact_11_pct": f"{vanilla_err_artifact_11_pct:.4f}" if vanilla_err_artifact_11_pct is not None else "",
-        "err_minus_van_pct":          f"{err_minus_van_pct:.4f}"          if err_minus_van_pct          is not None else "",
-        "artifact_3_minus_van_pct":   f"{artifact_3_minus_van_pct:.4f}"   if artifact_3_minus_van_pct   is not None else "",
-        "artifact_5_minus_van_pct":   f"{artifact_5_minus_van_pct:.4f}"   if artifact_5_minus_van_pct   is not None else "",
-        "artifact_11_minus_van_pct":  f"{artifact_11_minus_van_pct:.4f}"  if artifact_11_minus_van_pct  is not None else "",
+        "err_minus_vanilla_pct":          f"{err_minus_vanilla_pct:.4f}"          if err_minus_vanilla_pct          is not None else "",
+        "artifact_3_minus_vanilla_pct":   f"{artifact_3_minus_vanilla_pct:.4f}"   if artifact_3_minus_vanilla_pct   is not None else "",
+        "artifact_5_minus_vanilla_pct":   f"{artifact_5_minus_vanilla_pct:.4f}"   if artifact_5_minus_vanilla_pct   is not None else "",
+        "artifact_11_minus_vanilla_pct":  f"{artifact_11_minus_vanilla_pct:.4f}"  if artifact_11_minus_vanilla_pct  is not None else "",
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
+        "vanilla_noise_pct":      f"{vanilla_noise_pct:.4f}"      if vanilla_noise_pct      is not None else "",
+        "vanilla_noise_blob_pct": f"{vanilla_noise_blob_pct:.4f}" if vanilla_noise_blob_pct is not None else "",
+        "noise_minus_vanilla_pct":      f"{noise_minus_vanilla_pct:.4f}"      if noise_minus_vanilla_pct      is not None else "",
+        "noise_minus_vanilla_blob_pct": f"{noise_minus_vanilla_blob_pct:.4f}" if noise_minus_vanilla_blob_pct is not None else "",
         "noise_delta_min_pct":  f"{noise_delta_min_pct:.4f}"  if noise_delta_min_pct  is not None else "",
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -527,8 +540,8 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "error Δ μ{error_delta_pct:+.1f}% blob{error_delta_blob_pct:+.1f}% sum{error_delta_blob_sum_pct:+.2f}"),
-     ("r1c9_accum_noise",      "noise Δ μ{noise_delta_pct:+.1f}%")],
+     ("r1c3_accum_error",      "err μ{error_delta_pct:.1f} ({err_minus_vanilla_pct:+.1f}) artifact{error_artifact_5_pct:.1f} ({artifact_5_minus_vanilla_pct:+.1f})"),
+     ("r1c9_accum_noise",      "noise μ{noise_delta_pct:.1f} ({noise_minus_vanilla_pct:+.1f})")],
     [("r2c1_frame_level",      "level [{min_level:.0f}..{max_level:.0f}] μ{mean_level:.0f}"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
@@ -2494,10 +2507,10 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["vanilla_err_artifact_3_pct"]  = r.get("vanilla_err_artifact_3_pct")
             stats["vanilla_err_artifact_5_pct"]  = r.get("vanilla_err_artifact_5_pct")
             stats["vanilla_err_artifact_11_pct"] = r.get("vanilla_err_artifact_11_pct")
-            stats["err_minus_van_pct"]           = r.get("err_minus_van_pct")
-            stats["artifact_3_minus_van_pct"]    = r.get("artifact_3_minus_van_pct")
-            stats["artifact_5_minus_van_pct"]    = r.get("artifact_5_minus_van_pct")
-            stats["artifact_11_minus_van_pct"]   = r.get("artifact_11_minus_van_pct")
+            stats["err_minus_vanilla_pct"]           = r.get("err_minus_vanilla_pct")
+            stats["artifact_3_minus_vanilla_pct"]    = r.get("artifact_3_minus_vanilla_pct")
+            stats["artifact_5_minus_vanilla_pct"]    = r.get("artifact_5_minus_vanilla_pct")
+            stats["artifact_11_minus_vanilla_pct"]   = r.get("artifact_11_minus_vanilla_pct")
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
@@ -2520,6 +2533,10 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["noise_delta_pct"]      = r["noise_delta_pct"]
             stats["noise_delta_min_pct"]  = r["noise_delta_min_pct"]
             stats["noise_delta_max_pct"]  = r["noise_delta_max_pct"]
+            stats["vanilla_noise_pct"]      = r.get("vanilla_noise_pct")
+            stats["vanilla_noise_blob_pct"] = r.get("vanilla_noise_blob_pct")
+            stats["noise_minus_vanilla_pct"]      = r.get("noise_minus_vanilla_pct")
+            stats["noise_minus_vanilla_blob_pct"] = r.get("noise_minus_vanilla_blob_pct")
         print(f"  [noise] {os.path.basename(o('r1c9_accum_noise'))}")
     elif render_path:
         compute_render_noise(render_path, o("r1c9_accum_noise"))
@@ -2596,10 +2613,14 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         vanilla_err_artifact_3_pct=stats.get("vanilla_err_artifact_3_pct"),
         vanilla_err_artifact_5_pct=stats.get("vanilla_err_artifact_5_pct"),
         vanilla_err_artifact_11_pct=stats.get("vanilla_err_artifact_11_pct"),
-        err_minus_van_pct=stats.get("err_minus_van_pct"),
-        artifact_3_minus_van_pct=stats.get("artifact_3_minus_van_pct"),
-        artifact_5_minus_van_pct=stats.get("artifact_5_minus_van_pct"),
-        artifact_11_minus_van_pct=stats.get("artifact_11_minus_van_pct"),
+        err_minus_vanilla_pct=stats.get("err_minus_vanilla_pct"),
+        artifact_3_minus_vanilla_pct=stats.get("artifact_3_minus_vanilla_pct"),
+        artifact_5_minus_vanilla_pct=stats.get("artifact_5_minus_vanilla_pct"),
+        artifact_11_minus_vanilla_pct=stats.get("artifact_11_minus_vanilla_pct"),
+        vanilla_noise_pct=stats.get("vanilla_noise_pct"),
+        vanilla_noise_blob_pct=stats.get("vanilla_noise_blob_pct"),
+        noise_minus_vanilla_pct=stats.get("noise_minus_vanilla_pct"),
+        noise_minus_vanilla_blob_pct=stats.get("noise_minus_vanilla_blob_pct"),
     )
 
     stats["variant"] = variant_name
@@ -3124,9 +3145,9 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
             pv = per_scene.setdefault(r["variant"], {})
             pv[r["scene"]] = {
                 "rays":  r.get("rays_traced_pct") or 0.0,
-                "d3":    r.get("artifact_3_minus_van_pct"),
-                "d5":    r.get("artifact_5_minus_van_pct"),
-                "d11":   r.get("artifact_11_minus_van_pct"),
+                "d3":    r.get("artifact_3_minus_vanilla_pct"),
+                "d5":    r.get("artifact_5_minus_vanilla_pct"),
+                "d11":   r.get("artifact_11_minus_vanilla_pct"),
             }
         if not per_scene:
             result[bv] = []

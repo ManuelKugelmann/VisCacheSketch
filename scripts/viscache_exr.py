@@ -370,16 +370,31 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
     except (ValueError, RuntimeWarning):
         blob_peak = 0.0
     blob_pct = 100.0 * max(0.0, blob_peak) / max(denom, 1e-6)
+    # Vanilla side numbers: mean, blob (parallel to cache).
+    van_pct = 100.0 * n_van / denom
+    van_blur = _gaussian_blur_2d(n_b, NOISE_BLOB_SIGMA)
+    van_bvals = np.where(mask, van_blur, np.nan)
+    try:
+        van_blob_peak = float(np.nanmax(van_bvals))
+    except (ValueError, RuntimeWarning):
+        van_blob_peak = 0.0
+    van_blob_pct = 100.0 * max(0.0, van_blob_peak) / max(denom, 1e-6)
+    cache_pct = 100.0 * s_m / denom
     return {
         "noise_vis_mean":       n_vis,
         "noise_van_mean":       n_van,
         "noise_delta_mean":     s_m,
         "noise_delta_min":      s_min,
         "noise_delta_max":      s_max,
-        "noise_delta_pct":      100.0 * s_m   / denom,
+        "noise_delta_pct":      cache_pct,
         "noise_delta_min_pct":  100.0 * s_min / denom,
         "noise_delta_max_pct":  100.0 * s_max / denom,
         "noise_delta_blob_pct": blob_pct,
+        # Side-by-side vanilla + signed delta (cache − vanilla).
+        "vanilla_noise_pct":      van_pct,
+        "vanilla_noise_blob_pct": van_blob_pct,
+        "noise_minus_vanilla_pct":      cache_pct - van_pct,
+        "noise_minus_vanilla_blob_pct": blob_pct - van_blob_pct,
     }
 
 
@@ -682,10 +697,10 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         # vanilla; positive = cache worse. The picker / "be better than
         # vanilla" rule uses these directly: reject if any artifact delta
         # exceeds a small positive margin.
-        "err_minus_van_pct":          (100.0 * s_m / denom) - van_err_pct        if van_err_pct        is not None else None,
-        "artifact_3_minus_van_pct":   artifact_3_pct - van_artifact_3_pct        if van_artifact_3_pct is not None else None,
-        "artifact_5_minus_van_pct":   artifact_5_pct - van_artifact_5_pct        if van_artifact_5_pct is not None else None,
-        "artifact_11_minus_van_pct":  artifact_11_pct - van_artifact_11_pct      if van_artifact_11_pct is not None else None,
+        "err_minus_vanilla_pct":          (100.0 * s_m / denom) - van_err_pct        if van_err_pct        is not None else None,
+        "artifact_3_minus_vanilla_pct":   artifact_3_pct - van_artifact_3_pct        if van_artifact_3_pct is not None else None,
+        "artifact_5_minus_vanilla_pct":   artifact_5_pct - van_artifact_5_pct        if van_artifact_5_pct is not None else None,
+        "artifact_11_minus_vanilla_pct":  artifact_11_pct - van_artifact_11_pct      if van_artifact_11_pct is not None else None,
     }
 
 
