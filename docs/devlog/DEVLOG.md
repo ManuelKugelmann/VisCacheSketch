@@ -336,7 +336,15 @@ This step required two infrastructure fixes that surfaced from the camera-render
 > - **BistroInterior x16** is precisely tied (cache 11.05 vs vanilla 11.14) — the firefly story still holds; both are equally far from GT, and the old metric's "blob 14.6" was reporting *the noise pattern of the comparison*, not real cache degradation.
 > - The "blob 14.6 invariant" finding from steps 19–24 was largely a metric artifact: pMin / fp / HC / cell-size / accelDecay all looked like no-ops because they couldn't move a number that was anchored to vanilla's noise. Under the new metric, they still mostly tie, but step 18's ct=128 was a real breakthrough (clear absolute error reduction on every bias scene).
 
-**Practical conclusion (corrected):** the cache is a **bias-scene specialist**. It substantially reduces absolute error on multi-light, dense-bounce, and indirect-heavy scenes (32PL/Bistro/Sponza). It is roughly neutral on simple direct-light scenes (Cornell 1PL) where vanilla is already near GT — there the cache adds a small bias from cell-averaging. The artifact threshold logic from earlier (blob > 10 = unusable) remains useful at x1/x4 but shouldn't be applied to x16 where vanilla itself often has blob ≥ 10 on the bias scenes.
+**Practical conclusion (corrected, post-step-25 + Cornell validation of ct=128 carry):**
+
+Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct16_vt003_pm010`** — the ct=16 lane of step 18, equivalently the step-16/17 carry. Wins absolute err vs vanilla on every Cornell scene at every SPP (only Cornell 1PL x16 ties within ~7%), wins at every SPP on Bistro and Sponza. Ray cost ~25% on simple scenes, ~50% on bias scenes.
+
+ct=128 (the "step 18 breakthrough") buys an additional 10–15% absolute err reduction on Bistro/Sponza but at roughly 2× ray cost. It is genuinely better when blob quality matters more than ray budget (e.g., final-frame production); ct=16 is better when rays cost more than the residual blob.
+
+The qa006/ct256/hc005/pm020 chain accumulated through steps 22–25 added complexity for marginal benefit under the corrected metric — most of those mechanisms were attacking what turned out to be **noise in the cache-vs-vanilla comparison rather than real cache degradation**. With the noise-independent absolute metric, the practical sweet spot is much earlier in the ladder than the carry chain suggested.
+
+**Single-carry recommendation:** `ct=16 / vt=0.03 / qa012 / bayer4x4_cell4x4 / pm=0.10`. It's a real Pareto win across all 5 scenes vs vanilla.
 
 Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination
 (maxBounces > 0) are deferred to a separate **temporal-policy ladder** stage
