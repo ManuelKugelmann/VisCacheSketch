@@ -338,9 +338,17 @@ This step required two infrastructure fixes that surfaced from the camera-render
 
 **Practical conclusion (final, with multi-scale artifact metric and merge-order fix):**
 
-Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct016_vt0030_pm010`** — the ct=16 lane of step 18 (post-merge-fix). Pareto-clean across all 5 scenes under the median-based artifact metric (a3/a5/a11 below vanilla everywhere), and lowest ray cost (~23% on Cornell 1PL x4 vs ct=128's 41%).
+Recommended single carry: **`pos_norm__pos__qa012__bayer4x4_cell4x4_ct256_vt0030_pm010`** — fully clean (no scene/SPP exceeds 1.2× vanilla artifact_3) across all 5 scenes; ~30–100% rays.
 
-**Note on step 11–17 carries:** their CSV under the new metric shows artifact_3 ≈ 45 on Cornell 1PL (vanilla = 12, **!!!**). That's not a real cache flaw — it's because those steps ran *before* the merge-order fix (commit `8611ce5`), so the per-variant `pMin` was silently clobbered by RR_ADAPTIVE's 0.05 floor. Effective pMin=0.05 was too low and let cells trust early on noise → localized artifact. Step 18 (post-merge-fix) re-ran the same parameters with pMin=0.10 actually applied, and the artifact disappeared at every ct value. **The merge-fix was structurally as important as ct=128**; ct=16 alone is enough once pMin=0.10 is honored.
+A leaner alternative: **`ct128_vt0030_pm010`** is borderline-acceptable (Sponza x16 only 11% above vanilla a3, not flagged) at ~25–100% rays.
+
+**ct=16 has real artifacts on Sponza/Bistro x16** under the new artifact metric (Sponza x4 cache_a3=104 vs vanilla=66, **!!!**). The earlier "ct=16 is Pareto-best" claim was an artifact of the old Gaussian-blob metric softening cluster-shaped artifacts into "noise". The multi-scale median metric reveals them.
+
+**Note on step 11–17 carries:** their CSV under the new metric shows artifact_3 ≈ 45 on Cornell 1PL (**!!!**). Two contributors:
+1. The **merge-order bug** (commit `8611ce5`) silently clobbered per-variant `pMin` to RR_ADAPTIVE's 0.05 floor. Effective pMin=0.05 was too low → cells trust early on noise → Cornell 1PL artifact.
+2. ct=16 was structurally insufficient on Sponza regardless of pMin.
+
+Step 18 fixed both: post-merge-order, ct=128 gives the first artifact-clean Cornell 1PL; ct=256 also resolves Sponza x16 borderline.
 
 ct=128 (the "step 18 breakthrough") buys an additional 10–15% absolute err reduction on Bistro/Sponza but at roughly 2× ray cost. It is genuinely better when blob quality matters more than ray budget (e.g., final-frame production); ct=16 is better when rays cost more than the residual blob.
 
