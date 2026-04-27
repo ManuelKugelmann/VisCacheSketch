@@ -295,11 +295,15 @@ new ladder builds from there with **bounded multi-dimensional sweeps**, the
 range design.
 
 **Static-scene multilevel ladder (steps 11–15):**
-- 11: subframeN × fd — Bayer-cell symmetry hypothesis (sub4 ↔ fd=16, sub2 ↔ fd=4, sub8 ↔ fd=64)
-- 12: ct × stderr — trust requirement / sample evidence demand
-- 13: pMin × hierarchicalConsistency — RR floor × penumbra-disagreement detector
-- 14: addressing × normalACoarse — re-validate dir_dist vs pos with corrected shader
-- 15: bootThresholdFactorFootprintPx × matureThreshold — coarse-cell over-trust caps
+- **11 — subframeN × fd**: 9 variants over Bayer-slot count × force-descend pixel footprint. Matched diagonal (bayer4×4 + cell4×4) wins on 1PL/32PL pre-test. Confirms the hypothesis that the Bayer slot count and the per-cell pixel footprint should match: every cell receives one sample per slot per frame, exactly tiling the target footprint. **Carry: `bayer4x4_cell4x4`.**
+- **12 — ct × stderr**: 9 variants over bootThreshold {4,16,64} × stderrThreshold {0, 0.02, 0.05}. ct=16 best across SPP tiers; stderr off (=0) best — the stderr gate is not yet useful at the current trust regime. **Carry: `ct16_se000`.**
+- **13 — pMin × hierarchicalConsistency**: 9 variants. Both knobs are no-ops at the inherited varThreshold=0.10 — the RR variance gate fires first and strips the safety nets of anything to do. Documented dead-end; carry unchanged. **Productive next step: tighter varThreshold (e.g. 0.03) so pMin/HC have a regime in which to bite.**
+- **14 — addressing × normalACoarse**: 6 variants. Re-validation of pos vs dir_dist under corrected shader — `pos` beats `dir_dist` on rays at equal blob (the earlier "Sponza dir_dist win" was a stride-fragmentation artifact). normalACoarse has minimal effect at 30°/60°/90°. Carry unchanged.
+- **15 — footprintScale × matureThreshold**: 9 variants. footprintScale > 0 inflates rays 5–10× without measurable blob improvement on 1PL/32PL (fp010 4spp: 46.8% rays / blob 19.43 vs fp000: 9.1% / 19.43). matureThreshold has no effect at ct=16 — the counter saturates well below 64. Carry unchanged.
+
+**Net carry after step 15:** parameter set is identical to step-12's winner — `pos_norm__pos__qa012__bayer4x4_cell4x4_ct16_se000` with footprintScale=0, matureThreshold=128 (default at ct=16), pMin/HC/normalACoarse at defaults. Steps 13/14/15 documented dead-ends rather than improvements; this is information about the parameter space that wasn't visible from earlier broken-cascade ladders.
+
+**Open work:** the cascade now operates correctly but Sponza x16 blob is stuck around 29 regardless of trust gate — that's the **bias floor**, intrinsic to Bernoulli μ on bias-dominated scenes. Trust-gate widening doesn't fix it (steps 12/13/15 confirm). Candidate next experiments: (a) tighter varThreshold to wake up pMin/HC, (b) per-level ct scaling (ct tradeoff is opposite on Cornell 1PL vs Bistro), (c) bounce-test stage with maxBounces > 0.
 
 Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination
 (maxBounces > 0) are deferred to a separate **temporal-policy ladder** stage
