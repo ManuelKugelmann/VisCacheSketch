@@ -422,22 +422,30 @@ def _linear_to_srgb(c):
 
 
 def _reinhard_tone_map(c):
-    """HDR → [0,1) Reinhard: x / (1+x). Perceptual compression of highlights
-    so error metrics don't get dominated by bright HDR regions (e.g. Sponza
-    sun-lit floor). Linear in the toe, log-like in the shoulder.
+    """HDR → [0,1) brightness-agnostic encoding: log2(1 + max(c, 0)) / log2(1 + REF).
 
-    Robust to NaN / ±inf: NaN → 0, +inf → +1, −inf → −1. Path-traced HDR
-    can contain firefly inf values (singular specular paths, division by
-    near-zero pdf). Without this guard, ΔE becomes NaN and the entire
-    blob/error metric collapses to 0 — the BistroInterior x1 reference
-    failure mode.
+    Replaces the older Reinhard x/(1+x). Reinhard still has substantial
+    brightness sensitivity — a fixed *relative* difference (e.g. 50%)
+    between two pixels yields a much larger ΔE in dark regions than in
+    bright regions because the Reinhard derivative drops off faster than
+    log. Log-space encoding gives equal-spaced brightness ratios:
+    a 4× brightness difference at any base brightness produces the same ΔE.
+
+    REF=1024 (~10 stops) — typical HDR dynamic range; values above are
+    clamped to 1.0 instead of dominating.
+
+    Negative inputs clamped to 0 (the upstream HDR data is non-negative
+    radiance; negatives are numerical artifacts).
+
+    Robust to NaN / ±inf: NaN → 0, +inf → +1, −inf → 0 (clamped at 0).
     """
     finite = np.isfinite(c)
-    c_safe = np.where(finite, c, 0.0)
-    out = c_safe / (1.0 + np.abs(c_safe))
-    # finite → out; +inf → +1; −inf → −1; NaN → 0
-    inf_replacement = np.where(np.isnan(c), 0.0, np.sign(c))
-    out = np.where(finite, out, inf_replacement)
+    safe = np.where(finite, np.maximum(c, 0.0), 0.0)
+    REF = 1024.0  # ~10 stops headroom
+    inv_log_ref = 1.0 / np.log2(1.0 + REF)
+    out = np.log2(1.0 + safe) * inv_log_ref
+    # +inf → 1.0 (use clamp); other non-finites already 0 via mask above.
+    out = np.where(np.isposinf(c), 1.0, out)
     return out.astype(np.float32)
 
 
