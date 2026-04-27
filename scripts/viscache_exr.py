@@ -670,6 +670,14 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         "vanilla_err_artifact_3_pct":  van_artifact_3_pct,
         "vanilla_err_artifact_5_pct":  van_artifact_5_pct,
         "vanilla_err_artifact_11_pct": van_artifact_11_pct,
+        # Cache − vanilla deltas (signed). Negative = cache better than
+        # vanilla; positive = cache worse. The picker / "be better than
+        # vanilla" rule uses these directly: reject if any artifact delta
+        # exceeds a small positive margin.
+        "err_minus_van_pct":          (100.0 * s_m / denom) - van_err_pct        if van_err_pct        is not None else None,
+        "artifact_3_minus_van_pct":   artifact_3_pct - van_artifact_3_pct        if van_artifact_3_pct is not None else None,
+        "artifact_5_minus_van_pct":   artifact_5_pct - van_artifact_5_pct        if van_artifact_5_pct is not None else None,
+        "artifact_11_minus_van_pct":  artifact_11_pct - van_artifact_11_pct      if van_artifact_11_pct is not None else None,
     }
 
 

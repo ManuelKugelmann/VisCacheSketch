@@ -151,8 +151,14 @@ public:
                                                 ///< autoTuneCells=False; autoTune already scales.
 
         // --- Decay (host-only, not uploaded to GPU params cbuffer) ---
-        uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=disabled)
-        uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling for auto-tuned decay
+        uint32_t decayPeriod     = 300u;        ///< Frames per full table sweep (0=disabled).
+                                                ///< Primary decay rate — set by user, not load-tuned.
+        uint32_t decayPeriodMax  = 600u;        ///< PI controller ceiling for auto-tuned decay (only
+                                                ///< used when enableDecayAutoTune is on).
+        bool     enableDecayAutoTune = false;   ///< Secondary PI adjustment of decayPeriod based on
+                                                ///< eviction load. Off by default — user's decayPeriod
+                                                ///< is the canonical setting; PI tuning is opt-in for
+                                                ///< production-style adaptive use.
 
         // --- Feature toggles (exported to downstream passes via dict) ---
         bool     enableVisCacheVisibilityCheck    = true;  ///< §12: CV+RRR in reconnection shifts

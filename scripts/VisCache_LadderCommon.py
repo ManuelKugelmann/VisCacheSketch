@@ -358,6 +358,12 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                # side-by-side comparison (not subtracted from cache numbers).
                "vanilla_err_pct", "vanilla_err_blob_pct",
                "vanilla_err_artifact_3_pct", "vanilla_err_artifact_5_pct", "vanilla_err_artifact_11_pct",
+               # Cache − vanilla deltas (signed). Negative = cache better than
+               # vanilla; positive = cache worse. The "be better than vanilla"
+               # picker rule reads these directly: reject if any artifact delta
+               # exceeds a small positive margin.
+               "err_minus_van_pct",
+               "artifact_3_minus_van_pct", "artifact_5_minus_van_pct", "artifact_11_minus_van_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
                "noise_delta_blob_pct",
                "timestamp"]
@@ -379,7 +385,11 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      error_artifact_11_pct=None,
                      vanilla_err_artifact_3_pct=None,
                      vanilla_err_artifact_5_pct=None,
-                     vanilla_err_artifact_11_pct=None):
+                     vanilla_err_artifact_11_pct=None,
+                     err_minus_van_pct=None,
+                     artifact_3_minus_van_pct=None,
+                     artifact_5_minus_van_pct=None,
+                     artifact_11_minus_van_pct=None):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -423,6 +433,10 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "vanilla_err_artifact_3_pct":  f"{vanilla_err_artifact_3_pct:.4f}"  if vanilla_err_artifact_3_pct  is not None else "",
         "vanilla_err_artifact_5_pct":  f"{vanilla_err_artifact_5_pct:.4f}"  if vanilla_err_artifact_5_pct  is not None else "",
         "vanilla_err_artifact_11_pct": f"{vanilla_err_artifact_11_pct:.4f}" if vanilla_err_artifact_11_pct is not None else "",
+        "err_minus_van_pct":          f"{err_minus_van_pct:.4f}"          if err_minus_van_pct          is not None else "",
+        "artifact_3_minus_van_pct":   f"{artifact_3_minus_van_pct:.4f}"   if artifact_3_minus_van_pct   is not None else "",
+        "artifact_5_minus_van_pct":   f"{artifact_5_minus_van_pct:.4f}"   if artifact_5_minus_van_pct   is not None else "",
+        "artifact_11_minus_van_pct":  f"{artifact_11_minus_van_pct:.4f}"  if artifact_11_minus_van_pct  is not None else "",
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
         "noise_delta_min_pct":  f"{noise_delta_min_pct:.4f}"  if noise_delta_min_pct  is not None else "",
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
@@ -2480,6 +2494,10 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["vanilla_err_artifact_3_pct"]  = r.get("vanilla_err_artifact_3_pct")
             stats["vanilla_err_artifact_5_pct"]  = r.get("vanilla_err_artifact_5_pct")
             stats["vanilla_err_artifact_11_pct"] = r.get("vanilla_err_artifact_11_pct")
+            stats["err_minus_van_pct"]           = r.get("err_minus_van_pct")
+            stats["artifact_3_minus_van_pct"]    = r.get("artifact_3_minus_van_pct")
+            stats["artifact_5_minus_van_pct"]    = r.get("artifact_5_minus_van_pct")
+            stats["artifact_11_minus_van_pct"]   = r.get("artifact_11_minus_van_pct")
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
@@ -2578,6 +2596,10 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         vanilla_err_artifact_3_pct=stats.get("vanilla_err_artifact_3_pct"),
         vanilla_err_artifact_5_pct=stats.get("vanilla_err_artifact_5_pct"),
         vanilla_err_artifact_11_pct=stats.get("vanilla_err_artifact_11_pct"),
+        err_minus_van_pct=stats.get("err_minus_van_pct"),
+        artifact_3_minus_van_pct=stats.get("artifact_3_minus_van_pct"),
+        artifact_5_minus_van_pct=stats.get("artifact_5_minus_van_pct"),
+        artifact_11_minus_van_pct=stats.get("artifact_11_minus_van_pct"),
     )
 
     stats["variant"] = variant_name
@@ -3082,18 +3104,12 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
     if not rows:
         return {}
 
-    # Multi-scale artifact tolerance: cache passes if EITHER condition holds:
-    #   (a) ratio: cache <= ARTIFACT_TOLERANCE × vanilla (relative — for
-    #       scenes where vanilla itself has substantial noise/firefly
-    #       presence; cache may not amplify by >20%).
-    #   (b) absolute: cache <= vanilla + ARTIFACT_ABS_MARGIN (absolute —
-    #       for scenes where vanilla is near zero (e.g. Cornell 1PL x16)
-    #       and a small absolute delta blows up the ratio without being
-    #       a visible artifact).
-    # Either pass = OK. Genuine cache-induced clusters typically violate
-    # both at once (large absolute AND high ratio).
-    ARTIFACT_TOLERANCE  = 1.2
-    ARTIFACT_ABS_MARGIN = 5.0
+    # "Be better than vanilla" rule: cache must not exceed vanilla on the
+    # artifact metric by more than ARTIFACT_DELTA_MARGIN percentage points
+    # at any scene/spp/scale. Reads the cache − vanilla delta directly;
+    # negative deltas mean cache is already better than vanilla (good).
+    # Margin allows tiny positive deltas to absorb run-to-run metric noise.
+    ARTIFACT_DELTA_MARGIN = 5.0
 
     result = {}
     b_variants = sorted({_b_core(r["variant"]) for r in rows if _b_core(r["variant"])})
@@ -3105,13 +3121,9 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
             pv = per_scene.setdefault(r["variant"], {})
             pv[r["scene"]] = {
                 "rays":  r.get("rays_traced_pct") or 0.0,
-                "err":   r.get("error_delta_pct"),
-                "a3":    r.get("error_artifact_3_pct"),
-                "a5":    r.get("error_artifact_5_pct"),
-                "a11":   r.get("error_artifact_11_pct"),
-                "va3":   r.get("vanilla_err_artifact_3_pct"),
-                "va5":   r.get("vanilla_err_artifact_5_pct"),
-                "va11":  r.get("vanilla_err_artifact_11_pct"),
+                "d3":    r.get("artifact_3_minus_van_pct"),
+                "d5":    r.get("artifact_5_minus_van_pct"),
+                "d11":   r.get("artifact_11_minus_van_pct"),
             }
         if not per_scene:
             result[bv] = []
@@ -3119,30 +3131,26 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
 
         all_scenes = sorted({s for pv in per_scene.values() for s in pv.keys()})
 
-        # Variant qualifies iff EVERY scene satisfies cache <= 1.2*vanilla
-        # at all three artifact scales.
+        # Variant qualifies iff every scene/scale delta is below margin
+        # (cache may exceed vanilla by at most ARTIFACT_DELTA_MARGIN pp).
         qualifying = []
         for v, pv in per_scene.items():
             all_pass = True
-            worst_ratio = 0.0
+            worst_delta = -1e9
             for scn in all_scenes:
                 if scn not in pv:
                     continue
                 d = pv[scn]
-                for ck, vk in (("a3", "va3"), ("a5", "va5"), ("a11", "va11")):
-                    cv_raw = d.get(ck); vv_raw = d.get(vk)
-                    if cv_raw is None or vv_raw is None:
+                for k in ("d3", "d5", "d11"):
+                    raw = d.get(k)
+                    if raw is None or raw == "":
                         continue
                     try:
-                        cv = float(cv_raw); vv = float(vv_raw)
+                        delta = float(raw)
                     except (TypeError, ValueError):
                         continue
-                    # Pass if EITHER ratio OR absolute-margin condition holds.
-                    denom = max(vv, 0.5)
-                    ratio = cv / denom
-                    worst_ratio = max(worst_ratio, ratio)
-                    abs_diff = cv - vv
-                    if ratio > ARTIFACT_TOLERANCE and abs_diff > ARTIFACT_ABS_MARGIN:
+                    worst_delta = max(worst_delta, delta)
+                    if delta > ARTIFACT_DELTA_MARGIN:
                         all_pass = False
                         break
                 if not all_pass:
@@ -3155,7 +3163,7 @@ def pick_top_variants_per_bvariant(step_name, n_top=3, spp=1):
                 continue
             qualifying.append((v, {
                 "rays_mean": stats.mean(rays_vals),
-                "worst_artifact_ratio": worst_ratio,
+                "worst_artifact_delta": worst_delta,
             }))
         # Rank by ascending mean rays (cheapest no-artifact carry).
         qualifying.sort(key=lambda kv: kv[1]["rays_mean"])

@@ -66,6 +66,9 @@ for (base_name, base_overrides) in BASE_26:
             "pMin":                          PM_INH,
             "subframeN":                     SUBFRAME_N,
             "decayPeriod":                   dp,
+            # Primary decay is the user's setting; disable PI auto-tune so
+            # dp=2/4/8 actually persists across the multi-frame render.
+            "enableDecayAutoTune":           False,
         }))
 
 STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI,

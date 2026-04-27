@@ -64,6 +64,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
     if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
+    if (props.has("enableDecayAutoTune")) mParams.enableDecayAutoTune = props["enableDecayAutoTune"];
 
     // VisCache feature + ablation toggles
     if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
@@ -121,6 +122,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("autoTuneCells"))    mParams.autoTuneCells    = props["autoTuneCells"];
     if (props.has("quantSceneScale"))  mParams.quantSceneScale  = props["quantSceneScale"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
+    if (props.has("enableDecayAutoTune")) mParams.enableDecayAutoTune = props["enableDecayAutoTune"];
 
     if (props.has("enableVisCacheVisibilityCheck"))    mParams.enableVisCacheVisibilityCheck    = props["enableVisCacheVisibilityCheck"];
     if (props.has("enableVisCacheLightSelection"))  mParams.enableVisCacheLightSelection  = props["enableVisCacheLightSelection"];
@@ -673,7 +675,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     if (mFrameCount % 16u == 0u && mpStagingBuffer)
     {
         readbackStats(pCtx);
-        autoTuneDecayPeriod();
+        // Primary decay rate is the user's `decayPeriod` setting; PI auto-tune
+        // is opt-in secondary adjustment under load. When off (default), the
+        // user's setting is canonical and persists across frames.
+        if (mParams.enableDecayAutoTune)
+            autoTuneDecayPeriod();
     }
 
     // Subframe gate: advance logical frameCount only after a full Bayer cycle (N²).
