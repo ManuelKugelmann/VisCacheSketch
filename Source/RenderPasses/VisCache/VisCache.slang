@@ -778,8 +778,14 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     // strided iteration — visit a fixed window [target-A, target+B] around
     // the entry. Round-to-nearest so all rays hashing the same world cell
     // hit the same fingerprint (vhfFingerprint includes the lvl index).
-    static const int kCascadeWindowBack    = 4;   // levels examined coarser-than-target
-    static const int kCascadeWindowForward = 12;  // levels examined finer-than-target
+    //
+    // LOOKUP starts AT targetLvl — never reads from cells COARSER than
+    // the per-pixel footprint. A coarser cell averages over more screen
+    // area than the pixel covers, so its stored μ is wrong-by-aggregation
+    // for that pixel. The back-window (kCascadeWindowBack) exists only
+    // for INSERT to backfill coarser cells (amortization across nearby
+    // pixels), but reads must use cells ≤ target footprint size.
+    static const int kCascadeWindowForward = 12;  // levels finer-than-target
     float lookupLogRatio = log(max(gPosAFine, 1e-6f) / max(gPosACoarse, 1e-6f));
 
     int startLvl = 0;
@@ -792,8 +798,10 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
         float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
         int targetLvl = int(round(t * float(gNumLevels - 1u)));
-        startLvl = clamp(targetLvl - kCascadeWindowBack,    0, int(gNumLevels) - 1);
-        endLvl   = clamp(targetLvl + kCascadeWindowForward + 1, 1, int(gNumLevels));
+        // Lookup window: [targetLvl, targetLvl + kCascadeWindowForward].
+        // No back-window — never read coarser-than-target cells.
+        startLvl = clamp(targetLvl,                                 0, int(gNumLevels) - 1);
+        endLvl   = clamp(targetLvl + kCascadeWindowForward + 1,     1, int(gNumLevels));
     }
 
     for (int lvl = startLvl; lvl < endLvl; lvl++)
