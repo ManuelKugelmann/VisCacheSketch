@@ -281,12 +281,14 @@ def bilateral_noise_cached(render_path, cache_path=None, radius=2, phi=0.1):
 
 
 def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None, radius=2, phi=0.1):
-    """Signed bilateral-noise delta: noise(render) − noise(baseline) on tonemapped PNGs.
-    Same bipolar ramp as the signed GT-error delta (viridis for positive = noisier,
-    purple→black for negative = smoother than baseline).
+    """Absolute bilateral noise of the render — noise(render) only, no
+    subtraction of baseline noise. Independent of vanilla's per-SPP noise
+    pattern. Baseline path retained in signature for compat; baseline noise
+    is computed and reported separately for side-by-side comparison.
 
-    Returns dict {noise_vis_mean, noise_van_mean, noise_delta_mean, noise_delta_pct}
-    or None on failure.
+    Returns dict {noise_vis_mean, noise_van_mean, noise_delta_*} where the
+    "delta" field names are kept for CSV/plot pipeline compat but contain
+    absolute noise(render) numbers, always >= 0.
     """
     try:
         img_r = np.array(Image.open(render_path)).astype(np.float32) / 255.0
@@ -297,26 +299,32 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
         return None
     n_r = _bilateral_noise_map(img_r[:, :, :3], radius=radius, phi=phi)
     n_b = _bilateral_noise_map(img_b[:, :, :3], radius=radius, phi=phi)
-    signed = n_r - n_b
-    _signed_error_png(signed, outpath, nodata=nodata, norm=1.0)
-    mask = _valid_mask_from_nodata(nodata, signed.shape)
+    denom  = 1.0
+    # Absolute noise PNG (viridis 0 to denom). No signed bipolar — n_r is
+    # non-negative. Vanilla noise written to <name>.vanilla.png for compare.
+    viridis_png(np.clip(n_r / denom, 0.0, 1.0), outpath, nodata=nodata)
+    if outpath.endswith(".png"):
+        van_path = outpath.replace(".png", ".vanilla.png")
+    else:
+        van_path = outpath + ".vanilla"
+    viridis_png(np.clip(n_b / denom, 0.0, 1.0), van_path, nodata=nodata)
+    mask = _valid_mask_from_nodata(nodata, n_r.shape)
     if not mask.any():
         mask = np.ones_like(mask)
-    vals = signed[mask]
-    n_vis  = float(np.nanmean(n_r[mask]))
+    vals = n_r[mask]
+    n_vis  = float(np.nanmean(vals))
     n_van  = float(np.nanmean(n_b[mask]))
-    s_m    = float(np.nanmean(vals))
-    # Robust min/max: 1st and 99th percentile (see error delta rationale).
+    s_m    = n_vis  # absolute, NOT a delta
     s_min  = float(np.nanpercentile(vals, 1))
     s_max  = float(np.nanpercentile(vals, 99))
-    # Normalize to fixed bilateral-noise max (1.0 — cov is clipped to [0,1]).
-    # Same scale the image colormap uses; avoids double-counting vanilla.
-    denom  = 1.0
-    # Noise blob = firefly detector. Wider Gaussian than error blob so
-    # single-pixel bright spikes become visible clusters (firefly = a few
-    # bright outlier pixels in a shadowed region; narrow sigma makes the
-    # blob a single pixel and the metric reads same as max).
-    blob_pct = _signed_blob_pct(signed, mask, NOISE_BLOB_SIGMA, denom)
+    # Absolute noise blob — max smoothed cache noise. Independent of vanilla.
+    blur = _gaussian_blur_2d(n_r, NOISE_BLOB_SIGMA)
+    bvals = np.where(mask, blur, np.nan)
+    try:
+        blob_peak = float(np.nanmax(bvals))
+    except (ValueError, RuntimeWarning):
+        blob_peak = 0.0
+    blob_pct = 100.0 * max(0.0, blob_peak) / max(denom, 1e-6)
     return {
         "noise_vis_mean":       n_vis,
         "noise_van_mean":       n_van,
