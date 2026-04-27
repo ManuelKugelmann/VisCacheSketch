@@ -540,7 +540,7 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
      ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "err μ{error_delta_pct:.1f} ({err_minus_vanilla_pct:+.1f}) artifact{error_artifact_5_pct:.1f} ({artifact_5_minus_vanilla_pct:+.1f})"),
+     ("r1c3_accum_error",      "error μ{error_delta_pct:.1f} ({err_minus_vanilla_pct:+.1f}) artifact {error_artifact_5_pct:.1f} ({artifact_5_minus_vanilla_pct:+.1f})"),
      ("r1c9_accum_noise",      "noise μ{noise_delta_pct:.1f} ({noise_minus_vanilla_pct:+.1f})")],
     [("r2c1_frame_level",      "level [{min_level:.0f}..{max_level:.0f}] μ{mean_level:.0f}"),
      ("r1c4_accum_maturity",   "maturity"),
@@ -2528,7 +2528,13 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
     # independent of GT. Negative = VisCache smoother; positive = noisier.
     vanilla_xN_renders = sorted(glob.glob(os.path.join(baseline_dir, f"*_x{spp}_*_vanilla_r1c1_accum_render.png")))
     if render_path and vanilla_xN_renders:
-        r = compute_render_noise_signed(render_path, vanilla_xN_renders[0], o("r1c9_accum_noise"))
+        # Subtract GT self-noise (x4096 bilateral CoV = pure structural
+        # detector response on edges, no MC noise). Both cache and vanilla
+        # noise maps get the same floor subtracted, so the deltas reflect
+        # actual stochastic-noise differences.
+        gt_noise_floor = _baseline_noise_floor(baseline_dir, gt_spp=4096, res_tag=f"{resX}x{resY}")
+        r = compute_render_noise_signed(render_path, vanilla_xN_renders[0], o("r1c9_accum_noise"),
+                                          noise_floor=gt_noise_floor)
         if r is not None:
             stats["noise_delta_pct"]      = r["noise_delta_pct"]
             stats["noise_delta_min_pct"]  = r["noise_delta_min_pct"]

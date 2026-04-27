@@ -325,15 +325,19 @@ def bilateral_noise_cached(render_path, cache_path=None, radius=2, phi=0.1):
     return noise
 
 
-def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None, radius=2, phi=0.1):
-    """Absolute bilateral noise of the render — noise(render) only, no
-    subtraction of baseline noise. Independent of vanilla's per-SPP noise
-    pattern. Baseline path retained in signature for compat; baseline noise
-    is computed and reported separately for side-by-side comparison.
+def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None, radius=2, phi=0.1,
+                                  noise_floor=None):
+    """Bilateral noise of the render with GT self-noise (structural floor)
+    subtracted. The bilateral CoV detector responds to edges/structure, not
+    only MC sampling noise — at x4096 GT the residual response is pure
+    structural detector artifact. Subtracting that floor leaves actual
+    stochastic noise.
 
-    Returns dict {noise_vis_mean, noise_van_mean, noise_delta_*} where the
-    "delta" field names are kept for CSV/plot pipeline compat but contain
-    absolute noise(render) numbers, always >= 0.
+    noise_floor: optional (H,W) array of bilateral CoV computed on the
+    x4096 GT render. When supplied, it is subtracted (clamped ≥0) from
+    both cache and vanilla noise maps before computing the metrics.
+
+    Returns dict with both absolute and delta values.
     """
     try:
         img_r = np.array(Image.open(render_path)).astype(np.float32) / 255.0
@@ -342,8 +346,17 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
         return None
     if img_r.shape[:2] != img_b.shape[:2]:
         return None
-    n_r = _bilateral_noise_map(img_r[:, :, :3], radius=radius, phi=phi)
-    n_b = _bilateral_noise_map(img_b[:, :, :3], radius=radius, phi=phi)
+    n_r_raw = _bilateral_noise_map(img_r[:, :, :3], radius=radius, phi=phi)
+    n_b_raw = _bilateral_noise_map(img_b[:, :, :3], radius=radius, phi=phi)
+    # Subtract structural floor (GT self-noise) so the metric reflects
+    # stochastic noise only. Clamp to 0 — MC noise can only add to the
+    # detector's structural response.
+    if noise_floor is not None and noise_floor.shape == n_r_raw.shape:
+        n_r = np.maximum(n_r_raw - noise_floor, 0.0)
+        n_b = np.maximum(n_b_raw - noise_floor, 0.0)
+    else:
+        n_r = n_r_raw
+        n_b = n_b_raw
     denom  = 1.0
     # Absolute noise PNG (viridis 0 to denom). No signed bipolar — n_r is
     # non-negative. Vanilla noise written to <name>.vanilla.png for compare.
