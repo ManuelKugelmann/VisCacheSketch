@@ -13,6 +13,8 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 - **error Δ** = OkLabDistance(viscache, GT) − OkLabDistance(vanilla_xN, GT) at matched SPP — perceptual error vs ground truth, relative to same-SPP vanilla.
 - **noise Δ** = bilateral_noise(viscache LDR) − bilateral_noise(vanilla_xN LDR) at matched SPP — screen-space noise difference, relative to same-SPP vanilla. Step 00 also emits per-SPP absolute OkLab error vs GT as the reference noise floor the noise Δ is measured against.
 
+> ⚠ **Metric change at step 11+**: the error metric switched to a **Reinhard-tone-mapped OkLab** (HDR x → x/(1+x) before perceptual distance) so brightly-lit Sponza floors etc don't dominate the metric. Steps 00–10 numbers in this devlog are still under the **pre-tone-map** metric (linear-clipped at 10 + sRGB gamma). Pre/post-step-11 magnitudes are not directly comparable. **Action item**: re-run steps 00–10 with the new metric (postprocess only — EXRs are kept, no re-rendering needed) once the new ladder stabilizes, so cross-step plots have a single consistent error scale.
+
 ## Narrowing chain at a glance
 
 | step | axis under sweep              | decision made                                       | carried forward                        |
