@@ -788,7 +788,6 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
     int levelStride = max(1, int((int(gNumLevels) - 1) / int(max(gCascadeVisitCount, 1u))));
 
     int startLvl = 0;
-    int minTrustLvl = 0;  // cells coarser than this are visited but never returned as `best`
     if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
     {
         float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
@@ -799,15 +798,15 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         {
             float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
             int targetLvl = int(ceil(t * float(gNumLevels - 1u)));
-            // Prefill 2 cascade strides coarser than target so coarse parent
-            // levels carry converged μ that parent-preinit can seed into
-            // children. But TRUST (return as `best`) only from targetLvl
-            // onward — coarse cells cover many pixels, mature quickly with
-            // diluted μ, and if we trust them the cache's predictions become
-            // coarse-grained. (User-observed: qA hash cells ~1/8 of screen.)
-            int stepsBack = 2 * levelStride;
-            startLvl = clamp(targetLvl - stepsBack, 0, int(gNumLevels) - 1);
-            minTrustLvl = targetLvl;
+            // Snap to the stride-aligned bucket level whose cell size is
+            // closest to the target. Different rays must hash to the SAME
+            // fingerprint at a given world-space cell, otherwise samples
+            // never accumulate (each ray writes to its own private level
+            // index because vhfFingerprint includes lvl). Round-to-nearest
+            // picks the closest cell-size bucket; floor would always round
+            // toward coarser cells.
+            int alignedLvl = ((targetLvl + levelStride / 2) / levelStride) * levelStride;
+            startLvl = clamp(alignedLvl, 0, int(gNumLevels) - 1);
         }
     }
 
@@ -865,19 +864,14 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
 
         // Mature: record and keep `best` at this level. Only overwrite on
         // mature hits so we never pair a coarse valid mu with a finer
-        // immature one. Additional gate: don't let coarser-than-target cells
-        // become `best` — they dilute μ across too many pixels and produce
-        // coarse-grained predictions. Finer levels can still overwrite.
-        if (lvl >= minTrustLvl)
-        {
-            best.mu    = mu;
-            best.var   = var;
-            best.level = lvl;
-            best.N     = total;
-            best.qa    = qa;
-            best.qb    = qb;
-            best.valid = true;
-        }
+        // immature one.
+        best.mu    = mu;
+        best.var   = var;
+        best.level = lvl;
+        best.N     = total;
+        best.qa    = qa;
+        best.qb    = qb;
+        best.valid = true;
 
         // Determine "converged" via whichever gate is active:
         //   stderr gate (preferred): sqrt(var/N) ≤ gStderrThreshold. Principled
@@ -1345,8 +1339,12 @@ void vhfInsert(float3 posA, float3 posB, float V, float3 normalA = float3(0.f))
         {
             float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / insertLogRatio;
             int targetLvl = int(ceil(t * float(gNumLevels - 1u)));
-            int stepsBack = 2 * levelStride;
-            startLvl = clamp(targetLvl - stepsBack, 0, int(gNumLevels) - 1);
+            // Snap target to nearest stride-aligned bucket so insert writes
+            // land on the SAME level indices that lookup later reads (they
+            // share the snapping logic). Then prefill 2 buckets coarser.
+            int alignedLvl = ((targetLvl + levelStride / 2) / levelStride) * levelStride;
+            int stepsBack  = 2 * levelStride;
+            startLvl = clamp(alignedLvl - stepsBack, 0, int(gNumLevels) - 1);
         }
     }
 
