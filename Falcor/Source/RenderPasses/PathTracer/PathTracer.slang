@@ -47,6 +47,11 @@ __exported import PathState;
 __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
+#if USE_WS_RESERVOIRS
+import RenderPasses.VisCache.WSReservoir;
+import RenderPasses.VisCache.WSReservoirIO;
+#endif
+
 /** Interface for querying visibility in the scene.
     This is used in `handleHit`.
 */
@@ -1007,6 +1012,31 @@ struct PathTracer
 
                 float3 weight = mi.eval(sd, ls.dir, path.sg);
                 float3 Lr = weight * ls.Li;
+
+#if USE_WS_RESERVOIRS
+                // §9.4 Write path: feed the chosen NEE candidate into the
+                // posA-cell reservoir at the primary hit. Reservoirs accumulate
+                // across pixels-in-cell + frames; the read path (next commit)
+                // will pull this back as a low-variance light sample.
+                //
+                // Identity is stored as (direction, distance) — light-system-
+                // agnostic; read path re-traces the shadow ray to recover Li.
+                if (path.getVertexIndex() == 1 && wsEnabled())
+                {
+                    float pHat = luminance(Lr);
+                    if (pHat > 0.f)
+                    {
+                        float invPdf = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
+                        WSLocalReservoir local;
+                        local.init();
+                        local.streamingAdd(wsPackDirOct(ls.dir), ls.distance,
+                                           ls.lightType, pHat, invPdf, path.sg);
+                        WSCellAddress addr = wsResolveCell(sd.posW);
+                        wsMergeIntoCell(addr, local, path.sg);
+                    }
+                }
+#endif
+
                 if (any(Lr > 0.f))
                 {
                     Ray ray = ls.getVisibilityRay();

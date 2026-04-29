@@ -205,8 +205,9 @@ private:
     ref<Buffer>                     mpSampleNRDEmission;        ///< Compact per-sample NRD emission data.
     ref<Buffer>                     mpSampleNRDReflectance;     ///< Compact per-sample NRD reflectance data.
 
-    // VisCache integration — hash table + per-member cbuffer params from InternalDictionary.
+    // VisCache integration — hash table + cbuffer from InternalDictionary.
     ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
+    ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — bound directly to keep struct in sync
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
@@ -220,8 +221,30 @@ private:
              float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
              float normalACoarse=0, normalAFine=0;
              float bootThresholdFactorFootprintPx=0;
+             uint32_t forceDescendFootprintPx=0;
+             uint32_t cascadeWindowForward=12;
+             float stderrThreshold=0;
+             uint32_t enableHierarchicalConsistency=0;
+             float hierarchicalMuTolerance=0.2f;
+             float accelDecayDisagreeThresh=0;
+             uint32_t bootThresholdFine=0;
              float jitterFilter=0, jitterCell=0;
-             uint32_t diagAccumWindow=128; } mVCParams;
+             uint32_t diagAccumWindow=128;
+             uint32_t frameCount=0, spp=1;
+             float cameraPosX=0, cameraPosY=0, cameraPosZ=0;
+             float pixelSize1=0.001f;
+             uint32_t subframeN=1, warmupFirst=0, warmupRun=0;
+             // §9.4 WS-ReSTIR DI cbuffer fields
+             uint32_t wsEnable=0;
+             uint32_t wsLevelOffset=1;
+             uint32_t wsCapacity=0;
+             float    wsMCap=30.f;
+             uint32_t wsSpatialNeighbours=4;
+             float    wsLightMuMin=0.01f; } mVCParams;
+
+    // §9.4 WS-ReSTIR DI buffer (sourced from VisCache via dict["wsReservoirBuffer"]).
+    ref<Buffer> mpVHFWSReservoirs;
+    bool        mVisCacheWSReservoirs = false; ///< Master gate read from dict.
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.

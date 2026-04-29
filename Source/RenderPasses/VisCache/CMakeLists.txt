@@ -13,6 +13,8 @@ target_sources(VisCachePass PRIVATE
     VisCacheMinimalPT.slang
     RevalidationCommon.slang
     ShadingCV.slang
+    WSReservoir.slang
+    WSReservoirIO.slang
 )
 
 target_copy_shaders(VisCachePass RenderPasses/VisCache)

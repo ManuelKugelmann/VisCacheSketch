@@ -52,8 +52,21 @@ public:
     // ------------------------------------------------------------------
 
     /// GPU constant buffer layout — must match VisCacheParams in VisCache.slang exactly.
-    /// Exported via InternalDictionary as "vhfParamsCB" so downstream passes
-    /// bind it with a single line: rootVar["VisCacheParams"] = dict["vhfParamsCB"].
+    /// Exported via InternalDictionary as "vhfParamsCB" — VisCache.cpp memcpy's
+    /// the entire struct here each frame.
+    ///
+    /// CRITICAL: when adding a field here you MUST also:
+    ///   1. Add it to the slang cbuffer in matching order
+    ///      (Source/RenderPasses/VisCache/VisCache.slang `cbuffer VisCacheParams`).
+    ///   2. Add a per-field binding in EVERY downstream pass that imports the
+    ///      cbuffer (Falcor 8 setBuffer() doesn't accept ConstantBuffer-typed
+    ///      shader vars, so cross-pass binding must enumerate every field):
+    ///        - Falcor/Source/RenderPasses/PathTracer/PathTracer.cpp (tracePass)
+    ///        - Source/RenderPasses/ReSTIRPTPass/ReSTIRPTPass.cpp (PathRetrace/PathReuse)
+    ///   3. Surface it in the dict as `vhfParam_<name>` so passes can read it
+    ///      back via `mVCParams.<name>` (VisCache.cpp ~line 510 area).
+    /// Forgetting step 2 leaves the shader global at 0 silently — a bug that
+    /// is very hard to debug. See CLAUDE.md "Workflow → Cbuffer cross-pass binding".
     struct GPUParams
     {
         uint32_t tableCapacity;
@@ -107,12 +120,6 @@ public:
                                            ///< (coarse, L=0) to bootThresholdFine (fine, L=N-1).
                                            ///< "Coarse HIGH, fine LOW" defends Cornell 1PL blob
                                            ///< without costing Bistro rays.
-        float    preinitAmbiguityCutoff;   ///< Parent-preinit ambiguity gate: skip child seeding
-                                           ///< when parent μ ∈ [cutoff, 1-cutoff]. Prevents
-                                           ///< boundary-straddling parents from propagating
-                                           ///< their biased μ into fresh child cells.
-                                           ///< 0 = unconditional preinit (legacy). 0.3 = skip
-                                           ///< preinit when parent μ ∈ [0.3, 0.7].
         float    jitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
         float    jitterCell;      ///< F: per-cell-index-seed jitter scale (Binder 2018, hard boundaries shift per cell). 0 = off.
         uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
@@ -123,6 +130,15 @@ public:
         uint32_t subframeN;        ///< N×N Bayer gate (1 = disabled)
         uint32_t warmupSlotsFirst; ///< # Bayer slots write-only in frame 0
         uint32_t warmupSlotsRun;   ///< # Bayer slots write-only in every subsequent frame
+
+        // --- §9.4 World-space ReSTIR DI reservoirs (rides VisCache posA cascade) ---
+        uint32_t wsEnable;             ///< 1 = WS-reservoir buffer active. Master gate.
+        uint32_t wsLevelOffset;        ///< Reservoirs read at max(0, visTargetLvl - wsLevelOffset).
+                                       ///< Default 1 = one level coarser than visibility.
+        uint32_t wsCapacity;           ///< Power-of-two reservoir slot count (table size).
+        float    wsMCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
+        uint32_t wsSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
+        float    wsLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -200,6 +216,14 @@ public:
         uint32_t warmupSlotsRun                = 0u;    ///< L: # of Bayer slots write-only in every subsequent frame
         uint32_t cascadeVisitCount             = 32u;   ///< # cascade strides per trace (levelStride = (N-1)/this).
                                                         ///< Lower = bigger cell-size step per stride, more samples per cell.
+
+        // --- §9.4 World-space ReSTIR DI reservoirs ---
+        bool     enableWSReservoirs            = false; ///< Master gate. Off = legacy NEE in PathTracer.
+        uint32_t wsLevelOffset                 = 1u;    ///< Cascade-coarseness offset for reservoir reads (vs visibility).
+        uint32_t wsReservoirCapacity           = 1u << 18u; ///< 256K slots × ~32 B = 8 MB default.
+        float    wsMCap                        = 30.0f; ///< Temporal M-cap for reservoir merge.
+        uint32_t wsSpatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
+        float    wsLightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
     };
 
     const Params& getParams() const { return mParams; }
@@ -221,6 +245,8 @@ private:
     ref<Buffer>         mpParamsBuffer;  ///< VisCacheParams cbuffer (32 bytes, exported via dict)
     ref<Buffer>         mpStatsBuffer;   ///< 5x uint32 atomic counters
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
+    ref<Buffer>         mpWSReservoirs;  ///< RWStructuredBuffer<WSReservoir>, sized by wsReservoirCapacity. Allocated on demand.
+    uint32_t            mWSReservoirCapacityCommitted = 0u; ///< Capacity used to allocate mpWSReservoirs (re-alloc on resize).
 
     ref<ComputePass>    mpDecayPass;
 

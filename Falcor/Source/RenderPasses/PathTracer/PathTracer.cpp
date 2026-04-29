@@ -1228,7 +1228,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasDirDist = mVisCacheDirDistAddr;
         uint32_t wasSubframeN = mVisCacheSubframeN;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr &&
+        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
+        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr &&
             dict.keyExists("vhfParam_tableCapacity"));
         if (mVisCacheAvailable)
         {
@@ -1251,10 +1252,45 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
             mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
             mVCParams.bootThresholdFactorFootprintPx = dict.getValue<float>("vhfParam_bootThresholdFactorFootprintPx");
-            mVCParams.jitterFilter   = dict.keyExists("vhfParam_jitterFilter") ? dict.getValue<float>("vhfParam_jitterFilter") : 0.f;
-            mVCParams.jitterCell     = dict.keyExists("vhfParam_jitterCell")   ? dict.getValue<float>("vhfParam_jitterCell")   : 0.f;
+            // New cbuffer fields — must be present in vhfParam_* dict for downstream binding.
+            // Use keyExists() guards for backward compat with older VisCache pass versions.
+            auto getU = [&](const char* k, uint32_t def) { return dict.keyExists(k) ? dict.getValue<uint32_t>(k) : def; };
+            auto getF = [&](const char* k, float def)    { return dict.keyExists(k) ? dict.getValue<float>(k)    : def; };
+            mVCParams.forceDescendFootprintPx       = getU("vhfParam_forceDescendFootprintPx", 0u);
+            mVCParams.cascadeWindowForward          = getU("vhfParam_cascadeWindowForward", 12u);
+            mVCParams.stderrThreshold               = getF("vhfParam_stderrThreshold", 0.f);
+            mVCParams.enableHierarchicalConsistency = getU("vhfParam_enableHierarchicalConsistency", 0u);
+            mVCParams.hierarchicalMuTolerance       = getF("vhfParam_hierarchicalMuTolerance", 0.2f);
+            mVCParams.accelDecayDisagreeThresh      = getF("vhfParam_accelDecayDisagreeThresh", 0.f);
+            mVCParams.bootThresholdFine             = getU("vhfParam_bootThresholdFine", 0u);
+            mVCParams.jitterFilter   = getF("vhfParam_jitterFilter", 0.f);
+            mVCParams.jitterCell     = getF("vhfParam_jitterCell",   0.f);
             mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
+            // Per-frame fields (camera + frame counter) populated each frame
+            // by VisCache::execute() — read from same dict.
+            mVCParams.frameCount   = getU("vhfParam_frameCount", 0u);
+            mVCParams.spp          = getU("vhfParam_spp", 1u);
+            mVCParams.cameraPosX   = getF("vhfParam_cameraPosX", 0.f);
+            mVCParams.cameraPosY   = getF("vhfParam_cameraPosY", 0.f);
+            mVCParams.cameraPosZ   = getF("vhfParam_cameraPosZ", 0.f);
+            mVCParams.pixelSize1   = getF("vhfParam_pixelSize1", 0.001f);
+            mVCParams.subframeN    = getU("vhfParam_subframeN", 1u);
+            mVCParams.warmupFirst  = getU("vhfParam_warmupFirst", 0u);
+            mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
+            // §9.4 WS-ReSTIR DI cbuffer fields
+            mVCParams.wsEnable            = getU("vhfParam_wsEnable", 0u);
+            mVCParams.wsLevelOffset       = getU("vhfParam_wsLevelOffset", 1u);
+            mVCParams.wsCapacity          = getU("vhfParam_wsCapacity", 0u);
+            mVCParams.wsMCap              = getF("vhfParam_wsMCap", 30.f);
+            mVCParams.wsSpatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
+            mVCParams.wsLightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
         }
+        bool wasWSReservoirs = mVisCacheWSReservoirs;
+        mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
+            ? dict.getValue<ref<Buffer>>("wsReservoirBuffer") : nullptr;
+        mVisCacheWSReservoirs = mVisCacheAvailable
+            && dict.keyExists("vhfEnableWSReservoirs") && dict.getValue<bool>("vhfEnableWSReservoirs")
+            && mpVHFWSReservoirs != nullptr;
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
@@ -1287,10 +1323,12 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheDirDistAddr != wasDirDist
-            || mVisCacheDiagnostics != wasDiag || mVisCacheSubframeN != wasSubframeN)
+            || mVisCacheDiagnostics != wasDiag || mVisCacheSubframeN != wasSubframeN
+            || mVisCacheWSReservoirs != wasWSReservoirs)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} dirDistAddr={} diag={} subframeN={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheSubframeN);
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} dirDistAddr={} diag={} subframeN={} wsRes={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheDirDistAddr,
+                    mVisCacheDiagnostics, mVisCacheSubframeN, mVisCacheWSReservoirs);
             mRecompile = true;
         }
     }
@@ -1451,28 +1489,62 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     if (mVisCacheAvailable)
     {
         var["gVHFTable"] = mpVHFTable;
-        var["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
-        var["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
-        var["VisCacheParams"]["gMatureThreshold"] = mVCParams.matureThreshold;
-        var["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
-        var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
-        var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
-        var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
-        var["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        var["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
-        var["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
-        var["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
-        var["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
-        var["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
-        var["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
-        var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
-        var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        var["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
-        var["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        var["VisCacheParams"]["gBootThresholdFactorFootprintPx"] = mVCParams.bootThresholdFactorFootprintPx;
-        var["VisCacheParams"]["gJitterFilter"]   = mVCParams.jitterFilter;
-        var["VisCacheParams"]["gJitterCell"]     = mVCParams.jitterCell;
-        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
+        // NOTE: Falcor 8's setBuffer() only handles SRV/UAV — ConstantBuffer
+        // type variables can't be assigned a raw Buffer, so we must enumerate
+        // every cbuffer field. **Every field added to GPUParams + the slang
+        // cbuffer MUST also appear here**, or the shader will read 0 for it.
+        // See CLAUDE.md "Workflow → Cbuffer binding".
+        auto vc = var["VisCacheParams"];
+        vc["gTableCapacity"]                 = mVCParams.tableCapacity;
+        vc["gBootThreshold"]                 = mVCParams.bootThreshold;
+        vc["gMatureThreshold"]               = mVCParams.matureThreshold;
+        vc["gVarThreshold"]                  = mVCParams.varThreshold;
+        vc["gPMin"]                          = mVCParams.pMin;
+        vc["gFireflyBudget"]                 = mVCParams.fireflyBudget;
+        vc["gNumLevels"]                     = mVCParams.numLevels;
+        vc["gFlags"]                         = mVCParams.flags;
+        vc["gPosACoarse"]                    = mVCParams.posACoarse;
+        vc["gPosAFine"]                      = mVCParams.posAFine;
+        vc["gPosBCoarse"]                    = mVCParams.posBCoarse;
+        vc["gPosBFine"]                      = mVCParams.posBFine;
+        vc["gDirBCoarse"]                    = mVCParams.dirBCoarse;
+        vc["gDirBFine"]                      = mVCParams.dirBFine;
+        vc["gDistBCoarse"]                   = mVCParams.distBCoarse;
+        vc["gDistBFine"]                     = mVCParams.distBFine;
+        vc["gNormalACoarse"]                 = mVCParams.normalACoarse;
+        vc["gNormalAFine"]                   = mVCParams.normalAFine;
+        vc["gBootThresholdFactorFootprintPx"] = mVCParams.bootThresholdFactorFootprintPx;
+        vc["gForceDescendFootprintPx"]       = mVCParams.forceDescendFootprintPx;
+        vc["gCascadeWindowForward"]          = mVCParams.cascadeWindowForward;
+        vc["gStderrThreshold"]               = mVCParams.stderrThreshold;
+        vc["gEnableHierarchicalConsistency"] = mVCParams.enableHierarchicalConsistency;
+        vc["gHierarchicalMuTolerance"]       = mVCParams.hierarchicalMuTolerance;
+        vc["gAccelDecayDisagreeThresh"]      = mVCParams.accelDecayDisagreeThresh;
+        vc["gBootThresholdFine"]             = mVCParams.bootThresholdFine;
+        vc["gJitterFilter"]                  = mVCParams.jitterFilter;
+        vc["gJitterCell"]                    = mVCParams.jitterCell;
+        vc["gDiagAccumWindow"]               = mVCParams.diagAccumWindow;
+        vc["gFrameCount"]                    = mVCParams.frameCount;
+        vc["gSpp"]                           = mVCParams.spp;
+        vc["gCameraPosX"]                    = mVCParams.cameraPosX;
+        vc["gCameraPosY"]                    = mVCParams.cameraPosY;
+        vc["gCameraPosZ"]                    = mVCParams.cameraPosZ;
+        vc["gPixelSize1"]                    = mVCParams.pixelSize1;
+        vc["gSubframeN"]                     = mVCParams.subframeN;
+        vc["gWarmupFirst"]                   = mVCParams.warmupFirst;
+        vc["gWarmupRun"]                     = mVCParams.warmupRun;
+        // §9.4 WS-ReSTIR DI cbuffer fields
+        vc["gWSEnable"]                      = mVCParams.wsEnable;
+        vc["gWSLevelOffset"]                 = mVCParams.wsLevelOffset;
+        vc["gWSCapacity"]                    = mVCParams.wsCapacity;
+        vc["gWSMCap"]                        = mVCParams.wsMCap;
+        vc["gWSSpatialNeighbours"]           = mVCParams.wsSpatialNeighbours;
+        vc["gWSLightMuMin"]                  = mVCParams.wsLightMuMin;
+    }
+    // §9.4 WS-ReSTIR DI buffer at root var (parallel to gVHFTable).
+    if (mVisCacheWSReservoirs)
+    {
+        var["gWSReservoirs"] = mpVHFWSReservoirs;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
@@ -1591,6 +1663,8 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
     defines.add("VISCACHE_SUBFRAME_N", std::to_string(owner.mVisCacheSubframeN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
+    // §9.4 WS-ReSTIR DI: master define gates all reservoir paths in slang.
+    defines.add("USE_WS_RESERVOIRS", owner.mVisCacheWSReservoirs ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults

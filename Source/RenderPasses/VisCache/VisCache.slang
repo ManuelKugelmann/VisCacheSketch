@@ -225,6 +225,13 @@ cbuffer VisCacheParams
     uint   gSubframeN;        ///< N×N Bayer gate (1 = disabled)
     uint   gWarmupFirst;      ///< # Bayer slots write-only in frame 0 (force trace, no RR)
     uint   gWarmupRun;        ///< # Bayer slots write-only in every subsequent frame
+    // --- §9.4 World-space ReSTIR DI reservoirs ---
+    uint   gWSEnable;             ///< 1 = WS reservoir buffer active.
+    uint   gWSLevelOffset;        ///< Reservoirs read at max(0, visTargetLvl - gWSLevelOffset).
+    uint   gWSCapacity;           ///< Power-of-two reservoir slot count.
+    float  gWSMCap;               ///< Temporal M-cap for reservoir merge.
+    uint   gWSSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
+    float  gWSLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
 };
 
 // ---------------------------------------------------------------------------

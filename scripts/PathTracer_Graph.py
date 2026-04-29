@@ -19,15 +19,26 @@ except ImportError:
     pass
 
 
-def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True):
+def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True,
+                            wsReservoirs=False, wsLevelOffset=1, wsReservoirCapacity=1 << 18,
+                            wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01):
     """Build a PathTracer render graph.
 
     Args:
         viscache: If True, add VisCache pass for shadow gating (§11.2).
         useJitter: If False, pin samples to pixel center (no subpixel jitter).
+        wsReservoirs: If True, enable §9.4 world-space ReSTIR DI reservoirs
+            (requires viscache=True since reservoirs ride VisCache's posA cascade).
+        wsLevelOffset: # cascade levels coarser than the finest visibility level
+            for reservoir cell selection (default 1 = one step coarser).
     """
     name = "PathTracer_VisCache" if viscache else "PathTracer"
+    if wsReservoirs:
+        name += "_WSReSTIR"
     g = RenderGraph(name)
+    if wsReservoirs and not viscache:
+        # WS reservoirs are exported by the VisCache pass; can't run without it.
+        viscache = True
 
     # V-Buffer (visibility buffer — primary ray hits)
     vbuf = createPass("VBufferRT", {
@@ -38,7 +49,17 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
 
     # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
     if viscache:
-        vc = createPass("VisCachePass", {**VISCACHE_DEFAULTS, "spp": samplesPerPixel})
+        vc_props = {**VISCACHE_DEFAULTS, "spp": samplesPerPixel}
+        if wsReservoirs:
+            vc_props.update({
+                "enableWSReservoirs":   True,
+                "wsLevelOffset":        wsLevelOffset,
+                "wsReservoirCapacity":  wsReservoirCapacity,
+                "wsMCap":               wsMCap,
+                "wsSpatialNeighbours":  wsSpatialNeighbours,
+                "wsLightMuMin":         wsLightMuMin,
+            })
+        vc = createPass("VisCachePass", vc_props)
         g.addPass(vc, "VisCache")
 
     # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)

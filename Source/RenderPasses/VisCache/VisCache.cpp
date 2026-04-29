@@ -12,6 +12,9 @@
 
 // Entry size must match Slang struct VHFEntry (2x uint32 = 8 bytes)
 static constexpr size_t kEntrySize = 8u;
+// §9.4 Reservoir slot size must match Slang struct WSReservoir
+// (8 fields × 4 bytes = 32 bytes — see WSReservoir.slang).
+static constexpr size_t kWSReservoirSize = 32u;
 /// Five atomic GPU counters, indexed by VisCache.slang's kStat* constants:
 ///   [0] inserts       — successful vhfInsert() calls (new samples accepted)
 ///   [1] evictions     — fingerprint overwrites (slot reuse under pressure)
@@ -95,6 +98,12 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
+    if (props.has("enableWSReservoirs"))            mParams.enableWSReservoirs            = props["enableWSReservoirs"];
+    if (props.has("wsLevelOffset"))                 mParams.wsLevelOffset                 = props["wsLevelOffset"];
+    if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
+    if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
+    if (props.has("wsSpatialNeighbours"))           mParams.wsSpatialNeighbours           = props["wsSpatialNeighbours"];
+    if (props.has("wsLightMuMin"))                  mParams.wsLightMuMin                  = props["wsLightMuMin"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -156,6 +165,12 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
+    if (props.has("enableWSReservoirs"))            mParams.enableWSReservoirs            = props["enableWSReservoirs"];
+    if (props.has("wsLevelOffset"))                 mParams.wsLevelOffset                 = props["wsLevelOffset"];
+    if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
+    if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
+    if (props.has("wsSpatialNeighbours"))           mParams.wsSpatialNeighbours           = props["wsSpatialNeighbours"];
+    if (props.has("wsLightMuMin"))                  mParams.wsLightMuMin                  = props["wsLightMuMin"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -208,6 +223,12 @@ Properties VisCache::getProperties() const
     p["subframeN"]                     = mParams.subframeN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
+    p["enableWSReservoirs"]            = mParams.enableWSReservoirs;
+    p["wsLevelOffset"]                 = mParams.wsLevelOffset;
+    p["wsReservoirCapacity"]           = mParams.wsReservoirCapacity;
+    p["wsMCap"]                        = mParams.wsMCap;
+    p["wsSpatialNeighbours"]           = mParams.wsSpatialNeighbours;
+    p["wsLightMuMin"]                  = mParams.wsLightMuMin;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -287,6 +308,35 @@ void VisCache::allocateBuffers()
         ResourceBindFlags::None,
         MemoryType::ReadBack
     );
+
+    // §9.4 WS-reservoir buffer — only allocated when the toggle is on,
+    // so the legacy path pays no GPU memory. Round capacity up to next pow2
+    // so shaders can index via bitwise AND (capacity-1).
+    if (mParams.enableWSReservoirs)
+    {
+        uint32_t wsCap = 1u;
+        while (wsCap < std::max(1u, mParams.wsReservoirCapacity)) wsCap <<= 1;
+        mParams.wsReservoirCapacity = wsCap;
+
+        if (!mpWSReservoirs || mWSReservoirCapacityCommitted != wsCap)
+        {
+            mpWSReservoirs = mpDevice->createStructuredBuffer(
+                kWSReservoirSize,
+                wsCap,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal,
+                nullptr,
+                /*createCounter=*/false
+            );
+            mpWSReservoirs->setName("VHF_WSReservoirs");
+            mWSReservoirCapacityCommitted = wsCap;
+        }
+    }
+    else
+    {
+        mpWSReservoirs = nullptr;
+        mWSReservoirCapacityCommitted = 0u;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +401,30 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // Parameter validation — clamp to safe ranges before GPU upload.
     mParams.numLevels     = std::max(1u, mParams.numLevels);
     mParams.bootThreshold   = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
+
+    // §9.4 WS-reservoir buffer: lazy (re)allocate to follow runtime toggle/capacity changes.
+    {
+        uint32_t wsCap = 1u;
+        while (wsCap < std::max(1u, mParams.wsReservoirCapacity)) wsCap <<= 1;
+        mParams.wsReservoirCapacity = wsCap;
+        const bool needs = mParams.enableWSReservoirs && (!mpWSReservoirs || mWSReservoirCapacityCommitted != wsCap);
+        if (needs)
+        {
+            mpWSReservoirs = mpDevice->createStructuredBuffer(
+                kWSReservoirSize, wsCap,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
+            mpWSReservoirs->setName("VHF_WSReservoirs");
+            mWSReservoirCapacityCommitted = wsCap;
+            // Zero-init so fingerprint=0 (empty sentinel) holds across all slots.
+            pCtx->clearUAV(mpWSReservoirs->getUAV().get(), uint4(0u));
+        }
+        else if (!mParams.enableWSReservoirs && mpWSReservoirs)
+        {
+            mpWSReservoirs = nullptr;
+            mWSReservoirCapacityCommitted = 0u;
+        }
+    }
     mParams.matureThreshold = std::clamp(mParams.matureThreshold, mParams.bootThreshold, 0xFFFFu);
     if (mParams.varThreshold   <= 0.f) mParams.varThreshold   = 0.01f;
     if (mParams.posACoarse    <= 0.f) mParams.posACoarse    = 1.0f;
@@ -395,11 +469,41 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // ceil(log(target/coarse)/log(0.8) · (N-1)/(N-1)) = lvl directly, so
     // raw level number maps to a cell-size invariant of N (level 5 always
     // means cell ≈ coarse * 0.8^5 regardless of N).
-    static constexpr float kStepFactor = 0.8f;  // = 1/1.25
-    auto deriveFine = [&](float coarse, uint32_t N) -> float {
-        if (N <= 1u) return coarse;
-        return coarse * std::pow(kStepFactor, float(N - 1));
+    static constexpr float kStepFactor = 0.8f;  // = 1/1.25 per level
+    // B-side ramp scale: how aggressively B-dimensions cascade vs A.
+    // 1.0 = same as A (deepest level reaches stepFactor^(N-1) = 1/1200 at N=32).
+    // 0.5 = half-rate; B's deepest level only reaches stepFactor^((N-1)/2) = 1/35.
+    // Less-aggressive B avoids over-fragmenting light/direction discrimination
+    // at deep cascade levels (where A needs sub-pixel posA but B doesn't need
+    // sub-arcminute direction or sub-mm light position).
+    static constexpr float kBRampScale = 0.5f;
+    // Soft clamp: power-mean of fine_raw and floor — fine_raw >> floor stays
+    // unclamped; fine_raw << floor smoothly approaches floor without abrupt
+    // transition. k controls softness; k=4 is moderate.
+    auto softMax = [](float a, float b, float k = 4.0f) -> float {
+        if (b <= 0.0f) return a;
+        float ak = std::pow(std::abs(a), k);
+        float bk = std::pow(b, k);
+        return std::pow(ak + bk, 1.0f / k);
     };
+    auto deriveFine = [&](float coarse, uint32_t N, float floor = 0.0f, float rampScale = 1.0f) -> float {
+        if (N <= 1u) return coarse;
+        float effN = std::max(1.0f, float(N - 1) * rampScale);
+        float fine = coarse * std::pow(kStepFactor, effN);
+        return (floor > 0.0f) ? softMax(fine, floor) : fine;
+    };
+    // Per-dimension floors (soft-clamps deriveFine to sensible minima):
+    //   dirB  : 1° — sub-degree direction cells fragment cache without
+    //           benefit. Applies to BOTH dir+dist mode AND pos×pos env-
+    //           routing (vhfQuantizeDirection in VisCache.slang) used for
+    //           env+sun rays at infinity.
+    //   distB : 0.05 world units (sceneScale-aware) — sub-cm light-distance
+    //           resolution doesn't add cache discrimination.
+    //   posB  : 0.001 world units (sceneScale-aware) — sub-mm light position
+    //           resolution over-fragments without separating distinct lights.
+    constexpr float kDirBFineFloor  = 1.0f;     // degrees
+    constexpr float kDistBFineFloor = 0.05f;    // world units (sceneScale-aware)
+    constexpr float kPosBFineFloor  = 0.001f;   // world units (sceneScale-aware)
 
     GPUParams gpu = {};
     gpu.tableCapacity  = mParams.tableCapacity;
@@ -421,17 +525,21 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.hierarchicalMuTolerance = mParams.hierarchicalMuTolerance;
     gpu.accelDecayDisagreeThresh = mParams.accelDecayDisagreeThresh;
     gpu.bootThresholdFine = mParams.bootThresholdFine;
-    gpu.preinitAmbiguityCutoff = mParams.preinitAmbiguityCutoff;
     gpu.jitterFilter   = mParams.jitterFilter;
     gpu.jitterCell     = mParams.jitterCell;
     gpu.posACoarse    = posACoarseScaled;
     gpu.posAFine      = (mParams.numLevels > 1) ? deriveFine(posACoarseScaled, mParams.numLevels) : posACoarseScaled;
     gpu.posBCoarse    = posBCoarseScaled;
-    gpu.posBFine      = (mParams.numLevels > 1) ? deriveFine(posBCoarseScaled, mParams.numLevels) : posBCoarseScaled;
+    // posBFine: keep full ramp (no kBRampScale) — Sponza/multi-light scenes
+    // need posB to descend as aggressively as posA so adjacent lights remain
+    // separable at deep cascade levels. Just clamp via floor.
+    gpu.posBFine      = (mParams.numLevels > 1) ? deriveFine(posBCoarseScaled, mParams.numLevels, kPosBFineFloor * sceneScale) : posBCoarseScaled;
     gpu.dirBCoarse = mParams.dirBCoarse;
-    gpu.dirBFine   = (mParams.numLevels > 1) ? deriveFine(mParams.dirBCoarse, mParams.numLevels) : mParams.dirBCoarse;
+    // dir/dist: less-aggressive ramp — sub-degree direction and sub-mm
+    // distance over-fragment without separating distinct lights.
+    gpu.dirBFine   = (mParams.numLevels > 1) ? deriveFine(mParams.dirBCoarse, mParams.numLevels, kDirBFineFloor, kBRampScale) : mParams.dirBCoarse;
     gpu.distBCoarse    = distBCoarseScaled;
-    gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(distBCoarseScaled, mParams.numLevels) : distBCoarseScaled;
+    gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(distBCoarseScaled, mParams.numLevels, kDistBFineFloor * sceneScale, kBRampScale) : distBCoarseScaled;
     gpu.normalACoarse  = mParams.normalACoarse;
     gpu.normalAFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalACoarse, mParams.numLevels) : mParams.normalACoarse;
     gpu.diagAccumWindow = mParams.diagAccumWindow;
@@ -439,8 +547,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.spp             = std::max(1u, mParams.spp);
 
     // Camera footprint estimation: pixel world-space size at unit depth.
-    // pixelSize1 = 2 * length(cameraU) / frameDim.x
-    // cameraU is the camera's right vector scaled by half-FOV extent.
+    // Falcor's |cameraU| = focalDistance * tan(fovY/2) * aspectRatio (Camera.cpp:180),
+    // so divide by focalDistance to get the per-pixel angular extent at unit depth:
+    // pixelSize1 = 2 * tan(fovY/2) * aspect / frameDim.x
+    //            = 2 * |cameraU| / focalDistance / frameDim.x
     if (mpScene && mpScene->getCamera())
     {
         const auto& cam = mpScene->getCamera()->getData();
@@ -451,7 +561,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         float cameraULen = length(cam.cameraU);
         uint32_t dimX = renderData.getDefaultTextureDims().x;
         uint32_t frameDimX = dimX > 0u ? dimX : 1u;
-        gpu.pixelSize1 = 2.f * cameraULen / float(frameDimX);
+        float focalDist = std::max(cam.focalDistance, 1e-3f);
+        gpu.pixelSize1 = 2.f * cameraULen / focalDist / float(frameDimX);
     }
     else
     {
@@ -461,6 +572,17 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.subframeN        = std::max(1u, mParams.subframeN);
     gpu.warmupSlotsFirst = mParams.warmupSlotsFirst;
     gpu.warmupSlotsRun   = mParams.warmupSlotsRun;
+
+    // §9.4 WS-reservoir params. Capacity is rounded up to next pow2 for bitmask indexing.
+    uint32_t wsCap = 1u;
+    while (wsCap < std::max(1u, mParams.wsReservoirCapacity)) wsCap <<= 1;
+    mParams.wsReservoirCapacity = wsCap;
+    gpu.wsEnable             = mParams.enableWSReservoirs ? 1u : 0u;
+    gpu.wsLevelOffset        = mParams.wsLevelOffset;
+    gpu.wsCapacity           = wsCap;
+    gpu.wsMCap               = mParams.wsMCap;
+    gpu.wsSpatialNeighbours  = std::min(4u, mParams.wsSpatialNeighbours);
+    gpu.wsLightMuMin         = mParams.wsLightMuMin;
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -472,7 +594,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.tableCapacity, mParams.bootThreshold, mParams.matureThreshold, mParams.varThreshold, mParams.pMin, mParams.fireflyBudget);
         if (mParams.quantSceneScale && !mParams.autoTuneCells)
             logInfo("[VisCache] quantSceneScale={:.3f} (Cornell ref = avgAxis/2)", sceneScale);
-        logInfo("[VisCache] posA: coarse={:.4f} fine={:.4f}", gpu.posACoarse, gpu.posAFine);
+        logInfo("[VisCache] posA: coarse={:.4f} fine={:.4f} numLevels={} pixelSize1={:.6f} forceFd={} cascWindow={}",
+                gpu.posACoarse, gpu.posAFine, gpu.numLevels, gpu.pixelSize1, gpu.forceDescendFootprintPx, gpu.cascadeWindowForward);
         logInfo("[VisCache] posB: coarse={:.4f} fine={:.4f}", gpu.posBCoarse, gpu.posBFine);
         logInfo("[VisCache] dirB: coarse={:.1f}{} fine={:.1f}{}", gpu.dirBCoarse, "\xC2\xB0", gpu.dirBFine, "\xC2\xB0");
         logInfo("[VisCache] distB: coarse={:.4f} fine={:.4f}", gpu.distBCoarse, gpu.distBFine);
@@ -540,10 +663,35 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfEnableBootstrapBreak"]  = mParams.enableVisCacheBootstrapBreak;
     dict["vhfEnableParentPreinit"]   = mParams.enableVisCacheParentPreinit;
     dict["vhfParam_bootThresholdFactorFootprintPx"]  = mParams.bootThresholdFactorFootprintPx;
-    dict["vhfParam_forceDescendFootprintPx"] = mParams.forceDescendFootprintPx;
+    dict["vhfParam_forceDescendFootprintPx"]         = mParams.forceDescendFootprintPx;
+    dict["vhfParam_cascadeWindowForward"]            = mParams.cascadeWindowForward;
+    dict["vhfParam_stderrThreshold"]                 = mParams.stderrThreshold;
+    dict["vhfParam_enableHierarchicalConsistency"]   = mParams.enableHierarchicalConsistency ? 1u : 0u;
+    dict["vhfParam_hierarchicalMuTolerance"]         = mParams.hierarchicalMuTolerance;
+    dict["vhfParam_accelDecayDisagreeThresh"]        = mParams.accelDecayDisagreeThresh;
+    dict["vhfParam_bootThresholdFine"]               = mParams.bootThresholdFine;
+    dict["vhfParam_frameCount"]                      = mFrameCount;
+    dict["vhfParam_spp"]                             = std::max(1u, mParams.spp);
+    dict["vhfParam_cameraPosX"]                      = gpu.cameraPosW[0];
+    dict["vhfParam_cameraPosY"]                      = gpu.cameraPosW[1];
+    dict["vhfParam_cameraPosZ"]                      = gpu.cameraPosW[2];
+    dict["vhfParam_pixelSize1"]                      = gpu.pixelSize1;
+    dict["vhfParam_subframeN"]                       = std::max(1u, mParams.subframeN);
+    dict["vhfParam_warmupFirst"]                     = mParams.warmupSlotsFirst;
+    dict["vhfParam_warmupRun"]                       = mParams.warmupSlotsRun;
     dict["vhfSubframeN"]        = std::max(1u, mParams.subframeN);
     dict["vhfWarmupSlotsFirst"] = mParams.warmupSlotsFirst;
     dict["vhfWarmupSlotsRun"]   = mParams.warmupSlotsRun;
+
+    // §9.4 WS-reservoir export — buffer + per-field cbuffer values for downstream binding.
+    dict["wsReservoirBuffer"]        = mpWSReservoirs;
+    dict["vhfEnableWSReservoirs"]    = mParams.enableWSReservoirs;
+    dict["vhfParam_wsEnable"]        = mParams.enableWSReservoirs ? 1u : 0u;
+    dict["vhfParam_wsLevelOffset"]   = mParams.wsLevelOffset;
+    dict["vhfParam_wsCapacity"]      = mParams.wsReservoirCapacity;
+    dict["vhfParam_wsMCap"]          = mParams.wsMCap;
+    dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.wsSpatialNeighbours);
+    dict["vhfParam_wsLightMuMin"]    = mParams.wsLightMuMin;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -842,6 +990,17 @@ void VisCache::renderUI(Gui::Widgets& widget)
     widget.checkbox("VisCache visibility check",       mParams.enableVisCacheVisibilityCheck);
     widget.checkbox("VisCache light selection (S11.1)", mParams.enableVisCacheLightSelection);
     widget.checkbox("VisCache warp reduction",         mParams.enableVisCacheWarpReduction);
+    widget.separator();
+
+    if (auto g = widget.group("§9.4 WS-ReSTIR DI", /*open=*/false))
+    {
+        g.checkbox("Enable WS reservoirs", mParams.enableWSReservoirs);
+        g.var("wsLevelOffset (cells coarser than vis)", mParams.wsLevelOffset, 0u, 8u);
+        g.var("wsReservoirCapacity (slots, pow2)", mParams.wsReservoirCapacity, 1u << 12, 1u << 24);
+        g.var("wsMCap", mParams.wsMCap, 1.f, 200.f, 1.f);
+        g.var("wsSpatialNeighbours", mParams.wsSpatialNeighbours, 0u, 4u);
+        g.var("wsLightMuMin (ε floor)", mParams.wsLightMuMin, 0.f, 1.f, 0.01f);
+    }
     widget.separator();
 
     // Ablation toggles
