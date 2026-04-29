@@ -1225,6 +1225,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     {
         bool wasAvailable = mVisCacheAvailable;
         bool wasVisCheck = mVisCacheVisibilityCheck;
+        bool wasLightSel = mVisCacheLightSelection;
         bool wasDirDist = mVisCacheDirDistAddr;
         uint32_t wasSubframeN = mVisCacheSubframeN;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
@@ -1293,6 +1294,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             && mpVHFWSReservoirs != nullptr;
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
+        mVisCacheLightSelection = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
         mVisCacheSubframeN = (mVisCacheAvailable && dict.keyExists("vhfSubframeN")) ? dict.getValue<uint32_t>("vhfSubframeN") : 1u;
         if (mVisCacheSubframeN != 1 && mVisCacheSubframeN != 2 && mVisCacheSubframeN != 4) mVisCacheSubframeN = 1;
@@ -1322,13 +1325,14 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         }
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
+            || mVisCacheLightSelection != wasLightSel
             || mVisCacheDirDistAddr != wasDirDist
             || mVisCacheDiagnostics != wasDiag || mVisCacheSubframeN != wasSubframeN
             || mVisCacheWSReservoirs != wasWSReservoirs)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} dirDistAddr={} diag={} subframeN={} wsRes={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheDirDistAddr,
-                    mVisCacheDiagnostics, mVisCacheSubframeN, mVisCacheWSReservoirs);
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} subframeN={} wsRes={}",
+                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheLightSelection,
+                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheSubframeN, mVisCacheWSReservoirs);
             mRecompile = true;
         }
     }
@@ -1663,6 +1667,8 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
     defines.add("VISCACHE_SUBFRAME_N", std::to_string(owner.mVisCacheSubframeN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
+    // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).
+    defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
     // §9.4 WS-ReSTIR DI: master define gates all reservoir paths in slang.
     defines.add("USE_WS_RESERVOIRS", owner.mVisCacheWSReservoirs ? "1" : "0");
 

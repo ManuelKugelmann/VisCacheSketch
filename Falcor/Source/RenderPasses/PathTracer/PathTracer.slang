@@ -54,6 +54,10 @@ import Utils.Math.MathHelpers;     // sample_triangle for emissive uv → barys
 #include "Utils/Math/MathConstants.slangh"  // FLT_MIN
 #endif
 
+#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
+import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gWSLightMuMin
+#endif
+
 /** Interface for querying visibility in the scene.
     This is used in `handleHit`.
 */
@@ -636,6 +640,49 @@ struct PathTracer
     }
 
 #if USE_WS_RESERVOIRS
+    /** §9.4 Pack the chosen LightSample's surface payload according to type.
+        Emissive: barys (16:16 unorm). EnvMap: dir (oct 16:16). Analytic: 0.
+    */
+    uint wsPackLightSamplePayload(const LightSample inLs)
+    {
+        if (inLs.lightType == (uint)LightType::Emissive) return wsPackUV(inLs.lightUV);
+        if (inLs.lightType == (uint)LightType::EnvMap)   return wsPackDirOct(inLs.dir);
+        return 0u;
+    }
+
+    /** §9.4 Re-materialise a LightSample for the env map from a stored
+        oct-packed direction, evaluated at the given shading point.
+        Distance is kRayTMax (env is at infinity). pdf evaluated via the
+        env-map sampler's solid-angle pdf for `dir`.
+    */
+    bool wsRebuildEnvMapLightSample(uint payload, const ShadingData sd, out LightSample ls)
+    {
+        ls = {};
+        if (!kUseEnvLight) return false;
+
+        float3 dir = wsUnpackDirOct(payload);
+        float pdf = envMapSampler.evalPdf(dir);
+        if (pdf <= 0.f) return false;
+
+        float3 Le = gScene.envMap.eval(dir);
+        ls.dir       = dir;
+        ls.distance  = kRayTMax;
+        ls.origin    = computeRayOrigin(sd.posW, dot(sd.faceN, dir) >= 0.f ? sd.faceN : -sd.faceN);
+        ls.Li        = Le / pdf;
+        ls.pdf       = pdf;
+        ls.lightType = (uint)LightType::EnvMap;
+        ls.lightIndex = 0u;
+        ls.lightUV    = float2(0.f);
+
+        // Apply env-type selection probability.
+        float envSel = getEnvMapSelectionProbability();
+        if (envSel <= 0.f) return false;
+        ls.pdf *= envSel;
+        ls.Li  /= envSel;
+
+        return any(ls.Li > 0.f);
+    }
+
     /** §9.4 Re-materialise a LightSample for an analytic light from a stored
         lightIndex, re-evaluated at a different shading point. Calls Falcor's
         `sampleLight()` for the analytic light type — the sample is mostly
@@ -1133,11 +1180,12 @@ struct PathTracer
                 //     candidate at THIS shading point, merge into the local
                 //  3. swap the picked sample into ls (and recompute Lr)
                 //  4. persist the local back to the home cell
-                // Handles emissive AND analytic lights (the dominant many-lights
-                // cases). EnvMap samples fall through to legacy NEE for now.
+                // Handles emissive, analytic AND env-map lights — full coverage
+                // of Falcor's three light-type families.
                 bool isEmissive = ls.lightType == (uint)LightType::Emissive;
                 bool isAnalytic = ls.lightType == (uint)LightType::Analytic;
-                if (path.getVertexIndex() == 1 && wsEnabled() && (isEmissive || isAnalytic))
+                bool isEnv      = ls.lightType == (uint)LightType::EnvMap;
+                if (path.getVertexIndex() == 1 && wsEnabled() && (isEmissive || isAnalytic || isEnv))
                 {
                     WSLocalReservoir local; local.init();
 
@@ -1145,10 +1193,20 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         float pHatFresh = luminance(Lr);
+#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
+                        // §9.1 composition: weight selection by max(μ, μmin).
+                        // Env at infinity: μ-cache addressing breaks down, skip.
+                        if (!isEnv)
+                        {
+                            float3 lightP = ls.origin + ls.dir * ls.distance;
+                            VHFResult r = vhfLookup(sd.posW, lightP);
+                            if (r.valid) pHatFresh *= max(r.mu, gWSLightMuMin);
+                        }
+#endif
                         float invPdfFresh = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
                         local.streamingAdd(
                             wsPackLightTypeIndex(ls.lightType, ls.lightIndex),
-                            wsPackUV(ls.lightUV),
+                            wsPackLightSamplePayload(ls),
                             pHatFresh, invPdfFresh, path.sg);
                     }
 
@@ -1173,6 +1231,8 @@ struct PathTracer
                             cellOk = wsRebuildEmissiveLightSample(cellIdx, wsUnpackUV(cell.payload), sd, cellLs);
                         else if (cellType == (uint)LightType::Analytic)
                             cellOk = wsRebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
+                        else if (cellType == (uint)LightType::EnvMap)
+                            cellOk = wsRebuildEnvMapLightSample(cell.payload, sd, cellLs);
                         if (!cellOk) continue;
 
                         // Hemisphere check matching the legacy NEE rejection: if the
@@ -1188,6 +1248,14 @@ struct PathTracer
                         float3 cellLr     = cellWeight * cellLs.Li;
                         float pHatCell    = luminance(cellLr);
                         if (pHatCell <= 0.f) continue;
+#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
+                        if (cellType != (uint)LightType::EnvMap)
+                        {
+                            float3 lightP = cellLs.origin + cellLs.dir * cellLs.distance;
+                            VHFResult rcell = vhfLookup(sd.posW, lightP);
+                            if (rcell.valid) pHatCell *= max(rcell.mu, gWSLightMuMin);
+                        }
+#endif
 
                         local.streamingMergeCell(
                             cell.lightTypeIndex, cell.payload,
@@ -1205,6 +1273,8 @@ struct PathTracer
                             winnerOk = wsRebuildEmissiveLightSample(winnerIdx, wsUnpackUV(local.payload), sd, winnerLs);
                         else if (winnerType == (uint)LightType::Analytic)
                             winnerOk = wsRebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
+                        else if (winnerType == (uint)LightType::EnvMap)
+                            winnerOk = wsRebuildEnvMapLightSample(local.payload, sd, winnerLs);
 
                         if (winnerOk)
                         {

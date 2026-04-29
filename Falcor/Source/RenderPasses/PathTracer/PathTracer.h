@@ -210,6 +210,7 @@ private:
     ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — bound directly to keep struct in sync
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
+    bool mVisCacheLightSelection = false;   ///< §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR)
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
     uint32_t mVisCacheSubframeN = 1;        ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); see Falcor/LOCAL_FIXES.md #14
 
