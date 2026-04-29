@@ -238,6 +238,20 @@ is what makes GI revalidation our strongest integration case (Sec. 9.3).
 Prediction-with-correction resolves this tradeoff:
 unbiased revalidation at near-biased-skip cost.
 
+Boissé [2021] keys ReSTIR GI reservoirs by a world-space hash grid
+rather than screen-space neighbors,
+amortizing temporal and spatial reuse across all pixels
+that fall into the same cell —
+a structural answer to the same problem we attack with the cache:
+neighbour overlap collapses to zero in many-lights, low-SPP regimes
+when pixels are queried independently in screen space.
+Their hash addresses radiance reservoirs;
+ours addresses binary visibility.
+The two structures are complementary —
+a shared posA-keyed table can serve both reservoir reuse
+*and* prediction-with-correction revalidation (Sec. 9.3),
+which is the integration we explore in Sec. 9.4.
+
 Tokuyoshi [2024] addresses the same revalidation cost
 by reusing visibility from spatiotemporal neighbor samples,
 reducing shadow noise on contact shadows and edges

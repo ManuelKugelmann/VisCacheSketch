@@ -14,6 +14,8 @@
 
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
+- [Boissé 2021] G. Boissé. "World-Space Spatiotemporal Reservoir Reuse for Ray-Traced Global Illumination." *SIGGRAPH Asia 2021 Technical Communications*, ACM, 2021. DOI: 10.1145/3478512.3488613.
+
 - [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
 
 - [Conner et al. 2025] M. Conner et al. "MegaLights." *SIGGRAPH 2025 Advances in Real-Time Rendering*, Epic Games, 2025.
