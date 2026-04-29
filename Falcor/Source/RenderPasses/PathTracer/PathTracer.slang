@@ -1216,15 +1216,28 @@ struct PathTracer
                             pHatFresh, invPdfFresh, path.sg);
                     }
 
-                    // (2) Gather home cell + neighbours.
-                    WSCellAddress homeAddr = wsResolveCell(sd.posW);
-                    uint axisJitter = min(uint(sampleNext1D(path.sg) * 4.f), 3u);
+                    // (2) Gather home cell + jittered neighbours. Home is the
+                    // unjittered query; neighbours are tangent-plane-jittered
+                    // queries through the same wsResolveCell function. We
+                    // filter out queries that landed back in the home cell
+                    // by fingerprint compare.
+                    WSCellAddress homeAddr = wsResolveCell(sd.posW, sd.faceN);
                     const uint nNeighbours = wsSpatialNeighbourCount();
                     for (uint i = 0u; i <= nNeighbours; ++i)
                     {
-                        WSCellAddress addr = (i == 0u)
-                            ? homeAddr
-                            : wsResolveNeighbourCell(sd.posW, sd.faceN, i - 1u, axisJitter);
+                        WSCellAddress addr;
+                        if (i == 0u)
+                        {
+                            addr = homeAddr;
+                        }
+                        else
+                        {
+                            float2 j2d = sampleNext2D(path.sg);
+                            addr = wsResolveJitteredCell(sd.posW, sd.faceN, i - 1u, nNeighbours, j2d);
+                            // Skip if jitter landed back in the home cell —
+                            // already covered by i==0.
+                            if (addr.fingerprint == homeAddr.fingerprint) continue;
+                        }
                         WSReservoir cell;
                         if (!wsLoadCell(addr, cell)) continue;
                         if (cell.M <= 0.f) continue;

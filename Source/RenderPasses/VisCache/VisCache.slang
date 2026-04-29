@@ -233,6 +233,7 @@ cbuffer VisCacheParams
     uint   gWSSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
     float  gWSLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
     float  gWSLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
+    uint   gWSNormalAddr;         ///< 1 = fold 6-axis face-normal bin into the WS cell hash.
 };
 
 // ---------------------------------------------------------------------------

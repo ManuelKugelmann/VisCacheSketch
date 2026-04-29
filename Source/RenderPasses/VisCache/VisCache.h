@@ -142,6 +142,8 @@ public:
         float    wsLightSoftness;      ///< 0..1 softening of cached μ in target p̂.
                                        ///< 0 = uniform (no cache effect), 1 = full trust.
                                        ///< Effective μ = max(lerp(1, μ, softness), wsLightMuMin).
+        uint32_t wsNormalAddr;         ///< 1 = fold a 6-axis face-normal bin into the cell hash.
+                                       ///< Prevents cross-normal pollution at corners / thin shells.
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -230,6 +232,8 @@ public:
         float    wsLightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.
                                                         ///< 0 disables (uniform — cache has no effect on selection),
                                                         ///< 1 = full trust (current behavior). 0.5 = √μ-like soft.
+        bool     wsNormalAddr                  = false; ///< Fold 6-axis face-normal bin into cell hash.
+                                                        ///< Prevents cross-normal cell sharing at corners.
     };
 
     const Params& getParams() const { return mParams; }

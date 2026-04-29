@@ -62,35 +62,53 @@ int3 wsQuantizePosA(float3 posA, int lvl)
 }
 
 // ---------------------------------------------------------------------------
-// Two pcg3d-derived 32-bit hashes from the same integer coords:
+// 6-axis face-normal bin (±X, ±Y, ±Z = 6 distinct bins).
+// Used only when gWSNormalAddr != 0 — folded into both wsAddressHash and
+// wsFingerprintHash so different-orientation surfaces at the same posW
+// don't share a cell.
+// ---------------------------------------------------------------------------
+uint wsNormalBin(float3 n)
+{
+    float3 a = abs(n);
+    int axis = (a.x >= a.y && a.x >= a.z) ? 0 : (a.y >= a.z ? 1 : 2);
+    bool pos = n[axis] >= 0.f;
+    return uint(axis * 2 + (pos ? 0 : 1));     // 0..5
+}
+
+// ---------------------------------------------------------------------------
+// Two pcg3d-derived 32-bit hashes from quantized cell coords + level.
+// When gWSNormalAddr is on, the 6-axis normal bin is mixed into the salt so
+// different orientations at the same posW resolve to different cells.
 //   addr        — slot index, masked to capacity at call site.
 //   fingerprint — collision tag stored in the slot. Always nonzero (0 = empty).
-// Salts differentiate the two hashes from each other and from the visibility
-// cache's address/fingerprint hashes (ensures independence).
 // ---------------------------------------------------------------------------
-uint wsAddressHash(int3 q, int lvl)
+uint wsAddressHash(int3 q, int lvl, uint normalBin)
 {
-    uint3 h = pcg3d(uint3(q) + uint3(0x9E3779B9u, 0x85EBCA6Bu, uint(lvl) * 0xC2B2AE35u));
+    uint salt = uint(lvl) * 0xC2B2AE35u + normalBin * 0x9E370001u;
+    uint3 h = pcg3d(uint3(q) + uint3(0x9E3779B9u, 0x85EBCA6Bu, salt));
     return h.x ^ h.y ^ h.z;
 }
-uint wsFingerprintHash(int3 q, int lvl)
+uint wsFingerprintHash(int3 q, int lvl, uint normalBin)
 {
-    uint3 h = pcg3d(uint3(q) + uint3(0xDEADBEEFu, 0xC0FFEE13u, uint(lvl) * 0xFEEDFACEu));
+    uint salt = uint(lvl) * 0xFEEDFACEu + normalBin * 0xB5297A4Du;
+    uint3 h = pcg3d(uint3(q) + uint3(0xDEADBEEFu, 0xC0FFEE13u, salt));
     uint fp = h.x ^ h.y ^ h.z;
     return fp == 0u ? 1u : fp;     // 0 reserved for empty slot
 }
 
 // ---------------------------------------------------------------------------
-// Resolve (slot, fingerprint) from a primary-hit posA. Single call site.
+// Resolve (slot, fingerprint) from a primary-hit posA + faceN. Used for both
+// the home cell (zero jitter) and jittered neighbour queries — same code path.
 // ---------------------------------------------------------------------------
 struct WSCellAddress { uint slot; uint fingerprint; };
-WSCellAddress wsResolveCell(float3 posA)
+WSCellAddress wsResolveCell(float3 posA, float3 faceN)
 {
     int lvl = wsCascadeLevel();
-    int3 q = wsQuantizePosA(posA, lvl);
+    int3 q  = wsQuantizePosA(posA, lvl);
+    uint nb = (gWSNormalAddr != 0u) ? wsNormalBin(faceN) : 0u;
     WSCellAddress a;
-    a.slot        = wsAddressHash(q, lvl) & (gWSCapacity - 1u);
-    a.fingerprint = wsFingerprintHash(q, lvl);
+    a.slot        = wsAddressHash(q, lvl, nb) & (gWSCapacity - 1u);
+    a.fingerprint = wsFingerprintHash(q, lvl, nb);
     return a;
 }
 
@@ -234,41 +252,58 @@ bool wsLoadCell(WSCellAddress addr, out WSReservoir cell)
 }
 
 // ---------------------------------------------------------------------------
-// Spatial gather: enumerate up to 4 neighbour cells offset within the
-// surface's tangent plane (the two axes most perpendicular to the face
-// normal). For a ground-plane surface this gives ±x and ±z neighbours
-// (skipping the vertically-displaced cell that wouldn't share visibility);
-// for a wall it picks the other two axes. Jitter spreads the per-pixel
-// coverage across the 4 face neighbours of the picked plane.
-//
-// Returns the (slot, fingerprint) for the i-th neighbour cell. The caller
-// is responsible for loading and validating the slot like the home cell.
+// Build an orthonormal tangent basis from the face normal — used for jittered
+// neighbour queries (the jitter is in the surface tangent plane so it never
+// crosses the vertical-cell discontinuity for ground-plane / wall pixels).
 // ---------------------------------------------------------------------------
-WSCellAddress wsResolveNeighbourCell(float3 posA, float3 faceN, uint i, uint axisJitter)
+void wsTangentBasis(float3 n, out float3 tA, out float3 tB)
+{
+    float3 a = abs(n);
+    float3 up = (a.x <= a.y && a.x <= a.z) ? float3(1,0,0)
+              : (a.y <= a.z)               ? float3(0,1,0)
+                                            : float3(0,0,1);
+    tA = normalize(cross(n, up));
+    tB = cross(n, tA);
+}
+
+// ---------------------------------------------------------------------------
+// Spatial gather via JITTERED lookup. Instead of integer-offset addressing
+// which fixes the neighbour set to ±1 cells in two axes, we perturb posA
+// in the surface tangent plane by a per-pixel stratified 2D sample of
+// magnitude ~1.5×cellSize, then run the same wsResolveCell on the result.
+//
+// Properties of this scheme vs. integer-offset:
+//   - Smooth coverage: pixels near a cell boundary naturally distribute
+//     their queries across the boundary cells; no harsh per-cell artifacts.
+//   - Per-pixel decorrelation: each pixel's jitter is independent.
+//   - Single code path: home cell is wsResolveCell(posA, faceN); neighbour
+//     cell is wsResolveCell(posA + tangent_jitter, faceN). Same hash.
+//   - Composes with normal-aware addressing — the jittered posW is fed to
+//     the same hash regardless of gWSNormalAddr.
+//
+// `i` is the neighbour index (0..N-1) for stratification; per-pixel `jitter2D`
+// is fresh randomness from the path's SampleGenerator. The caller filters out
+// queries that landed in the home cell by fingerprint compare.
+// ---------------------------------------------------------------------------
+WSCellAddress wsResolveJitteredCell(float3 posA, float3 faceN, uint i, uint nTotal, float2 jitter2D)
 {
     int lvl = wsCascadeLevel();
-    int3 q = wsQuantizePosA(posA, lvl);
+    float cellSize = max(vhfPosASize(lvl), 1e-6f);
 
-    // Pick the two world axes most perpendicular to faceN by dropping the
-    // axis with the largest |faceN| component.
-    float3 absN = abs(faceN);
-    int dropAxis = (absN.x >= absN.y && absN.x >= absN.z) ? 0
-                 : (absN.y >= absN.z) ? 1 : 2;
-    int axisA = (dropAxis + 1) % 3;
-    int axisB = (dropAxis + 2) % 3;
+    // 2x2 stratification across [-1, 1] x [-1, 1], jittered within stratum.
+    // For nTotal up to 4 we use a 2x2 stratum grid; for higher N we just
+    // use round-robin and let the per-pixel jitter handle decorrelation.
+    uint sx = i & 1u;
+    uint sy = (i >> 1) & 1u;
+    float2 inStratum = (float2(sx, sy) + jitter2D) * 0.5f;     // [0,1]
+    float2 strat = inStratum * 2.f - 1.f;                       // [-1,1]
+    // Magnitude 1.5x cellSize: enough to land in adjacent cells but not so
+    // far we cross multiple cells.
+    float2 disp = strat * (1.5f * cellSize);
 
-    // 4 in-plane offsets on (axisA, axisB).
-    int slot = int((i + axisJitter) % 4u);
-    int3 off = int3(0);
-    if (slot == 0) { off[axisA] =  1; }
-    else if (slot == 1) { off[axisA] = -1; }
-    else if (slot == 2) { off[axisB] =  1; }
-    else                { off[axisB] = -1; }
-
-    int3 qN = q + off;
-    WSCellAddress a;
-    a.slot        = wsAddressHash(qN, lvl) & (gWSCapacity - 1u);
-    a.fingerprint = wsFingerprintHash(qN, lvl);
-    return a;
+    float3 tA, tB;
+    wsTangentBasis(faceN, tA, tB);
+    float3 posJittered = posA + tA * disp.x + tB * disp.y;
+    return wsResolveCell(posJittered, faceN);
 }
 
