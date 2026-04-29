@@ -137,31 +137,10 @@ struct WSLocalReservoir
         }
     }
 
-    // Merge an already-aggregated reservoir (from a WS cell) into the local
-    // stream: weight contribution = p̂_at_new_surface * (cell.W * cell.M),
-    // sample mass = cell.M (capped on the way in by caller).
-    [mutating]
-    void streamingMergeCell<S : ISampleGenerator>(uint cand_lightTypeIndex, uint cand_payload,
-                                                  float cand_pHatAtNew, float cellW, float cellM,
-                                                  inout S sg)
-    {
-        float w = cand_pHatAtNew * cellW * cellM;
-        if (!isnan(w) && w > 0.f)
-        {
-            wSum += w;
-            M    += cellM;
-            if (sampleNext1D(sg) * wSum <= w)
-            {
-                lightTypeIndex = cand_lightTypeIndex;
-                payload        = cand_payload;
-                targetPdf      = cand_pHatAtNew;
-            }
-        }
-        else
-        {
-            M += cellM;
-        }
-    }
+    // Note: a previous mass-weighted merge primitive (streamingMergeCell)
+    // was removed in the §9.4 selection-only fix. Cells are now added as
+    // single RIS candidates via streamingAdd above, with per-pixel pdf at
+    // the new shading point — keeps W per-pixel.
 };
 
 // ---------------------------------------------------------------------------
@@ -240,31 +219,6 @@ void wsMergeIntoCell<S : ISampleGenerator>(WSCellAddress addr, WSLocalReservoir 
 }
 
 // ---------------------------------------------------------------------------
-// Persist a finished local reservoir as the new cell content. Used after the
-// read+merge path: the local already contains (fresh + home + neighbours),
-// so we overwrite the cell rather than re-merge (would double-count).
-// Soft-collision protection: only write if the slot is empty or claimed by
-// the same fingerprint. M is capped on the way out.
-// ---------------------------------------------------------------------------
-void wsWriteCellFromLocal(WSCellAddress addr, WSLocalReservoir local)
-{
-    if (gWSCapacity == 0u || local.M <= 0.f) return;
-
-    WSReservoir existing = gWSReservoirs[addr.slot];
-    if (existing.fingerprint != 0u && existing.fingerprint != addr.fingerprint) return;
-
-    WSReservoir cell = wsReservoirInit(addr.fingerprint);
-    cell.lightTypeIndex   = local.lightTypeIndex;
-    cell.payload          = local.payload;
-    cell.targetPdf        = local.targetPdf;
-    cell.M                = min(local.M, gWSMCap);
-    float pHat = max(local.targetPdf, 1e-12f);
-    cell.W                = (local.M > 0.f) ? (local.wSum / (pHat * local.M)) : 0.f;
-    cell.frameLastUpdated = gFrameCount;
-    gWSReservoirs[addr.slot] = cell;
-}
-
-// ---------------------------------------------------------------------------
 // Read the persistent cell reservoir if it matches the current cell's
 // fingerprint. Caller materialises the chosen sample via wsRebuildLightSample.
 // Returns false on miss (cold cell or collision).
@@ -280,27 +234,37 @@ bool wsLoadCell(WSCellAddress addr, out WSReservoir cell)
 }
 
 // ---------------------------------------------------------------------------
-// Spatial gather: enumerate up to 4 neighbour cells in the same cascade
-// level, offset by ±1 in two axes (chosen jittered by the sample generator
-// so per-pixel gather patterns decorrelate). The four directional offsets
-// span the cell's 4 face-adjacent neighbours; we pick 0..gWSSpatialNeighbours
-// of them.
+// Spatial gather: enumerate up to 4 neighbour cells offset within the
+// surface's tangent plane (the two axes most perpendicular to the face
+// normal). For a ground-plane surface this gives ±x and ±z neighbours
+// (skipping the vertically-displaced cell that wouldn't share visibility);
+// for a wall it picks the other two axes. Jitter spreads the per-pixel
+// coverage across the 4 face neighbours of the picked plane.
 //
 // Returns the (slot, fingerprint) for the i-th neighbour cell. The caller
 // is responsible for loading and validating the slot like the home cell.
 // ---------------------------------------------------------------------------
-WSCellAddress wsResolveNeighbourCell(float3 posA, uint i, uint axisJitter)
+WSCellAddress wsResolveNeighbourCell(float3 posA, float3 faceN, uint i, uint axisJitter)
 {
     int lvl = wsCascadeLevel();
     int3 q = wsQuantizePosA(posA, lvl);
-    // 4 face neighbours along x/y/z, with the unused axis chosen by the
-    // jitter to spread coverage. Pattern: ±x, ±y, ±z, alternating.
-    static const int3 kOffsets[6] = {
-        int3( 1, 0, 0), int3(-1, 0, 0),
-        int3( 0, 1, 0), int3( 0,-1, 0),
-        int3( 0, 0, 1), int3( 0, 0,-1),
-    };
-    int3 off = kOffsets[(i + axisJitter) % 6u];
+
+    // Pick the two world axes most perpendicular to faceN by dropping the
+    // axis with the largest |faceN| component.
+    float3 absN = abs(faceN);
+    int dropAxis = (absN.x >= absN.y && absN.x >= absN.z) ? 0
+                 : (absN.y >= absN.z) ? 1 : 2;
+    int axisA = (dropAxis + 1) % 3;
+    int axisB = (dropAxis + 2) % 3;
+
+    // 4 in-plane offsets on (axisA, axisB).
+    int slot = int((i + axisJitter) % 4u);
+    int3 off = int3(0);
+    if (slot == 0) { off[axisA] =  1; }
+    else if (slot == 1) { off[axisA] = -1; }
+    else if (slot == 2) { off[axisB] =  1; }
+    else                { off[axisB] = -1; }
+
     int3 qN = q + off;
     WSCellAddress a;
     a.slot        = wsAddressHash(qN, lvl) & (gWSCapacity - 1u);

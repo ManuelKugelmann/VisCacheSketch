@@ -104,6 +104,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
     if (props.has("wsSpatialNeighbours"))           mParams.wsSpatialNeighbours           = props["wsSpatialNeighbours"];
     if (props.has("wsLightMuMin"))                  mParams.wsLightMuMin                  = props["wsLightMuMin"];
+    if (props.has("wsLightSoftness"))               mParams.wsLightSoftness               = props["wsLightSoftness"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -171,6 +172,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
     if (props.has("wsSpatialNeighbours"))           mParams.wsSpatialNeighbours           = props["wsSpatialNeighbours"];
     if (props.has("wsLightMuMin"))                  mParams.wsLightMuMin                  = props["wsLightMuMin"];
+    if (props.has("wsLightSoftness"))               mParams.wsLightSoftness               = props["wsLightSoftness"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -229,6 +231,7 @@ Properties VisCache::getProperties() const
     p["wsMCap"]                        = mParams.wsMCap;
     p["wsSpatialNeighbours"]           = mParams.wsSpatialNeighbours;
     p["wsLightMuMin"]                  = mParams.wsLightMuMin;
+    p["wsLightSoftness"]               = mParams.wsLightSoftness;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -583,6 +586,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.wsMCap               = mParams.wsMCap;
     gpu.wsSpatialNeighbours  = std::min(4u, mParams.wsSpatialNeighbours);
     gpu.wsLightMuMin         = mParams.wsLightMuMin;
+    gpu.wsLightSoftness      = std::clamp(mParams.wsLightSoftness, 0.f, 1.f);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -608,9 +612,10 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
                 gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
-        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} levelOffset={} mCap={:.1f} neighbours={} muMin={:.3f}",
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} levelOffset={} mCap={:.1f} neighbours={} muMin={:.3f} soft={:.2f}",
                 mParams.enableWSReservoirs, mParams.wsReservoirCapacity, mParams.wsLevelOffset,
-                mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours), mParams.wsLightMuMin);
+                mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours), mParams.wsLightMuMin,
+                mParams.wsLightSoftness);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -695,6 +700,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsMCap"]          = mParams.wsMCap;
     dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.wsSpatialNeighbours);
     dict["vhfParam_wsLightMuMin"]    = mParams.wsLightMuMin;
+    dict["vhfParam_wsLightSoftness"] = std::clamp(mParams.wsLightSoftness, 0.f, 1.f);
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -1003,6 +1009,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("wsMCap", mParams.wsMCap, 1.f, 200.f, 1.f);
         g.var("wsSpatialNeighbours", mParams.wsSpatialNeighbours, 0u, 4u);
         g.var("wsLightMuMin (ε floor)", mParams.wsLightMuMin, 0.f, 1.f, 0.01f);
+        g.var("wsLightSoftness (0=uniform, 1=full)", mParams.wsLightSoftness, 0.f, 1.f, 0.05f);
     }
     widget.separator();
 

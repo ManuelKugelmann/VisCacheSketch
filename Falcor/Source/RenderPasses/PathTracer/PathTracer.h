@@ -241,7 +241,8 @@ private:
              uint32_t wsCapacity=0;
              float    wsMCap=30.f;
              uint32_t wsSpatialNeighbours=4;
-             float    wsLightMuMin=0.01f; } mVCParams;
+             float    wsLightMuMin=0.01f;
+             float    wsLightSoftness=1.f; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffer (sourced from VisCache via dict["wsReservoirBuffer"]).
     ref<Buffer> mpVHFWSReservoirs;

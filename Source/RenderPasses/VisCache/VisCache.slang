@@ -232,6 +232,7 @@ cbuffer VisCacheParams
     float  gWSMCap;               ///< Temporal M-cap for reservoir merge.
     uint   gWSSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
     float  gWSLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
+    float  gWSLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
 };
 
 // ---------------------------------------------------------------------------

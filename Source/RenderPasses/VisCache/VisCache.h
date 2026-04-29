@@ -139,6 +139,9 @@ public:
         float    wsMCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
         uint32_t wsSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
         float    wsLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
+        float    wsLightSoftness;      ///< 0..1 softening of cached μ in target p̂.
+                                       ///< 0 = uniform (no cache effect), 1 = full trust.
+                                       ///< Effective μ = max(lerp(1, μ, softness), wsLightMuMin).
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -224,6 +227,9 @@ public:
         float    wsMCap                        = 30.0f; ///< Temporal M-cap for reservoir merge.
         uint32_t wsSpatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
         float    wsLightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
+        float    wsLightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.
+                                                        ///< 0 disables (uniform — cache has no effect on selection),
+                                                        ///< 1 = full trust (current behavior). 0.5 = √μ-like soft.
     };
 
     const Params& getParams() const { return mParams; }

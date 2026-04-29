@@ -1200,7 +1200,13 @@ struct PathTracer
                         {
                             float3 lightP = ls.origin + ls.dir * ls.distance;
                             VHFResult r = vhfLookup(sd.posW, lightP);
-                            if (r.valid) pHatFresh *= max(r.mu, gWSLightMuMin);
+                            // Soft cache trust: μ_eff = max(lerp(1, μ, softness), μmin).
+                            // softness=0 → μ_eff=1 (cache disabled), softness=1 → μ_eff=μ.
+                            if (r.valid)
+                            {
+                                float muEff = max(lerp(1.f, r.mu, gWSLightSoftness), gWSLightMuMin);
+                                pHatFresh *= muEff;
+                            }
                         }
 #endif
                         float invPdfFresh = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
@@ -1212,16 +1218,18 @@ struct PathTracer
 
                     // (2) Gather home cell + neighbours.
                     WSCellAddress homeAddr = wsResolveCell(sd.posW);
-                    uint axisJitter = uint(sampleNext1D(path.sg) * 6.f);
+                    uint axisJitter = min(uint(sampleNext1D(path.sg) * 4.f), 3u);
                     const uint nNeighbours = wsSpatialNeighbourCount();
                     for (uint i = 0u; i <= nNeighbours; ++i)
                     {
                         WSCellAddress addr = (i == 0u)
                             ? homeAddr
-                            : wsResolveNeighbourCell(sd.posW, i - 1u, axisJitter);
+                            : wsResolveNeighbourCell(sd.posW, sd.faceN, i - 1u, axisJitter);
                         WSReservoir cell;
                         if (!wsLoadCell(addr, cell)) continue;
-                        if (cell.M <= 0.f || cell.W <= 0.f) continue;
+                        if (cell.M <= 0.f) continue;
+                        // cell.W is no longer consumed for shading (selection-only
+                        // design after the v5 fix); identity is what matters.
 
                         uint cellType = wsUnpackLightType(cell.lightTypeIndex);
                         uint cellIdx  = wsUnpackLightIndex(cell.lightTypeIndex);
@@ -1235,14 +1243,15 @@ struct PathTracer
                             cellOk = wsRebuildEnvMapLightSample(cell.payload, sd, cellLs);
                         if (!cellOk) continue;
 
-                        // Hemisphere check matching the legacy NEE rejection: if the
-                        // chosen direction is below the surface (or above for trans-
-                        // mission paths), skip. We use the front-face dot on faceN.
-                        // Only diffuse-reflection front-face is accepted in the v1
-                        // read path — keeps composition simple; transmission/glossy
-                        // surfaces fall through to the fresh sample.
+                        // Hemisphere check matching legacy NEE: accept reflection
+                        // samples only when BSDF has reflection lobes; transmission
+                        // samples only when it has transmission lobes.
                         float NdotL = dot(sd.faceN, cellLs.dir);
-                        if (NdotL <= kMinCosTheta) continue;
+                        bool hasRefl  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
+                        bool hasTrans = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
+                        bool acceptUpper = (NdotL >  kMinCosTheta) && hasRefl;
+                        bool acceptLower = (NdotL < -kMinCosTheta) && hasTrans;
+                        if (!acceptUpper && !acceptLower) continue;
 
                         float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
                         float3 cellLr     = cellWeight * cellLs.Li;
@@ -1253,7 +1262,11 @@ struct PathTracer
                         {
                             float3 lightP = cellLs.origin + cellLs.dir * cellLs.distance;
                             VHFResult rcell = vhfLookup(sd.posW, lightP);
-                            if (rcell.valid) pHatCell *= max(rcell.mu, gWSLightMuMin);
+                            if (rcell.valid)
+                            {
+                                float muEffCell = max(lerp(1.f, rcell.mu, gWSLightSoftness), gWSLightMuMin);
+                                pHatCell *= muEffCell;
+                            }
                         }
 #endif
 
