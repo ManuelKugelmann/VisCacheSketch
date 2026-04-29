@@ -608,6 +608,9 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
                 gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} levelOffset={} mCap={:.1f} neighbours={} muMin={:.3f}",
+                mParams.enableWSReservoirs, mParams.wsReservoirCapacity, mParams.wsLevelOffset,
+                mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours), mParams.wsLightMuMin);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
