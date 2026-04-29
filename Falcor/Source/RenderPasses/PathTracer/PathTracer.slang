@@ -636,6 +636,50 @@ struct PathTracer
     }
 
 #if USE_WS_RESERVOIRS
+    /** §9.4 Re-materialise a LightSample for an analytic light from a stored
+        lightIndex, re-evaluated at a different shading point. Calls Falcor's
+        `sampleLight()` for the analytic light type — the sample is mostly
+        deterministic for point/directional lights (no uv); for area-shaped
+        analytic lights this consumes fresh randomness, which is fine.
+
+        The cell's "stored sample identity" for analytics is just the light
+        choice itself — the cell teaches "this light is good for this region",
+        and we re-sample it from the current pixel.
+    */
+    bool wsRebuildAnalyticLightSample(uint lightIndex, const ShadingData sd, inout SampleGenerator sg, out LightSample ls)
+    {
+        ls = {};
+        if (!kUseAnalyticLights) return false;
+        uint lightCount = gScene.getLightCount();
+        if (lightCount == 0u || lightIndex >= lightCount) return false;
+
+        AnalyticLightSample lightSample;
+        if (!sampleLight(sd.posW, gScene.getLight(lightIndex), sg, lightSample)) return false;
+
+        // Match generateAnalyticLightSample's normalization: pdf is scaled by
+        // 1/lightCount, Li by lightCount (uniform selection among analytics).
+        ls.pdf = lightSample.pdf / float(lightCount);
+        ls.Li  = lightSample.Li  * float(lightCount);
+
+        // Direction-aware ray-origin offset.
+        float3 normalForOffset = (dot(sd.faceN, lightSample.dir) >= 0.f) ? sd.faceN : -sd.faceN;
+        ls.origin   = computeRayOrigin(sd.posW, normalForOffset);
+        ls.distance = lightSample.distance;
+        ls.dir      = lightSample.dir;
+        ls.lightType  = (uint)LightType::Analytic;
+        ls.lightIndex = lightIndex;
+        ls.lightUV    = float2(0.f);
+
+        // Apply analytic-type selection probability (matches the tail of
+        // generateLightSample: ls.pdf *= selectionPdf; ls.Li /= selectionPdf).
+        float analyticSel = getAnalyicSelectionProbability();
+        if (analyticSel <= 0.f) return false;
+        ls.pdf *= analyticSel;
+        ls.Li  /= analyticSel;
+
+        return any(ls.Li > 0.f);
+    }
+
     /** §9.4 Re-materialise a LightSample for an emissive triangle from
         stored (lightIndex, uv), re-evaluated at a different shading point.
         Mirrors generateEmissiveSample's per-sample math (see Falcor's
@@ -1089,9 +1133,11 @@ struct PathTracer
                 //     candidate at THIS shading point, merge into the local
                 //  3. swap the picked sample into ls (and recompute Lr)
                 //  4. persist the local back to the home cell
-                // Restricted to emissive lights (the dominant many-lights case);
-                // analytic / env fall through to legacy NEE.
-                if (path.getVertexIndex() == 1 && wsEnabled() && ls.lightType == (uint)LightType::Emissive)
+                // Handles emissive AND analytic lights (the dominant many-lights
+                // cases). EnvMap samples fall through to legacy NEE for now.
+                bool isEmissive = ls.lightType == (uint)LightType::Emissive;
+                bool isAnalytic = ls.lightType == (uint)LightType::Analytic;
+                if (path.getVertexIndex() == 1 && wsEnabled() && (isEmissive || isAnalytic))
                 {
                     WSLocalReservoir local; local.init();
 
@@ -1118,12 +1164,16 @@ struct PathTracer
                         WSReservoir cell;
                         if (!wsLoadCell(addr, cell)) continue;
                         if (cell.M <= 0.f || cell.W <= 0.f) continue;
-                        if (wsUnpackLightType(cell.lightTypeIndex) != (uint)LightType::Emissive) continue;
 
+                        uint cellType = wsUnpackLightType(cell.lightTypeIndex);
+                        uint cellIdx  = wsUnpackLightIndex(cell.lightTypeIndex);
                         LightSample cellLs;
-                        if (!wsRebuildEmissiveLightSample(
-                                wsUnpackLightIndex(cell.lightTypeIndex),
-                                wsUnpackUV(cell.payload), sd, cellLs)) continue;
+                        bool cellOk = false;
+                        if (cellType == (uint)LightType::Emissive)
+                            cellOk = wsRebuildEmissiveLightSample(cellIdx, wsUnpackUV(cell.payload), sd, cellLs);
+                        else if (cellType == (uint)LightType::Analytic)
+                            cellOk = wsRebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
+                        if (!cellOk) continue;
 
                         // Hemisphere check matching the legacy NEE rejection: if the
                         // chosen direction is below the surface (or above for trans-
@@ -1145,17 +1195,22 @@ struct PathTracer
                     }
 
                     // (3) Swap winner if the local picked a sample we can rebuild.
-                    if (local.M > 0.f && local.targetPdf > 0.f &&
-                        wsUnpackLightType(local.lightTypeIndex) == (uint)LightType::Emissive)
+                    if (local.M > 0.f && local.targetPdf > 0.f)
                     {
+                        uint winnerType = wsUnpackLightType(local.lightTypeIndex);
+                        uint winnerIdx  = wsUnpackLightIndex(local.lightTypeIndex);
                         LightSample winnerLs;
-                        if (wsRebuildEmissiveLightSample(
-                                wsUnpackLightIndex(local.lightTypeIndex),
-                                wsUnpackUV(local.payload), sd, winnerLs))
+                        bool winnerOk = false;
+                        if (winnerType == (uint)LightType::Emissive)
+                            winnerOk = wsRebuildEmissiveLightSample(winnerIdx, wsUnpackUV(local.payload), sd, winnerLs);
+                        else if (winnerType == (uint)LightType::Analytic)
+                            winnerOk = wsRebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
+
+                        if (winnerOk)
                         {
                             ls = winnerLs;
                             // Apply MIS the same way generateLightSample does
-                            // for emissive samples.
+                            // (analytic lights skip MIS — Falcor convention).
                             if (kUseMIS && !applyRTXDI && ls.lightType != (uint)LightType::Analytic)
                             {
                                 float scatterPdf = mi.evalPdf(sd, ls.dir, kUseBSDFSampling);
