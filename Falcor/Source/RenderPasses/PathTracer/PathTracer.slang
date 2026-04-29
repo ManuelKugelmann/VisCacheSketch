@@ -1257,9 +1257,15 @@ struct PathTracer
                         }
 #endif
 
-                        local.streamingMergeCell(
+                        // §9.4 design fix: cell is a candidate-IDENTITY hint, not
+                        // an aggregated reservoir. Use cellLs.pdf at THIS pixel as
+                        // the proposal pdf and add as a single RIS candidate. This
+                        // keeps W per-pixel and avoids the spatial-block artifact
+                        // that arises from inheriting cell.W across pixels-in-cell.
+                        float invPdfCell = (cellLs.pdf > 0.f) ? (1.f / cellLs.pdf) : 0.f;
+                        local.streamingAdd(
                             cell.lightTypeIndex, cell.payload,
-                            pHatCell, cell.W, cell.M, path.sg);
+                            pHatCell, invPdfCell, path.sg);
                     }
 
                     // (3) Swap winner if the local picked a sample we can rebuild.
@@ -1296,8 +1302,12 @@ struct PathTracer
                         }
                     }
 
-                    // (4) Persist the merged local reservoir back into the home cell.
-                    wsWriteCellFromLocal(homeAddr, local);
+                    // (4) Stream the per-pixel local into the home cell with M-cap
+                    // accumulation. The cell aggregates across frames (M grows to
+                    // gWSMCap) so its identity converges to the popular sample for
+                    // the region. Read side only consumes identity; the cell's
+                    // M/W are bookkeeping for this write-side reservoir merge.
+                    wsMergeIntoCell(homeAddr, local, path.sg);
                 }
 #endif
 

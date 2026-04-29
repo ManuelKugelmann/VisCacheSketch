@@ -21,7 +21,9 @@ except ImportError:
 
 def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True,
                             wsReservoirs=False, wsLevelOffset=1, wsReservoirCapacity=1 << 18,
-                            wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01):
+                            wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
+                            visibilityCheck=None, lightSelection=None,
+                            extraVCProps=None):
     """Build a PathTracer render graph.
 
     Args:
@@ -31,6 +33,11 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
             (requires viscache=True since reservoirs ride VisCache's posA cascade).
         wsLevelOffset: # cascade levels coarser than the finest visibility level
             for reservoir cell selection (default 1 = one step coarser).
+        visibilityCheck: If not None, override enableVisCacheVisibilityCheck (§9.2).
+        lightSelection: If not None, override enableVisCacheLightSelection (§9.1).
+        extraVCProps: Optional dict merged into VisCache properties at create time
+            — for arbitrary one-off overrides. Falcor 8 doesn't expose Pass.setProperty
+            from Python, so all per-toggle tweaks must go through create-time props.
     """
     name = "PathTracer_VisCache" if viscache else "PathTracer"
     if wsReservoirs:
@@ -50,6 +57,12 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
     # Visibility Cache (optional) — no graph edges, exposes data via InternalDictionary
     if viscache:
         vc_props = {**VISCACHE_DEFAULTS, "spp": samplesPerPixel}
+        if visibilityCheck is not None:
+            vc_props["enableVisCacheVisibilityCheck"] = bool(visibilityCheck)
+        if lightSelection is not None:
+            vc_props["enableVisCacheLightSelection"] = bool(lightSelection)
+        if extraVCProps:
+            vc_props.update(extraVCProps)
         if wsReservoirs:
             vc_props.update({
                 "enableWSReservoirs":   True,

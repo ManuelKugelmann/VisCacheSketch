@@ -32,22 +32,16 @@ SCENES = [
     "CornellBox_32PointLights.pyscene",
 ]
 VARIANTS = [
-    # name, kwargs to render_graph_PathTracer, viscache prop overrides
-    ("legacy", dict(viscache=True, wsReservoirs=False), {
-        "enableVisCacheVisibilityCheck": True,
-        "enableVisCacheLightSelection":  False,
-        "enableWSReservoirs":            False,
-    }),
-    ("ws", dict(viscache=True, wsReservoirs=True), {
-        "enableVisCacheVisibilityCheck": True,
-        "enableVisCacheLightSelection":  False,
-        "enableWSReservoirs":            True,
-    }),
-    ("full", dict(viscache=True, wsReservoirs=True), {
-        "enableVisCacheVisibilityCheck": True,
-        "enableVisCacheLightSelection":  True,
-        "enableWSReservoirs":            True,
-    }),
+    # name, kwargs to render_graph_PathTracer
+    # All variants get visibilityCheck=True (§9.2) so the cache-gated shadow
+    # ray comparison is consistent. The toggles vary §9.1 (light selection)
+    # and §9.4 (WS reservoirs) independently.
+    ("legacy", dict(viscache=True, wsReservoirs=False,
+                    visibilityCheck=True,  lightSelection=False)),
+    ("ws",     dict(viscache=True, wsReservoirs=True,
+                    visibilityCheck=True,  lightSelection=False)),
+    ("full",   dict(viscache=True, wsReservoirs=True,
+                    visibilityCheck=True,  lightSelection=True)),
 ]
 WARMUP_FRAMES = 8     # let the cache + reservoirs accumulate
 CAPTURE_FRAMES = 16   # frames over which we accumulate the captured EXR
@@ -65,19 +59,9 @@ def resolve_scene(scene_name):
 for scene_name in SCENES:
     scene_path = resolve_scene(scene_name)
     scene_label = os.path.splitext(os.path.basename(scene_name))[0]
-    for variant_name, graph_kwargs, vc_overrides in VARIANTS:
+    for variant_name, graph_kwargs in VARIANTS:
         print(f"[WSTest] === {variant_name} on {scene_label} ===")
         g = render_graph_PathTracer(**graph_kwargs)
-
-        # Apply per-variant VisCache toggle overrides directly on the pass.
-        if "VisCache" in g.getPasses() if hasattr(g, "getPasses") else True:
-            try:
-                vc_pass = g.getPass("VisCache")
-                for k, v in vc_overrides.items():
-                    vc_pass.setProperty(k, v)
-            except Exception as e:
-                print(f"[WSTest] WARN: could not override VisCache props ({e})")
-
         m.addGraph(g)
         m.loadScene(scene_path)
 
