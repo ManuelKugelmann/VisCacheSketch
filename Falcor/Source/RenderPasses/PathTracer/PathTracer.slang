@@ -50,6 +50,8 @@ import Rendering.RTXDI.RTXDI;
 #if USE_WS_RESERVOIRS
 import RenderPasses.VisCache.WSReservoir;
 import RenderPasses.VisCache.WSReservoirIO;
+import Utils.Math.MathHelpers;     // sample_triangle for emissive uv → barys
+#include "Utils/Math/MathConstants.slangh"  // FLT_MIN
 #endif
 
 /** Interface for querying visibility in the scene.
@@ -138,6 +140,13 @@ struct PathTracer
         float   distance;   ///< Ray distance for visibility evaluation (shortened to avoid self-intersection).
         float3  dir;        ///< Ray direction for visibility evaluation (normalized).
         uint    lightType;  ///< Light type this sample comes from (LightType casted to uint).
+        // §9.4 WS-ReSTIR DI: light-identity fields populated by sample generators.
+        // Used by the WS reservoir read path to re-evaluate Li from a different shading point.
+        // For LightType::Emissive: lightIndex = active triangle index, lightUV = barys.
+        // For LightType::Analytic: lightIndex = analytic light index, lightUV = unused.
+        // For LightType::EnvMap:   lightIndex = 0,                    lightUV = unused (dir carries the identity).
+        uint    lightIndex; ///< Light identity (per-type meaning above).
+        float2  lightUV;    ///< Surface parameterization (per-type meaning above).
 
         Ray getVisibilityRay() { return Ray(origin, dir, 0.f, distance); }
     };
@@ -590,6 +599,8 @@ struct PathTracer
         ls.origin = vertex.getRayOrigin(lightSample.dir);
         ls.distance = kRayTMax;
         ls.dir = lightSample.dir;
+        ls.lightIndex = 0u;          // §9.4 — env identity carried by ls.dir
+        ls.lightUV = float2(0.f);
 
         return any(ls.Li > 0.f);
     }
@@ -618,9 +629,65 @@ struct PathTracer
         float3 toLight = lightPos - ls.origin;
         ls.distance = length(toLight);
         ls.dir = normalize(toLight);
+        ls.lightIndex = tls.triangleIndex;   // §9.4 — emissive identity = active triangle index
+        ls.lightUV = tls.uv;                 // §9.4 — barycentric coords on the triangle
 
         return any(ls.Li > 0.f);
     }
+
+#if USE_WS_RESERVOIRS
+    /** §9.4 Re-materialise a LightSample for an emissive triangle from
+        stored (lightIndex, uv), re-evaluated at a different shading point.
+        Mirrors generateEmissiveSample's per-sample math (see Falcor's
+        EmissiveLightSamplerHelpers::sampleTriangle) but uses the stored u
+        instead of drawing a new one.
+    */
+    bool wsRebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingData sd, out LightSample ls)
+    {
+        ls = {};
+        if (!kUseEmissiveLights) return false;
+        if (triangleIndex >= gScene.lightCollection.getActiveTriangleCount()) return false;
+
+        EmissiveTriangle tri = gScene.lightCollection.getTriangle(triangleIndex);
+        float3 bary = sample_triangle(u);
+        float3 lightPosW = tri.getPosition(bary);
+        float3 lightOffsetPosW = computeRayOrigin(lightPosW, tri.normal);
+
+        // Direction-aware shading-point offset to avoid self-intersection.
+        float3 normalForOffset = (dot(sd.faceN, lightOffsetPosW - sd.posW) >= 0.f) ? sd.faceN : -sd.faceN;
+        ls.origin = computeRayOrigin(sd.posW, normalForOffset);
+
+        float3 toLight = lightOffsetPosW - ls.origin;
+        float distSqr = max(FLT_MIN, dot(toLight, toLight));
+        float dist = sqrt(distSqr);
+        float3 dir = toLight / dist;
+
+        float cosTheta = dot(tri.normal, -dir);
+        if (cosTheta <= 0.f) return false;
+
+        float2 texCoord = tri.getTexCoord(bary);
+        float3 Le = gScene.materials.evalEmissive(tri.materialID, texCoord);
+        if (gScene.materials.hasLightProfile(tri.materialID))
+            Le *= gScene.materials.evalLightProfile(cosTheta);
+
+        float pdf = distSqr / max(FLT_MIN, cosTheta * tri.area);
+        if (pdf <= 0.f) return false;
+
+        // Account for emissive selection probability (matches generateLightSample's
+        // "Account for light type selection" tail division).
+        float emissiveSel = getEmissiveSelectionProbability();
+        if (emissiveSel <= 0.f) return false;
+
+        ls.Li        = (Le / pdf) / emissiveSel;
+        ls.pdf       = pdf * emissiveSel;
+        ls.dir       = dir;
+        ls.distance  = dist;
+        ls.lightType = (uint)LightType::Emissive;
+        ls.lightIndex = triangleIndex;
+        ls.lightUV   = u;
+        return any(ls.Li > 0.f);
+    }
+#endif
 
     /** Generates a light sample on the analytic lights.
         \param[in] vertex Path vertex.
@@ -652,6 +719,8 @@ struct PathTracer
         // Do not worry about adjusting the ray length to avoid self-intersections at the light.
         ls.distance = lightSample.distance;
         ls.dir = lightSample.dir;
+        ls.lightIndex = lightIndex;          // §9.4 — analytic light index
+        ls.lightUV = float2(0.f);
 
         return any(ls.Li > 0.f);
     }
@@ -1014,26 +1083,96 @@ struct PathTracer
                 float3 Lr = weight * ls.Li;
 
 #if USE_WS_RESERVOIRS
-                // §9.4 Write path: feed the chosen NEE candidate into the
-                // posA-cell reservoir at the primary hit. Reservoirs accumulate
-                // across pixels-in-cell + frames; the read path (next commit)
-                // will pull this back as a low-variance light sample.
-                //
-                // Identity is stored as (direction, distance) — light-system-
-                // agnostic; read path re-traces the shadow ray to recover Li.
-                if (path.getVertexIndex() == 1 && wsEnabled())
+                // §9.4 WS-ReSTIR DI: full read+merge+write at the primary hit.
+                //  1. seed local reservoir with the fresh NEE candidate
+                //  2. gather home cell + spatial neighbours, re-evaluate each
+                //     candidate at THIS shading point, merge into the local
+                //  3. swap the picked sample into ls (and recompute Lr)
+                //  4. persist the local back to the home cell
+                // Restricted to emissive lights (the dominant many-lights case);
+                // analytic / env fall through to legacy NEE.
+                if (path.getVertexIndex() == 1 && wsEnabled() && ls.lightType == (uint)LightType::Emissive)
                 {
-                    float pHat = luminance(Lr);
-                    if (pHat > 0.f)
+                    WSLocalReservoir local; local.init();
+
+                    // (1) Add the fresh sample as the first RIS candidate.
+                    if (any(Lr > 0.f))
                     {
-                        float invPdf = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
-                        WSLocalReservoir local;
-                        local.init();
-                        local.streamingAdd(wsPackDirOct(ls.dir), ls.distance,
-                                           ls.lightType, pHat, invPdf, path.sg);
-                        WSCellAddress addr = wsResolveCell(sd.posW);
-                        wsMergeIntoCell(addr, local, path.sg);
+                        float pHatFresh = luminance(Lr);
+                        float invPdfFresh = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
+                        local.streamingAdd(
+                            wsPackLightTypeIndex(ls.lightType, ls.lightIndex),
+                            wsPackUV(ls.lightUV),
+                            pHatFresh, invPdfFresh, path.sg);
                     }
+
+                    // (2) Gather home cell + neighbours.
+                    WSCellAddress homeAddr = wsResolveCell(sd.posW);
+                    uint axisJitter = uint(sampleNext1D(path.sg) * 6.f);
+                    const uint nNeighbours = wsSpatialNeighbourCount();
+                    for (uint i = 0u; i <= nNeighbours; ++i)
+                    {
+                        WSCellAddress addr = (i == 0u)
+                            ? homeAddr
+                            : wsResolveNeighbourCell(sd.posW, i - 1u, axisJitter);
+                        WSReservoir cell;
+                        if (!wsLoadCell(addr, cell)) continue;
+                        if (cell.M <= 0.f || cell.W <= 0.f) continue;
+                        if (wsUnpackLightType(cell.lightTypeIndex) != (uint)LightType::Emissive) continue;
+
+                        LightSample cellLs;
+                        if (!wsRebuildEmissiveLightSample(
+                                wsUnpackLightIndex(cell.lightTypeIndex),
+                                wsUnpackUV(cell.payload), sd, cellLs)) continue;
+
+                        // Hemisphere check matching the legacy NEE rejection: if the
+                        // chosen direction is below the surface (or above for trans-
+                        // mission paths), skip. We use the front-face dot on faceN.
+                        // Only diffuse-reflection front-face is accepted in the v1
+                        // read path — keeps composition simple; transmission/glossy
+                        // surfaces fall through to the fresh sample.
+                        float NdotL = dot(sd.faceN, cellLs.dir);
+                        if (NdotL <= kMinCosTheta) continue;
+
+                        float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
+                        float3 cellLr     = cellWeight * cellLs.Li;
+                        float pHatCell    = luminance(cellLr);
+                        if (pHatCell <= 0.f) continue;
+
+                        local.streamingMergeCell(
+                            cell.lightTypeIndex, cell.payload,
+                            pHatCell, cell.W, cell.M, path.sg);
+                    }
+
+                    // (3) Swap winner if the local picked a sample we can rebuild.
+                    if (local.M > 0.f && local.targetPdf > 0.f &&
+                        wsUnpackLightType(local.lightTypeIndex) == (uint)LightType::Emissive)
+                    {
+                        LightSample winnerLs;
+                        if (wsRebuildEmissiveLightSample(
+                                wsUnpackLightIndex(local.lightTypeIndex),
+                                wsUnpackUV(local.payload), sd, winnerLs))
+                        {
+                            ls = winnerLs;
+                            // Apply MIS the same way generateLightSample does
+                            // for emissive samples.
+                            if (kUseMIS && !applyRTXDI && ls.lightType != (uint)LightType::Analytic)
+                            {
+                                float scatterPdf = mi.evalPdf(sd, ls.dir, kUseBSDFSampling);
+                                ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
+                            }
+
+                            float3 weight = mi.eval(sd, ls.dir, path.sg);
+                            // ReSTIR W = wSum / (p̂(y) * M_total). The estimator is
+                            // f(y) * W where f(y) = BSDF*cos*Le. ls.Li = Le/pdf, so
+                            // f(y) = weight * (ls.Li * ls.pdf).
+                            float winnerW = local.wSum / max(local.targetPdf * local.M, 1e-12f);
+                            Lr = weight * (ls.Li * ls.pdf) * winnerW;
+                        }
+                    }
+
+                    // (4) Persist the merged local reservoir back into the home cell.
+                    wsWriteCellFromLocal(homeAddr, local);
                 }
 #endif
 

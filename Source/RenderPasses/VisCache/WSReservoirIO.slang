@@ -32,9 +32,10 @@ import Utils.Sampling.SampleGenerator;
 // ---------------------------------------------------------------------------
 RWStructuredBuffer<WSReservoir> gWSReservoirs;
 
-// PathTracer.slang doesn't import VisCache directly, so route the gate
-// through a helper that has visibility on the cbuffer globals.
+// PathTracer.slang doesn't import VisCache directly, so route the gates
+// through helpers that have visibility on the cbuffer globals.
 bool wsEnabled() { return gWSEnable != 0u && gWSCapacity > 0u; }
+uint wsSpatialNeighbourCount() { return min(gWSSpatialNeighbours, 4u); }
 
 // ---------------------------------------------------------------------------
 // Reservoir cascade level. Mirrors the §9.4 design call: reservoirs read at
@@ -99,23 +100,22 @@ WSCellAddress wsResolveCell(float3 posA)
 // ---------------------------------------------------------------------------
 struct WSLocalReservoir
 {
-    uint   dirOct;        // chosen direction to the light point (octahedral-packed)
-    float  distance;      // chosen visibility distance (shadow-ray length)
-    uint   lightType;     // LightType of the chosen candidate
-    float  targetPdf;     // p̂ at the time the chosen sample was selected
-    float  M;             // candidate count
-    float  wSum;          // accumulated RIS weight sum
+    uint   lightTypeIndex; // packed (lightType<<24) | lightIndex
+    uint   payload;        // barys (emissive) | dirOct (env) | 0 (analytic)
+    float  targetPdf;      // p̂ at the time the chosen sample was selected
+    float  M;              // candidate count
+    float  wSum;           // accumulated RIS weight sum
 
     [mutating] void init()
     {
-        dirOct = 0u; distance = 0.f; lightType = 0u;
+        lightTypeIndex = 0u; payload = 0u;
         targetPdf = 0.f; M = 0.f; wSum = 0.f;
     }
 
     [mutating]
-    void streamingAdd<S : ISampleGenerator>(uint cand_dirOct, float cand_distance,
-                                            uint cand_lightType, float cand_targetPdf,
-                                            float cand_invPdf, inout S sg)
+    void streamingAdd<S : ISampleGenerator>(uint cand_lightTypeIndex, uint cand_payload,
+                                            float cand_targetPdf, float cand_invPdf,
+                                            inout S sg)
     {
         // Bitterli '20 streaming reservoir: each candidate's weight is
         // p_hat * 1/p_proposal. With M candidates we sum and roulette.
@@ -126,15 +126,40 @@ struct WSLocalReservoir
             M    += 1.f;
             if (sampleNext1D(sg) * wSum <= w)
             {
-                dirOct    = cand_dirOct;
-                distance  = cand_distance;
-                lightType = cand_lightType;
-                targetPdf = cand_targetPdf;
+                lightTypeIndex = cand_lightTypeIndex;
+                payload        = cand_payload;
+                targetPdf      = cand_targetPdf;
             }
         }
         else
         {
             M += 1.f;     // count the candidate even if rejected (M-cap accounting)
+        }
+    }
+
+    // Merge an already-aggregated reservoir (from a WS cell) into the local
+    // stream: weight contribution = p̂_at_new_surface * (cell.W * cell.M),
+    // sample mass = cell.M (capped on the way in by caller).
+    [mutating]
+    void streamingMergeCell<S : ISampleGenerator>(uint cand_lightTypeIndex, uint cand_payload,
+                                                  float cand_pHatAtNew, float cellW, float cellM,
+                                                  inout S sg)
+    {
+        float w = cand_pHatAtNew * cellW * cellM;
+        if (!isnan(w) && w > 0.f)
+        {
+            wSum += w;
+            M    += cellM;
+            if (sampleNext1D(sg) * wSum <= w)
+            {
+                lightTypeIndex = cand_lightTypeIndex;
+                payload        = cand_payload;
+                targetPdf      = cand_pHatAtNew;
+            }
+        }
+        else
+        {
+            M += cellM;
         }
     }
 };
@@ -172,9 +197,8 @@ void wsMergeIntoCell<S : ISampleGenerator>(WSCellAddress addr, WSLocalReservoir 
     if (cell.fingerprint == 0u)
     {
         cell = wsReservoirInit(addr.fingerprint);
-        cell.dirOct           = local.dirOct;
-        cell.distance         = local.distance;
-        cell.lightType        = local.lightType;
+        cell.lightTypeIndex   = local.lightTypeIndex;
+        cell.payload          = local.payload;
         cell.targetPdf        = local.targetPdf;
         cell.M                = local.M;
         // 1/p̂ * (1/M) * w_sum
@@ -203,23 +227,46 @@ void wsMergeIntoCell<S : ISampleGenerator>(WSCellAddress addr, WSLocalReservoir 
     cell.frameLastUpdated = gFrameCount;
     if (keepLocal)
     {
-        cell.dirOct    = local.dirOct;
-        cell.distance  = local.distance;
-        cell.lightType = local.lightType;
-        cell.targetPdf = local.targetPdf;
-        cell.W         = wSumTotal / (pHatLocal * Mnew);
+        cell.lightTypeIndex = local.lightTypeIndex;
+        cell.payload        = local.payload;
+        cell.targetPdf      = local.targetPdf;
+        cell.W              = wSumTotal / (pHatLocal * Mnew);
     }
     else
     {
-        cell.W         = wSumTotal / (pHatCell * Mnew);
+        cell.W              = wSumTotal / (pHatCell * Mnew);
     }
     gWSReservoirs[addr.slot] = cell;
 }
 
 // ---------------------------------------------------------------------------
+// Persist a finished local reservoir as the new cell content. Used after the
+// read+merge path: the local already contains (fresh + home + neighbours),
+// so we overwrite the cell rather than re-merge (would double-count).
+// Soft-collision protection: only write if the slot is empty or claimed by
+// the same fingerprint. M is capped on the way out.
+// ---------------------------------------------------------------------------
+void wsWriteCellFromLocal(WSCellAddress addr, WSLocalReservoir local)
+{
+    if (gWSCapacity == 0u || local.M <= 0.f) return;
+
+    WSReservoir existing = gWSReservoirs[addr.slot];
+    if (existing.fingerprint != 0u && existing.fingerprint != addr.fingerprint) return;
+
+    WSReservoir cell = wsReservoirInit(addr.fingerprint);
+    cell.lightTypeIndex   = local.lightTypeIndex;
+    cell.payload          = local.payload;
+    cell.targetPdf        = local.targetPdf;
+    cell.M                = min(local.M, gWSMCap);
+    float pHat = max(local.targetPdf, 1e-12f);
+    cell.W                = (local.M > 0.f) ? (local.wSum / (pHat * local.M)) : 0.f;
+    cell.frameLastUpdated = gFrameCount;
+    gWSReservoirs[addr.slot] = cell;
+}
+
+// ---------------------------------------------------------------------------
 // Read the persistent cell reservoir if it matches the current cell's
-// fingerprint. Caller uses (lightIdx, uvPacked, W) to evaluate the chosen
-// sample's contribution and trace a (possibly cache-gated) shadow ray.
+// fingerprint. Caller materialises the chosen sample via wsRebuildLightSample.
 // Returns false on miss (cold cell or collision).
 // ---------------------------------------------------------------------------
 bool wsLoadCell(WSCellAddress addr, out WSReservoir cell)
@@ -231,3 +278,33 @@ bool wsLoadCell(WSCellAddress addr, out WSReservoir cell)
     cell = r;
     return true;
 }
+
+// ---------------------------------------------------------------------------
+// Spatial gather: enumerate up to 4 neighbour cells in the same cascade
+// level, offset by ±1 in two axes (chosen jittered by the sample generator
+// so per-pixel gather patterns decorrelate). The four directional offsets
+// span the cell's 4 face-adjacent neighbours; we pick 0..gWSSpatialNeighbours
+// of them.
+//
+// Returns the (slot, fingerprint) for the i-th neighbour cell. The caller
+// is responsible for loading and validating the slot like the home cell.
+// ---------------------------------------------------------------------------
+WSCellAddress wsResolveNeighbourCell(float3 posA, uint i, uint axisJitter)
+{
+    int lvl = wsCascadeLevel();
+    int3 q = wsQuantizePosA(posA, lvl);
+    // 4 face neighbours along x/y/z, with the unused axis chosen by the
+    // jitter to spread coverage. Pattern: ±x, ±y, ±z, alternating.
+    static const int3 kOffsets[6] = {
+        int3( 1, 0, 0), int3(-1, 0, 0),
+        int3( 0, 1, 0), int3( 0,-1, 0),
+        int3( 0, 0, 1), int3( 0, 0,-1),
+    };
+    int3 off = kOffsets[(i + axisJitter) % 6u];
+    int3 qN = q + off;
+    WSCellAddress a;
+    a.slot        = wsAddressHash(qN, lvl) & (gWSCapacity - 1u);
+    a.fingerprint = wsFingerprintHash(qN, lvl);
+    return a;
+}
+

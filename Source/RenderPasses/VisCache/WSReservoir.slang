@@ -12,23 +12,23 @@
 
 #pragma once
 
-// 32 bytes. Field order is laid out for natural 4-byte alignment.
-// Identity is stored as a shadow-ray pin (dir + distance) rather than a
-// light-system-specific (lightIdx, uv) pair — keeps the reservoir
-// agnostic to whether the chosen sample was analytic, emissive, or
-// envmap. Read path re-traces in `dirOct` for `distance` and evaluates
-// emission at the hit (or the envmap miss).
+// 32 bytes. Identity = (lightType, lightIndex, uv-or-dir):
+//   lightType  : LightType enum (high 8 bits of lightTypeIndex).
+//   lightIndex : low 24 bits — analytic-light or emissive-triangle index.
+//   payload    : packed barys for emissive (16:16 unorm), oct-packed dir for
+//                env (16:16 unorm), 0 for analytic.
+// The read path re-evaluates Li at the new shading point from this triple,
+// independent of the surface that originally selected the sample.
 struct WSReservoir
 {
-    uint   fingerprint;       ///< 32-bit posA-fingerprint of the cell owning this slot.
-                              ///< 0 = empty slot sentinel.
-    uint   dirOct;            ///< Octahedral-packed direction to the chosen light point.
-    float  distance;          ///< Shadow-ray length (cached visibility distance).
+    uint   fingerprint;       ///< 32-bit posA-fingerprint. 0 = empty sentinel.
+    uint   lightTypeIndex;    ///< (lightType << 24) | (lightIndex & 0x00FFFFFFu).
+    uint   payload;           ///< barys (emissive) | dirOct (env) | 0 (analytic).
     float  targetPdf;         ///< p̂ at selection time (luminance of chosen contribution).
     float  M;                 ///< Accumulated sample count (capped at gWSMCap).
-    float  W;                 ///< Unbiased weight: (1 / p̂(y)) * (1 / M) * w_sum.
-    uint   frameLastUpdated;  ///< gFrameCount at last write — stale-detection / debug.
-    uint   lightType;         ///< LightType of the chosen sample (analytic / emissive / env).
+    float  W;                 ///< Unbiased weight: w_sum_total / (p̂(y) * M).
+    uint   frameLastUpdated;  ///< gFrameCount at last write — staleness diagnostic.
+    uint   _pad;              ///< Reserved (alignment to 32 B).
 };
 
 // ---------------------------------------------------------------------------
@@ -66,18 +66,46 @@ float3 wsUnpackDirOct(uint packed)
 }
 
 // ---------------------------------------------------------------------------
+// (u,v) pack/unpack — 16:16 unorm. Used for triangle barycentrics.
+// ---------------------------------------------------------------------------
+uint wsPackUV(float2 uv)
+{
+    uint x = uint(saturate(uv.x) * 65535.f + 0.5f);
+    uint y = uint(saturate(uv.y) * 65535.f + 0.5f);
+    return x | (y << 16);
+}
+float2 wsUnpackUV(uint packed)
+{
+    float u = float(packed & 0xFFFFu) * (1.f / 65535.f);
+    float v = float(packed >> 16)     * (1.f / 65535.f);
+    return float2(u, v);
+}
+
+// ---------------------------------------------------------------------------
+// (lightType, lightIndex) pack/unpack into a single uint.
+// type in upper 8 bits (we never have >256 light types), idx in lower 24
+// bits (sufficient for ~16M emissive triangles).
+// ---------------------------------------------------------------------------
+uint wsPackLightTypeIndex(uint lightType, uint lightIndex)
+{
+    return ((lightType & 0xFFu) << 24) | (lightIndex & 0x00FFFFFFu);
+}
+uint wsUnpackLightType(uint pkd)  { return (pkd >> 24) & 0xFFu; }
+uint wsUnpackLightIndex(uint pkd) { return pkd & 0x00FFFFFFu; }
+
+// ---------------------------------------------------------------------------
 // Construct an empty reservoir for the given fingerprint.
 // ---------------------------------------------------------------------------
 WSReservoir wsReservoirInit(uint fingerprint)
 {
     WSReservoir r;
     r.fingerprint      = fingerprint;
-    r.dirOct           = 0u;
-    r.distance         = 0.0f;
+    r.lightTypeIndex   = 0u;
+    r.payload          = 0u;
     r.targetPdf        = 0.0f;
     r.M                = 0.0f;
     r.W                = 0.0f;
     r.frameLastUpdated = 0u;
-    r.lightType        = 0u;
+    r._pad             = 0u;
     return r;
 }
