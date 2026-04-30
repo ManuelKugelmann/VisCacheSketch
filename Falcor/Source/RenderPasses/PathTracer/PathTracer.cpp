@@ -1291,6 +1291,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.wsJitterFilter      = getF("vhfParam_wsJitterFilter", 0.f);
             mVCParams.wsJitterCell        = getF("vhfParam_wsJitterCell", 0.f);
             mVCParams.wsUseCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
+            mVCParams.wsVisInPHat         = getU("vhfParam_wsVisInPHat", 1u);
         }
         bool wasWSReservoirs = mVisCacheWSReservoirs;
         mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
@@ -1562,6 +1563,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gWSJitterFilter"]                = mVCParams.wsJitterFilter;
         vc["gWSJitterCell"]                  = mVCParams.wsJitterCell;
         vc["gWSUseCellInRIS"]                = mVCParams.wsUseCellInRIS;
+        vc["gWSVisInPHat"]                   = mVCParams.wsVisInPHat;
     }
     // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
     if (mVisCacheWSReservoirs)

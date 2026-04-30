@@ -21,37 +21,31 @@ except ImportError:
 
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", "")
 SCENES = [
-    "CornellBox_1AreaLight.pyscene",
     "CornellBox_3AreaLights.pyscene",
     "CornellBox_32PointLights.pyscene",
+    "Sponza.pyscene",
 ]
 VARIANTS = [
-    # Direct lighting only (maxBounces=0). RTXDI is DI-only by design;
-    # we restrict the path tracer to match for apples-to-apples comparison.
     ("vanilla",        lambda: render_graph_PathTracer(viscache=False, maxBounces=0)),
-    ("ws_baseline",    lambda: render_graph_PathTracer(
+    # Visibility-in-pHat (RTXDI fix) variants:
+    #   wsVisInPHat=0 — blind p̂ (legacy behavior, biased on emissive-heavy scenes)
+    #   wsVisInPHat=1 — cache-amortized via traceVisibilityRayCV (cheap, may have cold-start variance)
+    #   wsVisInPHat=2 — explicit always-trace via traceVisibilityRay (K rays/pixel, no cache)
+    # ws_explicit is the cache-independent "is RIS math correct?" reference.
+    ("ws_blind",       lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0,
-        visibilityCheck=True, lightSelection=True)),
-    # Home-cell jitter ablation: small magnitude (0.3 = ±0.15 cell) on each
-    # jitter flavour. Filter (ours) = soft, position-seeded. Cell (Binder
-    # 2018) = hard per-cell shift, cell-index-seeded.
-    ("ws_jFilter03",   lambda: render_graph_PathTracer(
+        wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=0,
+        wsJitterFilter=0.3, visibilityCheck=True, lightSelection=True,
+        extraVCProps={"wsUseCellInRIS": False})),
+    ("ws_cache",       lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0,
-        wsJitterFilter=0.3,
-        visibilityCheck=True, lightSelection=True)),
-    ("ws_jCell03",     lambda: render_graph_PathTracer(
+        wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=1,
+        wsJitterFilter=0.3, visibilityCheck=True, lightSelection=True,
+        extraVCProps={"wsUseCellInRIS": False})),
+    ("ws_explicit",    lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0,
-        wsJitterCell=0.3,
-        visibilityCheck=True, lightSelection=True)),
-    # Pure per-pixel ReSTIR (no WS-cell candidate in RIS) — isolates the
-    # per-pixel temporal + spatial-neighbour layer for direct A/B.
-    ("ws_noCell",      lambda: render_graph_PathTracer(
-        viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0,
-        visibilityCheck=True, lightSelection=True,
+        wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=2,
+        wsJitterFilter=0.3, visibilityCheck=True, lightSelection=True,
         extraVCProps={"wsUseCellInRIS": False})),
     ("rtxdi",          lambda: render_graph_RTXDI(viscache=False)),
 ]

@@ -1193,22 +1193,26 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         float pHatFresh = luminance(Lr);
-#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
-                        // §9.1 composition: weight selection by max(μ, μmin).
-                        // Env at infinity: μ-cache addressing breaks down, skip.
-                        if (!isEnv)
+                        // §9.4 Visibility-aware target function (RTXDI fix).
+                        // Runtime-selected by gWSVisInPHat:
+                        //   0 = blind (no V — biased on emissive-heavy scenes)
+                        //   1 = cache-amortized via traceVisibilityRayCV (cheap once warm)
+                        //   2 = explicit always-trace via traceVisibilityRay (K rays/pixel,
+                        //       no cache — unbiased reference, isolates RIS math from cache)
+                        if (!isEnv && gWSVisInPHat != 0u)
                         {
-                            float3 lightP = ls.origin + ls.dir * ls.distance;
-                            VHFResult r = vhfLookup(sd.posW, lightP);
-                            // Soft cache trust: μ_eff = max(lerp(1, μ, softness), μmin).
-                            // softness=0 → μ_eff=1 (cache disabled), softness=1 → μ_eff=μ.
-                            if (r.valid)
-                            {
-                                float muEff = max(lerp(1.f, r.mu, gWSLightSoftness), gWSLightMuMin);
-                                pHatFresh *= muEff;
-                            }
-                        }
+                            Ray vrayF = ls.getVisibilityRay();
+                            float vF = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                            if (gWSVisInPHat == 1u)
+                                vF = vq.traceVisibilityRayCV(vrayF, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                            else
+                                vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
+#else
+                            vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
 #endif
+                            pHatFresh *= max(vF, gWSLightMuMin);
+                        }
                         float invPdfFresh = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
                         local.streamingAdd(
                             wsPackLightTypeIndex(ls.lightType, ls.lightIndex),
@@ -1237,18 +1241,20 @@ struct PathTracer
                             float3 LrK = weightK * lsK.Li;
                             if (!any(LrK > 0.f)) continue;
                             float pHatK = luminance(LrK);
-#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
-                            if (lsK.lightType != (uint)LightType::EnvMap)
+                            if (lsK.lightType != (uint)LightType::EnvMap && gWSVisInPHat != 0u)
                             {
-                                float3 lightPK = lsK.origin + lsK.dir * lsK.distance;
-                                VHFResult rK = vhfLookup(sd.posW, lightPK);
-                                if (rK.valid)
-                                {
-                                    float muEffK = max(lerp(1.f, rK.mu, gWSLightSoftness), gWSLightMuMin);
-                                    pHatK *= muEffK;
-                                }
-                            }
+                                Ray vrayK = lsK.getVisibilityRay();
+                                float vK = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                                if (gWSVisInPHat == 1u)
+                                    vK = vq.traceVisibilityRayCV(vrayK, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                else
+                                    vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
+#else
+                                vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
 #endif
+                                pHatK *= max(vK, gWSLightMuMin);
+                            }
                             float invPdfK = (lsK.pdf > 0.f) ? (1.f / lsK.pdf) : 0.f;
                             local.streamingAdd(
                                 wsPackLightTypeIndex(lsK.lightType, lsK.lightIndex),
@@ -1315,18 +1321,20 @@ struct PathTracer
                         float3 cellLr     = cellWeight * cellLs.Li;
                         float pHatCell    = luminance(cellLr);
                         if (pHatCell <= 0.f) continue;
-#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
-                        if (cellType != (uint)LightType::EnvMap)
+                        if (cellType != (uint)LightType::EnvMap && gWSVisInPHat != 0u)
                         {
-                            float3 lightP = cellLs.origin + cellLs.dir * cellLs.distance;
-                            VHFResult rcell = vhfLookup(sd.posW, lightP);
-                            if (rcell.valid)
-                            {
-                                float muEffCell = max(lerp(1.f, rcell.mu, gWSLightSoftness), gWSLightMuMin);
-                                pHatCell *= muEffCell;
-                            }
-                        }
+                            Ray vrayC = cellLs.getVisibilityRay();
+                            float vC = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                            if (gWSVisInPHat == 1u)
+                                vC = vq.traceVisibilityRayCV(vrayC, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                            else
+                                vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
+#else
+                            vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
 #endif
+                            pHatCell *= max(vC, gWSLightMuMin);
+                        }
 
                         // §9.4 design fix: cell is a candidate-IDENTITY hint, not
                         // an aggregated reservoir. Use cellLs.pdf at THIS pixel as

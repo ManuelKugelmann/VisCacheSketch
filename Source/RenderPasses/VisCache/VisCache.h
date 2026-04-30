@@ -151,6 +151,7 @@ public:
                                        ///< Smooths home-cell boundaries — kills cell-quantization patterns.
         float    wsJitterCell;         ///< Cell-index-seeded jitter scale [Binder 2018] (hard per-cell shift).
         uint32_t wsUseCellInRIS;       ///< 1 = include WS cell candidate(s); 0 = pure per-pixel ReSTIR.
+        uint32_t wsVisInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -254,6 +255,12 @@ public:
                                                         ///< Off = pure per-pixel ReSTIR DI (per-pixel temporal
                                                         ///< + spatial reuse only). Useful as an ablation: WS
                                                         ///< layer's value vs the boundary artifacts it adds.
+        uint32_t wsVisInPHat                   = 1u;    ///< Visibility-aware target function (RTXDI fix).
+                                                        ///< 0 = blind (legacy / fastest, biased on emissive scenes).
+                                                        ///< 1 = cache-amortized (CV+RR via traceVisibilityRayCV;
+                                                        ///<     0 rays in warm cache, traces on cold).
+                                                        ///< 2 = explicit always-trace (K rays/pixel, no cache —
+                                                        ///<     unbiased reference for the V-aware p̂ idea).
     };
 
     const Params& getParams() const { return mParams; }

@@ -110,6 +110,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("wsJitterFilter"))                mParams.wsJitterFilter                = props["wsJitterFilter"];
     if (props.has("wsJitterCell"))                  mParams.wsJitterCell                  = props["wsJitterCell"];
     if (props.has("wsUseCellInRIS"))                mParams.wsUseCellInRIS                = props["wsUseCellInRIS"];
+    if (props.has("wsVisInPHat"))                   mParams.wsVisInPHat                   = props["wsVisInPHat"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -183,6 +184,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("wsJitterFilter"))                mParams.wsJitterFilter                = props["wsJitterFilter"];
     if (props.has("wsJitterCell"))                  mParams.wsJitterCell                  = props["wsJitterCell"];
     if (props.has("wsUseCellInRIS"))                mParams.wsUseCellInRIS                = props["wsUseCellInRIS"];
+    if (props.has("wsVisInPHat"))                   mParams.wsVisInPHat                   = props["wsVisInPHat"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -247,6 +249,7 @@ Properties VisCache::getProperties() const
     p["wsJitterFilter"]                = mParams.wsJitterFilter;
     p["wsJitterCell"]                  = mParams.wsJitterCell;
     p["wsUseCellInRIS"]                = mParams.wsUseCellInRIS;
+    p["wsVisInPHat"]                   = mParams.wsVisInPHat;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -632,6 +635,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.wsJitterFilter       = mParams.wsJitterFilter;
     gpu.wsJitterCell         = mParams.wsJitterCell;
     gpu.wsUseCellInRIS       = mParams.wsUseCellInRIS ? 1u : 0u;
+    gpu.wsVisInPHat          = std::min(mParams.wsVisInPHat, 2u);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -755,6 +759,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsJitterFilter"]      = mParams.wsJitterFilter;
     dict["vhfParam_wsJitterCell"]        = mParams.wsJitterCell;
     dict["vhfParam_wsUseCellInRIS"]      = mParams.wsUseCellInRIS ? 1u : 0u;
+    dict["vhfParam_wsVisInPHat"]         = std::min(mParams.wsVisInPHat, 2u);
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -1069,6 +1074,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("wsJitterFilter (ours, soft)",   mParams.wsJitterFilter, 0.f, 1.f, 0.05f);
         g.var("wsJitterCell  (Binder, hard)",  mParams.wsJitterCell,   0.f, 1.f, 0.05f);
         g.checkbox("wsUseCellInRIS (off = pure per-pixel)", mParams.wsUseCellInRIS);
+        g.var("wsVisInPHat (0=blind 1=cache 2=trace)", mParams.wsVisInPHat, 0u, 2u);
     }
     widget.separator();
 

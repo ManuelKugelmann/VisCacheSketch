@@ -240,6 +240,7 @@ cbuffer VisCacheParams
     float  gWSJitterFilter;       ///< Home-cell jitter, position-seeded (ours; soft boundaries).
     float  gWSJitterCell;         ///< Home-cell jitter, cell-seeded (Binder 2018; hard per-cell shift).
     uint   gWSUseCellInRIS;       ///< 1 = WS cell candidate active; 0 = pure per-pixel ReSTIR.
+    uint   gWSVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
 };
 
 // ---------------------------------------------------------------------------
