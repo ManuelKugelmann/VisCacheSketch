@@ -2934,7 +2934,7 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
 
 def run_baseline(step_name, frame_configs, scene_file,
                  maxBounces=0, resX=kResX, resY=kResY, mogwai_globals=None,
-                 gt_spp=4096, extra_spp=None):
+                 gt_spp=4096, extra_spp=None, variant_tag="vanilla"):
     """Run vanilla PathTracer (no VisCache) as baseline references.
     For each frame_config, renders baselines at 1 SPP, gt_spp, and any extra_spp values.
     For each frame_config, renders two baselines:
@@ -2942,6 +2942,11 @@ def run_baseline(step_name, frame_configs, scene_file,
       2. gt_spp vanilla (converged ground truth — for noise measurement)
          Same warmup+averaging frame count, but gt_spp samples per pixel per frame.
     Skips if cached from prior run.
+
+    Args:
+        variant_tag: filename prefix; default "vanilla" preserves existing
+            behaviour. Pass e.g. "vanilla_b4" to add multi-bounce baselines
+            without colliding with the standard "vanilla" output paths.
     """
     g_dict = mogwai_globals or {}
     m = g_dict.get('m')
@@ -2957,19 +2962,24 @@ def run_baseline(step_name, frame_configs, scene_file,
         captureDir = f"captures/ladder/{step_name}/{scene_name}"
         os.makedirs(captureDir, exist_ok=True)
 
-        spp_list = sorted(set([1, gt_spp] + (extra_spp or [])))
+        # GT (gt_spp) is rendered once by the canonical "vanilla" call. Multi-
+        # bounce variants (variant_tag != "vanilla") share that GT — skip the
+        # gt_spp render and the post-process plate generation, which both look
+        # for "vanilla"-suffixed files specifically.
+        skip_gt_and_plates = (variant_tag != "vanilla")
+        spp_list = sorted(set([1] + ([] if skip_gt_and_plates else [gt_spp]) + (extra_spp or [])))
         for spp in spp_list:
             # Vanilla tag depends only on virtual SPP (total samples/pixel) — the
             # outer `frames` loop multiplies the sample count but isn't exposed in
             # the tag because comparisons key on virtual SPP alone.
             tag = f"s_x{spp}_{res_tag}"
-            out_path = _out(captureDir, "r1c1_accum_render", f"{tag}_vanilla_")
+            out_path = _out(captureDir, "r1c1_accum_render", f"{tag}_{variant_tag}_")
 
             if os.path.exists(out_path) and os.path.getsize(out_path) > 1024:
-                print(f"\n[{step_name}] ======== vanilla_x{spp} {tag} ({scene_name}) - cached ========")
+                print(f"\n[{step_name}] ======== {variant_tag}_x{spp} {tag} ({scene_name}) - cached ========")
                 continue
 
-            print(f"\n[{step_name}] ======== vanilla_x{spp} {tag} ({scene_name}) ========")
+            print(f"\n[{step_name}] ======== {variant_tag}_x{spp} {tag} ({scene_name}) ========")
 
             # Remap virtual SPP to Falcor params.
             # - Non-GT (spp <= 16): multi-frame × 1 SPP with per-frame jitter.
@@ -2998,7 +3008,7 @@ def run_baseline(step_name, frame_configs, scene_file,
 
             os.makedirs(captureDir, exist_ok=True)
             fc.outputDir = captureDir
-            fc.baseFilename = f"vanilla_x{spp}"
+            fc.baseFilename = f"{variant_tag}_x{spp}"
 
             for _ in range(num_frames * frames):
                 m.renderFrame()
@@ -3014,7 +3024,7 @@ def run_baseline(step_name, frame_configs, scene_file,
             time.sleep(0.5)
 
             # Tonemapped PNG
-            matches = glob.glob(os.path.join(captureDir, f"vanilla_x{spp}.ToneMapper.dst.*"))
+            matches = glob.glob(os.path.join(captureDir, f"{variant_tag}_x{spp}.ToneMapper.dst.*"))
             if matches:
                 src = matches[0]
                 prev_sz = 0
@@ -3028,8 +3038,8 @@ def run_baseline(step_name, frame_configs, scene_file,
                 print(f"[{step_name}] Copied {os.path.basename(out_path)} ({sz} bytes)")
 
             # Pre-tonemapper HDR EXR
-            hdr_out = os.path.join(captureDir, f"{tag}_vanilla_hdr.exr")
-            hdr_matches = glob.glob(os.path.join(captureDir, f"vanilla_x{spp}.AccumulatePass.output.*"))
+            hdr_out = os.path.join(captureDir, f"{tag}_{variant_tag}_hdr.exr")
+            hdr_matches = glob.glob(os.path.join(captureDir, f"{variant_tag}_x{spp}.AccumulatePass.output.*"))
             if hdr_matches:
                 src = hdr_matches[0]
                 prev_sz = 0
@@ -3043,7 +3053,7 @@ def run_baseline(step_name, frame_configs, scene_file,
                 print(f"[{step_name}] Copied HDR {os.path.basename(hdr_out)} ({sz} bytes)")
 
             # Clean raw Mogwai outputs after copy
-            for f in glob.glob(os.path.join(captureDir, f"vanilla_x{spp}.*")):
+            for f in glob.glob(os.path.join(captureDir, f"{variant_tag}_x{spp}.*")):
                 try:
                     os.remove(f)
                 except (PermissionError, OSError):
@@ -3059,13 +3069,14 @@ def run_baseline(step_name, frame_configs, scene_file,
         # compares x4096 to itself (error trivially 0) and subtracts the
         # cached self-noise (plate should read 0). Non-zero residuals reveal
         # metric quirks before they contaminate variant deltas.
-        gt_hdr_candidates = glob.glob(os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_hdr.exr"))
-        gt_hdr = gt_hdr_candidates[0] if gt_hdr_candidates else None
-        if gt_hdr:
-            noise_floor = _baseline_noise_floor(captureDir, gt_spp, res_tag)
-            for spp in spp_list:
-                postprocess_baseline_spp(step_name, captureDir, scene_name,
-                                          spp, res_tag, gt_hdr, noise_floor)
+        if not skip_gt_and_plates:
+            gt_hdr_candidates = glob.glob(os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_hdr.exr"))
+            gt_hdr = gt_hdr_candidates[0] if gt_hdr_candidates else None
+            if gt_hdr:
+                noise_floor = _baseline_noise_floor(captureDir, gt_spp, res_tag)
+                for spp in spp_list:
+                    postprocess_baseline_spp(step_name, captureDir, scene_name,
+                                              spp, res_tag, gt_hdr, noise_floor)
 
     print(f"\n[{step_name}] All done.")
 
@@ -3696,15 +3707,16 @@ def run_baseline_pixel_restir(step_name, frame_configs, scene_file,
                               wsInitialCandidates=8, wsMCap=5.0,
                               gt_spp=4096):
     """Pure per-pixel ReSTIR DI baseline (WS layer disabled).
-    Same as wsrestir but with `wsUseCellInRIS=False` — isolates the
-    per-pixel temporal + spatial reuse layer from the world-space cell layer.
+    visibilityCheck=False so the comparison vs vanilla is apples-to-apples
+    (vanilla has no VisCache; cache-gated shadow rays via CV+RR introduce
+    stochastic visWeight that biases the comparison).
     """
     def _build(actual_spp):
         return render_graph_PathTracer(
             viscache=True, wsReservoirs=True, maxBounces=maxBounces,
             samplesPerPixel=actual_spp, useJitter=True,
             wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
-            visibilityCheck=True, lightSelection=True,
+            visibilityCheck=False, lightSelection=False,
             extraVCProps={"wsUseCellInRIS": False},
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]

@@ -73,7 +73,9 @@ bool sampleBSDF(const ShadingData sd, inout SampleGenerator sg, out BSDFSample_ 
         // Specular class: 0x66 = Specular|Delta (reflection+transmission)
         // Diffuse class:  0x11 = Diffuse (reflection+transmission)
         uint sampledClassFlags = isSampledSpecular ? 0x66 : 0x11;
-        float pdfAll;
+        // Defensive init for the same reason as evalPdfBSDF below.
+        result.pdfSingle = 0.f;
+        float pdfAll = 0.f;
         SampleGenerator sgDummy = SampleGenerator(uint2(0), 0);
         mi.evalBsdfAndPdf(sd, bs.wo, sgDummy, sampledClassFlags, result.pdfSingle, pdfAll);
     }
@@ -115,7 +117,8 @@ float3 evalBSDFCosine(const ShadingData sd, float3 dir, uint allowedFlags)
         // weight renormalization (they use material blend weights directly),
         // but we use evalBsdfAndPdf for consistency and to avoid the extra
         // material instance construction.
-        float pdf, pdfAll;
+        float pdf = 0.f;
+        float pdfAll = 0.f;
         return mi.evalBsdfAndPdf(sd, dir, sg, allowedFlags, pdf, pdfAll);
     }
     return mi.eval(sd, dir, sg);
@@ -151,12 +154,19 @@ float evalPdfBSDF(const ShadingData sd, float3 dir, out float pdfAll, uint allow
 {
     let mi = _getMI(sd);
 
+    // Defensive init: Slang's flow analysis can't see through IMaterialInstance
+    // virtual calls, so it warns that componentPdf/pdfAll may be returned
+    // uninitialized. The interface contract says evalBsdfAndPdf writes both,
+    // but explicit init guards against any path that early-returns inside
+    // evalBsdfAndPdf without writing the outs (e.g., delta lobes, zero blend).
+    pdfAll = 0.f;
+
     // Use evalBsdfAndPdf for per-lobe filtering: returns both filtered and
     // all-lobe PDFs using original (unnormalized) lobe selection weights.
     // 0xff = LobeType::All, 0xffffffff = legacy "all" sentinel — both mean no filtering.
     if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
     {
-        float componentPdf;
+        float componentPdf = 0.f;
         SampleGenerator sg = SampleGenerator(uint2(0), 0);
         mi.evalBsdfAndPdf(sd, dir, sg, allowedFlags, componentPdf, pdfAll);
         return componentPdf;
@@ -185,7 +195,8 @@ float evalPdfBSDFWithV(const ShadingData sd, float3 newV, float3 dir, uint allow
     let mi = _getMI(sdCopy);
     if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
     {
-        float componentPdf, pdfAll;
+        float componentPdf = 0.f;
+        float pdfAll = 0.f;
         SampleGenerator sg = SampleGenerator(uint2(0), 0);
         mi.evalBsdfAndPdf(sdCopy, dir, sg, allowedFlags, componentPdf, pdfAll);
         return componentPdf;

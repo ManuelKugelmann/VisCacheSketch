@@ -255,12 +255,14 @@ public:
                                                         ///< Off = pure per-pixel ReSTIR DI (per-pixel temporal
                                                         ///< + spatial reuse only). Useful as an ablation: WS
                                                         ///< layer's value vs the boundary artifacts it adds.
-        uint32_t wsVisInPHat                   = 1u;    ///< Visibility-aware target function (RTXDI fix).
-                                                        ///< 0 = blind (legacy / fastest, biased on emissive scenes).
-                                                        ///< 1 = cache-amortized (CV+RR via traceVisibilityRayCV;
-                                                        ///<     0 rays in warm cache, traces on cold).
-                                                        ///< 2 = explicit always-trace (K rays/pixel, no cache —
-                                                        ///<     unbiased reference for the V-aware p̂ idea).
+        uint32_t wsVisInPHat                   = 0u;    ///< Visibility-aware target function (off by default).
+                                                        ///< RTXDI-faithful behavior is BLIND RIS (this default) +
+                                                        ///< V=0 reservoir invalidation after the winner's shadow
+                                                        ///< trace (always-on, in PathTracer.slang). Putting V in
+                                                        ///< the K-RIS p̂ adds μmin-floor bias on emissive scenes.
+                                                        ///< 0 = blind (RTXDI-faithful, default).
+                                                        ///< 1 = cache-amortized (experimental — biased).
+                                                        ///< 2 = explicit always-trace (experimental — biased).
     };
 
     const Params& getParams() const { return mParams; }

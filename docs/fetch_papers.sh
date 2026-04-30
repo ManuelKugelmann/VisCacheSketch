@@ -64,6 +64,23 @@ download "Boksansky2025_NeuralVisCache.pdf" \
 
 echo ""
 
+# ── GPUOpen / SIGGRAPH archive (open) ───────────────────────────────────
+echo "GPUOpen + SIGGRAPH archive:"
+
+download "Boisse2021_WorldSpaceReSTIR.pdf" \
+    "https://gpuopen.com/download/publications/SA2021_WorldSpace_ReSTIR.pdf"
+
+download "Boisse2022_GI10_RadianceCaching.pdf" \
+    "https://gpuopen.com/download/publications/GPUOpen2022_GI1_0.pdf"
+
+download "Binder2018_JitteredSpatialHashing.pdf" \
+    "https://history.siggraph.org/wp-content/uploads/2022/09/2018-Talks-Binder_Fast-Path-Space-Filtering-by-Jittered-Spatial-Hashing.pdf"
+
+download "Zhang2023_WorldSpacePathResampling.pdf" \
+    "https://wangningbei.github.io/2023/ReSTIR_files/paper_ReSTIRGI.pdf"
+
+echo ""
+
 # ── JCGT (open access journal) ──────────────────────────────────────────
 echo "JCGT open access:"
 

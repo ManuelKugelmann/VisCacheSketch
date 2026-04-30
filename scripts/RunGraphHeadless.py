@@ -1,5 +1,5 @@
 """
-RunGraphHeadless.py — Generic headless test: load a graph script, render N frames, exit.
+RunGraphHeadless.py - Generic headless test: load a graph script, render N frames, exit.
 
 Usage:
     set GRAPH_SCRIPT=scripts/VisCache/MinimalPathTracer_Graph.py
@@ -8,7 +8,7 @@ Usage:
 
 NOTE: The scene MUST be loaded inside this script via m.loadScene(), not via
 Mogwai's --scene flag. Mogwai loads --scene AFTER the script finishes, but this
-script renders frames during execution — so --scene would be too late.
+script renders frames during execution - so --scene would be too late.
 """
 import os, sys
 
@@ -27,7 +27,7 @@ if project_root and not os.path.isabs(scene_file):
 print(f"[headless] Loading graph: {graph_script}")
 
 # Execute the graph script in our current globals (which has m, RenderGraph, createPass, etc.)
-# Ladder scripts call exit() when done — they handle their own scene loading and rendering.
+# Ladder scripts call exit() when done - they handle their own scene loading and rendering.
 # Simple graph scripts (e.g. PathTracer_Graph.py) just add a graph and return, so we
 # load the scene and render frames for them below.
 _HEADLESS_SCRIPT_DONE = False  # Ladder scripts set this to True when they handle their own rendering
@@ -35,7 +35,7 @@ with open(graph_script, "r") as f:
     exec(f.read())
 
 if not _HEADLESS_SCRIPT_DONE:
-    # Load scene — must happen AFTER graph is added, BEFORE rendering
+    # Load scene - must happen AFTER graph is added, BEFORE rendering
     print(f"[headless] Loading scene: {scene_file}")
     m.loadScene(scene_file)
 
@@ -43,6 +43,6 @@ if not _HEADLESS_SCRIPT_DONE:
     for i in range(num_frames):
         m.renderFrame()
 
-    print(f"[headless] OK — rendered {num_frames} frames.")
+    print(f"[headless] OK - rendered {num_frames} frames.")
 
 exit()

@@ -48,6 +48,54 @@ def viridis_png(data, outpath, nodata=None):
     Image.fromarray((rgb * 255).astype(np.uint8)).save(outpath)
 
 
+def rgb_delta_png(cache_err, vanilla_err, outpath, nodata=None, denom=1.4):
+    """Encode delta (R/B brightness+hue) AND abs cache error (G channel):
+        G          = clip(cache_err / denom, 0, 1) — abs cache error.
+        Brightness V = (delta + 1) / 2  — linear ramp; -100% = black,
+                                           0% = mid-gray, +100% = white.
+                                           Darker delta = better.
+        Hue        H = blue (B) for delta<0, red (R) for delta>0.
+                       Gray (desat) within +-5% of zero.
+        Saturation S = smoothstep(0, 0.05, |delta|).
+    R and B independently encode signed delta brightness; G overlays
+    the cache-vs-GT absolute error so cyan = better-but-still-erring,
+    yellow = worse-and-erring, dark green = better-and-low-err.
+    """
+    # Gray-zone dimming: when |delta| is small (S near 0) the panel is
+    # neutral, so reduce overall brightness so the eye is drawn to the
+    # saturated regions (where cache differs from vanilla). 0.4 keeps
+    # midrange visible but clearly darker than saturated peaks.
+    GRAY_DIM = 0.4
+    g_err = np.clip(cache_err / max(denom, 1e-6), 0.0, 1.0)
+    if vanilla_err is None or vanilla_err.shape != cache_err.shape:
+        r = np.zeros_like(g_err); g = g_err; b = np.zeros_like(g_err)
+    else:
+        delta = (cache_err - vanilla_err) / max(denom, 1e-6)
+        delta = np.clip(delta, -1.0, 1.0)
+        v_lin = (delta + 1.0) * 0.5
+        abs_d = np.abs(delta)
+        t = np.clip(abs_d / 0.05, 0.0, 1.0)
+        s = t * t * (3.0 - 2.0 * t)         # smoothstep
+        # Apply gray-zone dimming: V is full at S=1, dimmed by GRAY_DIM at S=0.
+        v = v_lin * (GRAY_DIM + (1.0 - GRAY_DIM) * s)
+        red_mask = (delta >= 0.0).astype(np.float32)
+        sat_r = (1.0 - s) + s * red_mask
+        sat_b = (1.0 - s) + s * (1.0 - red_mask)
+        r = sat_r * v
+        b = sat_b * v
+        # G channel: at full saturation pure abs cache err; in the gray
+        # zone bleed (dimmed) V into G so |delta|<5% stays neutral gray.
+        g = np.maximum(g_err, v * (1.0 - s))
+    rgb = np.stack([r, g, b], axis=-1)
+    if nodata is not None:
+        cm_arr = np.asarray(nodata)
+        if cm_arr.dtype == bool:
+            rgb[cm_arr] = 0.0
+        else:
+            rgb *= np.clip(cm_arr, 0.0, 1.0)[:, :, np.newaxis]
+    Image.fromarray((np.clip(rgb, 0.0, 1.0) * 255).astype(np.uint8)).save(outpath)
+
+
 def write_channel(exr_path, channel_index, outpath, nodata=None, normalize_max=False):
     """Extract one channel from an EXR, apply viridis, save as PNG.
 
@@ -358,9 +406,10 @@ def compute_render_noise_signed(render_path, baseline_path, outpath, nodata=None
         n_r = n_r_raw
         n_b = n_b_raw
     denom  = 1.0
-    # Absolute noise PNG (viridis 0 to denom). No signed bipolar — n_r is
-    # non-negative. Vanilla noise written to <name>.vanilla.png for compare.
-    viridis_png(np.clip(n_r / denom, 0.0, 1.0), outpath, nodata=nodata)
+    # Main panel: same RGB-delta encoding as the error panel. G = abs cache
+    # noise; R = cache noisier than vanilla; B = cache quieter than vanilla.
+    # Yellow = cache noisier, cyan = cache quieter, dark gray = match.
+    rgb_delta_png(n_r, n_b, outpath, nodata=nodata, denom=denom)
     if outpath.endswith(".png"):
         van_path = outpath.replace(".png", ".vanilla.png")
     else:
@@ -586,6 +635,187 @@ def _valid_mask_from_nodata(nodata, shape):
     return arr > 0.5
 
 
+def _to_luminance(rgb):
+    """ITU-R BT.709 luminance from linear RGB. (H,W,3) float -> (H,W) float."""
+    return 0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]
+
+
+def _ssim_lcs(x, y, sigma=1.5, K1=0.01, K2=0.03, L=1.0):
+    """Per-pixel SSIM components: (luminance, contrast, structure) maps.
+    Wang et al. 2004. x, y are (H,W) float arrays, ideally tonemapped to [0,1].
+    Reuses _gaussian_blur_2d for the local statistics.
+    """
+    C1 = (K1 * L) ** 2
+    C2 = (K2 * L) ** 2
+    mux = _gaussian_blur_2d(x, sigma)
+    muy = _gaussian_blur_2d(y, sigma)
+    muxx = mux * mux
+    muyy = muy * muy
+    muxy = mux * muy
+    sigxx = _gaussian_blur_2d(x * x, sigma) - muxx
+    sigyy = _gaussian_blur_2d(y * y, sigma) - muyy
+    sigxy = _gaussian_blur_2d(x * y, sigma) - muxy
+    # Numerical guard — variance is technically ≥ 0 but blur cancellation can
+    # produce small negatives. Clamp before sqrt.
+    sigxx = np.maximum(sigxx, 0.0)
+    sigyy = np.maximum(sigyy, 0.0)
+    luminance = (2.0 * muxy + C1) / (muxx + muyy + C1)
+    contrast  = (2.0 * np.sqrt(sigxx * sigyy) + C2) / (sigxx + sigyy + C2)
+    structure = (sigxy + C2 * 0.5) / (np.sqrt(sigxx * sigyy) + C2 * 0.5)
+    return luminance, contrast, structure
+
+
+def _downsample_2x(img):
+    """2× box filter downsample. Drops to nearest-even edges."""
+    h, w = img.shape[:2]
+    he, we = h - (h & 1), w - (w & 1)
+    img = img[:he, :we]
+    if img.ndim == 2:
+        return 0.25 * (img[0::2, 0::2] + img[1::2, 0::2] + img[0::2, 1::2] + img[1::2, 1::2])
+    else:
+        return 0.25 * (img[0::2, 0::2, :] + img[1::2, 0::2, :] + img[0::2, 1::2, :] + img[1::2, 1::2, :])
+
+
+# Wang et al. 2003 default weights for 5-level MS-SSIM.
+_MSSSIM_WEIGHTS = np.array([0.0448, 0.2856, 0.3001, 0.2363, 0.1333], dtype=np.float32)
+
+
+def _ms_ssim(x, y, mask=None):
+    """Multi-Scale SSIM (Wang et al. 2003) on luminance, 5 scales, default
+    weights. Inputs (H,W) float ideally normalized to [0,1] (we tonemap HDR
+    via Reinhard before calling). Returns scalar in [0, 1] (1 = identical).
+
+    Standard definition:
+      MS-SSIM = L_M^a_M × prod_{j=1..M} (C_j^b_j × S_j^c_j)
+    where a_M = b_M = c_M = w_M (top weight) and lower-scale weights only
+    apply to contrast/structure. We use the simplified equal-product form
+    (means of LCS at each scale, weighted).
+    """
+    if x is None or y is None or x.shape != y.shape:
+        return None
+    levels = len(_MSSSIM_WEIGHTS)
+    # Need image at least 2^(levels-1) × 11 in each dim for stable 5-level pyramid.
+    min_dim = 2 ** (levels - 1) * 11
+    if min(x.shape[:2]) < min_dim:
+        # Fallback: single-scale SSIM at native resolution.
+        l, c, s = _ssim_lcs(x, y)
+        ssim_map = l * c * s
+        if mask is not None:
+            return float(np.nanmean(np.where(mask, ssim_map, np.nan)))
+        return float(np.nanmean(ssim_map))
+
+    cs_means = []
+    cur_x, cur_y, cur_mask = x, y, mask
+    last_l = None
+    for j in range(levels):
+        l, c, s = _ssim_lcs(cur_x, cur_y)
+        cs = c * s
+        if cur_mask is not None:
+            cs_mean = float(np.nanmean(np.where(cur_mask, cs, np.nan)))
+        else:
+            cs_mean = float(np.nanmean(cs))
+        cs_means.append(max(cs_mean, 1e-6))
+        if j == levels - 1:
+            if cur_mask is not None:
+                last_l = float(np.nanmean(np.where(cur_mask, l, np.nan)))
+            else:
+                last_l = float(np.nanmean(l))
+            last_l = max(last_l, 1e-6)
+            break
+        cur_x = _downsample_2x(cur_x)
+        cur_y = _downsample_2x(cur_y)
+        if cur_mask is not None:
+            cur_mask = _downsample_2x(cur_mask.astype(np.float32)) > 0.5
+
+    log_sum = (_MSSSIM_WEIGHTS[-1] * np.log(last_l)
+               + sum(w * np.log(c) for w, c in zip(_MSSSIM_WEIGHTS, cs_means)))
+    return float(np.exp(log_sum))
+
+
+def _flip_score(render_lin, gt_lin):
+    """FLIP perceptual error (Andersson et al. 2020). Linear HDR input.
+    Returns scalar mean-FLIP in [0, 1] (lower = better) or None on failure.
+    """
+    try:
+        import flip_evaluator as fe
+    except ImportError:
+        return None
+    try:
+        # FLIP expects (H,W,3); strip alpha if present.
+        ref = np.asarray(gt_lin[..., :3],     dtype=np.float32)
+        tst = np.asarray(render_lin[..., :3], dtype=np.float32)
+        # HDR dynamic range, linear sRGB inputs (inputsRGB=False per API doc),
+        # no magma map (we only need the scalar mean).
+        _, mean_flip, _ = fe.evaluate(ref, tst, "HDR",
+                                       inputsRGB=False, applyMagma=False,
+                                       computeMeanError=True)
+        return float(mean_flip) if mean_flip is not None and mean_flip >= 0 else None
+    except Exception as e:
+        print(f"[viscache_exr] WARN: FLIP failed: {e}")
+        return None
+
+
+def _pixel_metrics_suite(render_lin, gt_lin, mask):
+    """Pixel-domain HDR metrics suite vs ground truth.
+
+    Research-standard rendering metrics on linear HDR data (Bitterli/ReSTIR
+    convention). Inputs (H,W,3) linear float; mask is (H,W) bool.
+
+    Numerical (luminance):
+      mse      — mean squared error
+      rmse     — sqrt(mse)
+      psnr_db  — 10·log10(peak² / mse), peak = max(GT luminance, 1.0)
+      relmse   — Bitterli-style: mean(sq_diff / (gt²+ε))
+      smape    — 2·|c−r|/(|c|+|r|+ε), bounded [0,1], robust at zero
+      mape     — |c−r|/(|r|+ε), kept for completeness
+
+    Perceptual:
+      ms_ssim  — Wang 2003 multi-scale SSIM on Reinhard-tonemapped luminance
+      flip     — Andersson 2020 perceptual rendering metric (HDR mode)
+    """
+    if render_lin is None or gt_lin is None or render_lin.shape[:2] != gt_lin.shape[:2]:
+        return {}
+    if not mask.any():
+        return {}
+    EPS = 1e-2
+    cl = _to_luminance(np.clip(render_lin[..., :3], 0.0, None))
+    gl = _to_luminance(np.clip(gt_lin[..., :3],     0.0, None))
+    cv = cl[mask]; gv = gl[mask]
+    diff = cv - gv
+    abs_diff = np.abs(diff)
+    sq_diff  = diff * diff
+
+    mse  = float(np.mean(sq_diff))
+    rmse = float(np.sqrt(mse))
+    peak = max(float(np.max(gv)), 1.0)
+    psnr = float(10.0 * np.log10((peak * peak) / max(mse, 1e-12)))
+    relmse = float(np.mean(sq_diff / (gv * gv + EPS)))
+    smape  = float(np.mean(2.0 * abs_diff / (np.abs(cv) + np.abs(gv) + EPS)))
+    mape   = float(np.mean(abs_diff / (np.abs(gv) + EPS)))
+
+    # MS-SSIM on Reinhard-tonemapped luminance (SSIM is bounded-range; HDR
+    # would dominate via highlights). Same tonemap used elsewhere in the
+    # pipeline so the metric agrees with what the user sees.
+    cl_tm = cl / (1.0 + cl)
+    gl_tm = gl / (1.0 + gl)
+    ms_ssim = _ms_ssim(cl_tm, gl_tm, mask)
+
+    # FLIP HDR — uses linear RGB directly (no manual tonemap).
+    flip = _flip_score(render_lin, gt_lin)
+
+    out = {
+        "mse":     mse,
+        "rmse":    rmse,
+        "psnr_db": psnr,
+        "relmse":  relmse,
+        "smape":   smape,
+        "mape":    mape,
+    }
+    if ms_ssim is not None: out["ms_ssim"] = ms_ssim
+    if flip    is not None: out["flip"]    = flip
+    return out
+
+
 def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath, nodata=None,
                                      vanilla_err_cache=None):
     """Absolute HDR GT-error: OkLab(2×L) distance from render to x4096 GT.
@@ -615,13 +845,27 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
     if err_render is None:
         print(f"[viscache_exr] WARNING: cannot compute HDR error (missing or mismatched inputs)")
         return None
-    # Visualize absolute err map (viridis from 0 to denom) — replaces signed PNG.
-    # Vanilla map written to a sibling path with .vanilla suffix for compare.
+
+    # Pixel-domain HDR metrics suite — research-standard rendering metrics
+    # (rMSE / SMAPE / PSNR etc.) computed on linear HDR luminance vs GT.
+    # Reads the same EXRs already loaded by _oklab_distance_hdr; load once
+    # more here rather than threading the arrays through.
+    _r_data  = read_exr(render_exr)
+    _v_data  = read_exr(vanilla_xN_exr)
+    _gt_data = read_exr(gt_exr)
+    _r_lin  = _r_data.get("RGBA",  _r_data.get("RGB"))
+    _v_lin  = _v_data.get("RGBA",  _v_data.get("RGB"))
+    _gt_lin = _gt_data.get("RGBA", _gt_data.get("RGB"))
+    # Main panel: RGB-delta encoding. G=abs cache err, R=worse-vs-vanilla,
+    # B=better-vs-vanilla. Yellow = cache worse, cyan = cache better, green
+    # = equal (any err level), black = both perfect. Carries 2x info density
+    # vs the prior viridis-only abs-error encoding.
     mask = _valid_mask_from_nodata(nodata, err_render.shape)
     if not mask.any():
         mask = np.ones_like(mask)
     denom = 1.4
-    viridis_png(np.clip(err_render / denom, 0.0, 1.0), outpath, nodata=nodata)
+    rgb_delta_png(err_render, err_vanilla, outpath, nodata=nodata, denom=denom)
+    # Vanilla map written to a sibling path with .vanilla suffix for compare.
     if err_vanilla is not None and err_vanilla.shape == err_render.shape:
         van_path = outpath.replace(".png", ".vanilla.png") if outpath.endswith(".png") else outpath + ".vanilla"
         viridis_png(np.clip(err_vanilla / denom, 0.0, 1.0), van_path, nodata=nodata)
@@ -684,6 +928,54 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         van_artifact_5_pct  = _artifact_pct(err_vanilla, mask, 5)
         van_artifact_11_pct = _artifact_pct(err_vanilla, mask, 11)
 
+    # Cache-worse metrics: quantify the R-channel area in the RGB delta plate.
+    # Per-pixel positive delta (cache_err - vanilla_err)+, normalized to denom.
+    # Three reads:
+    #   worse_area_pct       — % of pixels where cache regresses by > 1% OkLab
+    #                          (corresponds to "any red/yellow tint" in plate)
+    #   worse_mean_pct       — mean positive delta over valid pixels (avg pp)
+    #   worse_artifact_5_pct — median-filtered worst-region positive delta
+    #                          (matches existing artifact metric semantics)
+    worse_area_pct = None
+    worse_mean_pct = None
+    worse_artifact_5_pct = None
+    if err_vanilla is not None and err_vanilla.shape == err_render.shape:
+        pos_delta = np.maximum(0.0, err_render - err_vanilla)
+        pos_delta_pct = 100.0 * pos_delta / max(denom, 1e-6)   # in pp
+        # Area: fraction of valid pixels where cache regression exceeds 1pp.
+        # 1pp threshold filters out floating-point quantization noise.
+        worse_area_pct = 100.0 * float(np.nanmean((pos_delta_pct[mask] > 1.0).astype(np.float32)))
+        worse_mean_pct = float(np.nanmean(pos_delta_pct[mask]))
+        # Median-filtered worst-region: catches localized clusters of regression.
+        med_pos = _median_filter_2d(pos_delta_pct, 5)
+        masked_pos = np.where(mask, med_pos, np.nan)
+        try:
+            worse_artifact_5_pct = float(np.nanmax(masked_pos))
+        except (ValueError, RuntimeWarning):
+            worse_artifact_5_pct = 0.0
+
+    # Pixel-domain HDR metrics on linear data (vs GT). Research-standard
+    # primary numerical metrics: rMSE/relMSE/SMAPE/PSNR. Cache and vanilla
+    # share GT; deltas are signed (negative = cache better, positive = worse).
+    cache_suite   = _pixel_metrics_suite(_r_lin, _gt_lin, mask)
+    vanilla_suite = _pixel_metrics_suite(_v_lin, _gt_lin, mask)
+    suite_fields = {}
+    for k, v in cache_suite.items():
+        suite_fields[f"cache_{k}"]   = v
+    for k, v in vanilla_suite.items():
+        suite_fields[f"vanilla_{k}"] = v
+    # Signed deltas: negative = cache better than vanilla on this metric.
+    # PSNR delta inverts (higher PSNR = better), so we invert sign there.
+    for k in ("mse", "rmse", "relmse", "smape", "mape", "flip"):
+        cv = cache_suite.get(k); vv = vanilla_suite.get(k)
+        if cv is not None and vv is not None:
+            suite_fields[f"{k}_minus_vanilla"] = cv - vv
+    # Higher = better → cache wins when delta > 0.
+    for k in ("psnr_db", "ms_ssim"):
+        cv = cache_suite.get(k); vv = vanilla_suite.get(k)
+        if cv is not None and vv is not None:
+            suite_fields[f"{k}_minus_vanilla"] = cv - vv
+
     return {
         "err_vis_gt_mean":    err_vis,
         "err_van_gt_mean":    err_van,
@@ -714,6 +1006,18 @@ def compute_render_error_signed_hdr(render_exr, vanilla_xN_exr, gt_exr, outpath,
         "artifact_3_minus_vanilla_pct":   artifact_3_pct - van_artifact_3_pct        if van_artifact_3_pct is not None else None,
         "artifact_5_minus_vanilla_pct":   artifact_5_pct - van_artifact_5_pct        if van_artifact_5_pct is not None else None,
         "artifact_11_minus_vanilla_pct":  artifact_11_pct - van_artifact_11_pct      if van_artifact_11_pct is not None else None,
+        # Cache-WORSE-than-vanilla metrics (per-pixel positive delta only).
+        # These are exactly the R-channel pixels in the RGB delta plate.
+        # Best variants have all three near 0.
+        "worse_area_pct":         worse_area_pct,         # % pixels where cache > vanilla + 1pp
+        "worse_mean_pct":         worse_mean_pct,         # avg positive delta (pp)
+        "worse_artifact_5_pct":   worse_artifact_5_pct,   # 5px-median worst-region regression (pp)
+        # Research-standard pixel-domain HDR metrics suite vs GT (linear, no
+        # tonemap). Each metric is reported for both cache and vanilla, plus
+        # a signed delta (negative = cache better; psnr inverted so positive
+        # delta still means cache better). Conventions match Bitterli/Kettunen
+        # MC denoising literature.
+        **suite_fields,
     }
 
 

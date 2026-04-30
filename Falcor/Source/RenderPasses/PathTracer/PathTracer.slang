@@ -50,11 +50,10 @@ import Rendering.RTXDI.RTXDI;
 #if USE_WS_RESERVOIRS
 import RenderPasses.VisCache.WSReservoir;
 import RenderPasses.VisCache.WSReservoirIO;
-import Utils.Math.MathHelpers;     // sample_triangle for emissive uv → barys
+import RenderPasses.VisCache.VisCache;   // VisCacheParams cbuffer (gWS*, vhfLookup)
+import Utils.Math.MathHelpers;           // sample_triangle for emissive uv → barys
 #include "Utils/Math/MathConstants.slangh"  // FLT_MIN
-#endif
-
-#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
+#elif USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gWSLightMuMin
 #endif
 
@@ -761,16 +760,24 @@ struct PathTracer
         if (gScene.materials.hasLightProfile(tri.materialID))
             Le *= gScene.materials.evalLightProfile(cosTheta);
 
-        float pdf = distSqr / max(FLT_MIN, cosTheta * tri.area);
-        if (pdf <= 0.f) return false;
+        // CRITICAL: use the actual emissive sampler's pdf (LightBVH default is
+        // power-weighted, NOT uniform-area). Computing pdf as uniform-area
+        // here causes MIS to apply wrong weights → systematic bias / darkening.
+        TriangleLightHit hit;
+        hit.triangleIndex = triangleIndex;
+        hit.posW = lightPosW;
+        hit.normalW = tri.normal;
+        float emPdf = emissiveSampler.evalPdf(sd.posW, sd.faceN, /*upperHemisphere=*/true, hit);
+        if (emPdf <= 0.f) return false;
 
         // Account for emissive selection probability (matches generateLightSample's
         // "Account for light type selection" tail division).
         float emissiveSel = getEmissiveSelectionProbability();
         if (emissiveSel <= 0.f) return false;
 
-        ls.Li        = (Le / pdf) / emissiveSel;
-        ls.pdf       = pdf * emissiveSel;
+        float totalPdf = emPdf * emissiveSel;
+        ls.Li        = Le / totalPdf;
+        ls.pdf       = totalPdf;
         ls.dir       = dir;
         ls.distance  = dist;
         ls.lightType = (uint)LightType::Emissive;
@@ -1199,19 +1206,19 @@ struct PathTracer
                         //   1 = cache-amortized via traceVisibilityRayCV (cheap once warm)
                         //   2 = explicit always-trace via traceVisibilityRay (K rays/pixel,
                         //       no cache — unbiased reference, isolates RIS math from cache)
-                        if (!isEnv && gWSVisInPHat != 0u)
+                        if (!isEnv && wsVisInPHatMode() != 0u)
                         {
                             Ray vrayF = ls.getVisibilityRay();
                             float vF = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                            if (gWSVisInPHat == 1u)
+                            if (wsVisInPHatMode() == 1u)
                                 vF = vq.traceVisibilityRayCV(vrayF, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                             else
                                 vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
 #else
                             vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
 #endif
-                            pHatFresh *= max(vF, gWSLightMuMin);
+                            pHatFresh *= max(vF, wsLightMuMin());
                         }
                         float invPdfFresh = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
                         local.streamingAdd(
@@ -1241,19 +1248,19 @@ struct PathTracer
                             float3 LrK = weightK * lsK.Li;
                             if (!any(LrK > 0.f)) continue;
                             float pHatK = luminance(LrK);
-                            if (lsK.lightType != (uint)LightType::EnvMap && gWSVisInPHat != 0u)
+                            if (lsK.lightType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
                             {
                                 Ray vrayK = lsK.getVisibilityRay();
                                 float vK = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                                if (gWSVisInPHat == 1u)
+                                if (wsVisInPHatMode() == 1u)
                                     vK = vq.traceVisibilityRayCV(vrayK, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                                 else
                                     vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
 #else
                                 vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
 #endif
-                                pHatK *= max(vK, gWSLightMuMin);
+                                pHatK *= max(vK, wsLightMuMin());
                             }
                             float invPdfK = (lsK.pdf > 0.f) ? (1.f / lsK.pdf) : 0.f;
                             local.streamingAdd(
@@ -1321,19 +1328,19 @@ struct PathTracer
                         float3 cellLr     = cellWeight * cellLs.Li;
                         float pHatCell    = luminance(cellLr);
                         if (pHatCell <= 0.f) continue;
-                        if (cellType != (uint)LightType::EnvMap && gWSVisInPHat != 0u)
+                        if (cellType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
                         {
                             Ray vrayC = cellLs.getVisibilityRay();
                             float vC = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                            if (gWSVisInPHat == 1u)
+                            if (wsVisInPHatMode() == 1u)
                                 vC = vq.traceVisibilityRayCV(vrayC, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                             else
                                 vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
 #else
                             vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
 #endif
-                            pHatCell *= max(vC, gWSLightMuMin);
+                            pHatCell *= max(vC, wsLightMuMin());
                         }
 
                         // §9.4 design fix: cell is a candidate-IDENTITY hint, not
@@ -1465,7 +1472,11 @@ struct PathTracer
                     }
 
                     // (3) Swap winner if the local picked a sample we can rebuild.
-                    if (local.M > 0.f && local.targetPdf > 0.f)
+                    // Skip the swap when only the original fresh sample contributed
+                    // (M==1) — no rebuild needed, original ls is already correct.
+                    // The rebuilder's offset / pdf reconstruction otherwise introduces
+                    // small numerical drift that biases the metric vs vanilla.
+                    if (local.M > 1.f && local.targetPdf > 0.f)
                     {
                         uint winnerType = wsUnpackLightType(local.lightTypeIndex);
                         uint winnerIdx  = wsUnpackLightIndex(local.lightTypeIndex);

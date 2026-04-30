@@ -46,6 +46,16 @@ Extends ReSTIR DI to lens×light area sampling for DOF/AA. Final shadow ray stru
 - PDF: [arXiv:2401.02293](https://arxiv.org/pdf/2401.02293.pdf) | **Auto**
 - Scenes: Bistro, Emerald Square
 
+### Boissé 2021 — World-Space ReSTIR
+**G. Boissé, "World-Space Spatiotemporal Reservoir Reuse for Ray-Traced Global Illumination," SIGGRAPH Asia 2021 Technical Communications.**
+First world-space reservoir scheme: hashed spatial cells store reservoirs keyed by quantized position+normal, queried at hit points for spatiotemporal reuse independent of screen connectivity. Direct precedent for our WS-ReSTIR layer riding on VisCache's posA cascade. Compare cell-keying choices (single resolution + jitter vs. our multi-level cascade with `wsLevelOffset`) and M-cap/MIS bias handling.
+- PDF: [GPUOpen](https://gpuopen.com/download/publications/SA2021_WorldSpace_ReSTIR.pdf) | **Auto**
+
+### Zhang 2023 — World-Space Path Resampling
+**H. Zhang, B. Wang, "World-Space Spatiotemporal Path Resampling for Path Tracing," CGF / Pacific Graphics 2023.**
+Caches whole sub-paths (not just final shadow connections) into a normal-aware hash grid; sub-paths starting from non-primary vertices become reusable. Reports 16.6–41.9% MSE reduction over screen-space ReSTIR PT at 4–8% extra cost. Normal-keyed cell separation is the lesson worth absorbing for VisCache: position-only quant lumps grazing surfaces (Sponza ceiling/wall corner) where our trust gates currently saturate.
+- PDF: [Author preprint](https://wangningbei.github.io/2023/ReSTIR_files/paper_ReSTIRGI.pdf) | **Auto**
+
 ---
 
 ## Visibility caching (related / concurrent)
@@ -96,6 +106,16 @@ Variance-driven hash grid adaptation. Directly related to our §7 variance-gated
 Jitter-before-quantize spatial hashing for path space similarity. Source of our addressing scheme: PCG3D jitter, fingerprint design, double-hash probing. GPU-optimized hash table for massively parallel rendering.
 - PDF: [arXiv:1902.05942](https://arxiv.org/pdf/1902.05942.pdf) | **Auto**
 - Scenes: Bistro, San Miguel
+
+### Binder 2018 — Jittered Spatial Hashing (talk)
+**N. Binder, S. Fricke, A. Keller, "Fast Path Space Filtering by Jittered Spatial Hashing," SIGGRAPH 2018 Talks.**
+Original short paper for the jitter+quantize-then-hash scheme later expanded in Binder 2019. Cell size derived from ray footprint / area pdf at the shading point — close cousin of our adaptive `footprintScale` knob and a cleaner derivation than our hand-tuned `quantSceneScale`.
+- PDF: [SIGGRAPH archive](https://history.siggraph.org/wp-content/uploads/2022/09/2018-Talks-Binder_Fast-Path-Space-Filtering-by-Jittered-Spatial-Hashing.pdf) | **Auto**
+
+### Boissé 2022 — GI-1.0 (Two-Level Radiance Cache)
+**G. Boissé et al., "GI-1.0: A Fast Scalable Two-Level Radiance Caching Scheme for Real-Time Global Illumination," GPUOpen 2022.**
+Production-grade hash-grid radiance cache with explicit two-level structure. Worth reading next to our multi-level cascade: their level-promotion / decay heuristics and cell-update policy are directly applicable to our `numLevels` × `quantShift` ladder.
+- PDF: [GPUOpen](https://gpuopen.com/download/publications/GPUOpen2022_GI1_0.pdf) | **Auto**
 
 ### Jarzynski & Olano 2020 — Hash Functions for GPU Rendering
 **M. Jarzynski, M. Olano, "Hash Functions for GPU Rendering," JCGT 9(3), 2020.**

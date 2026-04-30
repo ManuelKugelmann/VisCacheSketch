@@ -24,6 +24,8 @@ for scene_file in get_scenes():
         shutil.rmtree(baseline_dir, ignore_errors=True)
 
     # 1. Vanilla baseline FIRST — produces the GT HDR all variants compare to.
+    #    Uses the graph's default maxBounces (3), which is also the canonical
+    #    GT all subsequent ladder steps reference.
     run_baseline(
         step_name="00",
         frame_configs=[(0, 0, 1)],
@@ -33,6 +35,28 @@ for scene_file in get_scenes():
         extra_spp=[2, 4, 8, 16],
         mogwai_globals=globals(),
     )
+
+    # 1b. Multi-bounce vanilla baselines — same SPP grid, varying maxBounces.
+    #     Uses variant_tag="vanilla_b<N>" so these don't collide with the
+    #     canonical "vanilla" outputs above. No separate GT (4096 spp) is
+    #     rendered for these — they share the canonical vanilla GT for
+    #     error/noise comparisons.
+    #
+    #     Used by: WS-PT validation matrix (validates path-space reuse against
+    #     vanilla PT at multiple bounce regimes; ReSTIRPTPass port currently
+    #     broken so vanilla multi-bounce is the trustworthy comparator).
+    for mb in (1, 4, 8):
+        run_baseline(
+            step_name="00",
+            frame_configs=[(0, 0, 1)],
+            scene_file=scene_file,
+            resX=res, resY=res,
+            maxBounces=mb,
+            gt_spp=4096,            # ignored when variant_tag != "vanilla"
+            extra_spp=[2, 4, 8, 16],
+            mogwai_globals=globals(),
+            variant_tag=f"vanilla_b{mb}",
+        )
 
     # 2. Pure per-pixel ReSTIR (WS layer disabled) — isolates the screen-space
     #    temporal+spatial reservoir from the world-space cell hint layer.

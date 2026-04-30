@@ -40,6 +40,8 @@ bool wsEnabled() { return gWSEnable != 0u && gWSCapacity > 0u; }
 uint wsSpatialNeighbourCount() { return min(gWSSpatialNeighbours, 4u); }
 bool wsPixelReservoirEnabled() { return gWSFrameDimX > 0u && gWSFrameDimY > 0u; }
 uint wsPixelIndex(uint2 pixel) { return pixel.y * gWSFrameDimX + pixel.x; }
+uint wsVisInPHatMode() { return gWSVisInPHat; }       ///< 0=blind, 1=cache, 2=explicit
+float wsLightMuMin() { return gWSLightMuMin; }
 
 // ---------------------------------------------------------------------------
 // Reservoir cascade level. Mirrors the §9.4 design call: reservoirs read at

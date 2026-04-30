@@ -33,13 +33,23 @@ ABLATIONS = {
 }
 
 
-def render_graph_ReSTIRPT(viscache=False, ablation=None):
+def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
+                          shadowGateBounces=3, samplesPerPixel=1,
+                          spatialNeighborCount=5, spatialReuseRadius=30,
+                          candidateSamples=1, useRTXDIDirect=True,
+                          useDirectLighting=True):
     """Build a ReSTIR PT render graph.
 
     Args:
         viscache: If True, add VisCache pass + PathTracer for shadow gating.
         ablation: Dict of VisCachePass overrides, or a key into ABLATIONS.
                   Only used when viscache=True.
+        maxBounces: ReSTIRPTPass.maxSurfaceBounces (path length in bounces).
+        shadowGateBounces: PathTracer.maxSurfaceBounces for §11.2 shadow gating
+            (only used when viscache=True). Independent from ReSTIRPT bounces.
+        samplesPerPixel: ReSTIRPTPass samples per pixel.
+        spatialNeighborCount, spatialReuseRadius, candidateSamples: ReSTIRPT
+            tuning knobs (defaults match prior config).
     """
     if ablation is None:
         ablation = {}
@@ -49,7 +59,8 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     name = "ReSTIRPT_VisCache" if viscache else "ReSTIRPT"
     g = RenderGraph(name)
 
-    # G-Buffer
+    # G-Buffer — VBufferRT (lighter than GBufferRT) is enough for ReSTIRPT;
+    # but the existing wiring uses GBufferRT for compatibility with NRD edges.
     gbuf = createPass("GBufferRT", {
         "samplePattern": "Stratified",
         "sampleCount":   1,
@@ -67,30 +78,38 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
         g.addPass(vc, "VisCache")
 
     # RTXDI — direct lighting (visibility-weighted selection when VisCache present, §11.1)
-    rtxdi = createPass("RTXDIPass", {
-        "options": {
-            "mode":                       "NoResampling",
-            "localLightCandidateCount":    8,
-            "infiniteLightCandidateCount": 1,
-        },
-    })
-    g.addPass(rtxdi, "RTXDIPass")
+    # Optional: skip RTXDI entirely when comparing pure ReSTIRPT (which can do its
+    # own NEE direct sampling). Eliminates direct-light double-counting risk.
+    if useRTXDIDirect:
+        rtxdi = createPass("RTXDIPass", {
+            "options": {
+                "mode":                       "NoResampling",
+                "localLightCandidateCount":    8,
+                "infiniteLightCandidateCount": 1,
+            },
+        })
+        g.addPass(rtxdi, "RTXDIPass")
 
     # PathTracer for shadow gating (only with VisCache, §11.2)
     if viscache:
         pt = createPass("PathTracer", {
             "samplesPerPixel":    1,
-            "maxSurfaceBounces":  3,
+            "maxSurfaceBounces":  shadowGateBounces,
             "colorFormat":        "LogLuvHDR",
         })
         g.addPass(pt, "PathTracer")
 
-    # ReSTIR PT — indirect lighting via path reuse
+    # ReSTIR PT — indirect lighting via path reuse. useDirectLighting controls
+    # whether ReSTIRPT integrates its directLighting input (when wired from
+    # RTXDI) into the final radiance. Set False for pure-ReSTIRPT comparisons
+    # where ReSTIRPT does its own NEE direct sampling.
     restirpt = createPass("ReSTIRPTPass", {
-        "maxSurfaceBounces":       1,
-        "spatialNeighborCount":    5,
-        "spatialReuseRadius":      30,
-        "candidateSamples":        1,
+        "samplesPerPixel":         samplesPerPixel,
+        "maxSurfaceBounces":       maxBounces,
+        "spatialNeighborCount":    spatialNeighborCount,
+        "spatialReuseRadius":      spatialReuseRadius,
+        "candidateSamples":        candidateSamples,
+        "useDirectLighting":       useDirectLighting,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
@@ -106,6 +125,16 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     except Exception:
         print("[ReSTIRPT] WARNING: NRDPass plugin not available — outputting raw noisy radiance.")
 
+    # AccumulatePass — average raw ReSTIRPT color across frames so the captured
+    # EXR is comparable to vanilla PathTracer's accumulated output. Without this
+    # the ReSTIRPT capture is single-frame raw and shows fireflies / non-finite
+    # pixels that vanilla's frame-averaged capture suppresses.
+    accum = createPass("AccumulatePass", {
+        "enabled":       True,
+        "precisionMode": "Single",
+    })
+    g.addPass(accum, "AccumulatePass")
+
     # Tone mapper
     tone = createPass("ToneMapper", {
         "autoExposure":  False,
@@ -117,17 +146,21 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
     # -----------------------------------------------------------------------
     # Edges
     # -----------------------------------------------------------------------
-    # GBuffer → RTXDIPass (direct illumination)
-    g.addEdge("GBufferRT.vbuffer", "RTXDIPass.vbuffer")
-    g.addEdge("GBufferRT.mvec",    "RTXDIPass.mvec")
+    # GBuffer → RTXDIPass (direct illumination, when wired)
+    if useRTXDIDirect:
+        g.addEdge("GBufferRT.vbuffer", "RTXDIPass.vbuffer")
+        g.addEdge("GBufferRT.mvec",    "RTXDIPass.mvec")
 
     # PathTracer shadow gating (VisCache only, §11.2)
     if viscache:
         g.addEdge("GBufferRT.vbuffer", "PathTracer.vbuffer")
         g.addEdge("GBufferRT.viewW",   "PathTracer.viewW")
 
-    # RTXDI direct lighting → ReSTIR PT
-    g.addEdge("RTXDIPass.color",   "ReSTIRPTPass.directLighting")
+    # RTXDI direct lighting → ReSTIR PT (only when both RTXDI AND
+    # ReSTIRPT.useDirectLighting are enabled; otherwise leave the input
+    # unbound and let ReSTIRPT compute its own NEE).
+    if useRTXDIDirect and useDirectLighting:
+        g.addEdge("RTXDIPass.color", "ReSTIRPTPass.directLighting")
     g.addEdge("GBufferRT.vbuffer", "ReSTIRPTPass.vbuffer")
     g.addEdge("GBufferRT.mvec",    "ReSTIRPTPass.motionVectors")
 
@@ -139,13 +172,15 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None):
         g.addEdge("GBufferRT.linearZ",                  "NRDPass.viewZ")
         g.addEdge("GBufferRT.normWRoughnessMaterialID", "NRDPass.normWRoughnessMaterialID")
         g.addEdge("GBufferRT.mvec",                     "NRDPass.mvec")
-        g.addEdge("NRDPass.filteredDiffuseRadianceHitDist", "ToneMapper.src")
+        g.addEdge("NRDPass.filteredDiffuseRadianceHitDist", "AccumulatePass.input")
     else:
-        g.addEdge("ReSTIRPTPass.color", "ToneMapper.src")
+        g.addEdge("ReSTIRPTPass.color", "AccumulatePass.input")
+    g.addEdge("AccumulatePass.output", "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")
-    g.markOutput("ReSTIRPTPass.color")   # raw noisy radiance (linear HDR) for MSE/FLIP
-    g.markOutput("ReSTIRPTPass.debug")   # optional per-pixel debug visualisation
+    g.markOutput("AccumulatePass.output")   # frame-averaged HDR (apples-to-apples vs vanilla)
+    g.markOutput("ReSTIRPTPass.color")      # single-frame raw noisy radiance
+    g.markOutput("ReSTIRPTPass.debug")      # optional per-pixel debug visualisation
 
     # -------------------------------------------------------------------
     # VisCache diagnostic heatmaps (only when viscache=True).

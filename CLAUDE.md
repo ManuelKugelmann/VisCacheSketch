@@ -165,6 +165,7 @@ topic: <what>
 
 - **No backwards compatibility** — move forward, no back-compat aliases or shims
 - **No duplicated code** — extract shared logic into helpers; never copy-paste between scripts
+- **Cbuffer cross-pass binding: every field must be enumerated.** Falcor 8's `setBuffer()` only handles SRV/UAV — `ConstantBuffer`-typed shader vars cannot be bound by passing a `ref<Buffer>`, so cross-pass cbuffer wiring (e.g. PathTracer reading `VisCacheParams` populated by VisCache pass) MUST enumerate every field: `var["VisCacheParams"]["gFooField"] = mVCParams.fooField;`. **Whenever you add a field to the C++ `GPUParams` struct + the slang `cbuffer VisCacheParams`, you MUST also add it to every per-field binding site** (`Falcor/Source/RenderPasses/PathTracer/PathTracer.cpp` tracePass + `Source/RenderPasses/ReSTIRPTPass/ReSTIRPTPass.cpp` PathRetrace/PathReuse). Forgetting any field leaves the shader global at its default (0) and produces "shader sees wrong value despite C++ writing the right one" bugs that are very hard to diagnose (the C++ memcpy buffer is correct; only the per-field bindings in PathTracer/ReSTIRPTPass matter for those passes).
 - **Small incremental edits** — step by step for large changes; not massive Write calls
 - **Fix all errors encountered**, even pre-existing ones
 - **Never chain `cd &&` before commands** — do a solo `cd` in a separate Bash call, then run commands from there

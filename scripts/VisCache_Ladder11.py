@@ -1,5 +1,10 @@
 """
-VisCache_Ladder11.py - Step 11: entry-level-only debug.
+VisCache_Ladder11.py - Step 11: entry-level-only debug [VALIDATED, DEBUG ONLY].
+
+STATUS: One-time debug to verify entry-level math (cascadeWindowForward=0 so
+lookup visits ONLY targetLvl). Validated cell sizes vary correctly with fd
+after PathTracer cbuffer-bind bug fix. Production code uses default
+cascadeWindowForward=12 (step 12). Keep for diagnosis if entry math regresses.
 
 Cascade descent disabled (cascadeWindowForward=0). vhfLookup queries ONLY
 at targetLvl - if no cell exists there or it's too sparse, the lookup
@@ -20,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, make_norm_variants, read_carried_winner, \
     write_picks_meta, _DEFAULT_PICKER_RULE, ALL_SCENES, \
-    PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP
+    PRESET_MINIMAL_MULTI, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP
 
 STEP = "11"
 res = int(os.environ.get("RES", "512"))
@@ -37,7 +42,7 @@ VT = 0.03
 PM = 0.10
 K_FRAMES = 2
 
-BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
+BASE_11 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL_MULTI,
                                           quant_tag=QUANT_TAG)
            if v[0] == f"pos_norm__pos__{QUANT_TAG}"]
 
