@@ -1292,6 +1292,12 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasWSReservoirs = mVisCacheWSReservoirs;
         mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
             ? dict.getValue<ref<Buffer>>("wsReservoirBuffer") : nullptr;
+        mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("wsPixelReservoirBuffer"))
+            ? dict.getValue<ref<Buffer>>("wsPixelReservoirBuffer") : nullptr;
+        mVHFPixelDimX = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimX"))
+            ? dict.getValue<uint32_t>("vhfParam_wsFrameDimX") : 0u;
+        mVHFPixelDimY = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimY"))
+            ? dict.getValue<uint32_t>("vhfParam_wsFrameDimY") : 0u;
         mVisCacheWSReservoirs = mVisCacheAvailable
             && dict.keyExists("vhfEnableWSReservoirs") && dict.getValue<bool>("vhfEnableWSReservoirs")
             && mpVHFWSReservoirs != nullptr;
@@ -1551,10 +1557,13 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gWSNormalAddr"]                  = mVCParams.wsNormalAddr;
         vc["gWSInitialCandidates"]           = mVCParams.wsInitialCandidates;
     }
-    // §9.4 WS-ReSTIR DI buffer at root var (parallel to gVHFTable).
+    // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
     if (mVisCacheWSReservoirs)
     {
-        var["gWSReservoirs"] = mpVHFWSReservoirs;
+        var["gWSReservoirs"]      = mpVHFWSReservoirs;
+        if (mpVHFPixelReservoirs) var["gWSPixelReservoirs"] = mpVHFPixelReservoirs;
+        var["VisCacheParams"]["gWSFrameDimX"] = mVHFPixelDimX;
+        var["VisCacheParams"]["gWSFrameDimY"] = mVHFPixelDimY;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.

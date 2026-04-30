@@ -246,8 +246,11 @@ private:
              uint32_t wsNormalAddr=0;
              uint32_t wsInitialCandidates=8; } mVCParams;
 
-    // §9.4 WS-ReSTIR DI buffer (sourced from VisCache via dict["wsReservoirBuffer"]).
+    // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
     ref<Buffer> mpVHFWSReservoirs;
+    ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
+    uint32_t    mVHFPixelDimX = 0u;
+    uint32_t    mVHFPixelDimY = 0u;
     bool        mVisCacheWSReservoirs = false; ///< Master gate read from dict.
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all

@@ -262,6 +262,10 @@ private:
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
     ref<Buffer>         mpWSReservoirs;  ///< RWStructuredBuffer<WSReservoir>, sized by wsReservoirCapacity. Allocated on demand.
     uint32_t            mWSReservoirCapacityCommitted = 0u; ///< Capacity used to allocate mpWSReservoirs (re-alloc on resize).
+    // §9.4 per-pixel temporal reservoir (RTXDI-style). One slot per pixel,
+    // persists across frames so temporal-M accumulation kicks in.
+    ref<Buffer>         mpPixelReservoirs;
+    uint2               mPixelReservoirsCommitted = {0u, 0u};
 
     ref<ComputePass>    mpDecayPass;
 

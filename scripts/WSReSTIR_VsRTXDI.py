@@ -43,8 +43,8 @@ VARIANTS = [
         visibilityCheck=True, lightSelection=True)),
     ("rtxdi",    lambda: render_graph_RTXDI(viscache=False)),
 ]
-WARMUP_FRAMES  = 8
-CAPTURE_FRAMES = 16
+WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate
+CAPTURE_FRAMES = 32
 
 OUTPUT_ROOT = os.path.join(PROJECT_ROOT or ".", "runtime", "captures", "wsrestir_vs_rtxdi")
 os.makedirs(OUTPUT_ROOT, exist_ok=True)

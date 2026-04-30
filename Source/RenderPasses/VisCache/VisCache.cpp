@@ -434,6 +434,31 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             mWSReservoirCapacityCommitted = 0u;
         }
     }
+
+    // §9.4 per-pixel temporal reservoir buffer — lazy (re)allocate at frame
+    // dimensions to enable RTXDI-style temporal-M accumulation across frames.
+    {
+        uint2 fd = mFrameDims;
+        const bool needs = mParams.enableWSReservoirs && fd.x > 0 && fd.y > 0
+                        && (!mpPixelReservoirs || mPixelReservoirsCommitted.x != fd.x
+                                              || mPixelReservoirsCommitted.y != fd.y);
+        if (needs)
+        {
+            uint32_t total = fd.x * fd.y;
+            mpPixelReservoirs = mpDevice->createStructuredBuffer(
+                kWSReservoirSize, total,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
+            mpPixelReservoirs->setName("VHF_PixelReservoirs");
+            mPixelReservoirsCommitted = fd;
+            pCtx->clearUAV(mpPixelReservoirs->getUAV().get(), uint4(0u));
+        }
+        else if (!mParams.enableWSReservoirs && mpPixelReservoirs)
+        {
+            mpPixelReservoirs = nullptr;
+            mPixelReservoirsCommitted = {0u, 0u};
+        }
+    }
     mParams.matureThreshold = std::clamp(mParams.matureThreshold, mParams.bootThreshold, 0xFFFFu);
     if (mParams.varThreshold   <= 0.f) mParams.varThreshold   = 0.01f;
     if (mParams.posACoarse    <= 0.f) mParams.posACoarse    = 1.0f;
@@ -702,6 +727,9 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 
     // §9.4 WS-reservoir export — buffer + per-field cbuffer values for downstream binding.
     dict["wsReservoirBuffer"]        = mpWSReservoirs;
+    dict["wsPixelReservoirBuffer"]   = mpPixelReservoirs;
+    dict["vhfParam_wsFrameDimX"]     = mFrameDims.x;
+    dict["vhfParam_wsFrameDimY"]     = mFrameDims.y;
     dict["vhfEnableWSReservoirs"]    = mParams.enableWSReservoirs;
     dict["vhfParam_wsEnable"]        = mParams.enableWSReservoirs ? 1u : 0u;
     dict["vhfParam_wsLevelOffset"]   = mParams.wsLevelOffset;

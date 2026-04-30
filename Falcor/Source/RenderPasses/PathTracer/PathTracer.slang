@@ -1335,6 +1335,62 @@ struct PathTracer
                             pHatCell, invPdfCell, path.sg);
                     }
 
+                    // (2.5) Per-pixel temporal accumulation: combine local with
+                    // previous frame's reservoir at the SAME pixel. This is the
+                    // RTXDI variance reducer — M-capped accumulation across frames
+                    // gives effective sample count 10s-100s, beyond what K
+                    // initial candidates per frame can deliver. Must happen
+                    // BEFORE the winner swap so shading sees the merged result.
+                    if (wsPixelReservoirEnabled())
+                    {
+                        uint pIdx = wsPixelIndex(path.getPixel());
+                        WSReservoir prev = gWSPixelReservoirs[pIdx];
+                        if (prev.M > 0.f && prev.fingerprint != 0u)
+                        {
+                            uint prevType = wsUnpackLightType(prev.lightTypeIndex);
+                            uint prevIdx  = wsUnpackLightIndex(prev.lightTypeIndex);
+                            LightSample prevLs;
+                            bool prevOk = false;
+                            if (prevType == (uint)LightType::Emissive)
+                                prevOk = wsRebuildEmissiveLightSample(prevIdx, wsUnpackUV(prev.payload), sd, prevLs);
+                            else if (prevType == (uint)LightType::Analytic)
+                                prevOk = wsRebuildAnalyticLightSample(prevIdx, sd, path.sg, prevLs);
+                            else if (prevType == (uint)LightType::EnvMap)
+                                prevOk = wsRebuildEnvMapLightSample(prev.payload, sd, prevLs);
+
+                            if (prevOk)
+                            {
+                                float NdotL_prev = dot(sd.faceN, prevLs.dir);
+                                bool hasReflP  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
+                                bool hasTransP = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
+                                bool acceptP = ((NdotL_prev > kMinCosTheta) && hasReflP)
+                                            || ((NdotL_prev < -kMinCosTheta) && hasTransP);
+                                if (acceptP)
+                                {
+                                    float3 prevW3 = mi.eval(sd, prevLs.dir, path.sg);
+                                    float pHatPrev = luminance(prevW3 * prevLs.Li);
+                                    if (pHatPrev > 0.f)
+                                    {
+                                        // Mass-weighted merge: w = pHat_prev * (prev.W * prev.M).
+                                        float Mcap = min(prev.M, gWSMCap);
+                                        float w    = pHatPrev * prev.W * Mcap;
+                                        if (w > 0.f && !isnan(w))
+                                        {
+                                            local.wSum += w;
+                                            local.M    += Mcap;
+                                            if (sampleNext1D(path.sg) * local.wSum <= w)
+                                            {
+                                                local.lightTypeIndex = prev.lightTypeIndex;
+                                                local.payload        = prev.payload;
+                                                local.targetPdf      = pHatPrev;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // (3) Swap winner if the local picked a sample we can rebuild.
                     if (local.M > 0.f && local.targetPdf > 0.f)
                     {
@@ -1375,6 +1431,22 @@ struct PathTracer
                     // the region. Read side only consumes identity; the cell's
                     // M/W are bookkeeping for this write-side reservoir merge.
                     wsMergeIntoCell(homeAddr, local, path.sg);
+
+                    // (5) Persist the merged local back to the per-pixel reservoir
+                    // for next frame's temporal reuse. Compute W from local stats
+                    // and store identity + W + M.
+                    if (wsPixelReservoirEnabled() && local.M > 0.f && local.targetPdf > 0.f)
+                    {
+                        uint pIdx = wsPixelIndex(path.getPixel());
+                        WSReservoir px = wsReservoirInit(0xFFFFFFFFu);  // valid sentinel
+                        px.lightTypeIndex   = local.lightTypeIndex;
+                        px.payload          = local.payload;
+                        px.targetPdf        = local.targetPdf;
+                        px.M                = min(local.M, gWSMCap);
+                        px.W                = local.wSum / max(local.targetPdf * local.M, 1e-12f);
+                        px.frameLastUpdated = gFrameCount;
+                        gWSPixelReservoirs[pIdx] = px;
+                    }
                 }
 #endif
 
