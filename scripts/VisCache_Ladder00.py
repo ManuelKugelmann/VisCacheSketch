@@ -10,34 +10,42 @@ Usage:
 import os, sys, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
-    run_baseline, run_baseline_wsrestir, run_baseline_rtxdi,
-    get_scenes, finalize_baseline,
+    run_baseline, run_baseline_wsrestir, run_baseline_pixel_restir,
+    run_baseline_rtxdi, get_scenes, finalize_baseline,
+    make_baseline_comparison_plate, make_baseline_bar_plot,
 )
 
 res = int(os.environ.get("RES", "512"))
 
 for scene_file in get_scenes():
-    # Wipe baseline directory for clean output
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     baseline_dir = f"captures/ladder/00/{scene_name}"
     if os.path.exists(baseline_dir):
         shutil.rmtree(baseline_dir, ignore_errors=True)
 
+    # 1. Vanilla baseline FIRST — produces the GT HDR all variants compare to.
     run_baseline(
         step_name="00",
         frame_configs=[(0, 0, 1)],
         scene_file=scene_file,
         resX=res, resY=res,
         gt_spp=4096,
-        # x2 / x4 / x8 / x16 added for step 04's sample-count sweep; step 05+ uses x4.
         extra_spp=[2, 4, 8, 16],
         mogwai_globals=globals(),
     )
 
-    # §9.4 WS-ReSTIR DI self-baseline (direct-lighting only).
-    # Captures at virtual SPP 1 and 4 — same low-SPP regime where ReSTIR
-    # variance reduction is meaningful. Compared against vanilla x1/x4
-    # for variance benefit, against vanilla x4096 GT for bias check.
+    # 2. Pure per-pixel ReSTIR (WS layer disabled) — isolates the screen-space
+    #    temporal+spatial reservoir from the world-space cell hint layer.
+    run_baseline_pixel_restir(
+        step_name="00",
+        frame_configs=[(0, 0, 1)],
+        scene_file=scene_file,
+        resX=res, resY=res,
+        capture_spps=(1, 4),
+        mogwai_globals=globals(),
+    )
+
+    # 3. Full WS-ReSTIR DI (per-pixel + WS-cell hint).
     run_baseline_wsrestir(
         step_name="00",
         frame_configs=[(0, 0, 1)],
@@ -47,9 +55,7 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
-    # RTXDI external reference (ReSTIR DI ground truth for proper-implementation
-    # variance reduction). RTXDI's SPP is fixed at 1 per frame internally; we
-    # capture once per scene as the reference quality bar.
+    # 4. RTXDI external reference (proper-implementation quality bar).
     run_baseline_rtxdi(
         step_name="00",
         frame_configs=[(0, 0, 1)],
@@ -59,5 +65,16 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
+    # 5. Comparison plates per scene at x1 (and x4 where available) — render
+    #    + GT-error grid stitched side-by-side across {vanilla, pixel_restir,
+    #    wsrestir, rtxdi}.
+    make_baseline_comparison_plate("00", scene_file, resX=res, resY=res, spp=1)
+    make_baseline_comparison_plate("00", scene_file, resX=res, resY=res, spp=4,
+                                    variants=("vanilla", "pixel_restir", "wsrestir"))
+
 finalize_baseline("00")
+
+# Bar plot across all scenes / variants / SPPs from the populated CSV.
+make_baseline_bar_plot("00")
+
 _HEADLESS_SCRIPT_DONE = True

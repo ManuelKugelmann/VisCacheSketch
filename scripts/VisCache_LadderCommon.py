@@ -527,19 +527,20 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
 
 # Baseline (step 00) CSV — absolute error/noise per (scene, spp). Distinct
 # schema from the variant CSV: no deltas, no rays/coldmiss, no warmup/subframe.
-_CSV_BASELINE_FIELDS = ["key", "scene", "spp",
+_CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
                         "mean_err_pct", "max_err_pct", "mean_noise_pct",
                         "timestamp"]
 
-def append_baseline_csv(step, scene, spp, mean_err_pct, max_err_pct, mean_noise_pct):
-    """Upsert one baseline row keyed by (scene, spp)."""
+def append_baseline_csv(step, scene, spp, mean_err_pct, max_err_pct, mean_noise_pct,
+                        variant="vanilla"):
+    """Upsert one baseline row keyed by (scene, variant, spp)."""
     import csv, datetime
     path = _step_csv(step)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
-    key = f"{scene}_x{spp}"
+    key = f"{scene}_{variant}_x{spp}"
     new_row = {
-        "key": key, "scene": scene, "spp": str(spp),
+        "key": key, "scene": scene, "variant": variant, "spp": str(spp),
         "mean_err_pct":   f"{mean_err_pct:.4f}"   if mean_err_pct   is not None else "",
         "max_err_pct":    f"{max_err_pct:.4f}"    if max_err_pct    is not None else "",
         "mean_noise_pct": f"{mean_noise_pct:.4f}" if mean_noise_pct is not None else "",
@@ -551,9 +552,16 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, max_err_pct, mean_noise_
     if os.path.exists(path):
         with open(path, newline="") as f:
             for row in csv.DictReader(f):
+                # Backfill 'variant' for old rows lacking it (assume vanilla).
+                if "variant" not in row:
+                    row["variant"] = "vanilla"
+                # Require the rest of the fields; skip malformed rows.
                 if any(k not in row for k in _CSV_BASELINE_FIELDS):
                     continue
                 row = {k: row.get(k, "") for k in _CSV_BASELINE_FIELDS}
+                # Re-key old rows that may have used the legacy {scene}_x{spp} key.
+                if row["key"] == f"{scene}_x{spp}" and row["variant"] == "vanilla":
+                    row["key"] = key  # legacy → new
                 if row.get("key") == key:
                     rows.append(new_row)
                     replaced = True
@@ -673,30 +681,33 @@ def stitch_plate(captureDir, prefix, variant_name, stats=None):
     print(f"  [plate] {os.path.basename(out)}")
     return out
 
-def stitch_baseline_plate(captureDir, xN_tag, out_path, err_stats=None, noise_stats=None):
-    """1×3 plate for a vanilla baseline: render | error vs GT | noise.
+def stitch_baseline_plate(captureDir, xN_tag, out_path, err_stats=None, noise_stats=None,
+                          variant_tag="vanilla"):
+    """1×3 plate for a baseline variant: render | error vs GT | noise.
     Mirrors the informative cells of row 1 of the variant plate layout. The rays
-    column is omitted because vanilla always traces 100%.
+    column is omitted because direct-lighting baselines always trace 100%.
 
     err_stats / noise_stats: dicts returned by compute_render_error_hdr /
     compute_render_noise — used to decorate the labels with the same
     `μ…% max…%` format variant plates use. None → fall back to plain text.
+    variant_tag: prefix in the capture filenames (vanilla / wsrestir / rtxdi /
+    pixel_restir).
     """
     def _err_label():
         if not err_stats:
-            return "error"
-        return f"error μ{err_stats['mean_err_pct']:.1f}% max{err_stats['max_err_pct']:.1f}%"
+            return f"{variant_tag} error"
+        return f"{variant_tag} err μ{err_stats['mean_err_pct']:.1f}% max{err_stats['max_err_pct']:.1f}%"
 
     def _noise_label():
         if not noise_stats:
-            return "noise"
-        return f"noise μ{noise_stats['mean_noise_pct']:.1f}%"
+            return f"{variant_tag} noise"
+        return f"{variant_tag} noise μ{noise_stats['mean_noise_pct']:.1f}%"
     from PIL import Image, ImageDraw, ImageFont
     import os
 
-    render_path = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c1_accum_render.png")
-    err_path    = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c3_accum_error.png")
-    noise_path  = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c9_accum_noise.png")
+    render_path = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c1_accum_render.png")
+    err_path    = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c3_accum_error.png")
+    noise_path  = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c9_accum_noise.png")
 
     cells = [
         Image.open(render_path) if os.path.exists(render_path) else None,
@@ -2874,47 +2885,49 @@ def _baseline_noise_floor(captureDir, gt_spp, res_tag):
 
 
 def postprocess_baseline_spp(step_name, captureDir, scene_name,
-                              spp, res_tag, gt_hdr, noise_floor):
-    """Per-SPP baseline postprocess: error PNG, noise PNG, plate, CSV row.
+                              spp, res_tag, gt_hdr, noise_floor,
+                              variant_tag="vanilla"):
+    """Per-SPP per-variant baseline postprocess: error PNG, noise PNG, plate, CSV row.
 
-    Shared helper — called from both run_baseline (live capture) and
-    VisCache_Replate00 (offline regen from existing EXRs). Silent no-op if the
-    SPP's HDR / render PNG are missing. Returns (err_stats, noise_stats).
+    Silent no-op if the SPP's HDR / render PNG are missing. Returns
+    (err_stats, noise_stats). `variant_tag` ∈ {vanilla, wsrestir, rtxdi,
+    pixel_restir, …} — selects which capture files to read and how to label.
     """
     from viscache_exr import compute_render_error_hdr, compute_render_noise
 
     xN_tag    = f"s_x{spp}_{res_tag}"
-    xN_hdr    = os.path.join(captureDir, f"{xN_tag}_vanilla_hdr.exr")
-    xN_render = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c1_accum_render.png")
+    xN_hdr    = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_hdr.exr")
+    xN_render = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c1_accum_render.png")
     if not os.path.exists(xN_hdr) or not os.path.exists(xN_render):
         return None, None
 
-    err_path   = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c3_accum_error.png")
-    dist_cache = os.path.join(captureDir, f"{xN_tag}_vanilla_gterr.npy")
+    err_path   = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c3_accum_error.png")
+    dist_cache = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_gterr.npy")
     err_stats = compute_render_error_hdr(xN_hdr, gt_hdr, err_path, distance_cache=dist_cache)
     if err_stats is not None:
-        # ASCII-only — Mogwai's stdout is cp1252 on Windows.
-        print(f"[{step_name}] [GT-err] vanilla_x{spp}: "
+        print(f"[{step_name}] [GT-err] {variant_tag}_x{spp}: "
               f"mean={err_stats['mean_err_pct']:.2f}% max={err_stats['max_err_pct']:.2f}% "
               f"-> {os.path.basename(err_path)}")
 
-    noise_path = os.path.join(captureDir, f"{xN_tag}_vanilla_r1c9_accum_noise.png")
+    noise_path = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c9_accum_noise.png")
     noise_stats = compute_render_noise(xN_render, noise_path, floor=noise_floor)
     if noise_stats is not None:
-        print(f"[{step_name}] [noise]  vanilla_x{spp}: "
+        print(f"[{step_name}] [noise]  {variant_tag}_x{spp}: "
               f"mean={noise_stats['mean_noise_pct']:.2f}% "
               f"-> {os.path.basename(noise_path)}")
 
     plate_out = os.path.join(os.path.dirname(captureDir),
-                             f"{_scene_prefix(scene_name)}{scene_name}_{xN_tag}_vanilla_plate.png")
+                             f"{_scene_prefix(scene_name)}{scene_name}_{xN_tag}_{variant_tag}_plate.png")
     stitch_baseline_plate(captureDir, xN_tag, plate_out,
-                           err_stats=err_stats, noise_stats=noise_stats)
+                           err_stats=err_stats, noise_stats=noise_stats,
+                           variant_tag=variant_tag)
 
     append_baseline_csv(
         step_name, scene_name, spp,
         mean_err_pct   = err_stats.get("mean_err_pct")   if err_stats   else None,
         max_err_pct    = err_stats.get("max_err_pct")    if err_stats   else None,
         mean_noise_pct = noise_stats.get("mean_noise_pct") if noise_stats else None,
+        variant=variant_tag,
     )
     return err_stats, noise_stats
 
@@ -3544,7 +3557,8 @@ def read_carried_winner(step_name, b_variant="pos"):
 def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                           build_graph, output_pass, *, capture_spps=(1, 4),
                           maxBounces=0, resX=kResX, resY=kResY,
-                          mogwai_globals=None, frames_mul=1):
+                          mogwai_globals=None, frames_mul=1,
+                          gt_hdr_for_post=None, noise_floor_for_post=None):
     """Generic baseline runner for non-vanilla variants (WS-ReSTIR, RTXDI).
     `build_graph(spp)` constructs the RenderGraph for a given samples-per-pixel.
     `output_pass` names the pass output to copy as the HDR EXR
@@ -3631,12 +3645,32 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
 
             m.removeGraph(g)
 
+            # Per-variant postprocess: error vs GT + noise + plate + CSV row.
+            if gt_hdr_for_post:
+                postprocess_baseline_spp(
+                    step_name, captureDir, scene_name,
+                    spp, res_tag, gt_hdr_for_post, noise_floor_for_post,
+                    variant_tag=tag_suffix,
+                )
+
+
+def _resolve_gt_for_variant(captureDir, gt_spp, res_tag):
+    """Find vanilla GT HDR + cached noise floor for this scene, if produced."""
+    gt_hdr = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_hdr.exr")
+    if not os.path.exists(gt_hdr):
+        return None, None
+    floor = _baseline_noise_floor(captureDir, gt_spp, res_tag)
+    return gt_hdr, floor
+
 
 def run_baseline_wsrestir(step_name, frame_configs, scene_file,
                           maxBounces=0, resX=kResX, resY=kResY,
                           mogwai_globals=None, capture_spps=(1, 4),
-                          wsInitialCandidates=8, wsMCap=5.0):
-    """WS-ReSTIR DI baseline reference. Direct-lighting only by default."""
+                          wsInitialCandidates=8, wsMCap=5.0,
+                          gt_spp=4096):
+    """WS-ReSTIR DI baseline reference. Direct-lighting only by default.
+    Postprocessing (error vs GT, plate, CSV) runs automatically if the
+    matching vanilla GT (gt_spp) has already been captured for this scene."""
     def _build(actual_spp):
         return render_graph_PathTracer(
             viscache=True, wsReservoirs=True, maxBounces=maxBounces,
@@ -3644,26 +3678,205 @@ def run_baseline_wsrestir(step_name, frame_configs, scene_file,
             wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
             visibilityCheck=True, lightSelection=True,
         )
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
     _run_baseline_variant(
         step_name, frame_configs, scene_file, "wsrestir",
         _build, "AccumulatePass.output",
         capture_spps=capture_spps, maxBounces=maxBounces,
         resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
+    )
+
+
+def run_baseline_pixel_restir(step_name, frame_configs, scene_file,
+                              maxBounces=0, resX=kResX, resY=kResY,
+                              mogwai_globals=None, capture_spps=(1, 4),
+                              wsInitialCandidates=8, wsMCap=5.0,
+                              gt_spp=4096):
+    """Pure per-pixel ReSTIR DI baseline (WS layer disabled).
+    Same as wsrestir but with `wsUseCellInRIS=False` — isolates the
+    per-pixel temporal + spatial reuse layer from the world-space cell layer.
+    """
+    def _build(actual_spp):
+        return render_graph_PathTracer(
+            viscache=True, wsReservoirs=True, maxBounces=maxBounces,
+            samplesPerPixel=actual_spp, useJitter=True,
+            wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
+            visibilityCheck=True, lightSelection=True,
+            extraVCProps={"wsUseCellInRIS": False},
+        )
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, "pixel_restir",
+        _build, "AccumulatePass.output",
+        capture_spps=capture_spps, maxBounces=maxBounces,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
     )
 
 
 def run_baseline_rtxdi(step_name, frame_configs, scene_file,
                        resX=kResX, resY=kResY, mogwai_globals=None,
-                       capture_spps=(1,)):
+                       capture_spps=(1,), gt_spp=4096):
     """RTXDI (ReSTIR DI) baseline reference. Direct-illumination only."""
     if render_graph_RTXDI is None:
         print(f"[{step_name}] RTXDI graph not importable — skipping rtxdi baseline")
         return
     def _build(actual_spp):
         return render_graph_RTXDI(viscache=False)
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
     _run_baseline_variant(
         step_name, frame_configs, scene_file, "rtxdi",
         _build, "RTXDIPass.color",
         capture_spps=capture_spps, maxBounces=0,
         resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
     )
+
+
+def make_baseline_comparison_plate(step_name, scene_file, resX=kResX, resY=kResY,
+                                   spp=1, variants=("vanilla", "pixel_restir",
+                                                    "wsrestir", "rtxdi")):
+    """Stitch a 2×N plate per scene: row 0 = render, row 1 = error-vs-GT.
+    Each column is one variant. Useful as a quick visual comparison.
+    Returns the plate path, or None if no variants found."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    res_tag = f"{resX}x{resY}"
+    xN_tag  = f"s_x{spp}_{res_tag}"
+
+    cells, labels = [], []
+    for v in variants:
+        rpath = os.path.join(captureDir, f"{xN_tag}_{v}_r1c1_accum_render.png")
+        epath = os.path.join(captureDir, f"{xN_tag}_{v}_r1c3_accum_error.png")
+        if not os.path.exists(rpath):
+            print(f"[{step_name}] [compare] missing render for {v} — skipping in plate")
+            continue
+        cells.append((Image.open(rpath),
+                      Image.open(epath) if os.path.exists(epath) else None,
+                      v))
+        labels.append(v)
+    if not cells:
+        return None
+
+    tile_w, tile_h = cells[0][0].size
+    font = ImageFont.load_default()
+    try:
+        font = ImageFont.truetype("arial.ttf", max(tile_w // 22, 12))
+    except (IOError, OSError):
+        pass
+
+    cols = len(cells)
+    plate_w = cols * tile_w
+    plate_h = 2 * tile_h
+    plate = Image.new("RGB", (plate_w, plate_h), (0, 0, 0))
+    draw  = ImageDraw.Draw(plate)
+    for i, (rimg, eimg, v) in enumerate(cells):
+        x = i * tile_w
+        plate.paste(rimg, (x, 0))
+        if eimg is not None:
+            plate.paste(eimg, (x, tile_h))
+        draw.rectangle([x, 0, x + tile_w, 24], fill=(0, 0, 0))
+        draw.text((x + 6, 4), v, fill=(255, 255, 255), font=font)
+        draw.rectangle([x, tile_h, x + tile_w, tile_h + 24], fill=(0, 0, 0))
+        draw.text((x + 6, tile_h + 4), f"{v} err", fill=(255, 255, 255), font=font)
+
+    out = os.path.join(os.path.dirname(captureDir),
+                       f"{_scene_prefix(scene_name)}{scene_name}_x{spp}_compare.png")
+    plate.save(out)
+    print(f"[{step_name}] [compare] {scene_name} x{spp} -> {os.path.basename(out)}")
+    return out
+
+
+def make_baseline_bar_plot(step_name):
+    """Per-scene bar plots: mean_err_pct + mean_noise_pct per variant at each SPP.
+    Reads from the baseline CSV. Outputs to captures/ladder/{step}/baseline_bars.png."""
+    try:
+        import csv
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(f"[{step_name}] matplotlib not available — skipping bar plot")
+        return None
+
+    csv_path = _step_csv(step_name)
+    if not os.path.exists(csv_path):
+        print(f"[{step_name}] no baseline CSV at {csv_path}")
+        return None
+
+    rows = []
+    with open(csv_path, newline="") as f:
+        for r in csv.DictReader(f):
+            try:
+                spp = int(r.get("spp", "0") or 0)
+                mean_err = float(r.get("mean_err_pct") or "nan")
+                mean_noise = float(r.get("mean_noise_pct") or "nan")
+            except ValueError:
+                continue
+            rows.append({
+                "scene": r.get("scene", ""),
+                "variant": r.get("variant", "vanilla"),
+                "spp": spp,
+                "mean_err": mean_err,
+                "mean_noise": mean_noise,
+            })
+
+    if not rows:
+        return None
+
+    scenes = sorted(set(r["scene"] for r in rows))
+    fig, axes = plt.subplots(len(scenes), 2, figsize=(11, 3.2 * max(1, len(scenes))),
+                              squeeze=False)
+    palette = {"vanilla": "#6e6e6e", "pixel_restir": "#1f77b4",
+               "wsrestir": "#2ca02c", "rtxdi": "#d62728"}
+    for si, scene in enumerate(scenes):
+        scene_rows = [r for r in rows if r["scene"] == scene]
+        # Build (variant, spp) matrix.
+        variants = sorted(set(r["variant"] for r in scene_rows),
+                          key=lambda v: (v != "vanilla", v))
+        spps = sorted(set(r["spp"] for r in scene_rows))
+        idx = {(r["variant"], r["spp"]): r for r in scene_rows}
+
+        # Error subplot
+        ax_e = axes[si, 0]
+        bar_w = 0.8 / max(1, len(variants))
+        for vi, v in enumerate(variants):
+            ys = [idx.get((v, s), {}).get("mean_err", float('nan')) for s in spps]
+            xs = [j + (vi - len(variants)/2 + 0.5) * bar_w for j in range(len(spps))]
+            ax_e.bar(xs, ys, width=bar_w, label=v, color=palette.get(v, "#888"))
+        ax_e.set_title(f"{scene} — mean error % (vs vanilla x{rows[0].get('spp', '?')} GT)")
+        ax_e.set_xticks(range(len(spps)))
+        ax_e.set_xticklabels([f"x{s}" for s in spps])
+        ax_e.set_ylabel("mean err %")
+        ax_e.legend(fontsize=8)
+        ax_e.grid(axis='y', alpha=0.3)
+
+        # Noise subplot
+        ax_n = axes[si, 1]
+        for vi, v in enumerate(variants):
+            ys = [idx.get((v, s), {}).get("mean_noise", float('nan')) for s in spps]
+            xs = [j + (vi - len(variants)/2 + 0.5) * bar_w for j in range(len(spps))]
+            ax_n.bar(xs, ys, width=bar_w, label=v, color=palette.get(v, "#888"))
+        ax_n.set_title(f"{scene} — mean noise %")
+        ax_n.set_xticks(range(len(spps)))
+        ax_n.set_xticklabels([f"x{s}" for s in spps])
+        ax_n.set_ylabel("mean noise %")
+        ax_n.legend(fontsize=8)
+        ax_n.grid(axis='y', alpha=0.3)
+
+    fig.tight_layout()
+    out = f"captures/ladder/{step_name}/baseline_bars.png"
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fig.savefig(out, dpi=110)
+    plt.close(fig)
+    print(f"[{step_name}] [plot] -> {out}")
+    return out
