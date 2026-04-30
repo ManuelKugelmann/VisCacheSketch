@@ -229,7 +229,10 @@ public:
         bool     enableWSReservoirs            = false; ///< Master gate. Off = legacy NEE in PathTracer.
         uint32_t wsLevelOffset                 = 1u;    ///< Cascade-coarseness offset for reservoir reads (vs visibility).
         uint32_t wsReservoirCapacity           = 1u << 18u; ///< 256K slots × ~32 B = 8 MB default.
-        float    wsMCap                        = 30.0f; ///< Temporal M-cap for reservoir merge.
+        float    wsMCap                        = 5.0f;  ///< Temporal M-cap for reservoir merge.
+                                                        ///< Higher = more temporal stability but per-pixel
+                                                        ///< reservoir lock-in bias (occluded picks stay dark
+                                                        ///< on emissive scenes). Mitigated by spatial reuse.
         uint32_t wsSpatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
         float    wsLightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
         float    wsLightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.

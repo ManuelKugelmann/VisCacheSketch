@@ -28,20 +28,16 @@ SCENES = [
 VARIANTS = [
     # Direct lighting only (maxBounces=0). RTXDI is DI-only by design;
     # we restrict the path tracer to match for apples-to-apples comparison.
-    ("vanilla",  lambda: render_graph_PathTracer(viscache=False, maxBounces=0)),
-    ("ws_K1",    lambda: render_graph_PathTracer(
+    ("vanilla",   lambda: render_graph_PathTracer(viscache=False, maxBounces=0)),
+    ("ws_K8",     lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=1,
+        wsInitialCandidates=8, wsMCap=5.0,
         visibilityCheck=True, lightSelection=True)),
-    ("ws_K8",    lambda: render_graph_PathTracer(
+    ("ws_M30",    lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8,
+        wsInitialCandidates=8, wsMCap=30.0,
         visibilityCheck=True, lightSelection=True)),
-    ("ws_K32",   lambda: render_graph_PathTracer(
-        viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=32,
-        visibilityCheck=True, lightSelection=True)),
-    ("rtxdi",    lambda: render_graph_RTXDI(viscache=False)),
+    ("rtxdi",     lambda: render_graph_RTXDI(viscache=False)),
 ]
 WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate
 CAPTURE_FRAMES = 32

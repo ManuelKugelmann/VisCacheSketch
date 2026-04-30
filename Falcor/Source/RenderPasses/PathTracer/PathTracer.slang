@@ -1341,8 +1341,15 @@ struct PathTracer
                     // gives effective sample count 10s-100s, beyond what K
                     // initial candidates per frame can deliver. Must happen
                     // BEFORE the winner swap so shading sees the merged result.
+                    //
+                    // ALSO: gather K=4 spatial neighbour pixels' reservoirs from
+                    // the screen-space buffer. This compensates for the per-pixel
+                    // lock-in bias — pixels in shadow whose reservoir picks an
+                    // occluded sample borrow from neighbours that picked visible
+                    // samples, restoring full coverage of the light pool.
                     if (wsPixelReservoirEnabled())
                     {
+                        // ----- temporal: read self ----------------------------------
                         uint pIdx = wsPixelIndex(path.getPixel());
                         WSReservoir prev = gWSPixelReservoirs[pIdx];
                         if (prev.M > 0.f && prev.fingerprint != 0u)
@@ -1387,6 +1394,60 @@ struct PathTracer
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // ----- spatial: gather K random neighbour pixels -----------
+                        // Each neighbour contributes its mass-weighted reservoir like
+                        // the temporal merge above, but from a different screen-space
+                        // pixel. Compensates for the per-pixel lock-in bias.
+                        const uint kSpatialPixels = 4u;
+                        const int  kSpatialRadius = 32;
+                        uint2 px = path.getPixel();
+                        for (uint s = 0u; s < kSpatialPixels; ++s)
+                        {
+                            float2 r = sampleNext2D(path.sg);
+                            int2 off = int2((r - 0.5f) * 2.f * float(kSpatialRadius));
+                            if (off.x == 0 && off.y == 0) continue;
+                            int2 npx = int2(px) + off;
+                            if (npx.x < 0 || npx.y < 0 ||
+                                uint(npx.x) >= gWSFrameDimX || uint(npx.y) >= gWSFrameDimY) continue;
+                            uint nIdx = uint(npx.y) * gWSFrameDimX + uint(npx.x);
+                            WSReservoir nbr = gWSPixelReservoirs[nIdx];
+                            if (nbr.M <= 0.f || nbr.fingerprint == 0u) continue;
+
+                            uint nbrType = wsUnpackLightType(nbr.lightTypeIndex);
+                            uint nbrIdx  = wsUnpackLightIndex(nbr.lightTypeIndex);
+                            LightSample nbrLs;
+                            bool nbrOk = false;
+                            if (nbrType == (uint)LightType::Emissive)
+                                nbrOk = wsRebuildEmissiveLightSample(nbrIdx, wsUnpackUV(nbr.payload), sd, nbrLs);
+                            else if (nbrType == (uint)LightType::Analytic)
+                                nbrOk = wsRebuildAnalyticLightSample(nbrIdx, sd, path.sg, nbrLs);
+                            else if (nbrType == (uint)LightType::EnvMap)
+                                nbrOk = wsRebuildEnvMapLightSample(nbr.payload, sd, nbrLs);
+                            if (!nbrOk) continue;
+
+                            float NdotL_n = dot(sd.faceN, nbrLs.dir);
+                            bool hasReflN  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
+                            bool hasTransN = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
+                            bool acceptN = ((NdotL_n > kMinCosTheta) && hasReflN)
+                                        || ((NdotL_n < -kMinCosTheta) && hasTransN);
+                            if (!acceptN) continue;
+
+                            float3 nbrW3 = mi.eval(sd, nbrLs.dir, path.sg);
+                            float pHatN = luminance(nbrW3 * nbrLs.Li);
+                            if (pHatN <= 0.f) continue;
+                            float Mcn = min(nbr.M, gWSMCap);
+                            float wn  = pHatN * nbr.W * Mcn;
+                            if (wn <= 0.f || isnan(wn)) continue;
+                            local.wSum += wn;
+                            local.M    += Mcn;
+                            if (sampleNext1D(path.sg) * local.wSum <= wn)
+                            {
+                                local.lightTypeIndex = nbr.lightTypeIndex;
+                                local.payload        = nbr.payload;
+                                local.targetPdf      = pHatN;
                             }
                         }
                     }
