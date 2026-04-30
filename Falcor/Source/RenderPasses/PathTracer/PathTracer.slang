@@ -1542,9 +1542,27 @@ struct PathTracer
                     float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
 #endif
                     if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
+                    bool wsChosenVisible = visWeight > 0.f;
 #else
                     bool visible = vq.traceVisibilityRay(ray);
                     if (visible) addToPathContribution(path, Lr);
+                    bool wsChosenVisible = visible;
+#endif
+
+#if USE_WS_RESERVOIRS
+                    // §9.4 LOCK-IN BREAK: if the chosen sample is occluded
+                    // (V=0), invalidate the per-pixel reservoir so next frame
+                    // doesn't temporally re-merge the same dead identity.
+                    // Without this, K=8 RIS over many emissive lights tends
+                    // to pick high-pHat samples that are behind walls; the
+                    // temporal reservoir locks each pixel onto that occluded
+                    // choice → systematic dark regions on Bistro/Sponza.
+                    if (path.getVertexIndex() == 1 && wsEnabled() && wsPixelReservoirEnabled()
+                        && !wsChosenVisible && (isEmissive || isAnalytic || isEnv))
+                    {
+                        uint pIdx = wsPixelIndex(path.getPixel());
+                        gWSPixelReservoirs[pIdx] = wsReservoirInit(0u);  // empty sentinel
+                    }
 #endif
                 }
             }
