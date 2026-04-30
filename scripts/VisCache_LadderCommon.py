@@ -3706,18 +3706,20 @@ def run_baseline_pixel_restir(step_name, frame_configs, scene_file,
                               mogwai_globals=None, capture_spps=(1, 4),
                               wsInitialCandidates=8, wsMCap=5.0,
                               gt_spp=4096):
-    """Pure per-pixel ReSTIR DI baseline (WS layer disabled).
-    visibilityCheck=False so the comparison vs vanilla is apples-to-apples
-    (vanilla has no VisCache; cache-gated shadow rays via CV+RR introduce
-    stochastic visWeight that biases the comparison).
+    """Pure per-pixel ReSTIR DI baseline (WS layer disabled, no VisCache).
+    Uses visibilityCheck=False, lightSelection=False so the comparison vs
+    vanilla NEE is apples-to-apples (no cache-gated shadow rays). Adds an
+    explicit visibility test in the K-RIS p̂ (wsVisInPHat=2) with a tiny
+    μmin floor so bright-but-occluded samples can't dominate the RIS.
     """
     def _build(actual_spp):
         return render_graph_PathTracer(
             viscache=True, wsReservoirs=True, maxBounces=maxBounces,
             samplesPerPixel=actual_spp, useJitter=True,
             wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
+            wsVisInPHat=2,
             visibilityCheck=False, lightSelection=False,
-            extraVCProps={"wsUseCellInRIS": False},
+            extraVCProps={"wsUseCellInRIS": False, "wsLightMuMin": 1e-4},
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"

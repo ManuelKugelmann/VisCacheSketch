@@ -76,6 +76,43 @@ def build_graph():
                                      samplesPerPixel=SPP,
                                      useRTXDIDirect=False,
                                      useDirectLighting=False)
+    if VARIANT == "restirpt_pt_mode":
+        # ReSTIRPTPass running in PathSamplingMode::PathTracing — bypasses
+        # all ReSTIR resampling. If this matches vanilla, the bug is in the
+        # ReSTIR machinery; if it still over-brights, the bug is in the basic
+        # PT setup (emission/NEE/throughput).
+        return render_graph_ReSTIRPT(viscache=False, maxBounces=BOUNCE,
+                                     samplesPerPixel=SPP,
+                                     useRTXDIDirect=False,
+                                     useDirectLighting=True,
+                                     pathSamplingMode="PathTracing")
+    if VARIANT == "restirpt_pt_mode_with_rtxdi":
+        # PT mode with RTXDI direct-light feed. Tests whether the basic
+        # PT setup integrates the directLighting input correctly.
+        return render_graph_ReSTIRPT(viscache=False, maxBounces=BOUNCE,
+                                     samplesPerPixel=SPP,
+                                     useRTXDIDirect=True,
+                                     useDirectLighting=True,
+                                     pathSamplingMode="PathTracing")
+    if VARIANT == "restirpt_pt_mode_di_on":
+        # PT mode standalone (no RTXDI) but with disableDirectIllumination=False.
+        # If this matches vanilla, Bug A confirmed = disableDirectIllumination
+        # default of TRUE was the cause of -91% energy loss without RTXDI.
+        return render_graph_ReSTIRPT(viscache=False, maxBounces=BOUNCE,
+                                     samplesPerPixel=SPP,
+                                     useRTXDIDirect=False,
+                                     useDirectLighting=False,
+                                     pathSamplingMode="PathTracing",
+                                     disableDirectIllumination=False)
+    if VARIANT == "restirpt_di_on":
+        # Default ReSTIR mode + disableDirectIllumination=False. Tests whether
+        # ReSTIR resampling fireflies (Bug B) persist even with direct-light fix.
+        return render_graph_ReSTIRPT(viscache=False, maxBounces=BOUNCE,
+                                     samplesPerPixel=SPP,
+                                     useRTXDIDirect=False,
+                                     useDirectLighting=False,
+                                     pathSamplingMode="ReSTIR",
+                                     disableDirectIllumination=False)
     raise ValueError(f"Unknown VARIANT: {VARIANT!r}")
 
 

@@ -37,7 +37,15 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
                           shadowGateBounces=3, samplesPerPixel=1,
                           spatialNeighborCount=5, spatialReuseRadius=30,
                           candidateSamples=1, useRTXDIDirect=True,
-                          useDirectLighting=True):
+                          useDirectLighting=True, pathSamplingMode="ReSTIR",
+                          disableDirectIllumination=True):
+    # pathSamplingMode (string): "ReSTIR" (default), "PathReuse" (Bekaert),
+    # or "PathTracing" — use "PathTracing" to bypass ReSTIR resampling and
+    # validate the basic PT setup independently.
+    #
+    # disableDirectIllumination: ReSTIRPTPass.h default is true — primary-hit
+    # direct light is SKIPPED, expecting RTXDI to provide it via the
+    # directLighting input texture. Set to false for standalone use.
     """Build a ReSTIR PT render graph.
 
     Args:
@@ -110,6 +118,8 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         "spatialReuseRadius":      spatialReuseRadius,
         "candidateSamples":        candidateSamples,
         "useDirectLighting":       useDirectLighting,
+        "pathSamplingMode":        pathSamplingMode,
+        "disableDirectIllumination": disableDirectIllumination,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
