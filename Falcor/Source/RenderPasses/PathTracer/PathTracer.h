@@ -243,7 +243,8 @@ private:
              uint32_t wsSpatialNeighbours=4;
              float    wsLightMuMin=0.01f;
              float    wsLightSoftness=1.f;
-             uint32_t wsNormalAddr=0; } mVCParams;
+             uint32_t wsNormalAddr=0;
+             uint32_t wsInitialCandidates=8; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffer (sourced from VisCache via dict["wsReservoirBuffer"]).
     ref<Buffer> mpVHFWSReservoirs;

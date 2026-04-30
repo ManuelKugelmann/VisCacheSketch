@@ -144,6 +144,9 @@ public:
                                        ///< Effective μ = max(lerp(1, μ, softness), wsLightMuMin).
         uint32_t wsNormalAddr;         ///< 1 = fold a 6-axis face-normal bin into the cell hash.
                                        ///< Prevents cross-normal pollution at corners / thin shells.
+        uint32_t wsInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
+                                       ///< Drives variance reduction on many-lights scenes — single
+                                       ///< candidate (K=1) gives no variance benefit beyond vanilla NEE.
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -234,6 +237,8 @@ public:
                                                         ///< 1 = full trust (current behavior). 0.5 = √μ-like soft.
         bool     wsNormalAddr                  = false; ///< Fold 6-axis face-normal bin into cell hash.
                                                         ///< Prevents cross-normal cell sharing at corners.
+        uint32_t wsInitialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
+                                                        ///< (matches RTXDI's localLightCandidateCount default).
     };
 
     const Params& getParams() const { return mParams; }

@@ -9,9 +9,12 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_exr import read_exr
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
-                    "runtime", "captures", "wsrestir_test")
-ROOT = os.path.normpath(ROOT)
+ROOT_DIRS = [
+    os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                                   "runtime", "captures", "wsrestir_test")),
+    os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                                   "runtime", "captures", "wsrestir_vs_rtxdi")),
+]
 
 def aces_tonemap(rgb):
     a = 2.51; b = 0.03; c = 2.43; d = 0.59; e = 0.14
@@ -24,7 +27,13 @@ def encode_srgb(rgb):
     return np.where(rgb <= 0.0031308, lo, hi)
 
 count = 0
-for path in glob.glob(os.path.join(ROOT, "*", "*", "*.AccumulatePass.output.*.exr")):
+patterns = []
+for ROOT in ROOT_DIRS:
+    if os.path.isdir(ROOT):
+        patterns += glob.glob(os.path.join(ROOT, "*", "*", "*.AccumulatePass.output.*.exr"))
+        patterns += glob.glob(os.path.join(ROOT, "*", "*", "*.RTXDIPass.color.*.exr"))
+        patterns += glob.glob(os.path.join(ROOT, "*", "*", "*.ToneMapper.dst.*.exr"))
+for path in patterns:
     channels = read_exr(path)
     # read_exr returns {group_name: (H,W,C) array}; pick first non-empty group.
     if not channels:
@@ -42,7 +51,7 @@ for path in glob.glob(os.path.join(ROOT, "*", "*", "*.AccumulatePass.output.*.ex
     img = (np.clip(tm, 0, 1) * 255).astype(np.uint8)
     out = path.replace(".exr", ".png")
     Image.fromarray(img).save(out)
-    print(f"  {os.path.relpath(out, ROOT)}")
+    print(f"  {out}")
     count += 1
 
 print(f"Wrote {count} PNGs.")

@@ -234,6 +234,7 @@ cbuffer VisCacheParams
     float  gWSLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
     float  gWSLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
     uint   gWSNormalAddr;         ///< 1 = fold 6-axis face-normal bin into the WS cell hash.
+    uint   gWSInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
 };
 
 // ---------------------------------------------------------------------------

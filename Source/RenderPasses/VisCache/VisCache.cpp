@@ -106,6 +106,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("wsLightMuMin"))                  mParams.wsLightMuMin                  = props["wsLightMuMin"];
     if (props.has("wsLightSoftness"))               mParams.wsLightSoftness               = props["wsLightSoftness"];
     if (props.has("wsNormalAddr"))                  mParams.wsNormalAddr                  = props["wsNormalAddr"];
+    if (props.has("wsInitialCandidates"))           mParams.wsInitialCandidates           = props["wsInitialCandidates"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -175,6 +176,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("wsLightMuMin"))                  mParams.wsLightMuMin                  = props["wsLightMuMin"];
     if (props.has("wsLightSoftness"))               mParams.wsLightSoftness               = props["wsLightSoftness"];
     if (props.has("wsNormalAddr"))                  mParams.wsNormalAddr                  = props["wsNormalAddr"];
+    if (props.has("wsInitialCandidates"))           mParams.wsInitialCandidates           = props["wsInitialCandidates"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -235,6 +237,7 @@ Properties VisCache::getProperties() const
     p["wsLightMuMin"]                  = mParams.wsLightMuMin;
     p["wsLightSoftness"]               = mParams.wsLightSoftness;
     p["wsNormalAddr"]                  = mParams.wsNormalAddr;
+    p["wsInitialCandidates"]           = mParams.wsInitialCandidates;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -591,6 +594,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.wsLightMuMin         = mParams.wsLightMuMin;
     gpu.wsLightSoftness      = std::clamp(mParams.wsLightSoftness, 0.f, 1.f);
     gpu.wsNormalAddr         = mParams.wsNormalAddr ? 1u : 0u;
+    gpu.wsInitialCandidates  = std::max(1u, mParams.wsInitialCandidates);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -616,10 +620,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
                 gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
-        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} levelOffset={} mCap={:.1f} neighbours={} muMin={:.3f} soft={:.2f} normAddr={}",
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} levelOffset={} mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f} normAddr={}",
                 mParams.enableWSReservoirs, mParams.wsReservoirCapacity, mParams.wsLevelOffset,
-                mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours), mParams.wsLightMuMin,
-                mParams.wsLightSoftness, mParams.wsNormalAddr);
+                mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours),
+                std::max(1u, mParams.wsInitialCandidates),
+                mParams.wsLightMuMin, mParams.wsLightSoftness, mParams.wsNormalAddr);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -706,6 +711,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsLightMuMin"]    = mParams.wsLightMuMin;
     dict["vhfParam_wsLightSoftness"] = std::clamp(mParams.wsLightSoftness, 0.f, 1.f);
     dict["vhfParam_wsNormalAddr"]    = mParams.wsNormalAddr ? 1u : 0u;
+    dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.wsInitialCandidates);
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -1016,6 +1022,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("wsLightMuMin (ε floor)", mParams.wsLightMuMin, 0.f, 1.f, 0.01f);
         g.var("wsLightSoftness (0=uniform, 1=full)", mParams.wsLightSoftness, 0.f, 1.f, 0.05f);
         g.checkbox("wsNormalAddr (fold normal into cell hash)", mParams.wsNormalAddr);
+        g.var("wsInitialCandidates (K fresh / pixel)", mParams.wsInitialCandidates, 1u, 64u);
     }
     widget.separator();
 

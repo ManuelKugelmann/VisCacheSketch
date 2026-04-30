@@ -22,6 +22,7 @@ except ImportError:
 def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True,
                             wsReservoirs=False, wsLevelOffset=1, wsReservoirCapacity=1 << 18,
                             wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
+                            wsInitialCandidates=8,
                             visibilityCheck=None, lightSelection=None,
                             extraVCProps=None):
     """Build a PathTracer render graph.
@@ -66,6 +67,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         if wsReservoirs:
             vc_props.update({
                 "enableWSReservoirs":   True,
+                "wsInitialCandidates":  wsInitialCandidates,
                 "wsLevelOffset":        wsLevelOffset,
                 "wsReservoirCapacity":  wsReservoirCapacity,
                 "wsMCap":               wsMCap,

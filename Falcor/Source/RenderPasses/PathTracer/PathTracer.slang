@@ -1216,6 +1216,47 @@ struct PathTracer
                             pHatFresh, invPdfFresh, path.sg);
                     }
 
+                    // (1b) Generate K-1 ADDITIONAL fresh candidates per pixel
+                    //      (RTXDI parity: localLightCandidateCount default 8).
+                    //      This is the dominant variance reducer on many-lights
+                    //      scenes — single-candidate fall-through gives no gain
+                    //      over vanilla NEE.
+                    {
+                        PathVertex vtxK = PathVertex(path.getVertexIndex(), sd.posW, sd.faceN, sd.frontFacing);
+                        const bool canNeeSampleSphereK = isCurveHit || isCurvePolyTubeHit;
+                        bool sampleUpperK = canNeeSampleSphereK || ((lobeTypes & (uint)LobeType::NonDeltaReflection) != 0);
+                        bool sampleLowerK = canNeeSampleSphereK || ((lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0);
+                        if (!kUseLightsInDielectricVolumes && path.isInsideDielectricVolume()) sampleUpperK = false;
+
+                        uint extraK = (gWSInitialCandidates > 1u) ? (gWSInitialCandidates - 1u) : 0u;
+                        for (uint k = 0u; k < extraK; ++k)
+                        {
+                            LightSample lsK = {};
+                            if (!generateLightSample(vtxK, sampleUpperK, sampleLowerK, path.sg, lsK)) continue;
+                            float3 weightK = mi.eval(sd, lsK.dir, path.sg);
+                            float3 LrK = weightK * lsK.Li;
+                            if (!any(LrK > 0.f)) continue;
+                            float pHatK = luminance(LrK);
+#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
+                            if (lsK.lightType != (uint)LightType::EnvMap)
+                            {
+                                float3 lightPK = lsK.origin + lsK.dir * lsK.distance;
+                                VHFResult rK = vhfLookup(sd.posW, lightPK);
+                                if (rK.valid)
+                                {
+                                    float muEffK = max(lerp(1.f, rK.mu, gWSLightSoftness), gWSLightMuMin);
+                                    pHatK *= muEffK;
+                                }
+                            }
+#endif
+                            float invPdfK = (lsK.pdf > 0.f) ? (1.f / lsK.pdf) : 0.f;
+                            local.streamingAdd(
+                                wsPackLightTypeIndex(lsK.lightType, lsK.lightIndex),
+                                wsPackLightSamplePayload(lsK),
+                                pHatK, invPdfK, path.sg);
+                        }
+                    }
+
                     // (2) Gather home cell + jittered neighbours. Home is the
                     // unjittered query; neighbours are tangent-plane-jittered
                     // queries through the same wsResolveCell function. We

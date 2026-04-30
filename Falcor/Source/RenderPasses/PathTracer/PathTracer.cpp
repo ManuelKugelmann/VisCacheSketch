@@ -1287,6 +1287,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.wsLightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
             mVCParams.wsLightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
             mVCParams.wsNormalAddr        = getU("vhfParam_wsNormalAddr", 0u);
+            mVCParams.wsInitialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
         }
         bool wasWSReservoirs = mVisCacheWSReservoirs;
         mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
@@ -1548,6 +1549,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gWSLightMuMin"]                  = mVCParams.wsLightMuMin;
         vc["gWSLightSoftness"]               = mVCParams.wsLightSoftness;
         vc["gWSNormalAddr"]                  = mVCParams.wsNormalAddr;
+        vc["gWSInitialCandidates"]           = mVCParams.wsInitialCandidates;
     }
     // §9.4 WS-ReSTIR DI buffer at root var (parallel to gVHFTable).
     if (mVisCacheWSReservoirs)
