@@ -46,6 +46,13 @@ VARIANTS = [
         wsInitialCandidates=8, wsMCap=5.0,
         wsJitterCell=0.3,
         visibilityCheck=True, lightSelection=True)),
+    # Pure per-pixel ReSTIR (no WS-cell candidate in RIS) — isolates the
+    # per-pixel temporal + spatial-neighbour layer for direct A/B.
+    ("ws_noCell",      lambda: render_graph_PathTracer(
+        viscache=True, wsReservoirs=True, maxBounces=0,
+        wsInitialCandidates=8, wsMCap=5.0,
+        visibilityCheck=True, lightSelection=True,
+        extraVCProps={"wsUseCellInRIS": False})),
     ("rtxdi",          lambda: render_graph_RTXDI(viscache=False)),
 ]
 WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate
