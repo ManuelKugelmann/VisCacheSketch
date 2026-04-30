@@ -16,6 +16,10 @@ import os, sys, glob, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viscache_defaults import VISCACHE_DEFAULTS
 from PathTracer_Graph import render_graph_PathTracer
+try:
+    from RTXDI_Graph import render_graph_RTXDI
+except ImportError:
+    render_graph_RTXDI = None
 from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_noise_signed, compute_render_error, compute_render_error_signed_hdr, oklab_distance_hdr_cached
 
 # Track last-loaded scene to skip redundant m.loadScene() calls
@@ -189,6 +193,13 @@ SCENE_SCALED_QUANT = {"quantSceneScale": True}
 PRESET_MINIMAL = {**LEVELS_SINGLE, **THRESH_MID, **RR_OFF, **FEATURES_OFF,
                   "bootThresholdFactorFootprintPx": 0.0, **SCENE_SCALED_QUANT}
 
+# Same minimal preset but with multi-level cascade enabled. Use this as the
+# base for steps that exercise cascade descent / forceDescendFootprintPx /
+# entry-level math — LEVELS_SINGLE in PRESET_MINIMAL would override
+# step_overrides' LEVELS_MULTI under the per-variant-wins merge order.
+PRESET_MINIMAL_MULTI = {**LEVELS_MULTI, **THRESH_MID, **RR_OFF, **FEATURES_OFF,
+                        "bootThresholdFactorFootprintPx": 0.0, **SCENE_SCALED_QUANT}
+
 # ===========================================================================
 # Picker + plotter tuning constants
 # ===========================================================================
@@ -250,11 +261,12 @@ _DEFAULT_PICKER_RULE = (
 
 # Y-axis limits for the step overview plots (shared across all steps so
 # cross-step visual comparison stays consistent).
-RAYS_YLIM        = (0, 105)
-ERROR_DELTA_YLIM = (-100, 200)
-NOISE_DELTA_YLIM = (-30, 10)
-ERROR_ABS_YLIM   = (0, 200)
-NOISE_ABS_YLIM   = (0, 100)
+RAYS_YLIM           = (0, 105)
+ERROR_DELTA_YLIM    = (-100, 200)
+ARTIFACT_DELTA_YLIM = (-50, 50)
+NOISE_DELTA_YLIM    = (-30, 10)
+ERROR_ABS_YLIM      = (0, 200)
+NOISE_ABS_YLIM      = (0, 100)
 
 # ---------------------------------------------------------------------------
 # Addressing variant groups
@@ -364,6 +376,9 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                # exceeds a small positive margin.
                "err_minus_vanilla_pct",
                "artifact_3_minus_vanilla_pct", "artifact_5_minus_vanilla_pct", "artifact_11_minus_vanilla_pct",
+               # Per-pixel cache-worse-than-vanilla metrics (R-channel area
+               # in RGB delta plate). Best variants have all three near 0.
+               "worse_area_pct", "worse_mean_pct", "worse_artifact_5_pct",
                "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
                "noise_delta_blob_pct",
                # Vanilla baseline noise + signed delta (cache − vanilla).
@@ -371,6 +386,20 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                # (denoising), > 0 means cache adds noise.
                "vanilla_noise_pct", "vanilla_noise_blob_pct",
                "noise_minus_vanilla_pct", "noise_minus_vanilla_blob_pct",
+               # Research-standard pixel-domain HDR metrics suite vs GT (linear
+               # data, no tonemap). Bitterli/ReSTIR convention. For each metric
+               # we report cache_X, vanilla_X (same SPP), and X_minus_vanilla
+               # (signed delta; for psnr_db / ms_ssim the sign convention is
+               # "higher is better" so positive delta = cache wins, opposite
+               # to mse/rmse/relmse/smape/mape/flip where lower is better).
+               "cache_mse", "vanilla_mse", "mse_minus_vanilla",
+               "cache_rmse", "vanilla_rmse", "rmse_minus_vanilla",
+               "cache_psnr_db", "vanilla_psnr_db", "psnr_db_minus_vanilla",
+               "cache_relmse", "vanilla_relmse", "relmse_minus_vanilla",
+               "cache_smape", "vanilla_smape", "smape_minus_vanilla",
+               "cache_mape", "vanilla_mape", "mape_minus_vanilla",
+               "cache_ms_ssim", "vanilla_ms_ssim", "ms_ssim_minus_vanilla",
+               "cache_flip", "vanilla_flip", "flip_minus_vanilla",
                "timestamp"]
 
 def _step_csv(step_name):
@@ -395,10 +424,14 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
                      artifact_3_minus_vanilla_pct=None,
                      artifact_5_minus_vanilla_pct=None,
                      artifact_11_minus_vanilla_pct=None,
+                     worse_area_pct=None,
+                     worse_mean_pct=None,
+                     worse_artifact_5_pct=None,
                      vanilla_noise_pct=None,
                      vanilla_noise_blob_pct=None,
                      noise_minus_vanilla_pct=None,
-                     noise_minus_vanilla_blob_pct=None):
+                     noise_minus_vanilla_blob_pct=None,
+                     **extra_metrics):
     """Upsert one row keyed by experiment identity (scene + config).
     key = f"{scene}_{prefix.rstrip('_')}" — encodes all run parameters.
     Re-run of the same experiment overwrites its row; different configs coexist.
@@ -446,6 +479,9 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "artifact_3_minus_vanilla_pct":   f"{artifact_3_minus_vanilla_pct:.4f}"   if artifact_3_minus_vanilla_pct   is not None else "",
         "artifact_5_minus_vanilla_pct":   f"{artifact_5_minus_vanilla_pct:.4f}"   if artifact_5_minus_vanilla_pct   is not None else "",
         "artifact_11_minus_vanilla_pct":  f"{artifact_11_minus_vanilla_pct:.4f}"  if artifact_11_minus_vanilla_pct  is not None else "",
+        "worse_area_pct":         f"{worse_area_pct:.4f}"         if worse_area_pct         is not None else "",
+        "worse_mean_pct":         f"{worse_mean_pct:.4f}"         if worse_mean_pct         is not None else "",
+        "worse_artifact_5_pct":   f"{worse_artifact_5_pct:.4f}"   if worse_artifact_5_pct   is not None else "",
         "noise_delta_pct":      f"{noise_delta_pct:.4f}"      if noise_delta_pct      is not None else "",
         "vanilla_noise_pct":      f"{vanilla_noise_pct:.4f}"      if vanilla_noise_pct      is not None else "",
         "vanilla_noise_blob_pct": f"{vanilla_noise_blob_pct:.4f}" if vanilla_noise_blob_pct is not None else "",
@@ -455,6 +491,15 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "noise_delta_max_pct":  f"{noise_delta_max_pct:.4f}"  if noise_delta_max_pct  is not None else "",
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
+    # Generic pass-through for the research metrics suite (cache_*, vanilla_*,
+    # *_minus_vanilla). Any extra_metrics key matching a CSV field gets formatted
+    # and added; unknown keys are silently ignored (forward-compatible).
+    for k, v in extra_metrics.items():
+        if k in _CSV_FIELDS and v is not None:
+            try:
+                new_row[k] = f"{float(v):.6f}"
+            except (TypeError, ValueError):
+                pass
 
     rows = []
     replaced = False
@@ -539,9 +584,9 @@ def _wc(exr, ch, outpath, nodata=None, normalize_max=False):
 # {stat_key:.1f} placeholders are resolved from stats dict at stitch time.
 PLATE_LAYOUT = [
     [("r1c1_accum_render",     "render"),
-     ("r1c2_accum_raystraced", "rays traced {rays_traced_pct:.1f}%"),
-     ("r1c3_accum_error",      "error μ{error_delta_pct:.1f}% (Δ{err_minus_vanilla_pct:+.1f}%) artifact {error_artifact_5_pct:.1f}% (Δ{artifact_5_minus_vanilla_pct:+.1f}%)"),
-     ("r1c9_accum_noise",      "noise μ{noise_delta_pct:.1f}% (Δ{noise_minus_vanilla_pct:+.1f}%)")],
+     ("r1c2_accum_raystraced", "rays {rays_traced_pct_d}%"),
+     ("r1c3_accum_error",      "err {error_delta_pct_d}% (Δ{err_minus_vanilla_pct_sd}%) art {error_artifact_5_pct_d}% (Δ{artifact_5_minus_vanilla_pct_sd}%)"),
+     ("r1c9_accum_noise",      "noise {noise_delta_pct_d}% (Δ{noise_minus_vanilla_pct_sd}%)")],
     [("r2c1_frame_level",      "level [{min_level:.0f}..{max_level:.0f}] μ{mean_level:.0f}"),
      ("r1c4_accum_maturity",   "maturity"),
      ("r1c5_accum_mean",       "mean"),
@@ -562,6 +607,22 @@ def stitch_plate(captureDir, prefix, variant_name, stats=None):
 
     # None-safe: replace None with NaN so numeric format specifiers don't crash.
     s_fmt = {k: (float("nan") if v is None else v) for k, v in s.items()}
+    # Decimal-aware percent formatters: drop decimal when |value| >= 10 (saves
+    # plate label width). _d = unsigned, _sd = signed.
+    def _fmt_d(v):
+        try: f = float(v)
+        except (TypeError, ValueError): return ""
+        if f != f: return "?"   # NaN
+        return f"{f:.0f}" if abs(f) >= 10 else f"{f:.1f}"
+    def _fmt_sd(v):
+        try: f = float(v)
+        except (TypeError, ValueError): return ""
+        if f != f: return "?"
+        return f"{f:+.0f}" if abs(f) >= 10 else f"{f:+.1f}"
+    for k in list(s_fmt.keys()):
+        if k.endswith("_pct"):
+            s_fmt[k + "_d"]  = _fmt_d(s_fmt[k])
+            s_fmt[k + "_sd"] = _fmt_sd(s_fmt[k])
 
     cells = []
     labels = []
@@ -684,12 +745,13 @@ def stitch_baseline_plate(captureDir, xN_tag, out_path, err_stats=None, noise_st
 # Shared y-axis limits — consistent across all ladder steps so plots can be
 # compared directly (and differences are not masked by per-step autoscaling).
 # Spans cover the observed-ranges headroom (~-1.5 → 150% error, ~75% noise).
-RAYS_YLIM         = (0, 105)
-ERROR_DELTA_YLIM  = (-100, 200)
-NOISE_DELTA_YLIM  = (-30, 10)
+RAYS_YLIM           = (0, 105)
+ERROR_DELTA_YLIM    = (-100, 200)
+ARTIFACT_DELTA_YLIM = (-50, 50)
+NOISE_DELTA_YLIM    = (-30, 10)
 # Baseline (step 00): absolute error/noise (unsigned).
-ERROR_ABS_YLIM    = (0, 200)
-NOISE_ABS_YLIM    = (0, 100)
+ERROR_ABS_YLIM      = (0, 200)
+NOISE_ABS_YLIM      = (0, 100)
 
 
 # One-line theme per ladder step — what that step's run is evaluating.
@@ -1474,17 +1536,24 @@ def plot_overviews(step_name, prev_winner=None, carried_winners=None,
                              winners=winners, inherited=inherited,
                              ref_rows=ref_rows, ref_label=ref_label,
                              rank_reference_variants=rank_reference_variants)
-    out_err   = _plot_metric(rows, step_name, "error_delta_pct",
-                             ylabel="error Δ % (symlog)", title_suffix="error Δ (whisker: max blob)",
+    out_err   = _plot_metric(rows, step_name, "err_minus_vanilla_pct",
+                             ylabel="error Δ vs vanilla % (symlog)", title_suffix="error Δ vs vanilla",
                              out_suffix="error", zero_line=True, include_neg=True,
-                             whisker_blob_key="error_delta_blob_pct",
                              ylim=ERROR_DELTA_YLIM,
                              symlog_linthresh=3.0, prev_winner=prev_winner,
                              winners=winners, inherited=inherited,
                              ref_rows=ref_rows, ref_label=ref_label,
                              rank_reference_variants=rank_reference_variants)
-    out_noise = _plot_metric(rows, step_name, "noise_delta_pct",
-                             ylabel="noise Δ % (symlog)", title_suffix="noise Δ",
+    out_artifact = _plot_metric(rows, step_name, "artifact_5_minus_vanilla_pct",
+                             ylabel="artifact Δ vs vanilla % (symlog)", title_suffix="artifact_5 Δ vs vanilla",
+                             out_suffix="artifact", zero_line=True, include_neg=True,
+                             ylim=ARTIFACT_DELTA_YLIM,
+                             symlog_linthresh=1.0, prev_winner=prev_winner,
+                             winners=winners, inherited=inherited,
+                             ref_rows=ref_rows, ref_label=ref_label,
+                             rank_reference_variants=rank_reference_variants)
+    out_noise = _plot_metric(rows, step_name, "noise_minus_vanilla_pct",
+                             ylabel="noise Δ vs vanilla % (symlog)", title_suffix="noise Δ vs vanilla",
                              out_suffix="noise", zero_line=True, include_neg=True,
                              ylim=NOISE_DELTA_YLIM,
                              symlog_linthresh=1.0, prev_winner=prev_winner,
@@ -1495,7 +1564,7 @@ def plot_overviews(step_name, prev_winner=None, carried_winners=None,
                                    rank_reference_variants=rank_reference_variants,
                                    winners=winners, inherited=inherited,
                                    ref_rows=ref_rows, ref_label=ref_label)
-    return [out_rays, out_err, out_noise, out_combined]
+    return [out_rays, out_err, out_artifact, out_noise, out_combined]
 
 
 def _plot_combined(rows, step_name, prev_winner=None, out_suffix="", title_suffix="",
@@ -1516,8 +1585,8 @@ def _plot_combined(rows, step_name, prev_winner=None, out_suffix="", title_suffi
 
     scenes = sorted(set(r["scene"] for r in rows))
     n_sc = len(scenes)
-    fig, axes = plt.subplots(3, 1,
-                             figsize=(max(9, (n_sc + 2) * 4.0), 10),
+    fig, axes = plt.subplots(4, 1,
+                             figsize=(max(9, (n_sc + 2) * 4.0), 13),
                              sharex=True,
                              constrained_layout=True)
 
@@ -1527,21 +1596,28 @@ def _plot_combined(rows, step_name, prev_winner=None, out_suffix="", title_suffi
                  ax=axes[0], save=False, winners=winners, inherited=inherited,
                  ref_rows=ref_rows, ref_label=ref_label,
                  rank_reference_variants=rank_reference_variants)
-    _plot_metric(rows, step_name, "error_delta_pct",
-                 ylabel="error Δ % (symlog)", title_suffix="error Δ (whisker: max blob)",
+    _plot_metric(rows, step_name, "err_minus_vanilla_pct",
+                 ylabel="error Δ vs vanilla % (symlog)", title_suffix="error Δ vs vanilla",
                  out_suffix="error", zero_line=True, include_neg=True,
-                 whisker_blob_key="error_delta_blob_pct",
                  ylim=ERROR_DELTA_YLIM,
                  symlog_linthresh=3.0,
                  ax=axes[1], save=False, winners=winners, inherited=inherited,
                  ref_rows=ref_rows, ref_label=ref_label,
                  rank_reference_variants=rank_reference_variants)
-    legend_handles = _plot_metric(rows, step_name, "noise_delta_pct",
-                                  ylabel="noise Δ % (symlog)", title_suffix="noise Δ",
+    _plot_metric(rows, step_name, "artifact_5_minus_vanilla_pct",
+                 ylabel="artifact Δ vs vanilla % (symlog)", title_suffix="artifact_5 Δ vs vanilla",
+                 out_suffix="artifact", zero_line=True, include_neg=True,
+                 ylim=ARTIFACT_DELTA_YLIM,
+                 symlog_linthresh=1.0,
+                 ax=axes[2], save=False, winners=winners, inherited=inherited,
+                 ref_rows=ref_rows, ref_label=ref_label,
+                 rank_reference_variants=rank_reference_variants)
+    legend_handles = _plot_metric(rows, step_name, "noise_minus_vanilla_pct",
+                                  ylabel="noise Δ vs vanilla % (symlog)", title_suffix="noise Δ vs vanilla",
                                   out_suffix="noise", zero_line=True, include_neg=True,
                                   ylim=NOISE_DELTA_YLIM,
                                   symlog_linthresh=1.0,
-                                  ax=axes[2], save=False, winners=winners, inherited=inherited,
+                                  ax=axes[3], save=False, winners=winners, inherited=inherited,
                                   ref_rows=ref_rows, ref_label=ref_label,
                                   rank_reference_variants=rank_reference_variants)
 
@@ -1907,17 +1983,17 @@ def plot_ladder_progress(steps=None, spp=1):
                 scene = r["scene"]
                 if r["variant"] == winner:
                     per_scene[scene] = {
-                        "rays":  _f("rays_traced_pct", 0.0),
-                        "err":   _f("error_delta_pct", 0.0),
-                        "blob":  _f("error_delta_blob_pct", 0.0),
-                        "noise": _f("noise_delta_pct", 0.0),
+                        "rays":     _f("rays_traced_pct", 0.0),
+                        "err":      _f("err_minus_vanilla_pct", 0.0),
+                        "artifact": _f("artifact_5_minus_vanilla_pct", 0.0),
+                        "noise":    _f("noise_minus_vanilla_pct", 0.0),
                     }
                 b = scene_range_buckets.setdefault(scene,
-                    {"rays": [], "err": [], "blob": [], "noise": []})
-                for mk, ck in (("rays", "rays_traced_pct"),
-                                ("err", "error_delta_pct"),
-                                ("blob", "error_delta_blob_pct"),
-                                ("noise", "noise_delta_pct")):
+                    {"rays": [], "err": [], "artifact": [], "noise": []})
+                for mk, ck in (("rays",     "rays_traced_pct"),
+                                ("err",      "err_minus_vanilla_pct"),
+                                ("artifact", "artifact_5_minus_vanilla_pct"),
+                                ("noise",    "noise_minus_vanilla_pct")):
                     v = _f(ck)
                     if v is not None:
                         b[mk].append(v)
@@ -1938,9 +2014,9 @@ def plot_ladder_progress(steps=None, spp=1):
     if not all_scenes:
         all_scenes = [os.path.splitext(s)[0] for s in ALL_SCENES]
 
-    # Synthetic step-00 anchor (rays=100, err/noise/blob=0 by definition).
+    # Synthetic step-00 anchor (rays=100, deltas vs vanilla = 0 by definition).
     if "00" in steps and "00" not in series:
-        series["00"] = {s: {"rays": 100.0, "err": 0.0, "blob": 0.0,
+        series["00"] = {s: {"rays": 100.0, "err": 0.0, "artifact": 0.0,
                              "noise": 0.0} for s in all_scenes}
         winners_label["00"] = "vanilla (baseline)"
 
@@ -1952,15 +2028,16 @@ def plot_ladder_progress(steps=None, spp=1):
     n_steps = len(step_keys)
     x = list(range(n_steps))
 
-    # 3-panel layout: error gets 1.3× row height (has companion blob series);
-    # noise gets 0.6× (narrow range, doesn't need the full height).
-    fig, axes = plt.subplots(3, 1, figsize=(max(8, n_steps * 2.0), 9),
+    # 4-panel layout: rays / Δerr / Δartifact / Δnoise. All deltas signed
+    # vs vanilla; zero line = parity with vanilla.
+    fig, axes = plt.subplots(4, 1, figsize=(max(8, n_steps * 2.0), 11),
                               sharex=True, constrained_layout=True,
-                              gridspec_kw={"height_ratios": [1.0, 1.3, 0.6]})
+                              gridspec_kw={"height_ratios": [1.0, 1.2, 1.0, 0.7]})
     metric_defs = [
-        ("rays",  "rays traced %",   False, None,    None,  RAYS_YLIM,           1.0),
-        ("err",   "error Δ %",       True,  "symlog", "blob", ERROR_DELTA_YLIM,   3.0),
-        ("noise", "noise Δ %",       True,  "symlog", None,  NOISE_DELTA_YLIM,    1.0),
+        ("rays",     "rays traced %",                False, None,    None, RAYS_YLIM,           1.0),
+        ("err",      "error Δ vs vanilla %",         True,  "symlog", None, ERROR_DELTA_YLIM,    3.0),
+        ("artifact", "artifact_5 Δ vs vanilla %",    True,  "symlog", None, ARTIFACT_DELTA_YLIM, 1.0),
+        ("noise",    "noise Δ vs vanilla %",         True,  "symlog", None, NOISE_DELTA_YLIM,    1.0),
     ]
     # Dynamic turbo spread: N scenes → N distinct hues across [0.05, 0.95],
     # avoiding the color cycling that happened with the old fixed 4-slot
@@ -2125,7 +2202,7 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
         rows_path = _step_csv(step)
         if not os.path.exists(rows_path):
             continue
-        buckets = {s: {"rays": [], "err": [], "blob": [], "noise": [],
+        buckets = {s: {"rays": [], "err": [], "artifact": [], "noise": [],
                         "weights": []} for s in spps}
         with open(rows_path, newline="") as f:
             for r in csv.DictReader(f):
@@ -2144,10 +2221,10 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
                     except ValueError:
                         return None
                 b = buckets[row_spp]
-                for mk, ck in (("rays", "rays_traced_pct"),
-                                ("err", "error_delta_pct"),
-                                ("blob", "error_delta_blob_pct"),
-                                ("noise", "noise_delta_pct")):
+                for mk, ck in (("rays",     "rays_traced_pct"),
+                                ("err",      "err_minus_vanilla_pct"),
+                                ("artifact", "artifact_5_minus_vanilla_pct"),
+                                ("noise",    "noise_minus_vanilla_pct")):
                     v = _f(ck)
                     if v is not None:
                         b[mk].append(v * _scene_weight(r["scene"]))
@@ -2161,18 +2238,18 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
                 continue
             wsum = sum(b["weights"])
             entry = {}
-            for mk in ("rays", "err", "blob", "noise"):
+            for mk in ("rays", "err", "artifact", "noise"):
                 vals = [v for v in b[mk] if v is not None]
                 if vals and wsum > 0:
                     entry[mk] = sum(vals) / wsum
             if entry:
                 per_spp_series[s][step] = entry
 
-    # Synthetic step-00 anchor (rays=100, err/noise/blob=0 by definition).
+    # Synthetic step-00 anchor (rays=100, deltas vs vanilla = 0 by definition).
     for s in spps:
         if "00" in steps and "00" not in per_spp_series[s]:
             per_spp_series[s]["00"] = {"rays": 100.0, "err": 0.0,
-                                         "blob": 0.0, "noise": 0.0}
+                                         "artifact": 0.0, "noise": 0.0}
     if "00" in steps and "00" not in winners_label:
         winners_label["00"] = "vanilla (baseline)"
 
@@ -2182,13 +2259,14 @@ def plot_ladder_progress_combined(steps=None, spps=(1, 4)):
         return None
     x = list(range(len(all_step_keys)))
 
-    fig, axes = plt.subplots(3, 1, figsize=(max(8, len(all_step_keys) * 2.0), 8),
+    fig, axes = plt.subplots(4, 1, figsize=(max(8, len(all_step_keys) * 2.0), 11),
                               sharex=True, constrained_layout=True,
-                              gridspec_kw={"height_ratios": [1.0, 1.3, 0.6]})
+                              gridspec_kw={"height_ratios": [1.0, 1.2, 1.0, 0.7]})
     metric_defs = [
-        ("rays",  "rays traced %",   False, None,    None,   RAYS_YLIM,          1.0),
-        ("err",   "error Δ %",       True,  "symlog", "blob", ERROR_DELTA_YLIM,   3.0),
-        ("noise", "noise Δ %",       True,  "symlog", None,   NOISE_DELTA_YLIM,   1.0),
+        ("rays",     "rays traced %",                False, None,    None, RAYS_YLIM,           1.0),
+        ("err",      "error Δ vs vanilla %",         True,  "symlog", None, ERROR_DELTA_YLIM,    3.0),
+        ("artifact", "artifact_5 Δ vs vanilla %",    True,  "symlog", None, ARTIFACT_DELTA_YLIM, 1.0),
+        ("noise",    "noise Δ vs vanilla %",         True,  "symlog", None, NOISE_DELTA_YLIM,    1.0),
     ]
     # Distinct hues per SPP — avoid recycling turbo since users expect SPP
     # to read "low → high sample count" monotonically.
@@ -2511,6 +2589,19 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
             stats["artifact_3_minus_vanilla_pct"]    = r.get("artifact_3_minus_vanilla_pct")
             stats["artifact_5_minus_vanilla_pct"]    = r.get("artifact_5_minus_vanilla_pct")
             stats["artifact_11_minus_vanilla_pct"]   = r.get("artifact_11_minus_vanilla_pct")
+            stats["worse_area_pct"]                  = r.get("worse_area_pct")
+            stats["worse_mean_pct"]                  = r.get("worse_mean_pct")
+            stats["worse_artifact_5_pct"]            = r.get("worse_artifact_5_pct")
+            # Research-standard pixel-domain HDR metric suite (cache_*,
+            # vanilla_*, *_minus_vanilla). Forwarded as-is; CSV writer
+            # picks up any key that matches a known field.
+            for _k in ("mse", "rmse", "psnr_db", "relmse", "smape", "mape",
+                       "ms_ssim", "flip"):
+                for _prefix in ("cache_", "vanilla_"):
+                    _full = _prefix + _k
+                    if _full in r: stats[_full] = r.get(_full)
+                _delta = _k + "_minus_vanilla"
+                if _delta in r: stats[_delta] = r.get(_delta)
         print(f"  [error] {os.path.basename(o('r1c3_accum_error'))}")
     elif variant_hdr and vanilla_xN_baselines:
         # No GT: fall back to absolute |viscache - vanilla_xN|
@@ -2623,10 +2714,24 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
         artifact_3_minus_vanilla_pct=stats.get("artifact_3_minus_vanilla_pct"),
         artifact_5_minus_vanilla_pct=stats.get("artifact_5_minus_vanilla_pct"),
         artifact_11_minus_vanilla_pct=stats.get("artifact_11_minus_vanilla_pct"),
+        worse_area_pct=stats.get("worse_area_pct"),
+        worse_mean_pct=stats.get("worse_mean_pct"),
+        worse_artifact_5_pct=stats.get("worse_artifact_5_pct"),
         vanilla_noise_pct=stats.get("vanilla_noise_pct"),
         vanilla_noise_blob_pct=stats.get("vanilla_noise_blob_pct"),
         noise_minus_vanilla_pct=stats.get("noise_minus_vanilla_pct"),
         noise_minus_vanilla_blob_pct=stats.get("noise_minus_vanilla_blob_pct"),
+        # Research-standard pixel-domain HDR metrics suite. Forwarded as
+        # **extra_metrics — append_stats_csv writes any matching CSV field.
+        **{f"{prefix}{m}": stats.get(f"{prefix}{m}")
+           for m in ("mse", "rmse", "psnr_db", "relmse", "smape", "mape",
+                     "ms_ssim", "flip")
+           for prefix in ("cache_", "vanilla_")
+           if stats.get(f"{prefix}{m}") is not None},
+        **{f"{m}_minus_vanilla": stats.get(f"{m}_minus_vanilla")
+           for m in ("mse", "rmse", "psnr_db", "relmse", "smape", "mape",
+                     "ms_ssim", "flip")
+           if stats.get(f"{m}_minus_vanilla") is not None},
     )
 
     stats["variant"] = variant_name
@@ -3025,7 +3130,21 @@ def _load_step_rows(step_name):
             for k in ("coldmiss_pct",
                       "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
                       "error_delta_blob_pct",
-                      "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct"):
+                      "noise_delta_pct", "noise_delta_min_pct", "noise_delta_max_pct",
+                      "err_minus_vanilla_pct", "noise_minus_vanilla_pct",
+                      "artifact_5_minus_vanilla_pct", "artifact_3_minus_vanilla_pct",
+                      "artifact_11_minus_vanilla_pct",
+                      "vanilla_err_pct", "vanilla_noise_pct",
+                      "vanilla_err_artifact_5_pct",
+                      # Research-standard pixel-domain HDR metrics suite.
+                      "cache_mse", "vanilla_mse", "mse_minus_vanilla",
+                      "cache_rmse", "vanilla_rmse", "rmse_minus_vanilla",
+                      "cache_psnr_db", "vanilla_psnr_db", "psnr_db_minus_vanilla",
+                      "cache_relmse", "vanilla_relmse", "relmse_minus_vanilla",
+                      "cache_smape", "vanilla_smape", "smape_minus_vanilla",
+                      "cache_mape", "vanilla_mape", "mape_minus_vanilla",
+                      "cache_ms_ssim", "vanilla_ms_ssim", "ms_ssim_minus_vanilla",
+                      "cache_flip", "vanilla_flip", "flip_minus_vanilla"):
                 v = row.get(k, "")
                 try:
                     row[k] = float(v) if v not in ("", None) else None
@@ -3412,3 +3531,139 @@ def read_carried_winner(step_name, b_variant="pos"):
 # (scripts/_recovery_diff.py fingerprints compiled bytecode against it) but
 # no longer loaded at runtime. Git-HEAD pre-session source preserved at
 # VisCache_LadderCommon_githead.py.bak for historical reference.
+
+
+# ===========================================================================
+# §9.4 baseline references (WS-ReSTIR DI + RTXDI) for ladder step 0.
+# Mirrors run_baseline's capture/copy pattern but uses different render
+# graphs. Outputs go alongside the vanilla baselines with `_wsrestir` /
+# `_rtxdi` tags so downstream metrics can compare each variant against the
+# same ground truth and noise floor.
+# ===========================================================================
+
+def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
+                          build_graph, output_pass, *, capture_spps=(1, 4),
+                          maxBounces=0, resX=kResX, resY=kResY,
+                          mogwai_globals=None, frames_mul=1):
+    """Generic baseline runner for non-vanilla variants (WS-ReSTIR, RTXDI).
+    `build_graph(spp)` constructs the RenderGraph for a given samples-per-pixel.
+    `output_pass` names the pass output to copy as the HDR EXR
+       (e.g. "AccumulatePass.output" for path-traced, "RTXDIPass.color" for RTXDI).
+    `capture_spps` lists which virtual SPPs to run (default 1 & 4 — variants
+       are typically only meaningful at low SPP).
+    """
+    g_dict = mogwai_globals or {}
+    m = g_dict.get('m')
+    fc = g_dict.get('fc')
+    if m is None or fc is None:
+        raise RuntimeError(f"_run_baseline_variant ({tag_suffix}) needs mogwai_globals=globals()")
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    res_tag = f"{resX}x{resY}"
+
+    for fc_entry in frame_configs:
+        frames = fc_entry[2] if len(fc_entry) >= 3 else fc_entry[-1]
+        captureDir = f"captures/ladder/{step_name}/{scene_name}"
+        os.makedirs(captureDir, exist_ok=True)
+
+        for spp in capture_spps:
+            tag = f"s_x{spp}_{res_tag}"
+            png_out = _out(captureDir, "r1c1_accum_render", f"{tag}_{tag_suffix}_")
+            hdr_out = os.path.join(captureDir, f"{tag}_{tag_suffix}_hdr.exr")
+
+            if os.path.exists(png_out) and os.path.getsize(png_out) > 1024:
+                print(f"\n[{step_name}] ======== {tag_suffix}_x{spp} {tag} ({scene_name}) - cached ========")
+                continue
+
+            print(f"\n[{step_name}] ======== {tag_suffix}_x{spp} {tag} ({scene_name}) ========")
+
+            actual_spp = max(1, min(spp, 16))
+            num_frames = max(1, spp // actual_spp)
+
+            g = build_graph(actual_spp)
+            if g is None:
+                print(f"[{step_name}] {tag_suffix} graph builder returned None — skipping (likely missing dependency)")
+                continue
+            m.addGraph(g)
+            _load_scene_if_needed(m, scene_file, resX, resY)
+
+            fc.outputDir = captureDir
+            fc.baseFilename = f"{tag_suffix}_x{spp}"
+
+            for _ in range(num_frames * frames * frames_mul):
+                m.renderFrame()
+
+            fc.capture()
+            m.renderFrame()
+            m.renderFrame()
+
+            import time
+            time.sleep(0.5)
+
+            # Tonemapped PNG
+            png_matches = glob.glob(os.path.join(captureDir, f"{tag_suffix}_x{spp}.ToneMapper.dst.*"))
+            if png_matches:
+                src = png_matches[0]
+                prev_sz = 0
+                for _ in range(50):
+                    sz = os.path.getsize(src)
+                    if sz > 1024 and sz == prev_sz: break
+                    prev_sz = sz; time.sleep(0.1)
+                shutil.copy2(src, png_out)
+                print(f"[{step_name}] Copied {os.path.basename(png_out)} ({sz} bytes)")
+
+            # HDR EXR (use the named output_pass)
+            hdr_glob = os.path.join(captureDir, f"{tag_suffix}_x{spp}.{output_pass}.*")
+            hdr_matches = glob.glob(hdr_glob)
+            if hdr_matches:
+                src = hdr_matches[0]
+                prev_sz = 0
+                for _ in range(50):
+                    sz = os.path.getsize(src)
+                    if sz > 1024 and sz == prev_sz: break
+                    prev_sz = sz; time.sleep(0.1)
+                shutil.copy2(src, hdr_out)
+                print(f"[{step_name}] Copied HDR {os.path.basename(hdr_out)} ({sz} bytes)")
+
+            # Clean raw outputs
+            for f in glob.glob(os.path.join(captureDir, f"{tag_suffix}_x{spp}.*")):
+                try: os.remove(f)
+                except (PermissionError, OSError): pass
+
+            m.removeGraph(g)
+
+
+def run_baseline_wsrestir(step_name, frame_configs, scene_file,
+                          maxBounces=0, resX=kResX, resY=kResY,
+                          mogwai_globals=None, capture_spps=(1, 4),
+                          wsInitialCandidates=8, wsMCap=5.0):
+    """WS-ReSTIR DI baseline reference. Direct-lighting only by default."""
+    def _build(actual_spp):
+        return render_graph_PathTracer(
+            viscache=True, wsReservoirs=True, maxBounces=maxBounces,
+            samplesPerPixel=actual_spp, useJitter=True,
+            wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
+            visibilityCheck=True, lightSelection=True,
+        )
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, "wsrestir",
+        _build, "AccumulatePass.output",
+        capture_spps=capture_spps, maxBounces=maxBounces,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+    )
+
+
+def run_baseline_rtxdi(step_name, frame_configs, scene_file,
+                       resX=kResX, resY=kResY, mogwai_globals=None,
+                       capture_spps=(1,)):
+    """RTXDI (ReSTIR DI) baseline reference. Direct-illumination only."""
+    if render_graph_RTXDI is None:
+        print(f"[{step_name}] RTXDI graph not importable — skipping rtxdi baseline")
+        return
+    def _build(actual_spp):
+        return render_graph_RTXDI(viscache=False)
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, "rtxdi",
+        _build, "RTXDIPass.color",
+        capture_spps=capture_spps, maxBounces=0,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+    )
