@@ -237,6 +237,9 @@ cbuffer VisCacheParams
     uint   gWSInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
     uint   gWSFrameDimX;          ///< Frame width  (for indexing per-pixel reservoir buffer).
     uint   gWSFrameDimY;          ///< Frame height.
+    float  gWSJitterFilter;       ///< Home-cell jitter, position-seeded (ours; soft boundaries).
+    float  gWSJitterCell;         ///< Home-cell jitter, cell-seeded (Binder 2018; hard per-cell shift).
+    uint   gWSUseCellInRIS;       ///< 1 = WS cell candidate active; 0 = pure per-pixel ReSTIR.
 };
 
 // ---------------------------------------------------------------------------

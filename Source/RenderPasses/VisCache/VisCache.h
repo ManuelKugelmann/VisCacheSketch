@@ -147,6 +147,10 @@ public:
         uint32_t wsInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
                                        ///< Drives variance reduction on many-lights scenes — single
                                        ///< candidate (K=1) gives no variance benefit beyond vanilla NEE.
+        float    wsJitterFilter;       ///< Position-seeded jitter scale (ours: soft 3D filter kernel).
+                                       ///< Smooths home-cell boundaries — kills cell-quantization patterns.
+        float    wsJitterCell;         ///< Cell-index-seeded jitter scale [Binder 2018] (hard per-cell shift).
+        uint32_t wsUseCellInRIS;       ///< 1 = include WS cell candidate(s); 0 = pure per-pixel ReSTIR.
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -242,6 +246,14 @@ public:
                                                         ///< Prevents cross-normal cell sharing at corners.
         uint32_t wsInitialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).
+        float    wsJitterFilter                = 0.0f;  ///< Position-seeded soft jitter (ours, §2.3).
+                                                        ///< 0 = off; 0.3–0.5 dissolves home-cell boundaries
+                                                        ///< without much cell-sharing dilution.
+        float    wsJitterCell                  = 0.0f;  ///< Cell-index-seeded hard jitter [Binder 2018].
+        bool     wsUseCellInRIS                = true;  ///< Include WS cell candidate(s) in per-pixel RIS.
+                                                        ///< Off = pure per-pixel ReSTIR DI (per-pixel temporal
+                                                        ///< + spatial reuse only). Useful as an ablation: WS
+                                                        ///< layer's value vs the boundary artifacts it adds.
     };
 
     const Params& getParams() const { return mParams; }

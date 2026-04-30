@@ -23,6 +23,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                             wsReservoirs=False, wsLevelOffset=1, wsReservoirCapacity=1 << 18,
                             wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
                             wsInitialCandidates=8,
+                            wsJitterFilter=0.0, wsJitterCell=0.0,
                             visibilityCheck=None, lightSelection=None,
                             extraVCProps=None):
     """Build a PathTracer render graph.
@@ -68,6 +69,8 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
             vc_props.update({
                 "enableWSReservoirs":   True,
                 "wsInitialCandidates":  wsInitialCandidates,
+                "wsJitterFilter":       wsJitterFilter,
+                "wsJitterCell":         wsJitterCell,
                 "wsLevelOffset":        wsLevelOffset,
                 "wsReservoirCapacity":  wsReservoirCapacity,
                 "wsMCap":               wsMCap,

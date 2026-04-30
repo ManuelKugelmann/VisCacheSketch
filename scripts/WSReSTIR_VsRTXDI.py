@@ -28,16 +28,25 @@ SCENES = [
 VARIANTS = [
     # Direct lighting only (maxBounces=0). RTXDI is DI-only by design;
     # we restrict the path tracer to match for apples-to-apples comparison.
-    ("vanilla",   lambda: render_graph_PathTracer(viscache=False, maxBounces=0)),
-    ("ws_K8",     lambda: render_graph_PathTracer(
+    ("vanilla",        lambda: render_graph_PathTracer(viscache=False, maxBounces=0)),
+    ("ws_baseline",    lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
         wsInitialCandidates=8, wsMCap=5.0,
         visibilityCheck=True, lightSelection=True)),
-    ("ws_M30",    lambda: render_graph_PathTracer(
+    # Home-cell jitter ablation: small magnitude (0.3 = ±0.15 cell) on each
+    # jitter flavour. Filter (ours) = soft, position-seeded. Cell (Binder
+    # 2018) = hard per-cell shift, cell-index-seeded.
+    ("ws_jFilter03",   lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=30.0,
+        wsInitialCandidates=8, wsMCap=5.0,
+        wsJitterFilter=0.3,
         visibilityCheck=True, lightSelection=True)),
-    ("rtxdi",     lambda: render_graph_RTXDI(viscache=False)),
+    ("ws_jCell03",     lambda: render_graph_PathTracer(
+        viscache=True, wsReservoirs=True, maxBounces=0,
+        wsInitialCandidates=8, wsMCap=5.0,
+        wsJitterCell=0.3,
+        visibilityCheck=True, lightSelection=True)),
+    ("rtxdi",          lambda: render_graph_RTXDI(viscache=False)),
 ]
 WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate
 CAPTURE_FRAMES = 32

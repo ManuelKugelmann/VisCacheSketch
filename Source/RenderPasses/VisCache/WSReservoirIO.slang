@@ -57,12 +57,39 @@ int wsCascadeLevel()
 
 // ---------------------------------------------------------------------------
 // Quantize primary-hit position to integer cell coords at the chosen cascade
-// level. Same scheme as VisCache's posA quantization: floor(posA / cellSize).
+// level, with optional home-cell jitter (mirrors VisCache's jitterQuantize):
+//
+//   gWSJitterFilter (ours): per-position-seed jitter → smooth/soft cell
+//     boundaries. Pixels straddling a boundary distribute across both cells,
+//     dissolving the cell-quantization patterns visible in low-SPP renders.
+//   gWSJitterCell [Binder 2018]: per-cell-index-seed jitter → all positions
+//     in a cell shift as a unit; boundaries stay hard but at jittered
+//     positions. Useful for breaking up grid-aligned artifacts.
+//
+// Both scales are in cells (1.0 = ±0.5-cell offset). Stackable.
 // ---------------------------------------------------------------------------
 int3 wsQuantizePosA(float3 posA, int lvl)
 {
     float cs = max(vhfPosASize(lvl), 1e-6f);
-    return int3(floor(posA / cs));
+    if (gWSJitterFilter == 0.f && gWSJitterCell == 0.f)
+        return int3(floor(posA / cs));
+
+    int3 baseIdx = int3(round(posA / cs));
+    float3 offset = float3(0.f);
+    const uint kSeed = 0xCAFE0000u ^ uint(lvl);
+    if (gWSJitterFilter != 0.f)
+    {
+        uint3 r = pcg3d(asuint(posA) ^ kSeed);
+        float3 j = float3(r & 0xFFFFu) / 65535.f - 0.5f;
+        offset += j * gWSJitterFilter;
+    }
+    if (gWSJitterCell != 0.f)
+    {
+        uint3 r = pcg3d(uint3(baseIdx) ^ kSeed);
+        float3 j = float3(r & 0xFFFFu) / 65535.f - 0.5f;
+        offset += j * gWSJitterCell;
+    }
+    return int3(round((posA + offset * cs) / cs));
 }
 
 // ---------------------------------------------------------------------------

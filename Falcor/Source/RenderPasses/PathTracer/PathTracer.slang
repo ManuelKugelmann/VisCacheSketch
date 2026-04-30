@@ -1262,9 +1262,13 @@ struct PathTracer
                     // queries through the same wsResolveCell function. We
                     // filter out queries that landed back in the home cell
                     // by fingerprint compare.
+                    //
+                    // gWSUseCellInRIS gates this whole block off — when 0,
+                    // shading falls back to pure per-pixel ReSTIR DI (per-pixel
+                    // temporal + spatial reuse via gWSPixelReservoirs only).
                     WSCellAddress homeAddr = wsResolveCell(sd.posW, sd.faceN);
-                    const uint nNeighbours = wsSpatialNeighbourCount();
-                    for (uint i = 0u; i <= nNeighbours; ++i)
+                    const uint nNeighbours = (gWSUseCellInRIS != 0u) ? wsSpatialNeighbourCount() : 0u;
+                    for (uint i = 0u; (gWSUseCellInRIS != 0u) && i <= nNeighbours; ++i)
                     {
                         WSCellAddress addr;
                         if (i == 0u)

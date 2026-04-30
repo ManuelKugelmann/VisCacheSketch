@@ -244,7 +244,9 @@ private:
              float    wsLightMuMin=0.01f;
              float    wsLightSoftness=1.f;
              uint32_t wsNormalAddr=0;
-             uint32_t wsInitialCandidates=8; } mVCParams;
+             uint32_t wsInitialCandidates=8;
+             float    wsJitterFilter=0.f, wsJitterCell=0.f;
+             uint32_t wsUseCellInRIS=1; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
     ref<Buffer> mpVHFWSReservoirs;
