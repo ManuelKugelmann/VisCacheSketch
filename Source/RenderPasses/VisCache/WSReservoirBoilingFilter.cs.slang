@@ -1,37 +1,45 @@
 /***************************************************************************
- * WSReservoirBoilingFilter.cs.slang
+ * WSReservoirBoilingFilter.cs.slang  —  DISABLED 2026-05-05
  *
- * §9.4 RTXDI BoilingFilter port — workgroup-shared statistical outlier
- * rejection on per-pixel reservoirs. Algorithm adapted from
- * Falcor/.../rtxdi/ResamplingFunctions.hlsli:1001 (RTXDI source untouched
- * per "leave original as is" directive).
+ * §9.4 RTXDI BoilingFilter port (workgroup-shared statistical outlier
+ * rejection on per-pixel reservoirs). Algorithm copied from
+ * Falcor/.../rtxdi/ResamplingFunctions.hlsli:1001 per "leave original as is"
+ * directive.
  *
- * What it does:
- *   At the start of each frame, sweep the per-pixel reservoir buffer that
- *   PathTracer raygen wrote in the previous frame. For each 16×16 tile,
- *   compute the mean of nonzero W values, then empty any reservoir whose W
- *   exceeds `mean × multiplier`. Prevents single-pixel outliers from
- *   propagating outward through next-frame temporal+spatial reuse — the
- *   visual "boiling" artifact RTXDI's filter is named after.
+ * STATUS: BLOCK-COMMENTED. Dispatch fires, build is clean, smoke passes,
+ * but shader writes to gWSPixelReservoirs do not reach the buffer:
+ *   - Host-side clearUAV() on the same buffer at the same dispatch site
+ *     moves the metric (Sponza_x4 6.49 → 6.39, −0.10pp). Buffer mutation
+ *     from the host works.
+ *   - Shader-side writes (full RTXDI algorithm, minimal unconditional
+ *     clear, sanity strength=1.0) all give 6.47–6.49 (within noise).
+ *     Writes never land.
+ *   - Suspected root cause: locally-redeclared `RWStructuredBuffer` global
+ *     here vs the working module-imported `gVHFTable` pattern in
+ *     VisCacheDecay.cs.slang. Slang reflection / Falcor binding may treat
+ *     the two paths differently.
  *
- *   multiplier = 10/strength - 9
- *   strength = 0.2 (RTXDI default) → multiplier = 41
+ * Why disabled rather than left "almost working":
+ *   A silent no-op filter is a *worse* failure mode than no filter at all
+ *   — it presents as a safety net that could hide future algorithm
+ *   regressions (firefly leaks, biased reservoir merges) by giving the
+ *   illusion of outlier rejection that never actually runs. Per directive
+ *   2026-05-05: "safety net might hide algorithm failures".
  *
- * Pattern: structurally identical to VisCacheDecay.cs.slang — frame-start
- * maintenance compute pass, dispatched from VisCache::execute(),
- * operates in-place on a persistent buffer that next frame reads.
+ * Future fix path (the "separable-include" approach):
+ *   Move the `RWStructuredBuffer<WSReservoir> gWSPixelReservoirs;`
+ *   declaration out of WSReservoirIO.slang into its own tiny
+ *   `WSPixelReservoirBuffer.slang` includable module. Have both
+ *   WSReservoirIO and a fixed BoilingFilter import THAT module
+ *   (mirroring the VisCacheDecay → VisCache.slang `gVHFTable` pattern).
+ *   That eliminates the locally-redeclared-global suspect and gives one
+ *   canonical declaration site to bind against.
  *
- * STATUS 2026-05-05: dispatch fires (gate logged), build clean, smoke
- * passes, but empirical effect on quality is below the noise floor at
- * canonical config (Sponza_x4 6.49 → 6.47). Diagnostic test bypassing
- * shader with host-side clearUAV on the same buffer DOES move the metric
- * (Sponza_x4 → 6.39, −0.10pp), confirming buffer mutation works in
- * principle. Suspected slang reflection / binding / barrier issue with
- * shader-side writes; not pinpointed without GPU profiler. Algorithm is
- * correct per RTXDI; quality won't change at canonical config either way
- * because the existing Conv B reader-pdf + V-test pipeline is already
- * firefly-free (no work for the filter to do).
+ * Until then: this file is wrapped in `#if 0 ... #endif`, no entry point
+ * is exported, and VisCache.cpp does not create or dispatch it.
  ***************************************************************************/
+
+#if 0  // DISABLED — see header.
 
 import RenderPasses.VisCache.WSReservoir;
 
@@ -107,3 +115,5 @@ void csBoilingFilter(uint3 dtid : SV_DispatchThreadID, uint3 gid : SV_GroupThrea
         gWSPixelReservoirs[pIdx] = wsReservoirInit(0u);
     }
 }
+
+#endif  // DISABLED — see header.

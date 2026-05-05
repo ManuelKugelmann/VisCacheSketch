@@ -3793,13 +3793,16 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                 # gated (cache-amortized in steady state, but cold for first
                 # frames before pre-pass warms it).
                 "bayerN": 4,
-                # §9.4 RTXDI BoilingFilter — frame-start outlier rejection on
-                # gWSPixelReservoirs (WSReservoirBoilingFilter.cs.slang). RTXDI
-                # default strength = 0.2 → 41× threshold. Empties any reservoir
-                # whose W exceeds the 16×16 tile mean by that factor, preventing
-                # firefly samples from propagating via temporal/spatial reuse.
-                "enableBoilingFilter":  True,
-                "boilingFilterStrength": 0.2,    # RTXDI default — 41× threshold. Tested 2026-05-05: no measurable quality change at canonical config (existing V-test + Conv B already firefly-free). Filter present as RTXDI-equivalent safety mechanism.
+                # §9.4 RTXDI BoilingFilter — DISABLED 2026-05-05.
+                # The dispatch fired and the build was clean, but shader writes
+                # to gWSPixelReservoirs never landed (host-side clearUAV on the
+                # same buffer DID move the metric, isolating the bug to the
+                # shader/binding side). Rather than ship a silent-no-op safety
+                # net that could hide future firefly regressions, the pass is
+                # block-commented in VisCache.cpp and the canonical config no
+                # longer requests it. See WSReservoirBoilingFilter.cs.slang
+                # header for the full diagnosis + the separable-include fix
+                # path. Defaults in VisCache.h have enableBoilingFilter=false.
             },
             **addr_mode_kwargs,                      # only difference: 2D-tile vs 3D-cell addressing
         )

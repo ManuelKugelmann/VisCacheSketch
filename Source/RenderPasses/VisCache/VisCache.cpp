@@ -336,14 +336,22 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
         mpDecayPass = ComputePass::create(mpDevice, desc, defines);
     }
 
-    // §9.4 RTXDI BoilingFilter port. Frame-start outlier rejection on
-    // gWSPixelReservoirs, structurally identical to the decay pass.
+    // §9.4 RTXDI BoilingFilter port — DISABLED 2026-05-05.
+    // The shader builds and the dispatch fires, but writes never reach
+    // gWSPixelReservoirs (host-side clearUAV on the same buffer DOES
+    // mutate it, so the buffer/binding side of the pipeline is fine).
+    // Suspected: locally-redeclared global vs. module-imported global.
+    // See WSReservoirBoilingFilter.cs.slang header for full diagnosis +
+    // the separable-include fix path. Block-commented (not deleted) so
+    // the artefact is preserved for the next attempt.
+    /*
     {
         ProgramDesc desc;
         desc.addShaderLibrary("RenderPasses/VisCache/WSReservoirBoilingFilter.cs.slang")
             .csEntry("csBoilingFilter");
         mpBoilingFilterPass = ComputePass::create(mpDevice, desc, DefineList());
     }
+    */
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,18 +1034,20 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     }
 
     // ----------------------------------------------------------------
-    // §9.4 RTXDI BoilingFilter — frame-start outlier rejection on
-    // gWSPixelReservoirs. Operates on the previous frame's writes,
-    // cleaning state before this frame's PathTracer raygen runs its
-    // temporal+spatial reuse. Pattern matches runDecayPass — same
-    // wiring, same dispatch shape rules.
+    // §9.4 RTXDI BoilingFilter dispatch — DISABLED 2026-05-05.
+    // See WSReservoirBoilingFilter.cs.slang header for the diagnosis.
+    // Field `enableBoilingFilter` is forced false in Params; explicit
+    // gate kept block-commented so the disable is visible at the call
+    // site and so re-enabling is a single-edit revert.
     // ----------------------------------------------------------------
+    /*
     if (mParams.enableWSReservoirs && mParams.enableWSPixelReservoir
         && mParams.enableBoilingFilter && mpPixelReservoirs && mpBoilingFilterPass
         && mFrameDims.x > 0u && mFrameDims.y > 0u)
     {
         runBoilingFilterPass(pCtx);
     }
+    */
 
     // ----------------------------------------------------------------
     // Readback stats every 16 frames; auto-tune decayPeriod
@@ -1112,16 +1122,12 @@ void VisCache::runDecayPass(RenderContext* pCtx)
 }
 
 // ---------------------------------------------------------------------------
-// runBoilingFilterPass: dispatch WSReservoirBoilingFilter.cs.slang.
-//
-// §9.4 RTXDI BoilingFilter port. 16×16 thread groups; each group computes
-// the mean of nonzero W in its tile, then empties any reservoir whose W
-// exceeds (10/strength - 9)× the mean. Mirrors RTXDI's filter applied
-// "at the end of the temporal resampling pass" — we apply it at frame
-// start instead, on the persistent buffer that next frame's PathTracer
-// raygen will read for temporal+spatial reuse. Equivalent effect:
-// outliers can never propagate.
+// runBoilingFilterPass — DISABLED 2026-05-05.
+// Block-commented (not deleted) so the wiring is preserved next to the
+// disable site for the next attempt. See WSReservoirBoilingFilter.cs.slang
+// header for the full diagnosis + the separable-include fix path.
 // ---------------------------------------------------------------------------
+/*
 void VisCache::runBoilingFilterPass(RenderContext* pCtx)
 {
     auto vars = mpBoilingFilterPass->getRootVar();
@@ -1134,6 +1140,7 @@ void VisCache::runBoilingFilterPass(RenderContext* pCtx)
     uint32_t groupsY = (mFrameDims.y + kGroupSize - 1u) / kGroupSize;
     mpBoilingFilterPass->execute(pCtx, groupsX, groupsY, 1u);
 }
+*/
 
 // ---------------------------------------------------------------------------
 // readbackStats: copy GPU atomic counters to CPU for UI display and PI controller.
@@ -1245,8 +1252,10 @@ void VisCache::renderUI(Gui::Widgets& widget)
         //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)
         g.checkbox("wsUseCellInRIS (off = pure per-pixel)", mParams.wsUseCellInRIS);
         g.var("wsVisInPHat (0=blind 1=cache 2=trace)", mParams.wsVisInPHat, 0u, 2u);
-        g.checkbox("BoilingFilter (firefly outlier rejection)", mParams.enableBoilingFilter);
-        g.var("Boiling filter strength", mParams.boilingFilterStrength, 0.05f, 1.0f, 0.05f);
+        // BoilingFilter UI disabled along with the dispatch — toggling it would
+        // do nothing. See WSReservoirBoilingFilter.cs.slang header.
+        // g.checkbox("BoilingFilter (firefly outlier rejection)", mParams.enableBoilingFilter);
+        // g.var("Boiling filter strength", mParams.boilingFilterStrength, 0.05f, 1.0f, 0.05f);
     }
     widget.separator();
 
