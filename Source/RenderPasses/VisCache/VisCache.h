@@ -260,6 +260,13 @@ public:
                                                         ///< layer (RTXDI screen-side reservoir). Set false
                                                         ///< to focus on the pure WS-cell pipeline (cell pool +
                                                         ///< cell reservoir + jittered cell-spatial gather).
+        bool     enableBoilingFilter           = true;  ///< Frame-start statistical outlier rejection on
+                                                        ///< gWSPixelReservoirs (RTXDI's BoilingFilter port,
+                                                        ///< WSReservoirBoilingFilter.cs.slang). Empties any
+                                                        ///< reservoir whose W exceeds the 16×16-tile mean by
+                                                        ///< (10/strength - 9)× — prevents firefly outliers from
+                                                        ///< propagating outward via spatial+temporal reuse.
+        float    boilingFilterStrength         = 0.2f;  ///< (0..1] — RTXDI default 0.2 → 41× threshold.
         uint32_t wsCellLevel                   = 4u;    ///< WS-ReSTIR cell level into VisCache's posA cascade.
                                                         ///< Default 4 = mid-cascade (with default numLevels=8).
                                                         ///< Reuses vhfPosASize(lvl) + jitterQuantize from VisCache;
@@ -359,6 +366,7 @@ private:
     void allocateBuffers();
     void autoTuneCellSizes();    ///< Derive posACoarse (+ posBCoarse, distBCoarse) from scene bounds
     void runDecayPass(RenderContext* pCtx);
+    void runBoilingFilterPass(RenderContext* pCtx);
     void readbackStats(RenderContext* pCtx);
     void autoTuneDecayPeriod();
 
@@ -380,6 +388,7 @@ private:
     uint32_t            mWSCellPoolCapacityCommitted = 0u;
 
     ref<ComputePass>    mpDecayPass;
+    ref<ComputePass>    mpBoilingFilterPass;          ///< §9.4 RTXDI BoilingFilter port (WSReservoirBoilingFilter.cs.slang).
 
     // ------------------------------------------------------------------
     // State

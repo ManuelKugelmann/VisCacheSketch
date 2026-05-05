@@ -109,6 +109,8 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
     if (props.has("enableWSReservoirs"))            mParams.enableWSReservoirs            = props["enableWSReservoirs"];
     if (props.has("enableWSPixelReservoir"))        mParams.enableWSPixelReservoir        = props["enableWSPixelReservoir"];
+    if (props.has("enableBoilingFilter"))           mParams.enableBoilingFilter           = props["enableBoilingFilter"];
+    if (props.has("boilingFilterStrength"))         mParams.boilingFilterStrength         = props["boilingFilterStrength"];
     if (props.has("wsCellLevel"))                   mParams.wsCellLevel                   = props["wsCellLevel"];
     if (props.has("wsCellLevelJitter"))             mParams.wsCellLevelJitter             = props["wsCellLevelJitter"];
     if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
@@ -197,6 +199,8 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
     if (props.has("enableWSReservoirs"))            mParams.enableWSReservoirs            = props["enableWSReservoirs"];
     if (props.has("enableWSPixelReservoir"))        mParams.enableWSPixelReservoir        = props["enableWSPixelReservoir"];
+    if (props.has("enableBoilingFilter"))           mParams.enableBoilingFilter           = props["enableBoilingFilter"];
+    if (props.has("boilingFilterStrength"))         mParams.boilingFilterStrength         = props["boilingFilterStrength"];
     if (props.has("wsCellLevel"))                   mParams.wsCellLevel                   = props["wsCellLevel"];
     if (props.has("wsCellLevelJitter"))             mParams.wsCellLevelJitter             = props["wsCellLevelJitter"];
     if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
@@ -276,6 +280,8 @@ Properties VisCache::getProperties() const
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
     p["enableWSReservoirs"]            = mParams.enableWSReservoirs;
     p["enableWSPixelReservoir"]        = mParams.enableWSPixelReservoir;
+    p["enableBoilingFilter"]           = mParams.enableBoilingFilter;
+    p["boilingFilterStrength"]         = mParams.boilingFilterStrength;
     p["wsCellLevel"]                   = mParams.wsCellLevel;
     p["wsCellLevelJitter"]             = mParams.wsCellLevelJitter;
     p["wsReservoirCapacity"]           = mParams.wsReservoirCapacity;
@@ -330,6 +336,14 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
         mpDecayPass = ComputePass::create(mpDevice, desc, defines);
     }
 
+    // §9.4 RTXDI BoilingFilter port. Frame-start outlier rejection on
+    // gWSPixelReservoirs, structurally identical to the decay pass.
+    {
+        ProgramDesc desc;
+        desc.addShaderLibrary("RenderPasses/VisCache/WSReservoirBoilingFilter.cs.slang")
+            .csEntry("csBoilingFilter");
+        mpBoilingFilterPass = ComputePass::create(mpDevice, desc, DefineList());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,6 +1026,20 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     }
 
     // ----------------------------------------------------------------
+    // §9.4 RTXDI BoilingFilter — frame-start outlier rejection on
+    // gWSPixelReservoirs. Operates on the previous frame's writes,
+    // cleaning state before this frame's PathTracer raygen runs its
+    // temporal+spatial reuse. Pattern matches runDecayPass — same
+    // wiring, same dispatch shape rules.
+    // ----------------------------------------------------------------
+    if (mParams.enableWSReservoirs && mParams.enableWSPixelReservoir
+        && mParams.enableBoilingFilter && mpPixelReservoirs && mpBoilingFilterPass
+        && mFrameDims.x > 0u && mFrameDims.y > 0u)
+    {
+        runBoilingFilterPass(pCtx);
+    }
+
+    // ----------------------------------------------------------------
     // Readback stats every 16 frames; auto-tune decayPeriod
     // ----------------------------------------------------------------
     if (mFrameCount % 16u == 0u && mpStagingBuffer)
@@ -1081,6 +1109,30 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gDiagAccumWindow"] = mParams.diagAccumWindow;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
+}
+
+// ---------------------------------------------------------------------------
+// runBoilingFilterPass: dispatch WSReservoirBoilingFilter.cs.slang.
+//
+// §9.4 RTXDI BoilingFilter port. 16×16 thread groups; each group computes
+// the mean of nonzero W in its tile, then empties any reservoir whose W
+// exceeds (10/strength - 9)× the mean. Mirrors RTXDI's filter applied
+// "at the end of the temporal resampling pass" — we apply it at frame
+// start instead, on the persistent buffer that next frame's PathTracer
+// raygen will read for temporal+spatial reuse. Equivalent effect:
+// outliers can never propagate.
+// ---------------------------------------------------------------------------
+void VisCache::runBoilingFilterPass(RenderContext* pCtx)
+{
+    auto vars = mpBoilingFilterPass->getRootVar();
+    vars["WSBoilingFilterCB"]["gFrameDim"] = mFrameDims;
+    vars["WSBoilingFilterCB"]["gFilterStrength"] = mParams.boilingFilterStrength;
+    vars["gWSPixelReservoirs"] = mpPixelReservoirs;
+
+    constexpr uint32_t kGroupSize = 16u;
+    uint32_t groupsX = (mFrameDims.x + kGroupSize - 1u) / kGroupSize;
+    uint32_t groupsY = (mFrameDims.y + kGroupSize - 1u) / kGroupSize;
+    mpBoilingFilterPass->execute(pCtx, groupsX, groupsY, 1u);
 }
 
 // ---------------------------------------------------------------------------
@@ -1193,6 +1245,8 @@ void VisCache::renderUI(Gui::Widgets& widget)
         //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)
         g.checkbox("wsUseCellInRIS (off = pure per-pixel)", mParams.wsUseCellInRIS);
         g.var("wsVisInPHat (0=blind 1=cache 2=trace)", mParams.wsVisInPHat, 0u, 2u);
+        g.checkbox("BoilingFilter (firefly outlier rejection)", mParams.enableBoilingFilter);
+        g.var("Boiling filter strength", mParams.boilingFilterStrength, 0.05f, 1.0f, 0.05f);
     }
     widget.separator();
 

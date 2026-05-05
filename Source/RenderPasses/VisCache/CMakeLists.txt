@@ -15,6 +15,9 @@ target_sources(VisCachePass PRIVATE
     ShadingCV.slang
     WSReservoir.slang
     WSReservoirIO.slang
+    WSReservoirBoilingFilter.cs.slang
+    WSCellPool.slang
+    WSCellPoolIO.slang
 )
 
 target_copy_shaders(VisCachePass RenderPasses/VisCache)

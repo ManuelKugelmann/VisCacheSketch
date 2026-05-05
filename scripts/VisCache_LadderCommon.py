@@ -3793,6 +3793,13 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                 # gated (cache-amortized in steady state, but cold for first
                 # frames before pre-pass warms it).
                 "bayerN": 4,
+                # §9.4 RTXDI BoilingFilter — frame-start outlier rejection on
+                # gWSPixelReservoirs (WSReservoirBoilingFilter.cs.slang). RTXDI
+                # default strength = 0.2 → 41× threshold. Empties any reservoir
+                # whose W exceeds the 16×16 tile mean by that factor, preventing
+                # firefly samples from propagating via temporal/spatial reuse.
+                "enableBoilingFilter":  True,
+                "boilingFilterStrength": 0.2,    # RTXDI default — 41× threshold. Tested 2026-05-05: no measurable quality change at canonical config (existing V-test + Conv B already firefly-free). Filter present as RTXDI-equivalent safety mechanism.
             },
             **addr_mode_kwargs,                      # only difference: 2D-tile vs 3D-cell addressing
         )
@@ -3857,7 +3864,7 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
             viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
             useRTXDIDirect=True, useDirectLighting=True,
             pathSamplingMode="ReSTIR",
-            disableDirectIllumination=True,  # DQLin's canonical — RTXDI handles direct
+            disableDirectIllumination=True,  # DQLin canonical — RTXDI handles direct
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
