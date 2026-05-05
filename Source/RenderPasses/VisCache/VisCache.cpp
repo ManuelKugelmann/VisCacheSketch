@@ -336,14 +336,16 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
         mpDecayPass = ComputePass::create(mpDevice, desc, defines);
     }
 
-    // §9.4 RTXDI BoilingFilter port — DISABLED 2026-05-05.
-    // The shader builds and the dispatch fires, but writes never reach
-    // gWSPixelReservoirs (host-side clearUAV on the same buffer DOES
-    // mutate it, so the buffer/binding side of the pipeline is fine).
-    // Suspected: locally-redeclared global vs. module-imported global.
-    // See WSReservoirBoilingFilter.cs.slang header for full diagnosis +
-    // the separable-include fix path. Block-commented (not deleted) so
-    // the artefact is preserved for the next attempt.
+    // ╔══════════════════════════════════════════════════════════════════╗
+    // ║ DISABLED 2026-05-05 — §9.4 RTXDI BoilingFilter ComputePass create ║
+    // ║                                                                    ║
+    // ║ Shader builds, dispatch fires, but writes never reach              ║
+    // ║ gWSPixelReservoirs (host-side clearUAV on the same buffer DOES     ║
+    // ║ mutate it). Suspected: locally-redeclared global vs. module-       ║
+    // ║ imported global. See WSReservoirBoilingFilter.cs.slang header for  ║
+    // ║ full diagnosis + the separable-include fix path. Block-commented   ║
+    // ║ (not deleted) so the artefact is preserved for the next attempt.   ║
+    // ╚══════════════════════════════════════════════════════════════════╝
     /*
     {
         ProgramDesc desc;
@@ -352,6 +354,7 @@ void VisCache::compile(RenderContext*, const CompileData& compileData)
         mpBoilingFilterPass = ComputePass::create(mpDevice, desc, DefineList());
     }
     */
+    // ╚════════════════ end disabled block: BoilingFilter create ═════════╝
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,13 +1036,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         runDecayPass(pCtx);
     }
 
-    // ----------------------------------------------------------------
-    // §9.4 RTXDI BoilingFilter dispatch — DISABLED 2026-05-05.
-    // See WSReservoirBoilingFilter.cs.slang header for the diagnosis.
-    // Field `enableBoilingFilter` is forced false in Params; explicit
-    // gate kept block-commented so the disable is visible at the call
-    // site and so re-enabling is a single-edit revert.
-    // ----------------------------------------------------------------
+    // ╔══════════════════════════════════════════════════════════════════╗
+    // ║ DISABLED 2026-05-05 — §9.4 RTXDI BoilingFilter dispatch site      ║
+    // ║                                                                    ║
+    // ║ See WSReservoirBoilingFilter.cs.slang header for the diagnosis.    ║
+    // ║ Field `enableBoilingFilter` is forced false in Params; explicit    ║
+    // ║ gate kept block-commented so the disable is visible at the call    ║
+    // ║ site and so re-enabling is a single-edit revert.                   ║
+    // ╚══════════════════════════════════════════════════════════════════╝
     /*
     if (mParams.enableWSReservoirs && mParams.enableWSPixelReservoir
         && mParams.enableBoilingFilter && mpPixelReservoirs && mpBoilingFilterPass
@@ -1048,6 +1052,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         runBoilingFilterPass(pCtx);
     }
     */
+    // ╚═══════════════ end disabled block: BoilingFilter dispatch ════════╝
 
     // ----------------------------------------------------------------
     // Readback stats every 16 frames; auto-tune decayPeriod
@@ -1121,12 +1126,13 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
 
-// ---------------------------------------------------------------------------
-// runBoilingFilterPass — DISABLED 2026-05-05.
-// Block-commented (not deleted) so the wiring is preserved next to the
-// disable site for the next attempt. See WSReservoirBoilingFilter.cs.slang
-// header for the full diagnosis + the separable-include fix path.
-// ---------------------------------------------------------------------------
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ DISABLED 2026-05-05 — VisCache::runBoilingFilterPass implementation   ║
+// ║                                                                        ║
+// ║ Block-commented (not deleted) so the wiring is preserved next to the   ║
+// ║ disable site for the next attempt. See WSReservoirBoilingFilter.cs.    ║
+// ║ slang header for the full diagnosis + the separable-include fix path.  ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 /*
 void VisCache::runBoilingFilterPass(RenderContext* pCtx)
 {
@@ -1141,6 +1147,7 @@ void VisCache::runBoilingFilterPass(RenderContext* pCtx)
     mpBoilingFilterPass->execute(pCtx, groupsX, groupsY, 1u);
 }
 */
+// ╚═══════════════ end disabled block: runBoilingFilterPass impl ═════════╝
 
 // ---------------------------------------------------------------------------
 // readbackStats: copy GPU atomic counters to CPU for UI display and PI controller.
@@ -1252,10 +1259,14 @@ void VisCache::renderUI(Gui::Widgets& widget)
         //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)
         g.checkbox("wsUseCellInRIS (off = pure per-pixel)", mParams.wsUseCellInRIS);
         g.var("wsVisInPHat (0=blind 1=cache 2=trace)", mParams.wsVisInPHat, 0u, 2u);
-        // BoilingFilter UI disabled along with the dispatch — toggling it would
-        // do nothing. See WSReservoirBoilingFilter.cs.slang header.
+        // ╔══════════════════════════════════════════════════════════════╗
+        // ║ DISABLED 2026-05-05 — BoilingFilter GUI controls              ║
+        // ║ Toggling would do nothing while the dispatch is disabled.     ║
+        // ║ See WSReservoirBoilingFilter.cs.slang header for diagnosis.   ║
+        // ╚══════════════════════════════════════════════════════════════╝
         // g.checkbox("BoilingFilter (firefly outlier rejection)", mParams.enableBoilingFilter);
         // g.var("Boiling filter strength", mParams.boilingFilterStrength, 0.05f, 1.0f, 0.05f);
+        // ╚═══════════════ end disabled block: BoilingFilter GUI ════════╝
     }
     widget.separator();
 

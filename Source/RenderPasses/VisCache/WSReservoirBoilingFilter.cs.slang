@@ -39,6 +39,14 @@
  * is exported, and VisCache.cpp does not create or dispatch it.
  ***************************************************************************/
 
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║                                                                        ║
+// ║   ████████  DISABLED 2026-05-05 — see header for diagnosis  ████████   ║
+// ║                                                                        ║
+// ║   The body below is wrapped in `#if 0 ... #endif`. Slang sees no       ║
+// ║   entry point. VisCache.cpp does not create or dispatch this pass.     ║
+// ║                                                                        ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 #if 0  // DISABLED — see header.
 
 import RenderPasses.VisCache.WSReservoir;
@@ -117,3 +125,4 @@ void csBoilingFilter(uint3 dtid : SV_DispatchThreadID, uint3 gid : SV_GroupThrea
 }
 
 #endif  // DISABLED — see header.
+// ╚═════════════════ end disabled block: BoilingFilter shader ═════════════╝

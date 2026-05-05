@@ -367,7 +367,9 @@ private:
     void allocateBuffers();
     void autoTuneCellSizes();    ///< Derive posACoarse (+ posBCoarse, distBCoarse) from scene bounds
     void runDecayPass(RenderContext* pCtx);
-    // void runBoilingFilterPass(RenderContext* pCtx);  // DISABLED — see WSReservoirBoilingFilter.cs.slang.
+    // ╔══ DISABLED 2026-05-05 — see WSReservoirBoilingFilter.cs.slang ══╗
+    // void runBoilingFilterPass(RenderContext* pCtx);
+    // ╚═════════════════════════════════════════════════════════════════╝
     void readbackStats(RenderContext* pCtx);
     void autoTuneDecayPeriod();
 
@@ -389,7 +391,9 @@ private:
     uint32_t            mWSCellPoolCapacityCommitted = 0u;
 
     ref<ComputePass>    mpDecayPass;
-    // ref<ComputePass> mpBoilingFilterPass;  // DISABLED — see WSReservoirBoilingFilter.cs.slang.
+    // ╔══ DISABLED 2026-05-05 — see WSReservoirBoilingFilter.cs.slang ══╗
+    // ref<ComputePass> mpBoilingFilterPass;
+    // ╚═════════════════════════════════════════════════════════════════╝
 
     // ------------------------------------------------------------------
     // State
