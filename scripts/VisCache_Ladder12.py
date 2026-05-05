@@ -62,11 +62,11 @@ FD_VALUES    = [1, 4, 16, 64]  # 1x1, 2x2, 4x4, 8x8 cells; cell_pixels = fd
 
 VARIANTS_12 = []
 for (base_name, base_overrides) in BASE_12:
-    for sub_n in BAYER_VALUES:
+    for bayer_n in BAYER_VALUES:
         for fd in FD_VALUES:
             cell_n = int(round(fd**0.5))
             ct = K_FRAMES * fd  # ct prop cell pixels - fair maturation time
-            tag = f"bayer{sub_n}x{sub_n}_cell{cell_n}x{cell_n}"
+            tag = f"bayer{bayer_n}x{bayer_n}_cell{cell_n}x{cell_n}"
             VARIANTS_12.append((f"{base_name}__{tag}_ct{ct:03d}_vt0030_pm010", {
                 **base_overrides,
                 **NO_JITTER,
@@ -80,7 +80,7 @@ for (base_name, base_overrides) in BASE_12:
                 "hierarchicalMuTolerance":       0.20,
                 "accelDecayDisagreeThresh":      0.0,
                 "pMin":                          PM,
-                "subframeN":                     sub_n,
+                "bayerN":                        bayer_n,
                 "enableDecayAutoTune":           False,
             }))
 

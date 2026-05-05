@@ -38,6 +38,7 @@ enum class EmissiveLightSamplerType : uint32_t
     Uniform     = 0,
     LightBVH    = 1,
     Power       = 2,
+    PdfMipmap   = 3,    ///< Hierarchical pdf-mipmap sampler (RTXDI parity, area-domain pdf available).
 
     Null        = 0xff,
 };
@@ -46,6 +47,7 @@ FALCOR_ENUM_INFO(EmissiveLightSamplerType, {
     { EmissiveLightSamplerType::Uniform, "Uniform" },
     { EmissiveLightSamplerType::LightBVH, "LightBVH" },
     { EmissiveLightSamplerType::Power, "Power" },
+    { EmissiveLightSamplerType::PdfMipmap, "PdfMipmap" },
     { EmissiveLightSamplerType::Null, "Null" },
 });
 FALCOR_ENUM_REGISTER(EmissiveLightSamplerType);
@@ -55,12 +57,14 @@ FALCOR_ENUM_REGISTER(EmissiveLightSamplerType);
 #define EMISSIVE_LIGHT_SAMPLER_UNIFORM      0
 #define EMISSIVE_LIGHT_SAMPLER_LIGHT_BVH    1
 #define EMISSIVE_LIGHT_SAMPLER_POWER        2
+#define EMISSIVE_LIGHT_SAMPLER_PDF_MIPMAP   3
 #define EMISSIVE_LIGHT_SAMPLER_NULL         0xff
 
 #ifdef HOST_CODE
 static_assert((uint32_t)EmissiveLightSamplerType::Uniform == EMISSIVE_LIGHT_SAMPLER_UNIFORM);
 static_assert((uint32_t)EmissiveLightSamplerType::LightBVH == EMISSIVE_LIGHT_SAMPLER_LIGHT_BVH);
 static_assert((uint32_t)EmissiveLightSamplerType::Power == EMISSIVE_LIGHT_SAMPLER_POWER);
+static_assert((uint32_t)EmissiveLightSamplerType::PdfMipmap == EMISSIVE_LIGHT_SAMPLER_PDF_MIPMAP);
 static_assert((uint32_t)EmissiveLightSamplerType::Null == EMISSIVE_LIGHT_SAMPLER_NULL);
 #endif
 

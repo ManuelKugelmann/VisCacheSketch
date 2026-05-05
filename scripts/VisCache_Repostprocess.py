@@ -7,7 +7,7 @@ Does NOT invoke Mogwai / re-render. Useful when a metric definition changes
 the visualisations without re-rendering — typically minutes vs hours.
 
 Reads captures/ladder/<step>/stats.csv to recover each variant's prefix.
-Effective-spp / frames / warmup / subframeN are parsed from the KEY column
+Effective-spp / frames / warmup / bayerN are parsed from the KEY column
 (prefix encodes them as `s_<eff_spp>_x<frames>_<wf>o<wr>o<NxN>_<resXxresY>_`)
 rather than from the spp/frames CSV columns — this is robust against the
 old append_stats_csv quirk where the spp column stored *effective* spp,
@@ -73,13 +73,13 @@ def _repostprocess_step(step):
             frames       = int(m_key.group(2))
             warmup_first = int(m_key.group(3))
             warmup_run   = int(m_key.group(4))
-            subframe_n   = int(m_key.group(5))
+            bayer_n      = int(m_key.group(5))
         else:
             frames       = _int_or(row, "frames",       1)
             eff_spp      = _int_or(row, "spp",          1)
             warmup_first = _int_or(row, "warmup_first", 0)
             warmup_run   = _int_or(row, "warmup_run",   0)
-            subframe_n   = _int_or(row, "subframe_n",   1)
+            bayer_n      = _int_or(row, "bayer_n",      1)
         # postprocess_variant multiplies its `frames` × `spp` internally to
         # get effective_spp; recover raw_spp accordingly.
         raw_spp = max(1, eff_spp // max(1, frames))
@@ -97,7 +97,7 @@ def _repostprocess_step(step):
         postprocess_variant(
             step, scene, capture_dir, prefix, variant_name,
             frames=frames, spp=raw_spp,
-            warmup_first=warmup_first, warmup_run=warmup_run, subframe_n=subframe_n,
+            warmup_first=warmup_first, warmup_run=warmup_run, bayer_n=bayer_n,
         )
         count += 1
 

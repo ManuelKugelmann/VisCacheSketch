@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, pick_top_variants_per_bvariant, write_picks_meta, \
     _DEFAULT_PICKER_RULE, build_per_axis_quant_variants, \
-    PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
+    PRESET_MINIMAL, RR_ADAPTIVE, BAYER_2x2
 
 STEP = "04"
 res = int(os.environ.get("RES", "512"))
@@ -60,7 +60,7 @@ print(f"[04] chunk {CHUNK_IDX+1}/{CHUNK_COUNT}: variants [{_start}:{_end}] "
 for bv, names in picks.items():
     print(f"[04] B-variant {bv}: {len(names)} winner(s) — {', '.join(names)}")
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **SUBFRAME_2x2}
+STEP_OVERRIDES = {**RR_ADAPTIVE, **BAYER_2x2}
 
 for scene_file in get_scenes():
     run_baseline(

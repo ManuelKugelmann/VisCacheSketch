@@ -44,13 +44,13 @@ static const uint kWarpCount = (kScreenTileDim.x * kScreenTileDim.y) / 32;
 // TODO: Replace explicitly declared size by compile-time constant when it works. For now assume tile is always 16x16!
 groupshared uint gSamplesOffset[8 /* kWarpCount */];
 
-// Subframe N×N Bayer pixel interleaving. 1 = full frame (no gate),
+// Bayer N×N pixel interleaving. 1 = full frame (no gate),
 // 2 = 2×2 (4 subframes), 4 = 4×4 (16 subframes). Reduced-dispatch shader
 // remaps threadID to full-resolution pixel via subframeRemap() in Params.slang.
-#ifndef VISCACHE_SUBFRAME_N
-#define VISCACHE_SUBFRAME_N 1
+#ifndef VISCACHE_BAYER_N
+#define VISCACHE_BAYER_N 1
 #endif
-static const uint kVisCacheSubframeN = VISCACHE_SUBFRAME_N;
+static const uint kVisCacheBayerN = VISCACHE_BAYER_N;
 
 /** Helper struct for generating paths in screen space.
 
@@ -113,7 +113,7 @@ struct PathGenerator
         const uint2 tileOffset = tileID << kScreenTileBits;
         const uint2 reducedPixel = deinterleave_8bit(threadIdx) + tileOffset;
         const uint2 pixel = (kSamplesPerPixel > 0)
-            ? subframeRemap(reducedPixel, params.subframeIdx, kVisCacheSubframeN)
+            ? subframeRemap(reducedPixel, params.subframeIdx, kVisCacheBayerN)
             : reducedPixel;
 
         // Process each pixel.
@@ -133,8 +133,8 @@ struct PathGenerator
             // Variable-spp + subframe gate: zero spp for inactive Bayer slots so the
             // pass falls through as if this pixel has no samples this dispatch. Fixed
             // spp uses reduced dispatch instead (no inactive threads to gate).
-            if (kSamplesPerPixel == 0 && kVisCacheSubframeN > 1
-                && !isActiveSubframeSlot(pixel, params.subframeIdx, kVisCacheSubframeN))
+            if (kSamplesPerPixel == 0 && kVisCacheBayerN > 1
+                && !isActiveSubframeSlot(pixel, params.subframeIdx, kVisCacheBayerN))
             {
                 spp = 0;
             }

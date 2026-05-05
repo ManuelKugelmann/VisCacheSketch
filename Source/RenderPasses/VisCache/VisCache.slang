@@ -208,6 +208,8 @@ cbuffer VisCacheParams
     uint   gEnableHierarchicalConsistency; ///< 1 = peek next level μ for agreement check.
     float  gHierarchicalMuTolerance;  ///< |μ_next − μ_this| gate for the hierarchical check.
     float  gAccelDecayDisagreeThresh; ///< |sample − μ| that triggers in-insert half-decay. 0 = off.
+    uint   gMLAlphaFloorN;            ///< MLE α-floor target N* (MCPG 2025). When >0 and total ≥ N*, 1/8 inline decay
+                                      ///< gives effective α ≈ 1/N*. 0 = off (legacy 16-bit overflow at 57344 only).
     uint   gBootThresholdFine;        ///< Per-level-fine variant of gBootThreshold. When nonzero,
                                       ///< the effective required-sample count at level L is a
                                       ///< linear interp from gBootThreshold (coarse, L=0) to
@@ -222,12 +224,12 @@ cbuffer VisCacheParams
     float  gCameraPosY;      ///< Camera world-space Y
     float  gCameraPosZ;      ///< Camera world-space Z
     float  gPixelSize1;      ///< Pixel world-space size at unit depth (2*length(cameraU)/frameDim.x)
-    uint   gSubframeN;        ///< N×N Bayer gate (1 = disabled)
+    uint   gBayerN;           ///< N×N Bayer gate (1 = disabled, 2 = 2×2/4 subframes, 4 = 4×4/16 subframes)
     uint   gWarmupFirst;      ///< # Bayer slots write-only in frame 0 (force trace, no RR)
     uint   gWarmupRun;        ///< # Bayer slots write-only in every subsequent frame
     // --- §9.4 World-space ReSTIR DI reservoirs ---
     uint   gWSEnable;             ///< 1 = WS reservoir buffer active.
-    uint   gWSLevelOffset;        ///< Reservoirs read at max(0, visTargetLvl - gWSLevelOffset).
+    uint   gWSCellLevel;          ///< WS-ReSTIR cell level into VisCache's posA cascade (0=coarse..N-1=fine).
     uint   gWSCapacity;           ///< Power-of-two reservoir slot count.
     float  gWSMCap;               ///< Temporal M-cap for reservoir merge.
     uint   gWSSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
@@ -237,10 +239,36 @@ cbuffer VisCacheParams
     uint   gWSInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
     uint   gWSFrameDimX;          ///< Frame width  (for indexing per-pixel reservoir buffer).
     uint   gWSFrameDimY;          ///< Frame height.
-    float  gWSJitterFilter;       ///< Home-cell jitter, position-seeded (ours; soft boundaries).
-    float  gWSJitterCell;         ///< Home-cell jitter, cell-seeded (Binder 2018; hard per-cell shift).
+    uint   _wsPad0;               ///< (was gWSJitterFilter — now reused via VisCache's gJitterFilter)
+    uint   _wsPad1;               ///< (was gWSJitterCell   — now reused via VisCache's gJitterCell)
     uint   gWSUseCellInRIS;       ///< 1 = WS cell candidate active; 0 = pure per-pixel ReSTIR.
     uint   gWSVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
+    // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
+    uint   gWSCellPoolEnable;     ///< 1 = pool buffer active. Master gate for ReGIR step (a)+.
+    uint   gWSCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
+    uint   gWSCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).
+    uint   gWSCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* gWSCellLevel, MCPG 2025).
+    uint   gWSSpatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).
+    uint   gWSSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
+    uint   gWSPoolAddrMode;       ///< 0 = 3D cell (default), 1 = 2D screen-tile (RTXDI-style).
+    uint   gWSPoolTileSize;       ///< Tile edge in pixels (default 16). Only used when AddrMode=1.
+    // §4.2 posB solid-angle quantization (Option B — posA-cell-coupled).
+    // alpha (angular cell, octahedral units) = (cellSizeA / gPosACoarse) * gDirSolidAngleScale,
+    // clamped to [kAlphaMin=0.05, kAlphaMax=0.5] (≈ 3°..30°).
+    // log_step (radial) = log(1 + alpha * gDistSolidAngleScale).
+    // Near-dist cutoff: dist < cellSizeA → single-bucket fallback (direction sub-resolvable).
+    float  gDirSolidAngleScale;   ///< Anisotropy knob for angular axis. Default 1.0.
+    float  gDistSolidAngleScale;  ///< Anisotropy knob for distance axis. Default 1.0.
+    uint   gWSCellReservoirMerge; ///< 0 = legacy identity-hint cell read (default; preserves wsrestir).
+                                  ///< 1 = promote cell to full Bitterli weighted merge (uses cell.W,
+                                  ///< cell.M like the per-pixel temporal read). World-space analog of
+                                  ///< the per-pixel reservoir, NO reprojection needed (cell ID is
+                                  ///< camera-invariant). Used by the `restir_3d` variant.
+    uint   gWSCellPoolFootprintPx;///< 0 = use gWSCellLevel for pool addressing (legacy fixed level).
+                                  ///< >0 = footprint-derived level: per-pixel, pick the cascade
+                                  ///< level whose cell projects to ~footprint² screen pixels at this
+                                  ///< primary hit (via shared vhfLevelForFootprint). e.g. 16 → 256
+                                  ///< px tile-equivalent footprint, matching restir_2d's tile size.
 };
 
 // ---------------------------------------------------------------------------
@@ -266,6 +294,37 @@ uint vhfCellPixels(int lvl, float3 posA)
     float pixelSize = depth * gPixelSize1;
     float ratio = cellSize / max(pixelSize, 1e-6f);
     return uint(max(ratio * ratio, 1.f));
+}
+
+/// Inverse of vhfCellPixels: cascade level whose cell at this primary hit
+/// projects to ~targetFootprintPx² screen pixels. Shared canonical helper
+/// — both VisCache and the WS-ReSTIR pool address by it. Picks the level
+/// that minimises log-distance to targetCellSize = sqrt(targetFootprintPx)
+/// × pixelSize. Output clamped to [0, gNumLevels-1].
+///
+/// Use cases:
+///   - WS-cell-pool entry level: targetFootprintPx ≈ tileSize² (256 for
+///     16×16 tile) → cell screen footprint matches RTXDI tile pre-sample.
+///   - VisCache lookup entry: same idea applied to vhfLookup's start level
+///     so insertion and lookup converge on the same posA cascade level
+///     based on observed pixel footprint, not a fixed gWSCellLevel.
+int vhfLevelForFootprint(float3 posA, float targetFootprintPx)
+{
+    if (gNumLevels <= 1u) return 0;
+    float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
+    float depth = max(length(posA - camPos), 0.001f);
+    float pixelSize = depth * gPixelSize1;
+    float targetCellSize = sqrt(max(targetFootprintPx, 1.f)) * max(pixelSize, 1e-6f);
+    // Solve vhfPosASize(lvl) ≈ targetCellSize for lvl. Geometric interp:
+    //   cellSize(t) = posACoarse · (posAFine/posACoarse)^t,  t = lvl/(N-1)
+    //   t = log(targetCellSize/posACoarse) / log(posAFine/posACoarse)
+    float lo = log(max(gPosACoarse, 1e-6f));
+    float hi = log(max(gPosAFine,   1e-6f));
+    float denom = (hi - lo);
+    if (abs(denom) < 1e-6f) return 0;
+    float t = (log(max(targetCellSize, 1e-6f)) - lo) / denom;
+    int lvl = int(round(t * float(gNumLevels - 1u)));
+    return clamp(lvl, 0, int(gNumLevels) - 1);
 }
 float vhfPosBSize(int lvl)      { return vhfInterp(gPosBCoarse,  gPosBFine,  lvl); }
 float vhfDirBSize(int lvl)      { return vhfInterp(gDirBCoarse,  gDirBFine,  lvl); }
@@ -381,20 +440,52 @@ float2 octEncode(float3 n)
     return o;  // in [−1, 1]²
 }
 
-/// Quantize a direction into an int3 key: (dirBinX, dirBinY, distBin).
-/// Grid-scaling convention: larger cell = coarser = fewer bins (matches spatial cells).
-/// angularCellSize: cell size in octahedral [-1,1]² space.
-///   >= 2.0 = single bin (position-only), 0.5 = ~16 bins, 0.1 = ~400 bins.
-/// distCellSize: distance cell size in world units.
-///   >= 100.0 = single distance bucket (effectively no distance discrimination).
+/// Legacy quantization (linear distance, fixed cell sizes per level).
+/// Kept for back-compat with the pos×pos env-ray path.
 int3 vhfQuantizeDirection(float3 dir, float angularCellSize, float dist, float distCellSize)
 {
-    // Octahedral coords shifted to [0,2] — always non-negative, round() safe.
-    // Distance is also always >= 0.
     float2 oct = octEncode(dir) + 1.f;  // now in [0, 2]
     float angCell = max(angularCellSize, 0.01f);
     int2 dirBin = int2(round(oct / angCell));
     int distBin = int(round(dist / max(distCellSize, 0.01f)));
+    return int3(dirBin.x, dirBin.y, distBin);
+}
+
+/// §4.2 Option B — solid-angle posB quantization (posA-cell-coupled).
+///
+/// Angular cell α and radial step both derive from posA's cell size at this
+/// level — one length scale per cascade level drives both axes. The user
+/// knobs `gDirSolidAngleScale` and `gDistSolidAngleScale` (default 1.0 each)
+/// scale the two axes independently for anisotropy.
+///
+///     α      = clamp((cellA / gPosACoarse) × gDirSolidAngleScale, αMin, αMax)
+///     logStep = log(1 + α × gDistSolidAngleScale)
+///     dirBin = round(octEncode(dir) / α)
+///     distBin = round(log(d / cellA) / logStep)
+///
+/// Near-dist fallback: when `d < cellA`, direction is sub-cell-resolvable
+/// (any small posA perturbation swings it widely). Returns a single-bucket
+/// sentinel `int3(0, 0, 0)` so all near-dist queries from the same posA
+/// share one slot — matches the posA-only behavior for the near regime.
+///
+/// α bounds: [0.05, 0.5] in octahedral units ≈ [3°, 30°] per bin. Outside
+/// this range the cache either has too many empty cells (α too small) or
+/// loses direction discrimination (α too coarse).
+int3 vhfQuantizeDirectionSA(float3 dir, float dist, float cellA)
+{
+    if (dist < cellA) return int3(0, 0, 0);  // single-bucket near-dist fallback
+
+    const float kAlphaMin = 0.05f;   // ≈ 3° per bin (1/64 hemisphere)
+    const float kAlphaMax = 0.5f;    // ≈ 30° per bin (1/8 hemisphere)
+    float alphaRaw = (cellA / max(gPosACoarse, 1e-6f)) * max(gDirSolidAngleScale, 1e-3f);
+    float alpha = clamp(alphaRaw, kAlphaMin, kAlphaMax);
+
+    float logStep = log(1.f + alpha * max(gDistSolidAngleScale, 1e-3f));
+    if (logStep < 1e-6f) logStep = 1e-3f;  // safety against degenerate scale
+
+    float2 oct = octEncode(dir) + 1.f;  // [0, 2]
+    int2 dirBin = int2(round(oct / alpha));
+    int distBin = int(round(log(max(dist / cellA, 1e-6f)) / logStep));
     return int3(dirBin.x, dirBin.y, distBin);
 }
 
@@ -420,16 +511,30 @@ float3 vhfEncodeDirection(float3 dir)
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Jitter-before-quantize — two stackable modes, each a float scale (0 = off):
+// Jitter-before-quantize — two stackable modes, each a float scale (0 = off).
 //
-//   jitterFilter (per-position seed, `asuint(pos) ^ seed`):
+// Both modes are conceptually anticipated in [Kugelmann 2006 §3.2.2], which
+// lists "the location of the query point" (per-position grouping) and "the
+// occupied grid cell" (per-cell grouping) as criteria for defining "nearby"
+// samples in a cache. We instantiate both as orthogonal jitter modes:
+//
+//   jitterFilter (per-POSITION seed, `asuint(pos) ^ seed`):
 //     Each position gets independent jitter → stochastic/soft cell boundaries.
 //     Neighboring positions near a boundary have a chance of landing in either
 //     cell, effectively acting as a 3D reconstruction kernel over the grid.
+//     This is the [Binder/Fricke/Keller 2018 §2.1] formulation:
+//     "jittering realizes the stochastic evaluation of filter kernels".
+//     [Alber/Hanika/Dachsbacher 2025] (MCPG, merian-quake/mc.glsl
+//     `grid_idx_interpolate(pos, w, rand)`) restates the same mechanism.
 //
-//   jitterCell [Binder et al. 2018] (per-cell-index seed, `baseIdx ^ seed`):
-//     All positions in the same cell get identical jitter → each cell redirects
-//     as a unit → boundaries stay hard but shift per cell.
+//   jitterCell (per-CELL-INDEX seed, `baseIdx ^ seed`):
+//     All positions in the same cell get identical jitter → each cell shifts
+//     as a unit → boundaries stay hard but the regular grid is de-aligned
+//     from scene geometry. Different bias defence than filterJitter: removes
+//     systematic alignment artefacts (axis-aligned scene features falling on
+//     cell planes) without mixing samples across cells. Conceptual root:
+//     [Teschner et al. 2003] spatial-hash on cell indices; we re-randomize
+//     each cell's effective center.
 //
 // Both scales are in units of "cells": 1.0 = standard ±0.5-cell offset at the
 // current level's cellSize (so multi-level caches auto-scale). >1 widens the
@@ -564,19 +669,26 @@ void vhfQuantizePair(float3 posA, float3 posB, float cellSizeA, uint lvl,
     }
 
 #if USE_VISCACHE_DIRDIST_ADDRESSING
-    // Dir+dist: 2D octahedral direction bins + distance bin.
-    // Env rays are routed to the sentinel distance by vhfAddressPosB and
-    // land in an explicit distBin=0 "infinity slot". Previously they
-    // clustered via int32 overflow of round(1e30/distCell), which was a
-    // coincidence not a design.
+    // §4.2 Dir+dist Option B: posA-cell-coupled solid-angle quantization.
+    // Angular bin α and log-distance step both derive from cellSizeA;
+    // gDirSolidAngleScale + gDistSolidAngleScale tune the two axes.
+    // Env rays (sentinel dist) land in distBin=0 infinity slot via the
+    // log formula's saturation at large d.
     {
         float3 edge = posB - posA;
         float dist = length(edge);
         float3 dir = dist > 1e-6f ? edge / dist : float3(0.f, 1.f, 0.f);
-        float angCellOct = vhfDirBSize(lvl) / 90.f;
-        float distCell   = vhfDistSize(lvl);
-        float distForBin = (abs(dist - kEnvSentinelDist) < 1.f) ? 0.f : dist;
-        qb = vhfQuantizeDirection(dir, angCellOct, distForBin, distCell);
+        if (abs(dist - kEnvSentinelDist) < 1.f)
+        {
+            // Env ray: fixed coarse angular bin, distBin = sentinel max.
+            float2 oct = octEncode(dir) + 1.f;
+            int2 dirBin = int2(round(oct / 0.5f));  // 30° bins for env
+            qb = int3(dirBin.x, dirBin.y, 0x7FFF);
+        }
+        else
+        {
+            qb = vhfQuantizeDirectionSA(dir, dist, cellSizeA);
+        }
     }
 #else
     // Pos×pos: env rays are routed to a sentinel distance (vhfAddressPosB).
@@ -683,7 +795,7 @@ static const uint kFlag_EnableParentPreinit   = 1u << 3;
 // ---------------------------------------------------------------------------
 bool vhfBayerWarmup(uint2 pixel)
 {
-    uint N = max(gSubframeN, 1u);
+    uint N = max(gBayerN, 1u);
     uint N2 = N * N;
     uint slot = (pixel.x % N) + (pixel.y % N) * N;
     uint activeSlots = (gFrameCount == 0u) ? gWarmupFirst : gWarmupRun;
@@ -1286,22 +1398,25 @@ bool vhfIsMature(uint addr, uint fp)
 }
 
 // ---------------------------------------------------------------------------
-// Inline overflow decay: prevents the 16-bit counters from wrapping around.
+// Inline overflow / MLE-α-floor decay.
 //
-// When total exceeds kOverflowTrigger (~57K), subtract 1/8 of both counters.
-// This preserves the mean (vis/total ratio) while freeing counter headroom.
+// Two regimes share one mechanism:
+//   1. Default (gMLAlphaFloorN == 0): trigger at ~57K samples, prevents
+//      16-bit counter wrap-around. Effective forgetting window is so long
+//      it's effectively a pure MLE running mean.
+//   2. MLE α-floor (gMLAlphaFloorN > 0): trigger lowered to N* (typ 256-1024).
+//      Once total ≥ N*, the 1/8 decay fires per insert, holding total in
+//      [7N*/8, N*]. Steady-state per-sample weight ≈ 1/N* — the discrete
+//      analogue of MCPG 2025's α = max(1/N, MIN_ALPHA) with MIN_ALPHA = 1/N*.
 //
-// Why 1/8 (kDecayShift=3): aggressive enough to prevent overflow, gentle
-// enough to not lose too much history. The entry effectively "forgets"
-// its oldest samples, which also helps with temporal adaptation.
-//
-// The function takes cur (the post-InterlockedAdd value) and returns the
-// post-decay value. Uses the InterlockedAdd return value to avoid stale
-// data races with concurrent writers.
+// 1/8 decay (kDecayShift=3) is race-tolerant under concurrent writers:
+// each thread subtracts ⌊cur/8⌋ which converges to zero without underflow.
+// A stronger decay (e.g. halving) would risk total→0 under contention.
 // ---------------------------------------------------------------------------
 uint vhfOverflowDecay(int slot, uint cur)
 {
-    if ((cur & 0xFFFFu) > kOverflowTrigger)
+    uint trigger = (gMLAlphaFloorN > 0u) ? gMLAlphaFloorN : kOverflowTrigger;
+    if ((cur & 0xFFFFu) > trigger)
     {
         uint visDecay   = (cur >> 16u) >> kDecayShift;
         uint totalDecay = (cur & 0xFFFFu) >> kDecayShift;

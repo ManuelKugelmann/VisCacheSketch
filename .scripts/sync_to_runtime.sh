@@ -40,15 +40,26 @@ for pass in VisCache ReSTIRPTPass; do
 done
 
 # --- Shaders: Falcor render passes we modify (PathTracer, MinimalPathTracer, RTXDIPass) ---
+# Preserve subdir structure (e.g. PathTracer/restirpt/PathState.slang must NOT
+# clobber PathTracer/PathState.slang). The earlier `find ... -exec cp $src $DST/`
+# was flattening — both PathState.slang's collapsed onto one path, restirpt
+# version winning by alphabetical order, breaking Cornell-scene shader compiles.
 FALCOR_PASSES="$PROJECT_ROOT/Falcor/Source/RenderPasses"
 for pass in PathTracer MinimalPathTracer RTXDIPass; do
     PASS_SRC="$FALCOR_PASSES/$pass"
     PASS_DST="$RUNTIME/shaders/RenderPasses/$pass"
     if [ -d "$PASS_SRC" ]; then
         mkdir -p "$PASS_DST"
-        find "$PASS_SRC" -name "*.slang" -o -name "*.slangh" | while IFS= read -r src; do
-            cp -f "$src" "$PASS_DST/"
-        done
+        # cd into PASS_SRC so `find .` returns relative paths; preserve subdirs.
+        (
+            cd "$PASS_SRC" || exit 0
+            find . \( -name "*.slang" -o -name "*.slangh" \) -print0 \
+                | while IFS= read -r -d '' rel; do
+                    rel="${rel#./}"
+                    mkdir -p "$PASS_DST/$(dirname "$rel")"
+                    cp -f "$PASS_SRC/$rel" "$PASS_DST/$rel"
+                done
+        )
     fi
 done
 

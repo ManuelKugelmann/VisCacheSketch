@@ -15,6 +15,14 @@ static constexpr size_t kEntrySize = 8u;
 // §9.4 Reservoir slot size must match Slang struct WSReservoir
 // (8 fields × 4 bytes = 32 bytes — see WSReservoir.slang).
 static constexpr size_t kWSReservoirSize = 32u;
+static constexpr size_t kWSCellPoolSize  = 1544u;   // 2*4 header + 3×(128*4) entry arrays
+                                                    // (lightTypeIndex + payload + sourcePdf — RTXDI-tile layout).
+                                                    // N=128 — Cornell_3AL_x4 trail closure (Task #35) 2026-05-05.
+                                                    // PdfMipmap pre-pass = Power pre-pass on quality, so trail
+                                                    // is downstream of fill. Doubling N (with K_pre also 2×).
+                                                    // Faster slot turnover at
+                                                    // higher N for our K=24 K-RIS pool reads. K=24/N=16 = 150%
+                                                    // (with-replacement reads), so K-RIS still gets variety.
 /// Five atomic GPU counters, indexed by VisCache.slang's kStat* constants:
 ///   [0] inserts       — successful vhfInsert() calls (new samples accepted)
 ///   [1] evictions     — fingerprint overwrites (slot reuse under pressure)
@@ -93,13 +101,16 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
     if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
+    if (props.has("mlAlphaFloorN"))                 mParams.mlAlphaFloorN                 = props["mlAlphaFloorN"];
     if (props.has("bootThresholdFine"))             mParams.bootThresholdFine             = props["bootThresholdFine"];
     if (props.has("preinitAmbiguityCutoff"))        mParams.preinitAmbiguityCutoff        = props["preinitAmbiguityCutoff"];
-    if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
+    if (props.has("bayerN"))                        mParams.bayerN                        = props["bayerN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
     if (props.has("enableWSReservoirs"))            mParams.enableWSReservoirs            = props["enableWSReservoirs"];
-    if (props.has("wsLevelOffset"))                 mParams.wsLevelOffset                 = props["wsLevelOffset"];
+    if (props.has("enableWSPixelReservoir"))        mParams.enableWSPixelReservoir        = props["enableWSPixelReservoir"];
+    if (props.has("wsCellLevel"))                   mParams.wsCellLevel                   = props["wsCellLevel"];
+    if (props.has("wsCellLevelJitter"))             mParams.wsCellLevelJitter             = props["wsCellLevelJitter"];
     if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
     if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
     if (props.has("wsSpatialNeighbours"))           mParams.wsSpatialNeighbours           = props["wsSpatialNeighbours"];
@@ -107,10 +118,21 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("wsLightSoftness"))               mParams.wsLightSoftness               = props["wsLightSoftness"];
     if (props.has("wsNormalAddr"))                  mParams.wsNormalAddr                  = props["wsNormalAddr"];
     if (props.has("wsInitialCandidates"))           mParams.wsInitialCandidates           = props["wsInitialCandidates"];
-    if (props.has("wsJitterFilter"))                mParams.wsJitterFilter                = props["wsJitterFilter"];
-    if (props.has("wsJitterCell"))                  mParams.wsJitterCell                  = props["wsJitterCell"];
+    // (wsJitterFilter / wsJitterCell removed — WS-ReSTIR reuses VisCache's
+    //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
     if (props.has("wsUseCellInRIS"))                mParams.wsUseCellInRIS                = props["wsUseCellInRIS"];
     if (props.has("wsVisInPHat"))                   mParams.wsVisInPHat                   = props["wsVisInPHat"];
+    if (props.has("enableWSCellPool"))              mParams.enableWSCellPool              = props["enableWSCellPool"];
+    if (props.has("wsCellPoolCapacity"))            mParams.wsCellPoolCapacity            = props["wsCellPoolCapacity"];
+    if (props.has("wsCellPoolDrawK"))               mParams.wsCellPoolDrawK               = props["wsCellPoolDrawK"];
+    if (props.has("wsSpatialPixelsK"))              mParams.wsSpatialPixelsK              = props["wsSpatialPixelsK"];
+    if (props.has("wsSpatialPixelsRadius"))         mParams.wsSpatialPixelsRadius         = props["wsSpatialPixelsRadius"];
+    if (props.has("wsPoolAddrMode"))                mParams.wsPoolAddrMode                = props["wsPoolAddrMode"];
+    if (props.has("wsPoolTileSize"))                mParams.wsPoolTileSize                = props["wsPoolTileSize"];
+    if (props.has("dirSolidAngleScale"))            mParams.dirSolidAngleScale            = props["dirSolidAngleScale"];
+    if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
+    if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
+    if (props.has("wsCellPoolFootprintPx"))         mParams.wsCellPoolFootprintPx         = props["wsCellPoolFootprintPx"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -167,13 +189,16 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
     if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
+    if (props.has("mlAlphaFloorN"))                 mParams.mlAlphaFloorN                 = props["mlAlphaFloorN"];
     if (props.has("bootThresholdFine"))             mParams.bootThresholdFine             = props["bootThresholdFine"];
     if (props.has("preinitAmbiguityCutoff"))        mParams.preinitAmbiguityCutoff        = props["preinitAmbiguityCutoff"];
-    if (props.has("subframeN"))                     mParams.subframeN                     = props["subframeN"];
+    if (props.has("bayerN"))                        mParams.bayerN                        = props["bayerN"];
     if (props.has("warmupSlotsFirst"))              mParams.warmupSlotsFirst              = props["warmupSlotsFirst"];
     if (props.has("warmupSlotsRun"))                mParams.warmupSlotsRun                = props["warmupSlotsRun"];
     if (props.has("enableWSReservoirs"))            mParams.enableWSReservoirs            = props["enableWSReservoirs"];
-    if (props.has("wsLevelOffset"))                 mParams.wsLevelOffset                 = props["wsLevelOffset"];
+    if (props.has("enableWSPixelReservoir"))        mParams.enableWSPixelReservoir        = props["enableWSPixelReservoir"];
+    if (props.has("wsCellLevel"))                   mParams.wsCellLevel                   = props["wsCellLevel"];
+    if (props.has("wsCellLevelJitter"))             mParams.wsCellLevelJitter             = props["wsCellLevelJitter"];
     if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
     if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
     if (props.has("wsSpatialNeighbours"))           mParams.wsSpatialNeighbours           = props["wsSpatialNeighbours"];
@@ -181,10 +206,21 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("wsLightSoftness"))               mParams.wsLightSoftness               = props["wsLightSoftness"];
     if (props.has("wsNormalAddr"))                  mParams.wsNormalAddr                  = props["wsNormalAddr"];
     if (props.has("wsInitialCandidates"))           mParams.wsInitialCandidates           = props["wsInitialCandidates"];
-    if (props.has("wsJitterFilter"))                mParams.wsJitterFilter                = props["wsJitterFilter"];
-    if (props.has("wsJitterCell"))                  mParams.wsJitterCell                  = props["wsJitterCell"];
+    // (wsJitterFilter / wsJitterCell removed — WS-ReSTIR reuses VisCache's
+    //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
     if (props.has("wsUseCellInRIS"))                mParams.wsUseCellInRIS                = props["wsUseCellInRIS"];
     if (props.has("wsVisInPHat"))                   mParams.wsVisInPHat                   = props["wsVisInPHat"];
+    if (props.has("enableWSCellPool"))              mParams.enableWSCellPool              = props["enableWSCellPool"];
+    if (props.has("wsCellPoolCapacity"))            mParams.wsCellPoolCapacity            = props["wsCellPoolCapacity"];
+    if (props.has("wsCellPoolDrawK"))               mParams.wsCellPoolDrawK               = props["wsCellPoolDrawK"];
+    if (props.has("wsSpatialPixelsK"))              mParams.wsSpatialPixelsK              = props["wsSpatialPixelsK"];
+    if (props.has("wsSpatialPixelsRadius"))         mParams.wsSpatialPixelsRadius         = props["wsSpatialPixelsRadius"];
+    if (props.has("wsPoolAddrMode"))                mParams.wsPoolAddrMode                = props["wsPoolAddrMode"];
+    if (props.has("wsPoolTileSize"))                mParams.wsPoolTileSize                = props["wsPoolTileSize"];
+    if (props.has("dirSolidAngleScale"))            mParams.dirSolidAngleScale            = props["dirSolidAngleScale"];
+    if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
+    if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
+    if (props.has("wsCellPoolFootprintPx"))         mParams.wsCellPoolFootprintPx         = props["wsCellPoolFootprintPx"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -232,13 +268,16 @@ Properties VisCache::getProperties() const
     p["enableHierarchicalConsistency"] = mParams.enableHierarchicalConsistency;
     p["hierarchicalMuTolerance"]       = mParams.hierarchicalMuTolerance;
     p["accelDecayDisagreeThresh"]      = mParams.accelDecayDisagreeThresh;
+    p["mlAlphaFloorN"]                 = mParams.mlAlphaFloorN;
     p["bootThresholdFine"]             = mParams.bootThresholdFine;
     p["preinitAmbiguityCutoff"]        = mParams.preinitAmbiguityCutoff;
-    p["subframeN"]                     = mParams.subframeN;
+    p["bayerN"]                        = mParams.bayerN;
     p["warmupSlotsFirst"]              = mParams.warmupSlotsFirst;
     p["warmupSlotsRun"]                = mParams.warmupSlotsRun;
     p["enableWSReservoirs"]            = mParams.enableWSReservoirs;
-    p["wsLevelOffset"]                 = mParams.wsLevelOffset;
+    p["enableWSPixelReservoir"]        = mParams.enableWSPixelReservoir;
+    p["wsCellLevel"]                   = mParams.wsCellLevel;
+    p["wsCellLevelJitter"]             = mParams.wsCellLevelJitter;
     p["wsReservoirCapacity"]           = mParams.wsReservoirCapacity;
     p["wsMCap"]                        = mParams.wsMCap;
     p["wsSpatialNeighbours"]           = mParams.wsSpatialNeighbours;
@@ -246,10 +285,20 @@ Properties VisCache::getProperties() const
     p["wsLightSoftness"]               = mParams.wsLightSoftness;
     p["wsNormalAddr"]                  = mParams.wsNormalAddr;
     p["wsInitialCandidates"]           = mParams.wsInitialCandidates;
-    p["wsJitterFilter"]                = mParams.wsJitterFilter;
-    p["wsJitterCell"]                  = mParams.wsJitterCell;
+    // (wsJitterFilter / wsJitterCell removed — see jitterFilter / jitterCell.)
     p["wsUseCellInRIS"]                = mParams.wsUseCellInRIS;
     p["wsVisInPHat"]                   = mParams.wsVisInPHat;
+    p["enableWSCellPool"]              = mParams.enableWSCellPool;
+    p["wsCellPoolCapacity"]            = mParams.wsCellPoolCapacity;
+    p["wsCellPoolDrawK"]               = mParams.wsCellPoolDrawK;
+    p["wsSpatialPixelsK"]              = mParams.wsSpatialPixelsK;
+    p["wsSpatialPixelsRadius"]         = mParams.wsSpatialPixelsRadius;
+    p["wsPoolAddrMode"]                = mParams.wsPoolAddrMode;
+    p["wsPoolTileSize"]                = mParams.wsPoolTileSize;
+    p["dirSolidAngleScale"]            = mParams.dirSolidAngleScale;
+    p["distSolidAngleScale"]           = mParams.distSolidAngleScale;
+    p["wsCellReservoirMerge"]          = mParams.wsCellReservoirMerge;
+    p["wsCellPoolFootprintPx"]         = mParams.wsCellPoolFootprintPx;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -449,9 +498,11 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 
     // §9.4 per-pixel temporal reservoir buffer — lazy (re)allocate at frame
     // dimensions to enable RTXDI-style temporal-M accumulation across frames.
+    // Skipped entirely when enableWSPixelReservoir=false (pure WS-cell mode).
     {
         uint2 fd = mFrameDims;
-        const bool needs = mParams.enableWSReservoirs && fd.x > 0 && fd.y > 0
+        const bool needs = mParams.enableWSReservoirs && mParams.enableWSPixelReservoir
+                        && fd.x > 0 && fd.y > 0
                         && (!mpPixelReservoirs || mPixelReservoirsCommitted.x != fd.x
                                               || mPixelReservoirsCommitted.y != fd.y);
         if (needs)
@@ -469,6 +520,31 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         {
             mpPixelReservoirs = nullptr;
             mPixelReservoirsCommitted = {0u, 0u};
+        }
+    }
+
+    // §9.4 WS-cascade ReGIR cell-pool buffer — lazy alloc, gated on
+    // enableWSReservoirs && enableWSCellPool. Capacity rounded up to pow2.
+    {
+        uint32_t cpCap = 1u;
+        while (cpCap < std::max(1u, mParams.wsCellPoolCapacity)) cpCap <<= 1;
+        mParams.wsCellPoolCapacity = cpCap;
+        const bool needs = mParams.enableWSReservoirs && mParams.enableWSCellPool
+                        && (!mpWSCellPools || mWSCellPoolCapacityCommitted != cpCap);
+        if (needs)
+        {
+            mpWSCellPools = mpDevice->createStructuredBuffer(
+                kWSCellPoolSize, cpCap,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
+            mpWSCellPools->setName("VHF_WSCellPools");
+            mWSCellPoolCapacityCommitted = cpCap;
+            pCtx->clearUAV(mpWSCellPools->getUAV().get(), uint4(0u));
+        }
+        else if ((!mParams.enableWSReservoirs || !mParams.enableWSCellPool) && mpWSCellPools)
+        {
+            mpWSCellPools = nullptr;
+            mWSCellPoolCapacityCommitted = 0u;
         }
     }
     mParams.matureThreshold = std::clamp(mParams.matureThreshold, mParams.bootThreshold, 0xFFFFu);
@@ -570,6 +646,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.enableHierarchicalConsistency = mParams.enableHierarchicalConsistency ? 1u : 0u;
     gpu.hierarchicalMuTolerance = mParams.hierarchicalMuTolerance;
     gpu.accelDecayDisagreeThresh = mParams.accelDecayDisagreeThresh;
+    gpu.mlAlphaFloorN = mParams.mlAlphaFloorN;
     gpu.bootThresholdFine = mParams.bootThresholdFine;
     gpu.jitterFilter   = mParams.jitterFilter;
     gpu.jitterCell     = mParams.jitterCell;
@@ -615,7 +692,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         gpu.cameraPosW[0] = gpu.cameraPosW[1] = gpu.cameraPosW[2] = 0.f;
         gpu.pixelSize1 = 0.001f;  // Safe fallback
     }
-    gpu.subframeN        = std::max(1u, mParams.subframeN);
+    gpu.bayerN           = std::max(1u, mParams.bayerN);
     gpu.warmupSlotsFirst = mParams.warmupSlotsFirst;
     gpu.warmupSlotsRun   = mParams.warmupSlotsRun;
 
@@ -624,7 +701,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     while (wsCap < std::max(1u, mParams.wsReservoirCapacity)) wsCap <<= 1;
     mParams.wsReservoirCapacity = wsCap;
     gpu.wsEnable             = mParams.enableWSReservoirs ? 1u : 0u;
-    gpu.wsLevelOffset        = mParams.wsLevelOffset;
+    gpu.wsCellLevel          = std::min(mParams.wsCellLevel, mParams.numLevels - 1u);
+    gpu.wsCellLevelJitter    = mParams.wsCellLevelJitter;
     gpu.wsCapacity           = wsCap;
     gpu.wsMCap               = mParams.wsMCap;
     gpu.wsSpatialNeighbours  = std::min(4u, mParams.wsSpatialNeighbours);
@@ -632,10 +710,26 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.wsLightSoftness      = std::clamp(mParams.wsLightSoftness, 0.f, 1.f);
     gpu.wsNormalAddr         = mParams.wsNormalAddr ? 1u : 0u;
     gpu.wsInitialCandidates  = std::max(1u, mParams.wsInitialCandidates);
-    gpu.wsJitterFilter       = mParams.wsJitterFilter;
-    gpu.wsJitterCell         = mParams.wsJitterCell;
+    gpu._wsPad0              = 0u;
+    gpu._wsPad1              = 0u;
     gpu.wsUseCellInRIS       = mParams.wsUseCellInRIS ? 1u : 0u;
     gpu.wsVisInPHat          = std::min(mParams.wsVisInPHat, 2u);
+
+    // WS-cascade ReGIR cell pool — capacity rounded up to next pow2 for bitmask indexing.
+    uint32_t cpCap = 1u;
+    while (cpCap < std::max(1u, mParams.wsCellPoolCapacity)) cpCap <<= 1;
+    mParams.wsCellPoolCapacity = cpCap;
+    gpu.wsCellPoolEnable     = mParams.enableWSCellPool ? 1u : 0u;
+    gpu.wsCellPoolCapacity   = cpCap;
+    gpu.wsCellPoolDrawK      = mParams.wsCellPoolDrawK;
+    gpu.wsSpatialPixelsK     = mParams.wsSpatialPixelsK;
+    gpu.wsSpatialPixelsRadius = mParams.wsSpatialPixelsRadius;
+    gpu.wsPoolAddrMode       = mParams.wsPoolAddrMode;
+    gpu.wsPoolTileSize       = std::max(1u, mParams.wsPoolTileSize);
+    gpu.dirSolidAngleScale  = std::clamp(mParams.dirSolidAngleScale, 0.1f, 10.0f);
+    gpu.distSolidAngleScale = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
+    gpu.wsCellReservoirMerge = mParams.wsCellReservoirMerge;
+    gpu.wsCellPoolFootprintPx = mParams.wsCellPoolFootprintPx;
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -659,13 +753,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.jitterFilter, mParams.jitterCell, mParams.enableVisCacheAdaptivePMin,
                 mParams.enableVisCacheDirDistAddr, mParams.bootThresholdFactorFootprintPx,
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
-        logInfo("[VisCache] subframeN={} warmupFirst={} warmupRun={}",
-                gpu.subframeN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
-        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} levelOffset={} mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f} normAddr={}",
-                mParams.enableWSReservoirs, mParams.wsReservoirCapacity, mParams.wsLevelOffset,
+        logInfo("[VisCache] bayerN={} (Bayer N×N → N²={} subframes/cycle) warmupFirst={} warmupRun={}",
+                gpu.bayerN, gpu.bayerN * gpu.bayerN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} cellLevel={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f} normAddr={}",
+                mParams.enableWSReservoirs, mParams.wsReservoirCapacity,
+                mParams.wsCellLevel, mParams.wsCellLevelJitter,
                 mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours),
                 std::max(1u, mParams.wsInitialCandidates),
                 mParams.wsLightMuMin, mParams.wsLightSoftness, mParams.wsNormalAddr);
+        logInfo("[VisCache] WS-ReGIR pool: enabled={} capacity={} drawK={}",
+                mParams.enableWSCellPool, mParams.wsCellPoolCapacity, mParams.wsCellPoolDrawK);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -727,6 +824,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_enableHierarchicalConsistency"]   = mParams.enableHierarchicalConsistency ? 1u : 0u;
     dict["vhfParam_hierarchicalMuTolerance"]         = mParams.hierarchicalMuTolerance;
     dict["vhfParam_accelDecayDisagreeThresh"]        = mParams.accelDecayDisagreeThresh;
+    dict["vhfParam_mlAlphaFloorN"]                   = mParams.mlAlphaFloorN;
     dict["vhfParam_bootThresholdFine"]               = mParams.bootThresholdFine;
     dict["vhfParam_frameCount"]                      = mFrameCount;
     dict["vhfParam_spp"]                             = std::max(1u, mParams.spp);
@@ -734,21 +832,25 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_cameraPosY"]                      = gpu.cameraPosW[1];
     dict["vhfParam_cameraPosZ"]                      = gpu.cameraPosW[2];
     dict["vhfParam_pixelSize1"]                      = gpu.pixelSize1;
-    dict["vhfParam_subframeN"]                       = std::max(1u, mParams.subframeN);
+    dict["vhfParam_bayerN"]                          = std::max(1u, mParams.bayerN);
     dict["vhfParam_warmupFirst"]                     = mParams.warmupSlotsFirst;
     dict["vhfParam_warmupRun"]                       = mParams.warmupSlotsRun;
-    dict["vhfSubframeN"]        = std::max(1u, mParams.subframeN);
+    dict["vhfBayerN"]           = std::max(1u, mParams.bayerN);
     dict["vhfWarmupSlotsFirst"] = mParams.warmupSlotsFirst;
     dict["vhfWarmupSlotsRun"]   = mParams.warmupSlotsRun;
 
     // §9.4 WS-reservoir export — buffer + per-field cbuffer values for downstream binding.
+    // When pixel reservoirs are disabled (`enableWSPixelReservoir=false`),
+    // export wsFrameDim*=0 so the shader's `wsPixelReservoirEnabled()` returns
+    // false and all per-pixel reservoir code paths skip — pure WS-cell mode.
     dict["wsReservoirBuffer"]        = mpWSReservoirs;
     dict["wsPixelReservoirBuffer"]   = mpPixelReservoirs;
-    dict["vhfParam_wsFrameDimX"]     = mFrameDims.x;
-    dict["vhfParam_wsFrameDimY"]     = mFrameDims.y;
+    dict["vhfParam_wsFrameDimX"]     = mParams.enableWSPixelReservoir ? mFrameDims.x : 0u;
+    dict["vhfParam_wsFrameDimY"]     = mParams.enableWSPixelReservoir ? mFrameDims.y : 0u;
     dict["vhfEnableWSReservoirs"]    = mParams.enableWSReservoirs;
     dict["vhfParam_wsEnable"]        = mParams.enableWSReservoirs ? 1u : 0u;
-    dict["vhfParam_wsLevelOffset"]   = mParams.wsLevelOffset;
+    dict["vhfParam_wsCellLevel"]       = std::min(mParams.wsCellLevel, mParams.numLevels - 1u);
+    dict["vhfParam_wsCellLevelJitter"] = mParams.wsCellLevelJitter;
     dict["vhfParam_wsCapacity"]      = mParams.wsReservoirCapacity;
     dict["vhfParam_wsMCap"]          = mParams.wsMCap;
     dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.wsSpatialNeighbours);
@@ -756,10 +858,25 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsLightSoftness"] = std::clamp(mParams.wsLightSoftness, 0.f, 1.f);
     dict["vhfParam_wsNormalAddr"]    = mParams.wsNormalAddr ? 1u : 0u;
     dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.wsInitialCandidates);
-    dict["vhfParam_wsJitterFilter"]      = mParams.wsJitterFilter;
-    dict["vhfParam_wsJitterCell"]        = mParams.wsJitterCell;
+    // (vhfParam_wsJitterFilter / wsJitterCell removed — WS-ReSTIR reads
+    //  the existing vhfParam_jitterFilter / jitterCell values instead.)
     dict["vhfParam_wsUseCellInRIS"]      = mParams.wsUseCellInRIS ? 1u : 0u;
     dict["vhfParam_wsVisInPHat"]         = std::min(mParams.wsVisInPHat, 2u);
+
+    // §9.4 WS-cascade ReGIR cell-pool — buffer + cbuffer values.
+    dict["wsCellPoolBuffer"]             = mpWSCellPools;
+    dict["vhfEnableWSCellPool"]          = mParams.enableWSCellPool;
+    dict["vhfParam_wsCellPoolEnable"]    = mParams.enableWSCellPool ? 1u : 0u;
+    dict["vhfParam_wsCellPoolCapacity"]  = mParams.wsCellPoolCapacity;
+    dict["vhfParam_wsCellPoolDrawK"]     = mParams.wsCellPoolDrawK;
+    dict["vhfParam_wsSpatialPixelsK"]    = mParams.wsSpatialPixelsK;
+    dict["vhfParam_wsSpatialPixelsRadius"] = mParams.wsSpatialPixelsRadius;
+    dict["vhfParam_wsPoolAddrMode"]      = mParams.wsPoolAddrMode;
+    dict["vhfParam_wsPoolTileSize"]      = std::max(1u, mParams.wsPoolTileSize);
+    dict["vhfParam_dirSolidAngleScale"]  = std::clamp(mParams.dirSolidAngleScale, 0.1f, 10.0f);
+    dict["vhfParam_distSolidAngleScale"] = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
+    dict["vhfParam_wsCellReservoirMerge"] = mParams.wsCellReservoirMerge;
+    dict["vhfParam_wsCellPoolFootprintPx"] = mParams.wsCellPoolFootprintPx;
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;
@@ -908,7 +1025,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     }
 
     // Subframe gate: advance logical frameCount only after a full Bayer cycle (N²).
-    const uint32_t kSubframeCount = std::max(1u, mParams.subframeN) * std::max(1u, mParams.subframeN);
+    const uint32_t kSubframeCount = std::max(1u, mParams.bayerN) * std::max(1u, mParams.bayerN);
     mSubframeIdx++;
     if (mSubframeIdx >= kSubframeCount)
     {
@@ -1063,7 +1180,8 @@ void VisCache::renderUI(Gui::Widgets& widget)
     if (auto g = widget.group("§9.4 WS-ReSTIR DI", /*open=*/false))
     {
         g.checkbox("Enable WS reservoirs", mParams.enableWSReservoirs);
-        g.var("wsLevelOffset (cells coarser than vis)", mParams.wsLevelOffset, 0u, 8u);
+        g.var("wsCellLevel (cascade level)", mParams.wsCellLevel, 0u, 15u);
+        g.var("wsCellLevelJitter (stochastic LOD)", mParams.wsCellLevelJitter, 0u, 4u);
         g.var("wsReservoirCapacity (slots, pow2)", mParams.wsReservoirCapacity, 1u << 12, 1u << 24);
         g.var("wsMCap", mParams.wsMCap, 1.f, 200.f, 1.f);
         g.var("wsSpatialNeighbours", mParams.wsSpatialNeighbours, 0u, 4u);
@@ -1071,8 +1189,8 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("wsLightSoftness (0=uniform, 1=full)", mParams.wsLightSoftness, 0.f, 1.f, 0.05f);
         g.checkbox("wsNormalAddr (fold normal into cell hash)", mParams.wsNormalAddr);
         g.var("wsInitialCandidates (K fresh / pixel)", mParams.wsInitialCandidates, 1u, 64u);
-        g.var("wsJitterFilter (ours, soft)",   mParams.wsJitterFilter, 0.f, 1.f, 0.05f);
-        g.var("wsJitterCell  (Binder, hard)",  mParams.wsJitterCell,   0.f, 1.f, 0.05f);
+        // (wsJitterFilter / wsJitterCell removed — WS-ReSTIR shares
+        //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)
         g.checkbox("wsUseCellInRIS (off = pure per-pixel)", mParams.wsUseCellInRIS);
         g.var("wsVisInPHat (0=blind 1=cache 2=trace)", mParams.wsVisInPHat, 0u, 2u);
     }
@@ -1096,9 +1214,10 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.checkbox("Hierarchical consistency check", mParams.enableHierarchicalConsistency);
         g.var("hierarchical μ tolerance", mParams.hierarchicalMuTolerance, 0.f, 1.f, 0.05f);
         g.var("accelDecay |Δ| thresh (0=off)", mParams.accelDecayDisagreeThresh, 0.f, 1.f, 0.05f);
+        g.var("MLE α-floor N* (0=off, 256-1024)", mParams.mlAlphaFloorN, 0u, 16384u, 64u);
         g.var("bootThresholdFine (0=uniform)", mParams.bootThresholdFine, 0u, 256u);
         g.var("preinit ambiguity cutoff (0=always preinit)", mParams.preinitAmbiguityCutoff, 0.f, 0.5f, 0.05f);
-        g.var("M: Subframe N (1 = off)",  mParams.subframeN,        1u, 8u);
+        g.var("Bayer N×N (1=off, 4=4×4)", mParams.bayerN,           1u, 8u);
         g.var("L: warmupSlots (frame 0)", mParams.warmupSlotsFirst, 0u, 64u);
         g.var("L: warmupSlots (running)", mParams.warmupSlotsRun,   0u, 64u);
     }

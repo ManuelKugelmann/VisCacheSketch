@@ -36,7 +36,7 @@ res = int(os.environ.get("RES", "512"))
 QUANT_TAG = "qa012"
 QUANT = QUANT_SWEEP[QUANT_TAG]
 
-SUBFRAME_N = 2
+BAYER_N = 2
 FD = 16
 CT = 16     # step-14 winner ct
 VT = 0.01
@@ -68,7 +68,7 @@ BASE_15 = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL_MULTI,
 VARIANTS_15 = []
 for (base_name, base_overrides) in BASE_15:
     for jtag, jf, jc in JITTER_PAIRS:
-        tag = f"bayer{SUBFRAME_N}x{SUBFRAME_N}_cell4x4_ct{CT:03d}_vt010_pm002_{jtag}"
+        tag = f"bayer{BAYER_N}x{BAYER_N}_cell4x4_ct{CT:03d}_vt010_pm002_{jtag}"
         VARIANTS_15.append((f"{base_name}__{tag}", {
             **base_overrides,
             "bootThreshold":                 CT,
@@ -81,7 +81,7 @@ for (base_name, base_overrides) in BASE_15:
             "hierarchicalMuTolerance":       0.20,
             "accelDecayDisagreeThresh":      0.0,
             "pMin":                          PM,
-            "subframeN":                     SUBFRAME_N,
+            "bayerN":                        BAYER_N,
             "enableDecayAutoTune":           False,
             "jitterFilter":                  jf,
             "jitterCell":                    jc,

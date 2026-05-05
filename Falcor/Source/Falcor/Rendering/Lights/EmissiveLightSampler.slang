@@ -56,6 +56,10 @@ __exported import Utils.Sampling.SampleGeneratorInterface;
     import Rendering.Lights.EmissivePowerSampler;
     typedef EmissivePowerSampler EmissiveLightSampler;
 
+#elif _EMISSIVE_LIGHT_SAMPLER_TYPE == EMISSIVE_LIGHT_SAMPLER_PDF_MIPMAP
+    import Rendering.Lights.EmissivePdfMipmapSampler;
+    typedef EmissivePdfMipmapSampler EmissiveLightSampler;
+
 #elif _EMISSIVE_LIGHT_SAMPLER_TYPE == EMISSIVE_LIGHT_SAMPLER_NULL
 
     /** Null sampler.

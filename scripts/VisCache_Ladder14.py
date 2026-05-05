@@ -54,7 +54,7 @@ QUANT_TAG = "qa012"
 QUANT = QUANT_SWEEP[QUANT_TAG]
 
 NO_JITTER = {"jitterFilter": 0.0, "jitterCell": 0.0}
-SUBFRAME_N = 2
+BAYER_N = 2
 # Fixed at step-13 winner regime: vt and pm settled.
 # vt: Bernoulli theorem makes all vt ∈ [0.01, 0.08] equivalent (rejects all
 # penumbra). vt=0.03 mid-bucket, no benefit to sweep tighter or looser.
@@ -89,7 +89,7 @@ for (base_name, base_overrides) in BASE_14:
         for frac in CT_FRACTIONS:
             ct = max(2, int(round(fd * frac)))
             ct_tag = f"ct{ct:04d}"
-            tag = f"bayer{SUBFRAME_N}x{SUBFRAME_N}_cell{cell_n}x{cell_n}_{ct_tag}_vt010_pm002"
+            tag = f"bayer{BAYER_N}x{BAYER_N}_cell{cell_n}x{cell_n}_{ct_tag}_vt010_pm002"
             VARIANTS_14.append((f"{base_name}__{tag}", {
                 **base_overrides,
                 **NO_JITTER,
@@ -103,7 +103,7 @@ for (base_name, base_overrides) in BASE_14:
                 "hierarchicalMuTolerance":       0.20,
                 "accelDecayDisagreeThresh":      0.0,
                 "pMin":                          PM,
-                "subframeN":                     SUBFRAME_N,
+                "bayerN":                        BAYER_N,
                 "enableDecayAutoTune":           False,
             }))
 

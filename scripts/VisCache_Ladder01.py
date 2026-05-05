@@ -21,7 +21,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, _make_variants, get_scenes, \
     finalize_step, PRESET_MINIMAL, RR_ADAPTIVE, \
-    SUBFRAME_1x1, SUBFRAME_2x2, SUBFRAME_4x4
+    BAYER_1x1, BAYER_2x2, BAYER_4x4
 
 STEP = "01"
 res = int(os.environ.get("RES", "512"))
@@ -45,13 +45,13 @@ STEP_OVERRIDES = {**RR_ADAPTIVE}
 # frames=1 means "one logical frame" = one full Bayer cycle (N² rendered subframes).
 # warmup slots [0, warmupFirst) write-only in the cycle's first subframe.
 SWEEP = [
-    (SUBFRAME_1x1, (0, 0, 1, 1)),   # baseline: full-frame, no warmup (shows artifact)
-    (SUBFRAME_2x2, (0, 0, 1, 1)),   # 2x2, no warmup
-    (SUBFRAME_2x2, (1, 0, 1, 1)),   # 2x2, +1-slot warmup
-    (SUBFRAME_2x2, (2, 0, 1, 1)),   # 2x2, +half-cycle warmup
-    (SUBFRAME_4x4, (0, 0, 1, 1)),   # 4x4, no warmup
-    (SUBFRAME_4x4, (1, 0, 1, 1)),   # 4x4, +1-slot warmup
-    (SUBFRAME_4x4, (8, 0, 1, 1)),   # 4x4, +half-cycle warmup
+    (BAYER_1x1, (0, 0, 1, 1)),   # baseline: full-frame, no warmup (shows artifact)
+    (BAYER_2x2, (0, 0, 1, 1)),   # 2x2, no warmup
+    (BAYER_2x2, (1, 0, 1, 1)),   # 2x2, +1-slot warmup
+    (BAYER_2x2, (2, 0, 1, 1)),   # 2x2, +half-cycle warmup
+    (BAYER_4x4, (0, 0, 1, 1)),   # 4x4, no warmup
+    (BAYER_4x4, (1, 0, 1, 1)),   # 4x4, +1-slot warmup
+    (BAYER_4x4, (8, 0, 1, 1)),   # 4x4, +half-cycle warmup
 ]
 
 # Subframe plumbing validation: pMin=1.0 + huge thresholds force every ray to
@@ -59,14 +59,14 @@ SWEEP = [
 # subframe skip logic. Any non-zero err_blob here indicates a bug in the
 # plumbing rather than a RR-skip artifact. VisCache must stay in the graph
 # because the PathTracer subframe gate is keyed on VisCache presence
-# (PathTracer.cpp: `mVisCacheAvailable` gates `vhfSubframeN`).
+# (PathTracer.cpp: `mVisCacheAvailable` gates `vhfBayerN`).
 SUBVAL_OVERRIDES = {**STEP_OVERRIDES, "pMin": 2.0,
                     "enableVisCacheAdaptivePMin": False,
                     "bootThreshold": 1 << 20, "matureThreshold": 1 << 20}
 SUBVAL_SWEEP = [
-    (SUBFRAME_1x1, (0, 0, 1, 1)),
-    (SUBFRAME_2x2, (0, 0, 1, 1)),
-    (SUBFRAME_4x4, (0, 0, 1, 1)),
+    (BAYER_1x1, (0, 0, 1, 1)),
+    (BAYER_2x2, (0, 0, 1, 1)),
+    (BAYER_4x4, (0, 0, 1, 1)),
 ]
 
 for scene_file in get_scenes():

@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, make_norm_variants, read_carried_winner, \
     write_picks_meta, _DEFAULT_PICKER_RULE, \
-    PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP, SUBFRAME_2x2
+    PRESET_MINIMAL, RR_ADAPTIVE, LEVELS_MULTI, QUANT_SWEEP, BAYER_2x2
 
 STEP = "10"
 res = int(os.environ.get("RES", "512"))
@@ -48,7 +48,7 @@ for q_tag in QUANT_TAGS:
             VARIANTS_10.append((f"{name}__{t_tag}",
                                 {**overrides, **t_params, **FP_OFF, **NO_JITTER}))
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **SUBFRAME_2x2,
+STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, **BAYER_2x2,
                   "tableCapacity": 1 << 25}
 
 for scene_file in get_scenes():

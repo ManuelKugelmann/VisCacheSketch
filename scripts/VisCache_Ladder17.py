@@ -23,7 +23,7 @@ res = int(os.environ.get("RES", "512"))
 QUANT_TAG = "qa012"
 QUANT = QUANT_SWEEP[QUANT_TAG]
 
-SUBFRAME_N = 2
+BAYER_N = 2
 FD = 16
 CT = 2
 VT = 0.01
@@ -41,7 +41,7 @@ VARIANTS_17 = []
 for (base_name, base_overrides) in BASE_17:
     for posB in POSB_VALUES:
         posb_tag = f"qB{int(round(posB*100)):03d}"
-        tag = f"bayer{SUBFRAME_N}x{SUBFRAME_N}_cell4x4_ct{CT:03d}_vt010_pm002_{posb_tag}"
+        tag = f"bayer{BAYER_N}x{BAYER_N}_cell4x4_ct{CT:03d}_vt010_pm002_{posb_tag}"
         VARIANTS_17.append((f"{base_name}__{tag}", {
             **base_overrides,
             "bootThreshold":                 CT,
@@ -54,7 +54,7 @@ for (base_name, base_overrides) in BASE_17:
             "hierarchicalMuTolerance":       0.20,
             "accelDecayDisagreeThresh":      0.0,
             "pMin":                          PM,
-            "subframeN":                     SUBFRAME_N,
+            "bayerN":                        BAYER_N,
             "enableDecayAutoTune":           False,
             "posBCoarse":                    posB,   # the swept axis
         }))

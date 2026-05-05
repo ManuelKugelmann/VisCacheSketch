@@ -15,7 +15,7 @@ Usage:
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, _make_variants, get_scenes, \
-    finalize_step, PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
+    finalize_step, PRESET_MINIMAL, RR_ADAPTIVE, BAYER_2x2
 
 STEP = "02"
 res = int(os.environ.get("RES", "512"))
@@ -41,7 +41,7 @@ for scene_file in get_scenes():
         variants=VARIANTS_02,
         resX=res, resY=res,
         mogwai_globals=globals(),
-        step_overrides={**RR_ADAPTIVE, **SUBFRAME_2x2},
+        step_overrides={**RR_ADAPTIVE, **BAYER_2x2},
     )
 
 finalize_step(STEP, carried_winners=[])  # exploration sweep — no carry

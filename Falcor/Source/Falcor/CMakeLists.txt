@@ -194,6 +194,9 @@ target_sources(Falcor PRIVATE
     Rendering/Lights/EmissiveLightSamplerHelpers.slang
     Rendering/Lights/EmissiveLightSamplerInterface.slang
     Rendering/Lights/EmissiveLightSamplerType.slangh
+    Rendering/Lights/EmissivePdfMipmapSampler.cpp
+    Rendering/Lights/EmissivePdfMipmapSampler.h
+    Rendering/Lights/EmissivePdfMipmapSampler.slang
     Rendering/Lights/EmissivePowerSampler.cpp
     Rendering/Lights/EmissivePowerSampler.h
     Rendering/Lights/EmissivePowerSampler.slang

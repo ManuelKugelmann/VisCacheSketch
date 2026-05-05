@@ -20,11 +20,20 @@ except ImportError:
 
 
 def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True,
-                            wsReservoirs=False, wsLevelOffset=1, wsReservoirCapacity=1 << 18,
+                            wsReservoirs=False, wsCellLevel=4, wsCellLevelJitter=0,
+                            wsReservoirCapacity=1 << 18,
                             wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
                             wsInitialCandidates=8,
-                            wsJitterFilter=0.0, wsJitterCell=0.0,
                             wsVisInPHat=1,
+                            wsCellPool=False, wsCellPoolCapacity=1 << 18, wsCellPoolDrawK=0,
+                            wsCellPoolPrePass=False,
+                            wsSpatialPixelsK=4, wsSpatialPixelsRadius=32,
+                            wsPoolAddrMode=0, wsPoolTileSize=16,
+                            wsCellPoolFootprintPx=0,
+                            emissiveSampler=None,    # main pass: None = Falcor default (LightBVH)
+                            prePassEmissiveSampler=None,    # pre-pass override (defaults to emissiveSampler if None); "Power" = shading-agnostic pool fill (RTXDI-pdf-mipmap-equivalent for cell pool only)
+                            prePassWsVisInPHat=None,        # pre-pass override for wsVisInPHat (defaults to wsVisInPHat). Set to 1 → pre-pass uses VisCache cache lookups for V-aware pool fill (§9.4 step (d) + §9.2 V amortization). Combined with Bayer N×N gate, this is the warmup-with-amortization design from §11.2.
+                            prePassBayerN=None,             # pre-pass-only bayerN override (Bayer N×N gate). Default: same as VisCache default (1 = full screen each frame). Set to 4 → 16-frame Bayer sweep with 1/16 of pixels firing explicit shadow rays each frame, the rest using cache lookups.
                             visibilityCheck=None, lightSelection=None,
                             extraVCProps=None):
     """Build a PathTracer render graph.
@@ -34,8 +43,11 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         useJitter: If False, pin samples to pixel center (no subpixel jitter).
         wsReservoirs: If True, enable §9.4 world-space ReSTIR DI reservoirs
             (requires viscache=True since reservoirs ride VisCache's posA cascade).
-        wsLevelOffset: # cascade levels coarser than the finest visibility level
-            for reservoir cell selection (default 1 = one step coarser).
+        wsCellLevel: WS-ReSTIR cell level into VisCache's shared posA cascade.
+            Reuses vhfPosASize(lvl) and the existing jitterQuantize() machinery
+            (gJitterFilter / gJitterCell apply). Default 4 = mid-cascade with
+            numLevels=8.
+        wsCellLevelJitter: Per-pixel stochastic LOD jitter range (0 = off).
         visibilityCheck: If not None, override enableVisCacheVisibilityCheck (§9.2).
         lightSelection: If not None, override enableVisCacheLightSelection (§9.1).
         extraVCProps: Optional dict merged into VisCache properties at create time
@@ -70,25 +82,75 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
             vc_props.update({
                 "enableWSReservoirs":   True,
                 "wsInitialCandidates":  wsInitialCandidates,
-                "wsJitterFilter":       wsJitterFilter,
-                "wsJitterCell":         wsJitterCell,
                 "wsVisInPHat":          wsVisInPHat,
-                "wsLevelOffset":        wsLevelOffset,
+                "wsCellLevel":          wsCellLevel,
+                "wsCellLevelJitter":    wsCellLevelJitter,
                 "wsReservoirCapacity":  wsReservoirCapacity,
                 "wsMCap":               wsMCap,
                 "wsSpatialNeighbours":  wsSpatialNeighbours,
                 "wsLightMuMin":         wsLightMuMin,
+                "wsSpatialPixelsK":     wsSpatialPixelsK,
+                "wsSpatialPixelsRadius": wsSpatialPixelsRadius,
+            })
+        if wsReservoirs and wsCellPool:
+            vc_props.update({
+                "enableWSCellPool":     True,
+                "wsCellPoolCapacity":   wsCellPoolCapacity,
+                "wsCellPoolDrawK":      wsCellPoolDrawK,
+                "wsPoolAddrMode":       wsPoolAddrMode,
+                "wsPoolTileSize":       wsPoolTileSize,
+                "wsCellPoolFootprintPx": wsCellPoolFootprintPx,
             })
         vc = createPass("VisCachePass", vc_props)
         g.addPass(vc, "VisCache")
 
+    # §9.4 Step (b) WS-cascade ReGIR: optional cell-pool pre-pass instance.
+    # Runs BEFORE the main PathTracer to populate the cell pool from K-RIS
+    # candidates. Skips shading entirely (Lr=0). The main instance then
+    # reads from the populated pool. Both instances share the same VisCache
+    # cell-pool buffer via InternalDictionary.
+    if viscache and wsReservoirs and wsCellPool and wsCellPoolPrePass:
+        pt_pre_props = {
+            "samplesPerPixel":     samplesPerPixel,
+            "maxSurfaceBounces":   maxBounces,
+            "colorFormat":         "LogLuvHDR",
+            "wsCellPoolFillOnly":  True,
+        }
+        # Pre-pass-specific sampler override falls back to main emissiveSampler.
+        prePassSampler = prePassEmissiveSampler if prePassEmissiveSampler is not None else emissiveSampler
+        if prePassSampler is not None:
+            pt_pre_props["emissiveSampler"] = prePassSampler
+        pt_pre = createPass("PathTracer", pt_pre_props)
+        # Pre-pass-specific VisCache overrides for the warmup-with-amortization
+        # design (§11.2): higher bayerN concentrates explicit shadow-ray
+        # firing into a Bayer pattern, the rest of the pixels use cache
+        # lookups for V-aware pool fill (§9.4 step d + §9.2 V amortization).
+        # Falcor 8 doesn't expose Pass.setProperty from Python, so any per-
+        # PathTracerPrePass overrides go through createPass props above —
+        # but VisCache state (bayerN, wsVisInPHat) is shared via the
+        # InternalDictionary, so a true per-pass override would require a
+        # second VisCache instance or per-pass cbuffer fields. For now this
+        # parameter is here as a marker; wiring requires per-pass
+        # VisCacheParams override (Task #32).
+        g.addPass(pt_pre, "PathTracerPrePass")
+        g.addEdge("VBufferRT.vbuffer", "PathTracerPrePass.vbuffer")
+        g.addEdge("VBufferRT.viewW",   "PathTracerPrePass.viewW")
+
     # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
-    pt = createPass("PathTracer", {
+    pt_props = {
         "samplesPerPixel":    samplesPerPixel,
         "maxSurfaceBounces":  maxBounces,
         "colorFormat":        "LogLuvHDR",
-    })
+    }
+    if emissiveSampler is not None:
+        pt_props["emissiveSampler"] = emissiveSampler   # "Uniform" | "LightBVH" | "Power" | "Null"
+    pt = createPass("PathTracer", pt_props)
     g.addPass(pt, "PathTracer")
+    # NOTE: PathTracerPrePass → PathTracerMain ordering relies on Falcor's
+    # UAV barrier system (both passes touch gWSCellPools). Within a frame,
+    # pool writes from pre-pass complete before main reads (UAV barrier).
+    # No explicit graph edge needed — and adding one (e.g. color → ...)
+    # would break the input-format contract.
 
     # Accumulate samples over frames for progressive rendering. PathTracer internally
     # loops N² Bayer subframes per execute() call, so AccumulatePass sees one fully
@@ -113,6 +175,14 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
     g.addEdge("VBufferRT.viewW",     "PathTracer.viewW")
     g.addEdge("PathTracer.color",    "AccumulatePass.input")
     g.addEdge("AccumulatePass.output", "ToneMapper.src")
+
+    # Force PathTracerPrePass to execute. Without a marked output or a
+    # downstream consumer, Falcor's render graph optimizer prunes the
+    # pass entirely (it has no observable effect on graph outputs from
+    # the optimizer's POV — the cell-pool UAV side effect is invisible
+    # to the dependency tracker). Marking its color keeps it scheduled.
+    if viscache and wsReservoirs and wsCellPool and wsCellPoolPrePass:
+        g.markOutput("PathTracerPrePass.color")
 
     g.markOutput("ToneMapper.dst")
     g.markOutput("AccumulatePass.output")  # pre-tonemapper HDR (captured as EXR)

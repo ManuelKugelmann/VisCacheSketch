@@ -53,7 +53,7 @@ BASE = [v for v in make_norm_variants(quant=QUANT, base=PRESET_MINIMAL,
 
 # Single variant: pMin=1.0 forces every gate to "trace" - viscache
 # becomes a structurally-equivalent path tracer. Bayer dispersion still
-# differs (subframeN=4) so the noise floor reflects that difference.
+# differs (bayerN=4) so the noise floor reflects that difference.
 VARIANTS_99 = []
 for (base_name, base_overrides) in BASE:
     # Three forced-trace variants probing different failure modes:
@@ -64,7 +64,7 @@ for (base_name, base_overrides) in BASE:
     #                   cached μ). Δ documents cache's free quality boost.
     #   bayer4x4      : same forced-trace + CV but with Bayer dispersion.
     #                   Confirms (or refutes) Bayer-as-quality-source hypothesis.
-    for sub_n, vis_check, tag_suffix in [(1, False, "bayer1x1_NOCV"),
+    for bayer_n, vis_check, tag_suffix in [(1, False, "bayer1x1_NOCV"),
                                           (1, True,  "bayer1x1"),
                                           (4, True,  "bayer4x4")]:
         tag = f"{tag_suffix}_cell4x4_FORCED_TRACE_pm100"
@@ -81,7 +81,7 @@ for (base_name, base_overrides) in BASE:
             "hierarchicalMuTolerance":       0.20,
             "accelDecayDisagreeThresh":      0.0,
             "pMin":                          1.0,   # always trace
-            "subframeN":                     sub_n,
+            "bayerN":                        bayer_n,
             "enableDecayAutoTune":           False,
             "enableVisCacheVisibilityCheck": vis_check,
         }))

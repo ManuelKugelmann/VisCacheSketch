@@ -132,13 +132,13 @@ struct PathTracerParams
 };
 
 #ifndef HOST_CODE
-#ifndef VISCACHE_SUBFRAME_N
-#define VISCACHE_SUBFRAME_N 1
+#ifndef VISCACHE_BAYER_N
+#define VISCACHE_BAYER_N 1
 #endif
 
 // ---------------------------------------------------------------------------
 // Subframe Bayer remap — maps reduced-resolution threadID to full-resolution
-// pixel. Used by reduced-dispatch path tracing when VISCACHE_SUBFRAME_N > 1.
+// pixel. Used by reduced-dispatch path tracing when VISCACHE_BAYER_N > 1.
 //
 // Inverse Bayer tables: slot index → (dx, dy) offset in [0, N).
 // Derived from the forward tables in GeneratePaths.cs.slang.

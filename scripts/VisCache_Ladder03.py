@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, plot_overviews_per_bvariant, plot_top3_comparison, \
     copy_summary_to_root, pick_top_variants_per_bvariant, write_picks_meta, \
-    _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
+    _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, BAYER_2x2
 
 STEP = "03"
 res = int(os.environ.get("RES", "512"))
@@ -107,7 +107,7 @@ VARIANTS_03 = VARIANTS_ALL[start:end]
 print(f"[03] chunk {CHUNK_IDX+1}/{CHUNK_COUNT}: variants [{start}:{end}] "
       f"({len(VARIANTS_03)} of {n})")
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **SUBFRAME_2x2}
+STEP_OVERRIDES = {**RR_ADAPTIVE, **BAYER_2x2}
 
 for scene_file in get_scenes():
     run_baseline(

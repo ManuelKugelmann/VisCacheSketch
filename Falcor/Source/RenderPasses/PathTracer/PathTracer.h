@@ -184,6 +184,9 @@ private:
     bool                            mOptionsChanged = false;    ///< True if the config has changed since last frame.
     bool                            mGBufferAdjustShadingNormals = false; ///< True if GBuffer/VBuffer has adjusted shading normals enabled.
     bool                            mFixedSampleCount = true;   ///< True if a fixed sample count per pixel is used. Otherwise load it from the pass sample count input.
+    bool                            mWSCellPoolFillOnly = false; ///< §9.4 Step (b): when true, this PathTracer instance only fills the
+                                                                 ///< WS cell pool (K-RIS + insert) and skips shading. Used as a pre-pass
+                                                                 ///< before the main render PathTracer instance reads the populated pool.
     bool                            mOutputGuideData = false;   ///< True if guide data should be generated as outputs.
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mOutputNRDAdditionalData = false;   ///< True if NRD data from delta and residual paths should be generated as designated outputs rather than being included in specular NRD outputs.
@@ -212,7 +215,7 @@ private:
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
     bool mVisCacheLightSelection = false;   ///< §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR)
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
-    uint32_t mVisCacheSubframeN = 1;        ///< M: N×N subframe gate (1=full frame, 2=2×2, 4=4×4); see Falcor/LOCAL_FIXES.md #14
+    uint32_t mVisCacheBayerN = 1;           ///< Bayer N×N gate (1=full frame, 2=2×2/4 subframes, 4=4×4/16 subframes); see Falcor/LOCAL_FIXES.md #14
 
     // Cached cbuffer values — bound per-member because Falcor 8 ParameterBlock
     // doesn't support whole-buffer cbuffer binding.
@@ -228,16 +231,18 @@ private:
              uint32_t enableHierarchicalConsistency=0;
              float hierarchicalMuTolerance=0.2f;
              float accelDecayDisagreeThresh=0;
+             uint32_t mlAlphaFloorN=0;
              uint32_t bootThresholdFine=0;
              float jitterFilter=0, jitterCell=0;
              uint32_t diagAccumWindow=128;
              uint32_t frameCount=0, spp=1;
              float cameraPosX=0, cameraPosY=0, cameraPosZ=0;
              float pixelSize1=0.001f;
-             uint32_t subframeN=1, warmupFirst=0, warmupRun=0;
+             uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
              // §9.4 WS-ReSTIR DI cbuffer fields
              uint32_t wsEnable=0;
-             uint32_t wsLevelOffset=1;
+             uint32_t wsCellLevel=4u;
+             uint32_t wsCellLevelJitter=0u;
              uint32_t wsCapacity=0;
              float    wsMCap=30.f;
              uint32_t wsSpatialNeighbours=4;
@@ -245,13 +250,26 @@ private:
              float    wsLightSoftness=1.f;
              uint32_t wsNormalAddr=0;
              uint32_t wsInitialCandidates=8;
-             float    wsJitterFilter=0.f, wsJitterCell=0.f;
+             // (wsJitter* removed — shares VisCache's gJitterFilter / gJitterCell)
              uint32_t wsUseCellInRIS=1;
-             uint32_t wsVisInPHat=1; } mVCParams;
+             uint32_t wsVisInPHat=1;
+             // §9.4 WS-cascade ReGIR cell pool
+             uint32_t wsCellPoolEnable=0;
+             uint32_t wsCellPoolCapacity=0;
+             uint32_t wsCellPoolDrawK=0;
+             uint32_t wsSpatialPixelsK=4;
+             uint32_t wsSpatialPixelsRadius=32;
+             uint32_t wsPoolAddrMode=0;
+             uint32_t wsPoolTileSize=16;
+             float    dirSolidAngleScale=1.0f;
+             float    distSolidAngleScale=1.0f;
+             uint32_t wsCellReservoirMerge=0;
+             uint32_t wsCellPoolFootprintPx=0; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
     ref<Buffer> mpVHFWSReservoirs;
     ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
+    ref<Buffer> mpVHFWSCellPools;              ///< Multi-light cell pool (ReGIR).
     uint32_t    mVHFPixelDimX = 0u;
     uint32_t    mVHFPixelDimY = 0u;
     bool        mVisCacheWSReservoirs = false; ///< Master gate read from dict.

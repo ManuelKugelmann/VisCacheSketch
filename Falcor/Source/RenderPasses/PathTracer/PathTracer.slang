@@ -50,6 +50,8 @@ import Rendering.RTXDI.RTXDI;
 #if USE_WS_RESERVOIRS
 import RenderPasses.VisCache.WSReservoir;
 import RenderPasses.VisCache.WSReservoirIO;
+import RenderPasses.VisCache.WSCellPool;
+import RenderPasses.VisCache.WSCellPoolIO;
 import RenderPasses.VisCache.VisCache;   // VisCacheParams cbuffer (gWS*, vhfLookup)
 import Utils.Math.MathHelpers;           // sample_triangle for emissive uv → barys
 #include "Utils/Math/MathConstants.slangh"  // FLT_MIN
@@ -1196,9 +1198,39 @@ struct PathTracer
                 {
                     WSLocalReservoir local; local.init();
 
+                    // §9.4 Pool address — resolved once, used for both write-back
+                    // and per-candidate insert-on-fill (so the pool fills within
+                    // a single dispatch instead of waiting for next frame).
+                    // §9.4 mode-dispatched pool address: 3D world cell OR
+                    // 2D screen tile (RTXDI-style). Same buffer/struct/insert
+                    // math; only the address resolver differs.
+                    WSCellAddress poolAddrA = wsResolvePoolAddr(sd.posW, sd.faceN, path.getPixel());
+
+                    // §9.4 — RTXDI port: pool fills via BOTH pre-pass AND
+                    // main pass (matches RTXDI conceptually — every frame's
+                    // light proposals contribute to the tile/cell). Main pass
+                    // also seeds the local reservoir with the fresh NEE
+                    // sample as the first RIS candidate, then folds K_pool
+                    // additional candidates from the pool (block 1c). This
+                    // gives x1 vanilla-NEE-baseline behavior even when the
+                    // pool is cold (frame 1 / new viewpoint). Across frames,
+                    // pool fills and K=24 pool draws dominate, recovering
+                    // RTXDI-tile-presample quality.
+
                     // (1) Add the fresh sample as the first RIS candidate.
                     if (any(Lr > 0.f))
                     {
+                        // pHat = luminance(Lr) directly. Falcor's ls.Li = Le/pdf,
+                        // so weight*Li = (BSDF*cos*Le)/pdf = unbiased single-sample
+                        // direct-lighting estimator. RIS over already-MC-divided
+                        // contributions uses w_i = lum(contribution); the /pdf is
+                        // already in Lr. invPdf passed as 1.0 below.
+                        // CRITICAL: this works for BOTH area lights (pdf>0) AND
+                        // point/directional lights (pdf=0, Dirac). Earlier
+                        // formulations using `pHat × 1/ls.pdf` divided by zero
+                        // for Dirac lights, making point-light candidates have
+                        // RIS weight 0 → reservoir empty → K-RIS fell through to
+                        // vanilla NEE bit-identically.
                         float pHatFresh = luminance(Lr);
                         // §9.4 Visibility-aware target function (RTXDI fix).
                         // Runtime-selected by gWSVisInPHat:
@@ -1220,11 +1252,53 @@ struct PathTracer
 #endif
                             pHatFresh *= max(vF, wsLightMuMin());
                         }
-                        float invPdfFresh = (ls.pdf > 0.f) ? (1.f / ls.pdf) : 0.f;
-                        local.streamingAdd(
-                            wsPackLightTypeIndex(ls.lightType, ls.lightIndex),
-                            wsPackLightSamplePayload(ls),
-                            pHatFresh, invPdfFresh, path.sg);
+                        // invPdf = 1 because pHatFresh = lum(Lr) already includes
+                        // the 1/pdf factor (Lr = weight × Li = integrand / pdf).
+                        // Standard RIS over MC-divided contributions. Fresh
+                        // sample seeds the local reservoir AND fills the pool
+                        // for next-frame reads. Empirically the fresh sample is
+                        // the highest-quality candidate (proper pHat at reader,
+                        // not cross-pixel-biased) — dropping it for "pure RTXDI
+                        // pool-only K-RIS" regressed Sponza x1 by +9pp.
+                        uint freshLTI = wsPackLightTypeIndex(ls.lightType, ls.lightIndex);
+                        uint freshPL  = wsPackLightSamplePayload(ls);
+                        local.streamingAdd(freshLTI, freshPL,
+                            pHatFresh, 1.f, path.sg);
+                        if (wsCellPoolEnabled())
+                        {
+                            // §9.4 step (d) FIXED: V-aware RIS-at-insert via target
+                            // multiplier (NOT probabilistic acceptance). The previous
+                            // formulation `if (rand < V) insert with sourcePdf*V`
+                            // mathematically AMPLIFIED occluded candidates' weight
+                            // (rare 1% inserts → 100× weight → reservoir biased
+                            // toward occluded — opposite of intent). Correct form:
+                            // always insert; modulate the RIS *target* by V, leave
+                            // sourcePdf unchanged. Then pool slot replacement
+                            // probability is ∝ pHat × V / ls.pdf — slots concentrate
+                            // on visible-bright candidates without bias inflation.
+                            // Reader's 1/sourcePdf RIS weight uses unmodified
+                            // ls.pdf — clean unbiased proposal density.
+                            //
+                            // V-aware fill is decoupled from wsVisInPHat (the K-RIS
+                            // p̂ V-mode) so the cell pool always gets V-filtered
+                            // candidates when enabled — RTXDI's tile-pool analog.
+                            float muF = 1.f;
+                            if (!isEnv && ls.distance > 0.f)
+                            {
+                                float3 lightPosB = ls.origin + ls.dir * ls.distance;
+                                VHFResult vr = vhfLookup(sd.posW, lightPosB, sd.faceN);
+                                muF = vr.valid ? vr.mu : 1.f;
+                            }
+                            float vWeight = max(muF, wsLightMuMin());  // defensive μmin floor
+#if WS_CELL_POOL_FILL_ONLY
+                            // Pool inserts only from pre-pass (RTXDI-style: dedicated
+                            // fill source). Main pass uses LightBVH for fresh K-RIS in
+                            // the local stream but does NOT write to pool, so pool
+                            // content reflects only the pre-pass's sampler choice
+                            // (e.g. shading-agnostic Power for cross-pixel diversity).
+                            wsCellPoolInsert(poolAddrA, freshLTI, freshPL, ls.pdf, pHatFresh * vWeight, path.sg);
+#endif
+                        }
                     }
 
                     // (1b) Generate K-1 ADDITIONAL fresh candidates per pixel
@@ -1247,6 +1321,9 @@ struct PathTracer
                             float3 weightK = mi.eval(sd, lsK.dir, path.sg);
                             float3 LrK = weightK * lsK.Li;
                             if (!any(LrK > 0.f)) continue;
+                            // pHat = luminance(Lr); invPdf=1. Works for both
+                            // area lights (pdf>0) and Dirac point/directional
+                            // lights (pdf=0). See fresh-candidate site.
                             float pHatK = luminance(LrK);
                             if (lsK.lightType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
                             {
@@ -1262,11 +1339,192 @@ struct PathTracer
 #endif
                                 pHatK *= max(vK, wsLightMuMin());
                             }
-                            float invPdfK = (lsK.pdf > 0.f) ? (1.f / lsK.pdf) : 0.f;
-                            local.streamingAdd(
-                                wsPackLightTypeIndex(lsK.lightType, lsK.lightIndex),
-                                wsPackLightSamplePayload(lsK),
-                                pHatK, invPdfK, path.sg);
+                            uint kLTI = wsPackLightTypeIndex(lsK.lightType, lsK.lightIndex);
+                            uint kPL  = wsPackLightSamplePayload(lsK);
+                            // invPdf=1; pHatK already pdf-divided (lum(Lr)).
+                            local.streamingAdd(kLTI, kPL, pHatK, 1.f, path.sg);
+                            if (wsCellPoolEnabled())
+                            {
+                                // §9.4 step (d) FIXED — V-aware target-multiplier
+                                // form. See full rationale at the fresh-insert
+                                // site above. always-insert with pHat × V as RIS
+                                // target, sourcePdf left = ls.pdf (unbiased).
+                                // V-aware fill is decoupled from wsVisInPHat —
+                                // the cell pool always gets V-filtered candidates.
+                                float muK = 1.f;
+                                if (lsK.lightType != (uint)LightType::EnvMap
+                                    && lsK.distance > 0.f)
+                                {
+                                    float3 lightPosBK = lsK.origin + lsK.dir * lsK.distance;
+                                    VHFResult vrK = vhfLookup(sd.posW, lightPosBK, sd.faceN);
+                                    muK = vrK.valid ? vrK.mu : 1.f;
+                                }
+                                float vWeightK = max(muK, wsLightMuMin());
+#if WS_CELL_POOL_FILL_ONLY
+                                wsCellPoolInsert(poolAddrA, kLTI, kPL, lsK.pdf, pHatK * vWeightK, path.sg);
+#endif
+                            }
+                        }
+                    }
+
+                    // (1c) §9.4 WS-cascade ReGIR — draw K candidates from the
+                    //     home cell's multi-light pool. Pool fills from main-
+                    //     pass winners (step a write-back below) and over time
+                    //     concentrates on the popular high-pHat lights for this
+                    //     region. Acts as a per-region importance prior on top
+                    //     of LightBVH's global power weighting.
+                    //     Each pool entry was inserted with its writer-side NEE
+                    //     proposal pdf, so we treat the entry as a sample drawn
+                    //     from that pdf at this reading pixel — RIS unbiases via
+                    //     pHat(reader) / sourcePdf, exactly as if the entry had
+                    //     been freshly drawn at the reader.
+                    if (gWSCellPoolDrawK > 0u && wsCellPoolEnabled())
+                    {
+                        WSCellPool pool;
+                        if (wsLoadCellPool(poolAddrA, pool) && pool.count > 0u)
+                        {
+                            uint kPool = min(gWSCellPoolDrawK, pool.count);
+                            for (uint d = 0u; d < kPool; ++d)
+                            {
+                                uint slotR = uint(sampleNext1D(path.sg) * float(pool.count)) % pool.count;
+                                uint pType = wsUnpackLightType(pool.lightTypeIndex[slotR]);
+                                uint pIdxL = wsUnpackLightIndex(pool.lightTypeIndex[slotR]);
+                                float pSrcPdf = pool.sourcePdf[slotR];
+                                if (pSrcPdf <= 0.f) continue;
+                                LightSample poolLs;
+                                bool poolOk = false;
+                                if (pType == (uint)LightType::Emissive)
+                                    poolOk = wsRebuildEmissiveLightSample(pIdxL, wsUnpackUV(pool.payload[slotR]), sd, poolLs);
+                                else if (pType == (uint)LightType::Analytic)
+                                    poolOk = wsRebuildAnalyticLightSample(pIdxL, sd, path.sg, poolLs);
+                                else if (pType == (uint)LightType::EnvMap)
+                                    poolOk = wsRebuildEnvMapLightSample(pool.payload[slotR], sd, poolLs);
+                                if (!poolOk) continue;
+
+                                float NdotLP = dot(sd.faceN, poolLs.dir);
+                                bool hasReflP  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
+                                bool hasTransP = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
+                                bool acceptUP = (NdotLP >  kMinCosTheta) && hasReflP;
+                                bool acceptLP = (NdotLP < -kMinCosTheta) && hasTransP;
+                                if (!acceptUP && !acceptLP) continue;
+
+                                // §9.4 MIS for pool draws — match the fresh-sample path
+                                // in block 1a (line ~1179): light-vs-BSDF MIS damps
+                                // the candidate's Li by the balance heuristic. Without
+                                // this, pool candidates have higher weight than fresh
+                                // candidates by the MIS factor, biasing the RIS toward
+                                // pool and over-weighting reused samples. Skipped for
+                                // Analytic lights (Falcor convention).
+                                if (kUseMIS && !applyRTXDI && pType != (uint)LightType::Analytic)
+                                {
+                                    float scatterPdfP = mi.evalPdf(sd, poolLs.dir, kUseBSDFSampling);
+                                    poolLs.Li *= evalMIS(1, poolLs.pdf, 1, scatterPdfP);
+                                }
+
+                                float3 weightP = mi.eval(sd, poolLs.dir, path.sg);
+                                float3 LrP = weightP * poolLs.Li;
+                                if (!any(LrP > 0.f)) continue;
+                                // pHat = luminance(Lr) at reading pixel.
+                                float pHatP = luminance(LrP);
+                                // §9.4 step (d) — V-aware target function for pool draws.
+                                // Reuses the existing wsVisInPHat machinery: mode 1 = cache-
+                                // amortized (μ from VisCache), mode 2 = explicit shadow ray.
+                                // Applied to pool draws on top of the existing fresh-candidate
+                                // path so the per-pixel K-RIS picks visibility-aware candidates
+                                // regardless of whether they came from the pool or fresh draws.
+                                if (pType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
+                                {
+                                    Ray vrayP = poolLs.getVisibilityRay();
+                                    float vP = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                                    if (wsVisInPHatMode() == 1u)
+                                        vP = vq.traceVisibilityRayCV(vrayP, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                    else
+                                        vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
+#else
+                                    vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
+#endif
+                                    pHatP *= max(vP, wsLightMuMin());
+                                }
+                                // §9.4 read-side — Convention B (UNBIASED, RTXDI-faithful)
+                                // with reader-evaluated pdf. Validated 2026-05-05:
+                                // closes Cornell_3AL_x4 trail by -0.18pp, wins on
+                                // BistroExt_x4 by -0.96pp, no firefly regression on
+                                // Sponza/BistroExt (Sponza_x4 +0.04 within noise).
+                                // Earlier Conv B w/ stored solid-angle pdf fireflies
+                                // because writer's r²/cos was baked in. Computing
+                                // pdf at READER via emissiveSampler.evalPdf uses
+                                // reader's geometry → position-invariant RIS weight.
+                                // Emissive only; analytic/env fall back to Conv A
+                                // (Dirac/env pdf eval may not exist).
+                                float invSrcPdf = 1.f;
+                                if (pType == (uint)LightType::Emissive)
+                                {
+                                    // Compute triangle normal from vertices —
+                                    // inner LightSample lacks normalW.
+                                    const EmissiveTriangle pet = gScene.lightCollection.getTriangle(pIdxL);
+                                    float3 pe0 = pet.posW[1] - pet.posW[0];
+                                    float3 pe1 = pet.posW[2] - pet.posW[0];
+                                    TriangleLightHit poolHit;
+                                    poolHit.triangleIndex = pIdxL;
+                                    poolHit.posW = poolLs.origin + poolLs.dir * poolLs.distance;
+                                    poolHit.normalW = normalize(cross(pe0, pe1));
+                                    float readerPdf = emissiveSampler.evalPdf(sd.posW, sd.faceN, true, poolHit);
+                                    invSrcPdf = (readerPdf > 0.f) ? (1.f / readerPdf) : 0.f;
+                                }
+                                local.streamingAdd(
+                                    pool.lightTypeIndex[slotR], pool.payload[slotR],
+                                    pHatP, invSrcPdf, path.sg);
+                            }
+                        }
+                    }
+
+#if !WS_CELL_POOL_FILL_ONLY
+                    // §9.4 RTXDI port: testCandidateVisibility (RTXDI default = true).
+                    // [Differences from literal RTXDI port — see paper §9.4 + DEVLOG
+                    //  for the complete table. Algorithmic deviations: 1) pool fill
+                    //  via main+Bayer-pre-pass NEE writes (not RTXDI's compute pre-
+                    //  pass with pdf-mipmap) — Falcor uses LightBVH; 2) Convention A
+                    //  read (`w = pHat × 1`, not RTXDI's `targetPdf × invSourcePdf`)
+                    //  — LightBVH's shading-conditional pdf would cause ratio
+                    //  fireflies under Conv B; 3) K=8 fresh + K=16 pool = 24 total
+                    //  (RTXDI uses K=24 from tile only; we keep fresh in local
+                    //  because pool-only regressed Sponza x1 +9pp); 4) MIS re-
+                    //  applied at reuse sites because we re-evaluate Li at reader.]
+                    // After the K-RIS picks its winner from the pool, trace
+                    // ONE shadow ray to verify visibility. If V=0, ZERO the
+                    // winner's targetPdf (so the reservoir's W = wSum/(pHat×M)
+                    // makes the swap skip this frame: `if (targetPdf > 0)`
+                    // gate fails). Spatial/temporal merge still get the
+                    // accumulated wSum/M mass; subsequent neighbor merges
+                    // can replace the shadowed winner with a visible one.
+                    // Less aggressive than `local.init()` (keeps reservoir
+                    // mass intact). Matches RTXDI's reject-this-sample
+                    // semantics without losing K-RIS state.
+                    // Cost: 1 shadow ray per pixel per frame, main pass only.
+                    if (local.M > 0.f && local.targetPdf > 0.f)
+                    {
+                        uint winnerType = wsUnpackLightType(local.lightTypeIndex);
+                        uint winnerIdx  = wsUnpackLightIndex(local.lightTypeIndex);
+                        LightSample winnerLs;
+                        bool winnerOk = false;
+                        if (winnerType == (uint)LightType::Emissive)
+                            winnerOk = wsRebuildEmissiveLightSample(winnerIdx, wsUnpackUV(local.payload), sd, winnerLs);
+                        else if (winnerType == (uint)LightType::Analytic)
+                            winnerOk = wsRebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
+                        else if (winnerType == (uint)LightType::EnvMap)
+                            winnerOk = wsRebuildEnvMapLightSample(local.payload, sd, winnerLs);
+                        if (winnerOk)
+                        {
+                            Ray vrayWin = winnerLs.getVisibilityRay();
+                            bool winnerVisible = vq.traceVisibilityRay(vrayWin);
+                            if (!winnerVisible)
+                            {
+                                // Shadowed → zero the winner's pHat. wSum/M
+                                // stay intact for spatial reuse to potentially
+                                // replace the winner with a visible candidate.
+                                local.targetPdf = 0.f;
+                            }
                         }
                     }
 
@@ -1326,6 +1584,9 @@ struct PathTracer
 
                         float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
                         float3 cellLr     = cellWeight * cellLs.Li;
+                        // pHat = luminance(Lr); invPdf=1. Cell candidate is
+                        // a re-drawn light sample at the reader, with cellLs.Li
+                        // already pdf-divided. Works for Dirac lights.
                         float pHatCell    = luminance(cellLr);
                         if (pHatCell <= 0.f) continue;
                         if (cellType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
@@ -1343,35 +1604,62 @@ struct PathTracer
                             pHatCell *= max(vC, wsLightMuMin());
                         }
 
-                        // §9.4 design fix: cell is a candidate-IDENTITY hint, not
-                        // an aggregated reservoir. Use cellLs.pdf at THIS pixel as
-                        // the proposal pdf and add as a single RIS candidate. This
-                        // keeps W per-pixel and avoids the spatial-block artifact
-                        // that arises from inheriting cell.W across pixels-in-cell.
-                        float invPdfCell = (cellLs.pdf > 0.f) ? (1.f / cellLs.pdf) : 0.f;
-                        local.streamingAdd(
-                            cell.lightTypeIndex, cell.payload,
-                            pHatCell, invPdfCell, path.sg);
+                        // Cell read mode (gWSCellReservoirMerge):
+                        //   0 (default) — IDENTITY hint: add cell.{lightTypeIndex,payload}
+                        //     as ONE single RIS candidate at the local pixel's pHat. Per-pixel
+                        //     W stays local; avoids spatial-block artifacts from inherited W.
+                        //   1 — full Bitterli weighted MERGE: read cell.W and cell.M and
+                        //     fold the cell as an aggregated reservoir. World-space analog
+                        //     of the per-pixel temporal/spatial reservoir; no reprojection
+                        //     needed (cell ID is camera-invariant). Used by `restir_3d`.
+                        if (gWSCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
+                        {
+                            float Mcap = min(cell.M, gWSMCap);
+                            float w    = pHatCell * cell.W * Mcap;
+                            if (w > 0.f && !isnan(w))
+                            {
+                                local.wSum += w;
+                                local.M    += Mcap;
+                                if (sampleNext1D(path.sg) * local.wSum <= w)
+                                {
+                                    local.lightTypeIndex = cell.lightTypeIndex;
+                                    local.payload        = cell.payload;
+                                    local.targetPdf      = pHatCell;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Identity-hint legacy path.
+                            local.streamingAdd(
+                                cell.lightTypeIndex, cell.payload,
+                                pHatCell, 1.f, path.sg);
+                        }
                     }
 
-                    // (2.5) Per-pixel temporal accumulation: combine local with
-                    // previous frame's reservoir at the SAME pixel. This is the
-                    // RTXDI variance reducer — M-capped accumulation across frames
-                    // gives effective sample count 10s-100s, beyond what K
-                    // initial candidates per frame can deliver. Must happen
-                    // BEFORE the winner swap so shading sees the merged result.
-                    //
-                    // ALSO: gather K=4 spatial neighbour pixels' reservoirs from
-                    // the screen-space buffer. This compensates for the per-pixel
-                    // lock-in bias — pixels in shadow whose reservoir picks an
-                    // occluded sample borrow from neighbours that picked visible
-                    // samples, restoring full coverage of the light pool.
+                    // (2.5) Per-pixel temporal+spatial reservoir layer.
+                    // Active only when enableWSPixelReservoir=True (default);
+                    // disabled by setting wsPixelReservoirEnabled() to false
+                    // for pure-WS-cell-only ablation. Provides the screen-
+                    // space spatial diversity that cell jittered queries
+                    // cannot replicate (close cells share popular winners,
+                    // close pixels' reservoirs picked diverse winners).
                     if (wsPixelReservoirEnabled())
                     {
                         // ----- temporal: read self ----------------------------------
+                        // Normal-aware rejection: if last frame's reservoir came
+                        // from a different surface (silhouette / camera moved
+                        // across an edge), skip. Cos threshold 0.9 ≈ 26°.
+                        const float kWSNormalCos = 0.5f;   // RTXDI's normalThreshold default — looser angular reject (60° vs 26°), more spatial reuse
                         uint pIdx = wsPixelIndex(path.getPixel());
                         WSReservoir prev = gWSPixelReservoirs[pIdx];
-                        if (prev.M > 0.f && prev.fingerprint != 0u)
+                        bool prevNormalOk = true;
+                        if (prev.normalOct != 0u)
+                        {
+                            float3 prevN = wsUnpackDirOct(prev.normalOct);
+                            prevNormalOk = (dot(sd.faceN, prevN) >= kWSNormalCos);
+                        }
+                        if (prevNormalOk && prev.M > 0.f && prev.fingerprint != 0u)
                         {
                             uint prevType = wsUnpackLightType(prev.lightTypeIndex);
                             uint prevIdx  = wsUnpackLightIndex(prev.lightTypeIndex);
@@ -1383,7 +1671,6 @@ struct PathTracer
                                 prevOk = wsRebuildAnalyticLightSample(prevIdx, sd, path.sg, prevLs);
                             else if (prevType == (uint)LightType::EnvMap)
                                 prevOk = wsRebuildEnvMapLightSample(prev.payload, sd, prevLs);
-
                             if (prevOk)
                             {
                                 float NdotL_prev = dot(sd.faceN, prevLs.dir);
@@ -1393,11 +1680,21 @@ struct PathTracer
                                             || ((NdotL_prev < -kMinCosTheta) && hasTransP);
                                 if (acceptP)
                                 {
+                                    // §9.4 MIS for temporal reuse — match the
+                                    // fresh-sample path (block 1a). Without MIS
+                                    // pool/temporal/spatial candidates have higher
+                                    // weight than fresh, biasing the RIS.
+                                    if (kUseMIS && !applyRTXDI && prevType != (uint)LightType::Analytic)
+                                    {
+                                        float scatterPdfP = mi.evalPdf(sd, prevLs.dir, kUseBSDFSampling);
+                                        prevLs.Li *= evalMIS(1, prevLs.pdf, 1, scatterPdfP);
+                                    }
                                     float3 prevW3 = mi.eval(sd, prevLs.dir, path.sg);
+                                    // pHat = luminance(Lr) at reader; consistent
+                                    // with K-RIS path. Works for Dirac lights.
                                     float pHatPrev = luminance(prevW3 * prevLs.Li);
                                     if (pHatPrev > 0.f)
                                     {
-                                        // Mass-weighted merge: w = pHat_prev * (prev.W * prev.M).
                                         float Mcap = min(prev.M, gWSMCap);
                                         float w    = pHatPrev * prev.W * Mcap;
                                         if (w > 0.f && !isnan(w))
@@ -1415,13 +1712,15 @@ struct PathTracer
                                 }
                             }
                         }
-
                         // ----- spatial: gather K random neighbour pixels -----------
-                        // Each neighbour contributes its mass-weighted reservoir like
-                        // the temporal merge above, but from a different screen-space
-                        // pixel. Compensates for the per-pixel lock-in bias.
-                        const uint kSpatialPixels = 4u;
-                        const int  kSpatialRadius = 32;
+                        // gWSSpatialPixelsK / gWSSpatialPixelsRadius are runtime
+                        // knobs (Python-tunable via wsSpatialPixelsK + Radius).
+                        // Defaults 4 / 32 match RTXDI's 1-round k≈4-5; bumping
+                        // K is the primary lever for testing the multi-round
+                        // gap (more candidates per round) without an extra
+                        // dispatch.
+                        const uint kSpatialPixels = gWSSpatialPixelsK;
+                        const int  kSpatialRadius = (int)gWSSpatialPixelsRadius;
                         uint2 px = path.getPixel();
                         for (uint s = 0u; s < kSpatialPixels; ++s)
                         {
@@ -1434,7 +1733,13 @@ struct PathTracer
                             uint nIdx = uint(npx.y) * gWSFrameDimX + uint(npx.x);
                             WSReservoir nbr = gWSPixelReservoirs[nIdx];
                             if (nbr.M <= 0.f || nbr.fingerprint == 0u) continue;
-
+                            // Normal-aware rejection: skip neighbours whose
+                            // surface diverged. 0.9 ≈ 26° matches RTXDI default.
+                            if (nbr.normalOct != 0u)
+                            {
+                                float3 nbrN = wsUnpackDirOct(nbr.normalOct);
+                                if (dot(sd.faceN, nbrN) < kWSNormalCos) continue;
+                            }
                             uint nbrType = wsUnpackLightType(nbr.lightTypeIndex);
                             uint nbrIdx  = wsUnpackLightIndex(nbr.lightTypeIndex);
                             LightSample nbrLs;
@@ -1446,15 +1751,21 @@ struct PathTracer
                             else if (nbrType == (uint)LightType::EnvMap)
                                 nbrOk = wsRebuildEnvMapLightSample(nbr.payload, sd, nbrLs);
                             if (!nbrOk) continue;
-
                             float NdotL_n = dot(sd.faceN, nbrLs.dir);
                             bool hasReflN  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
                             bool hasTransN = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
                             bool acceptN = ((NdotL_n > kMinCosTheta) && hasReflN)
                                         || ((NdotL_n < -kMinCosTheta) && hasTransN);
                             if (!acceptN) continue;
-
+                            // §9.4 MIS for spatial reuse — see temporal block.
+                            if (kUseMIS && !applyRTXDI && nbrType != (uint)LightType::Analytic)
+                            {
+                                float scatterPdfN = mi.evalPdf(sd, nbrLs.dir, kUseBSDFSampling);
+                                nbrLs.Li *= evalMIS(1, nbrLs.pdf, 1, scatterPdfN);
+                            }
                             float3 nbrW3 = mi.eval(sd, nbrLs.dir, path.sg);
+                            // pHat = luminance(Lr); consistent with K-RIS path.
+                            // Works for Dirac lights.
                             float pHatN = luminance(nbrW3 * nbrLs.Li);
                             if (pHatN <= 0.f) continue;
                             float Mcn = min(nbr.M, gWSMCap);
@@ -1501,11 +1812,15 @@ struct PathTracer
                             }
 
                             float3 weight = mi.eval(sd, ls.dir, path.sg);
-                            // ReSTIR W = wSum / (p̂(y) * M_total). The estimator is
-                            // f(y) * W where f(y) = BSDF*cos*Le. ls.Li = Le/pdf, so
-                            // f(y) = weight * (ls.Li * ls.pdf).
+                            // ReSTIR W = wSum / (p̂(y) * M). With pHat=lum(Lr) and
+                            // invPdf=1 convention, the candidate's contribution at
+                            // the reader is `weight × ls.Li` (Lr_winner). Multiply
+                            // by W to produce the unbiased pixel estimate.
+                            // CRITICAL: do NOT multiply by ls.pdf here — that
+                            // breaks Dirac lights (point/directional) where pdf=0
+                            // makes the contribution evaluate to zero.
                             float winnerW = local.wSum / max(local.targetPdf * local.M, 1e-12f);
-                            Lr = weight * (ls.Li * ls.pdf) * winnerW;
+                            Lr = weight * ls.Li * winnerW;
                         }
                     }
 
@@ -1516,23 +1831,41 @@ struct PathTracer
                     // M/W are bookkeeping for this write-side reservoir merge.
                     wsMergeIntoCell(homeAddr, local, path.sg);
 
-                    // (5) Persist the merged local back to the per-pixel reservoir
-                    // for next frame's temporal reuse. Compute W from local stats
-                    // and store identity + W + M.
+                    // (Pool write-back: now done at candidate-generation time
+                    //  with per-entry sourcePdf — see (1) and (1b) above.
+                    //  Winner write-back removed: it double-counted entries
+                    //  and the writer's effective proposal pdf for the winner
+                    //  isn't well-defined post-RIS.)
+
+                    // (5) Persist the merged local back to the per-pixel
+                    // reservoir for next frame's temporal reuse. Active when
+                    // wsPixelReservoirEnabled() returns true.
                     if (wsPixelReservoirEnabled() && local.M > 0.f && local.targetPdf > 0.f)
                     {
                         uint pIdx = wsPixelIndex(path.getPixel());
-                        WSReservoir px = wsReservoirInit(0xFFFFFFFFu);  // valid sentinel
+                        WSReservoir px = wsReservoirInit(0xFFFFFFFFu);
                         px.lightTypeIndex   = local.lightTypeIndex;
                         px.payload          = local.payload;
                         px.targetPdf        = local.targetPdf;
                         px.M                = min(local.M, gWSMCap);
                         px.W                = local.wSum / max(local.targetPdf * local.M, 1e-12f);
                         px.frameLastUpdated = gFrameCount;
+                        // Stamp the shading normal so spatial gather can reject
+                        // neighbours whose surface diverged (silhouette / sharp
+                        // crease). Standard ReSTIR variance-reduction technique.
+                        px.normalOct        = wsPackDirOct(sd.faceN);
                         gWSPixelReservoirs[pIdx] = px;
                     }
-                }
+#endif // !WS_CELL_POOL_FILL_ONLY
+
+#if WS_CELL_POOL_FILL_ONLY
+                    // §9.4 Step (b) fill-only: zero out Lr so the visibility-ray
+                    // block below skips and the path's contribution this dispatch
+                    // is exactly zero. Pool inserts above are the only side effect.
+                    Lr = float3(0.f);
 #endif
+                }
+#endif // USE_WS_RESERVOIRS
 
                 if (any(Lr > 0.f))
                 {
@@ -1569,18 +1902,13 @@ struct PathTracer
 #endif
 
 #if USE_WS_RESERVOIRS
-                    // §9.4 LOCK-IN BREAK: if the chosen sample is occluded
-                    // (V=0), invalidate the per-pixel reservoir so next frame
-                    // doesn't temporally re-merge the same dead identity.
-                    // Without this, K=8 RIS over many emissive lights tends
-                    // to pick high-pHat samples that are behind walls; the
-                    // temporal reservoir locks each pixel onto that occluded
-                    // choice → systematic dark regions on Bistro/Sponza.
+                    // §9.4 LOCK-IN BREAK: V=0 invalidation of per-pixel reservoir.
+                    // Active when wsPixelReservoirEnabled() returns true.
                     if (path.getVertexIndex() == 1 && wsEnabled() && wsPixelReservoirEnabled()
                         && !wsChosenVisible && (isEmissive || isAnalytic || isEnv))
                     {
                         uint pIdx = wsPixelIndex(path.getPixel());
-                        gWSPixelReservoirs[pIdx] = wsReservoirInit(0u);  // empty sentinel
+                        gWSPixelReservoirs[pIdx] = wsReservoirInit(0u);
                     }
 #endif
                 }

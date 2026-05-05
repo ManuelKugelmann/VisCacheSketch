@@ -42,8 +42,8 @@ import RenderPasses.VisCache.VisCachePathTracer;
 
 // Preprocessor defines don't cross Slang import boundaries — re-guard here
 // to keep the macro visible after Params.slang is imported transitively.
-#ifndef VISCACHE_SUBFRAME_N
-#define VISCACHE_SUBFRAME_N 1
+#ifndef VISCACHE_BAYER_N
+#define VISCACHE_BAYER_N 1
 #endif
 
 ParameterBlock<PathTracer> gPathTracer;
@@ -674,7 +674,7 @@ void rayGen()
     // so gScheduler.run() no-ops on them.
     uint2 reducedPixel = DispatchRaysIndex().xy;
     uint2 pixel = (kSamplesPerPixel > 0)
-        ? subframeRemap(reducedPixel, gPathTracer.params.subframeIdx, VISCACHE_SUBFRAME_N)
+        ? subframeRemap(reducedPixel, gPathTracer.params.subframeIdx, VISCACHE_BAYER_N)
         : reducedPixel;
     if (any(pixel >= gPathTracer.params.frameDim)) return;
 

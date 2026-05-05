@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import run_variants, run_baseline, get_scenes, \
     finalize_step, write_picks_meta, pick_top_variants_per_bvariant, \
     read_carried_winner, parse_variant_tags, \
-    _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, SUBFRAME_2x2
+    _DEFAULT_PICKER_RULE, PRESET_MINIMAL, RR_ADAPTIVE, BAYER_2x2
 
 STEP = "06"
 res = int(os.environ.get("RES", "512"))
@@ -62,7 +62,7 @@ VARIANTS_06 = [
     for vt in VAR_THRESH_VALUES
 ]
 
-STEP_OVERRIDES = {**RR_ADAPTIVE, **SUBFRAME_2x2}
+STEP_OVERRIDES = {**RR_ADAPTIVE, **BAYER_2x2}
 
 for scene_file in get_scenes():
     run_baseline(

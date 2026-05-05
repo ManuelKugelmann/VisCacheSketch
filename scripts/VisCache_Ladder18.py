@@ -23,7 +23,7 @@ res = int(os.environ.get("RES", "512"))
 QUANT_TAG = "qa012"
 QUANT = QUANT_SWEEP[QUANT_TAG]
 
-SUBFRAME_N = 2; CT = 2; PM = 0.02
+BAYER_N = 2; CT = 2; PM = 0.02
 
 # Compact 4-axis sweep targeting Sponza ceiling break:
 #   vt    ∈ {0.05, 0.10}    — relaxed Bernoulli rejection
@@ -52,7 +52,7 @@ for (base_name, base_overrides) in BASE_18:
                     vt_tag = f"vt{int(round(vt*1000)):03d}"
                     se_tag = f"se{int(round(se*1000)):03d}"
                     cwf_tag = f"cwf{cwf:02d}"
-                    tag = (f"bayer{SUBFRAME_N}x{SUBFRAME_N}_cell{cell_n}x{cell_n}_"
+                    tag = (f"bayer{BAYER_N}x{BAYER_N}_cell{cell_n}x{cell_n}_"
                            f"ct{CT:03d}_{vt_tag}_{se_tag}_{cwf_tag}_pm002")
                     VARIANTS_18.append((f"{base_name}__{tag}", {
                         **base_overrides,
@@ -67,7 +67,7 @@ for (base_name, base_overrides) in BASE_18:
                         "hierarchicalMuTolerance":       0.20,
                         "accelDecayDisagreeThresh":      0.0,
                         "pMin":                          PM,
-                        "subframeN":                     SUBFRAME_N,
+                        "bayerN":                        BAYER_N,
                         "enableDecayAutoTune":           False,
                     }))
 

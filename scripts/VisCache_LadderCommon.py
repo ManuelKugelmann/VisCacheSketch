@@ -20,6 +20,10 @@ try:
     from RTXDI_Graph import render_graph_RTXDI
 except ImportError:
     render_graph_RTXDI = None
+try:
+    from ReSTIRPT_Graph import render_graph_ReSTIRPT
+except ImportError:
+    render_graph_ReSTIRPT = None
 from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_noise_signed, compute_render_error, compute_render_error_signed_hdr, oklab_distance_hdr_cached
 
 # Track last-loaded scene to skip redundant m.loadScene() calls
@@ -156,12 +160,12 @@ FOOTPRINT_ON = {"bootThresholdFactorFootprintPx": 1.0}
 # (warmupFirst, warmupRun, frames, [spp]). The run_variants call injects
 # warmupSlotsFirst / warmupSlotsRun overrides, which the shader applies to
 # determine per-pixel write-only status from the pixel's Bayer slot index.
-# --- Subframe gate (Bayer N×N pixel interleaving to disperse cell-write order) ---
+# --- Bayer N×N pixel interleaving (disperses cell-write order across subframes) ---
 # 1 = full frame (default, no gate); 2 = 2×2 (4 subframes); 4 = 4×4 (16 subframes).
 # Implemented via early-out in Falcor PathTracer (see Falcor/LOCAL_FIXES.md #14).
-SUBFRAME_1x1  = {"subframeN": 1}
-SUBFRAME_2x2  = {"subframeN": 2}
-SUBFRAME_4x4  = {"subframeN": 4}
+BAYER_1x1     = {"bayerN": 1}
+BAYER_2x2     = {"bayerN": 2}
+BAYER_4x4     = {"bayerN": 4}
 # --- Quantization cell sizes -----------------------------------------------
 QUANT_SMALL   = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 5.0,  "distB": 0.24}
 QUANT_MID     = {"posA": 0.06, "normalA": 60.0, "posB": 0.18, "dirB": 8.0,  "distB": 0.48}
@@ -351,8 +355,8 @@ def make_norm_variants(quant=None, base=None, quant_tag=None):
 # ---------------------------------------------------------------------------
 # Stats CSV
 # ---------------------------------------------------------------------------
-# key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + frames + warmupSub + subframeN + res + variant
-_CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warmup_run", "subframe_n",
+# key = f"{scene}_{prefix.rstrip('_')}" — encodes scene + frames + warmupSub + bayerN + res + variant
+_CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warmup_run", "bayer_n",
                "rays_traced_pct", "coldmiss_pct",
                "mean_level", "min_level", "max_level",
                "error_delta_pct", "error_delta_min_pct", "error_delta_max_pct",
@@ -405,7 +409,7 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
 def _step_csv(step_name):
     return os.path.join("captures", "ladder", step_name, "stats.csv")
 
-def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, warmup_run, subframe_n,
+def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, warmup_run, bayer_n,
                      rays_traced_pct, coldmiss_pct,
                      error_delta_pct=None, error_delta_min_pct=None, error_delta_max_pct=None,
                      error_delta_blob_pct=None,
@@ -456,7 +460,7 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
         "frames": str(frames),
         "warmup_first": str(warmup_first),
         "warmup_run":   str(warmup_run),
-        "subframe_n":   str(subframe_n),
+        "bayer_n":      str(bayer_n),
         "rays_traced_pct": f"{rays_traced_pct:.4f}",
         "coldmiss_pct":    f"{coldmiss_pct:.4f}",
         "mean_level":      f"{mean_level:.3f}" if mean_level is not None else "",
@@ -528,22 +532,58 @@ def append_stats_csv(step, scene, prefix, variant, spp, frames, warmup_first, wa
 # Baseline (step 00) CSV — absolute error/noise per (scene, spp). Distinct
 # schema from the variant CSV: no deltas, no rays/coldmiss, no warmup/subframe.
 _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
-                        "mean_err_pct", "max_err_pct", "mean_noise_pct",
+                        # Custom perceptual metrics:
+                        "mean_err_pct",       # mean OkLab perceptual error vs GT (2× L weight)
+                        "mean_noise_pct",     # mean bilateral CoV — stochastic grain
+                        # Visible-artifact-area thresholds (paper-comparable):
+                        "artifact_3_pct",     # % pixels with err > 3%
+                        "artifact_5_pct",     # % pixels with err > 5%
+                        "artifact_11_pct",    # % pixels with err > 11%
+                        # Literature-standard HDR rendering metrics (Bitterli/ReSTIR convention):
+                        "mse",                # mean squared error on luminance
+                        "rmse",               # sqrt(mse)
+                        "psnr_db",            # peak signal-to-noise ratio (dB)
+                        "relmse",             # Bitterli's relative MSE: mean(sq_diff/(gt²+ε))
+                        "smape",              # symmetric mean absolute percentage error [0,1]
+                        "mape",               # mean absolute percentage error
+                        # Perceptual literature-standard:
+                        "ms_ssim",            # Wang 2003 multi-scale SSIM (Reinhard-tonemapped luminance)
+                        "flip",               # Andersson 2020 HDR-FLIP perceptual error
                         "timestamp"]
 
-def append_baseline_csv(step, scene, spp, mean_err_pct, max_err_pct, mean_noise_pct,
-                        variant="vanilla"):
-    """Upsert one baseline row keyed by (scene, variant, spp)."""
+def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
+                        variant="vanilla",
+                        artifact_3_pct=None, artifact_5_pct=None, artifact_11_pct=None,
+                        mse=None, rmse=None, psnr_db=None, relmse=None,
+                        smape=None, mape=None, ms_ssim=None, flip=None):
+    """Upsert one baseline row keyed by (scene, variant, spp).
+    Metrics:
+      Custom perceptual: mean_err_pct (OkLab × 2L), mean_noise_pct (bilateral CoV).
+      Visible-artifact area: artifact_X_pct = fraction of pixels above an X% perceptual error threshold.
+      Literature-standard HDR: mse / rmse / psnr_db / relmse / smape / mape (Bitterli/ReSTIR-paper convention; on luminance vs GT).
+      Perceptual literature: ms_ssim (Wang 2003 multi-scale SSIM, Reinhard-tonemapped), flip (Andersson 2020 HDR-FLIP)."""
     import csv, datetime
     path = _step_csv(step)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
     key = f"{scene}_{variant}_x{spp}"
+    def fmt(v):
+        return f"{v:.6f}" if v is not None else ""
     new_row = {
         "key": key, "scene": scene, "variant": variant, "spp": str(spp),
-        "mean_err_pct":   f"{mean_err_pct:.4f}"   if mean_err_pct   is not None else "",
-        "max_err_pct":    f"{max_err_pct:.4f}"    if max_err_pct    is not None else "",
-        "mean_noise_pct": f"{mean_noise_pct:.4f}" if mean_noise_pct is not None else "",
+        "mean_err_pct":     fmt(mean_err_pct),
+        "mean_noise_pct":   fmt(mean_noise_pct),
+        "artifact_3_pct":   fmt(artifact_3_pct),
+        "artifact_5_pct":   fmt(artifact_5_pct),
+        "artifact_11_pct":  fmt(artifact_11_pct),
+        "mse":              fmt(mse),
+        "rmse":             fmt(rmse),
+        "psnr_db":          fmt(psnr_db),
+        "relmse":           fmt(relmse),
+        "smape":            fmt(smape),
+        "mape":             fmt(mape),
+        "ms_ssim":          fmt(ms_ssim),
+        "flip":             fmt(flip),
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -696,7 +736,7 @@ def stitch_baseline_plate(captureDir, xN_tag, out_path, err_stats=None, noise_st
     def _err_label():
         if not err_stats:
             return f"{variant_tag} error"
-        return f"{variant_tag} err μ{err_stats['mean_err_pct']:.1f}% max{err_stats['max_err_pct']:.1f}%"
+        return f"{variant_tag} err μ{err_stats['mean_err_pct']:.1f}%"
 
     def _noise_label():
         if not noise_stats:
@@ -1254,7 +1294,7 @@ def _plot_metric(rows, step_name, metric_key, ylabel, title_suffix, out_suffix,
         return (r["variant"], r["spp"],
                 int(r.get("warmup_first") or 0),
                 int(r.get("warmup_run")   or 0),
-                int(r.get("subframe_n")   or 1))
+                int(r.get("bayer_n")      or 1))
     series_keys = sorted({_row_key(r) for r in rows},
                          key=lambda k: (_sort_key(k[0]), k[1], k[4], k[2], k[3]))
 
@@ -1803,7 +1843,7 @@ def plot_baseline_overviews(step_name="00"):
                 row["spp"] = int(row["spp"])
             except (ValueError, KeyError):
                 continue
-            for k in ("mean_err_pct", "max_err_pct", "mean_noise_pct"):
+            for k in ("mean_err_pct", "mean_noise_pct"):
                 v = row.get(k, "")
                 try:
                     row[k] = float(v) if v not in ("", None) else None
@@ -1824,8 +1864,8 @@ def plot_baseline_overviews(step_name="00"):
 
     out_err   = _plot_baseline_metric(rows, "mean_err_pct",
                                       ylabel="error % (symlog)",
-                                      title_suffix="error vs GT (whisker: max blob)",
-                                      out_suffix="error", max_key="max_err_pct")
+                                      title_suffix="error vs GT (OkLab perceptual)",
+                                      out_suffix="error", max_key=None)
     out_noise = _plot_baseline_metric(rows, "mean_noise_pct",
                                       ylabel="noise % (symlog)",
                                       title_suffix="bilateral noise (floor-subtracted)",
@@ -1837,8 +1877,8 @@ def plot_baseline_overviews(step_name="00"):
                              sharex=True, constrained_layout=True)
     legend_handles = _plot_baseline_metric(rows, "mean_err_pct",
                                            ylabel="error % (symlog)",
-                                           title_suffix="error vs GT (whisker: max blob)",
-                                           out_suffix="error", max_key="max_err_pct",
+                                           title_suffix="error vs GT (OkLab perceptual)",
+                                           out_suffix="error", max_key=None,
                                            ax=axes[0], save=False)
     _plot_baseline_metric(rows, "mean_noise_pct",
                           ylabel="noise % (symlog)",
@@ -2677,7 +2717,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
 
 
 def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name,
-                         frames, spp, warmup_first, warmup_run, subframe_n,
+                         frames, spp, warmup_first, warmup_run, bayer_n,
                          resX=kResX, resY=kResY):
     """Run the full per-variant post-capture pipeline — PNG extraction via
     postprocess(), plate stitch, CSV upsert — then annotate the stats dict
@@ -2702,7 +2742,7 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
 
     append_stats_csv(
         step_name, scene_name, prefix, variant_name,
-        effective_spp, frames, warmup_first, warmup_run, subframe_n,
+        effective_spp, frames, warmup_first, warmup_run, bayer_n,
         stats["rays_traced_pct"], stats["coldmiss_pct"],
         stats.get("error_delta_pct"),
         stats.get("error_delta_min_pct"), stats.get("error_delta_max_pct"),
@@ -2801,12 +2841,12 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             #              so one renderFrame call = one fully composed dense logical frame.
             warmupFirst, warmupRun, frames = fc_entry[0], fc_entry[1], fc_entry[2]
             spp = fc_entry[3] if len(fc_entry) > 3 else 1
-            subN = overrides.get("subframeN", 1)
+            bayerN = overrides.get("bayerN", 1)
             render_frames = frames
             # Tag encodes effective SPP (frames*spp). Capture filenames,
             # CSV key, and plot-group key all align on total samples/pixel.
             effective_spp = frames * spp
-            tag = f"s_{frames}_x{effective_spp}_{warmupFirst}o{warmupRun}o{subN}x{subN}_{res_tag}"
+            tag = f"s_{frames}_x{effective_spp}_{warmupFirst}o{warmupRun}o{bayerN}x{bayerN}_{res_tag}"
             csv_key = f"{scene_name}_{tag}_{variant_name}"
             if csv_key in completed_keys:
                 print(f"[{step_name}] Skip (resume): {variant_name} {tag}")
@@ -2858,7 +2898,7 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             stats = postprocess_variant(
                 step_name, scene_name, captureDir, pfx, variant_name,
                 frames=frames, spp=spp,
-                warmup_first=warmupFirst, warmup_run=warmupRun, subframe_n=subN,
+                warmup_first=warmupFirst, warmup_run=warmupRun, bayer_n=bayerN,
                 resX=resX, resY=resY,
             )
             all_stats.append(stats)
@@ -2906,7 +2946,7 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
     err_stats = compute_render_error_hdr(xN_hdr, gt_hdr, err_path, distance_cache=dist_cache)
     if err_stats is not None:
         print(f"[{step_name}] [GT-err] {variant_tag}_x{spp}: "
-              f"mean={err_stats['mean_err_pct']:.2f}% max={err_stats['max_err_pct']:.2f}% "
+              f"mean={err_stats['mean_err_pct']:.2f}% "
               f"-> {os.path.basename(err_path)}")
 
     noise_path = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_r1c9_accum_noise.png")
@@ -2922,12 +2962,30 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
                            err_stats=err_stats, noise_stats=noise_stats,
                            variant_tag=variant_tag)
 
+    # Literature-standard HDR rendering metrics on linear EXR vs GT (Bitterli/
+    # ReSTIR-paper convention): mse, rmse, psnr_db, relmse, smape, mape, ms_ssim,
+    # flip. Implementation in viscache_exr._pixel_metrics_suite.
+    from viscache_exr import compute_research_metrics_hdr
+    research = compute_research_metrics_hdr(xN_hdr, gt_hdr) or {}
+    extra = {
+        "artifact_3_pct":  err_stats.get("artifact_3_pct")  if err_stats else None,
+        "artifact_5_pct":  err_stats.get("artifact_5_pct")  if err_stats else None,
+        "artifact_11_pct": err_stats.get("artifact_11_pct") if err_stats else None,
+        "mse":     research.get("mse"),
+        "rmse":    research.get("rmse"),
+        "psnr_db": research.get("psnr_db"),
+        "relmse":  research.get("relmse"),
+        "smape":   research.get("smape"),
+        "mape":    research.get("mape"),
+        "ms_ssim": research.get("ms_ssim"),
+        "flip":    research.get("flip"),
+    }
     append_baseline_csv(
         step_name, scene_name, spp,
-        mean_err_pct   = err_stats.get("mean_err_pct")   if err_stats   else None,
-        max_err_pct    = err_stats.get("max_err_pct")    if err_stats   else None,
+        mean_err_pct   = err_stats.get("mean_err_pct")     if err_stats   else None,
         mean_noise_pct = noise_stats.get("mean_noise_pct") if noise_stats else None,
         variant=variant_tag,
+        **extra,
     )
     return err_stats, noise_stats
 
@@ -3569,6 +3627,7 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                           build_graph, output_pass, *, capture_spps=(1, 4),
                           maxBounces=0, resX=kResX, resY=kResY,
                           mogwai_globals=None, frames_mul=1,
+                          force_actual_spp=None,
                           gt_hdr_for_post=None, noise_floor_for_post=None):
     """Generic baseline runner for non-vanilla variants (WS-ReSTIR, RTXDI).
     `build_graph(spp)` constructs the RenderGraph for a given samples-per-pixel.
@@ -3576,6 +3635,10 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
        (e.g. "AccumulatePass.output" for path-traced, "RTXDIPass.color" for RTXDI).
     `capture_spps` lists which virtual SPPs to run (default 1 & 4 — variants
        are typically only meaningful at low SPP).
+    `force_actual_spp` overrides the per-frame SPP for variants whose graph
+       ignores `samplesPerPixel` (notably RTXDIPass = 1-sample-per-frame). Set
+       to 1 to make the harness render `spp` actual frames into the
+       accumulator instead of one frame at `samplesPerPixel=spp`.
     """
     g_dict = mogwai_globals or {}
     m = g_dict.get('m')
@@ -3601,7 +3664,7 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
 
             print(f"\n[{step_name}] ======== {tag_suffix}_x{spp} {tag} ({scene_name}) ========")
 
-            actual_spp = max(1, min(spp, 16))
+            actual_spp = force_actual_spp if force_actual_spp is not None else max(1, min(spp, 16))
             num_frames = max(1, spp // actual_spp)
 
             g = build_graph(actual_spp)
@@ -3674,58 +3737,134 @@ def _resolve_gt_for_variant(captureDir, gt_spp, res_tag):
     return gt_hdr, floor
 
 
-def run_baseline_wsrestir(step_name, frame_configs, scene_file,
-                          maxBounces=0, resX=kResX, resY=kResY,
-                          mogwai_globals=None, capture_spps=(1, 4),
-                          wsInitialCandidates=8, wsMCap=5.0,
-                          gt_spp=4096):
-    """WS-ReSTIR DI baseline reference. Direct-lighting only by default.
-    Postprocessing (error vs GT, plate, CSV) runs automatically if the
-    matching vanilla GT (gt_spp) has already been captured for this scene."""
-    def _build(actual_spp):
-        return render_graph_PathTracer(
-            viscache=True, wsReservoirs=True, maxBounces=maxBounces,
-            samplesPerPixel=actual_spp, useJitter=True,
-            wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
-            visibilityCheck=True, lightSelection=True,
-        )
-    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
-    captureDir = f"captures/ladder/{step_name}/{scene_name}"
-    gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
-    _run_baseline_variant(
-        step_name, frame_configs, scene_file, "wsrestir",
-        _build, "AccumulatePass.output",
-        capture_spps=capture_spps, maxBounces=maxBounces,
-        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
-        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
-    )
+def _run_baseline_restir(step_name, frame_configs, scene_file,
+                         tag_prefix, addr_mode_kwargs,
+                         maxBounces=0, resX=kResX, resY=kResY,
+                         mogwai_globals=None, capture_spps=(1, 4),
+                         wsInitialCandidates=32, wsMCap=5.0,    # K_pre=32 + Conv B reader-pdf canonical 2026-05-05. Trade: 2× pre-pass eval reduction for ~+0.1-0.2pp quality (vs K_pre=64). Still BETTER than prior canonical (Conv A + K=64) on Cornell_3AL_x4 (3.55 vs 3.61) and BistroExt_x4 (10.88 vs 11.69) — Conv B's gains outweigh K_pre's loss. Pre-pass cost-optimization per user "slim down prepass samples, keep fat prepass plumbing".
+                         wsVisInPHat=0,
+                         wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
+                         gt_spp=4096):
+    """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
+    (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
+    the same render-graph build. The ONLY thing that differs is pool
+    addressing — caller passes `addr_mode_kwargs` with either
+    `{"wsPoolAddrMode": 1, "wsPoolTileSize": N}` for 2D-tile or
+    `{"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": N}` for 3D-world-cell.
 
-
-def run_baseline_pixel_restir(step_name, frame_configs, scene_file,
-                              maxBounces=0, resX=kResX, resY=kResY,
-                              mogwai_globals=None, capture_spps=(1, 4),
-                              wsInitialCandidates=8, wsMCap=5.0,
-                              gt_spp=4096):
-    """Pure per-pixel ReSTIR DI baseline (WS layer disabled, no VisCache).
-    Uses visibilityCheck=False, lightSelection=False so the comparison vs
-    vanilla NEE is apples-to-apples (no cache-gated shadow rays). Adds an
-    explicit visibility test in the K-RIS p̂ (wsVisInPHat=2) with a tiny
-    μmin floor so bright-but-occluded samples can't dominate the RIS.
+    All other params (K, mCap, spatial-K/radius, vis-in-pHat, visibilityCheck,
+    lightSelection, cell hint OFF, per-pixel reservoir ON, no cell-spatial
+    gather, no jitterCell) are baked in here — single source of truth.
     """
     def _build(actual_spp):
         return render_graph_PathTracer(
             viscache=True, wsReservoirs=True, maxBounces=maxBounces,
             samplesPerPixel=actual_spp, useJitter=True,
             wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
-            wsVisInPHat=2,
-            visibilityCheck=False, lightSelection=False,
-            extraVCProps={"wsUseCellInRIS": False, "wsLightMuMin": 1e-4},
+            wsSpatialNeighbours=0,                  # no cell-spatial gather
+            wsSpatialPixelsK=wsSpatialPixelsK,
+            wsSpatialPixelsRadius=wsSpatialPixelsRadius,
+            wsCellPool=True, wsCellPoolDrawK=16,    # 8 fresh + 16 pool = 24 total = RTXDI's localLightCandidateCount. K_pool=24 retested with Conv B 2026-05-05: still uniformly +0.15-0.22pp worse — over-weighting pool's shading-agnostic distribution dilutes 8 fresh shading-conditional samples regardless of read convention.
+            wsCellPoolPrePass=True,
+            wsVisInPHat=wsVisInPHat,
+            # Pre-pass: PdfMipmap (RTXDI-style hierarchical, Task #34).
+            # Main-pass: LightBVH default (shading-CONDITIONAL — required by
+            # BistroInt; mixed-sampler test 2026-05-05 with both PdfMipmap
+            # regressed BistroInt_x4 +1.47pp). The K-RIS mixes shading-
+            # conditional fresh + shading-agnostic pool by design — fresh
+            # picks lights important for THIS shading point, pool gives
+            # diversity from the global distribution.
+            #   - main-pass pool inserts gated off (#if WS_CELL_POOL_FILL_ONLY)
+            #     so pool stays PdfMipmap-only.
+            prePassEmissiveSampler="PdfMipmap",
+            visibilityCheck=False, lightSelection=False,  # pure ReSTIR track — no VisCache cache
+            extraVCProps={
+                "wsUseCellInRIS": False,             # no cell hint
+                "enableWSPixelReservoir": True,      # per-pixel reservoir ON
+                "wsCellReservoirMerge": 0,
+                # Bayer 4×4 stratification matches RTXDI's per-frame presample
+                # count: 16K active pixels × K=8 candidates = 128K presamples,
+                # ≈ RTXDI's 128 × 1024 = 131K. Each Bayer position within a
+                # 16-px-side cell maps to 1 of N=16 slots → exactly 1 fresh
+                # write per slot per 16-frame Bayer cycle. Per-pass VisCacheParams
+                # override (Task #32) needed for pre-pass-specific bayerN;
+                # for now this affects both pre-pass and main pass equally,
+                # which means main-pass V-test on K-RIS winner is also Bayer-
+                # gated (cache-amortized in steady state, but cold for first
+                # frames before pre-pass warms it).
+                "bayerN": 4,
+            },
+            **addr_mode_kwargs,                      # only difference: 2D-tile vs 3D-cell addressing
         )
+    vmode_tag = {0: "vblind", 1: "vcache", 2: "vevaluate"}.get(wsVisInPHat, f"v{wsVisInPHat}")
+    tag_suffix = f"{tag_prefix}_{vmode_tag}"
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
     gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
     _run_baseline_variant(
-        step_name, frame_configs, scene_file, "pixel_restir",
+        step_name, frame_configs, scene_file, tag_suffix,
+        _build, "AccumulatePass.output",
+        capture_spps=capture_spps, maxBounces=maxBounces,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        force_actual_spp=1,                            # frame accumulation, matches vanilla / rtxdi
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
+    )
+
+
+def run_baseline_restir_2d(step_name, frame_configs, scene_file,
+                           wsPoolTileSize=16, **kwargs):
+    """**RTXDI's recipe**: pool addressed by 2D screen tile + per-pixel
+    reservoir. Direct apples-to-apples comparator for `rtxdi`."""
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="restir_2d",
+        addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
+        **kwargs,
+    )
+
+
+def run_baseline_restir_3d(step_name, frame_configs, scene_file,
+                           wsCellPoolFootprintPx=16, **kwargs):
+    """**3D analog**: pool addressed by 3D world cell at footprint-derived
+    entry level (matches restir_2d's tile size in screen-space). Strict
+    mirror of `restir_2d` — only `wsPoolAddrMode` differs."""
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="restir_3d",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs,
+    )
+
+
+
+def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
+                                    maxBounces=3, resX=kResX, resY=kResY,
+                                    mogwai_globals=None, capture_spps=(1, 4),
+                                    gt_spp=4096, variant_tag=None):
+    """ReSTIRPT reference baseline — DQLin's canonical config (ReSTIR mode +
+    RTXDI direct feed). After PORT_NOTES.md §1-§10 backports this is finite
+    and usable on Cornell scenes with mild bias (-6% to +15% vs vanilla).
+    Larger scenes (Sponza) currently over-bias because the §10 magnitude
+    thresholds are not scene-aware — TODO; EARS (Rath 2022) will replace.
+
+    PT-mode + DI=on bypasses GRIS resampling and is therefore not a meaningful
+    ReSTIR-PT reference; only the canonical config exercises the algorithm."""
+    if render_graph_ReSTIRPT is None:
+        print(f"[{step_name}] ReSTIRPT graph not importable — skipping restirpt baseline")
+        return
+    def _build(actual_spp):
+        return render_graph_ReSTIRPT(
+            viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
+            useRTXDIDirect=True, useDirectLighting=True,
+            pathSamplingMode="ReSTIR",
+            disableDirectIllumination=True,  # DQLin's canonical — RTXDI handles direct
+        )
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
+    tag = variant_tag or f"restirpt_b{maxBounces}"
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, tag,
         _build, "AccumulatePass.output",
         capture_spps=capture_spps, maxBounces=maxBounces,
         resX=resX, resY=resY, mogwai_globals=mogwai_globals,
@@ -3735,8 +3874,13 @@ def run_baseline_pixel_restir(step_name, frame_configs, scene_file,
 
 def run_baseline_rtxdi(step_name, frame_configs, scene_file,
                        resX=kResX, resY=kResY, mogwai_globals=None,
-                       capture_spps=(1,), gt_spp=4096):
-    """RTXDI (ReSTIR DI) baseline reference. Direct-illumination only."""
+                       capture_spps=(1, 4), gt_spp=4096):
+    """RTXDI (ReSTIR DI) baseline reference. Direct-illumination only.
+
+    RTXDI is intrinsically a 1-sample-per-renderFrame algorithm; for x4
+    quality the harness renders 4 frames into the accumulator. We pin
+    `force_actual_spp=1` so `num_frames = spp` (not `spp // spp = 1`).
+    """
     if render_graph_RTXDI is None:
         print(f"[{step_name}] RTXDI graph not importable — skipping rtxdi baseline")
         return
@@ -3750,6 +3894,7 @@ def run_baseline_rtxdi(step_name, frame_configs, scene_file,
         _build, "RTXDIPass.color",
         capture_spps=capture_spps, maxBounces=0,
         resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        force_actual_spp=1,
         gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
     )
 

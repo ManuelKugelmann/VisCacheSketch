@@ -29,6 +29,7 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Rendering/Lights/EmissiveUniformSampler.h"
+#include "Rendering/Lights/EmissivePdfMipmapSampler.h"
 
 
 namespace
@@ -112,6 +113,10 @@ namespace
 
     // Scripting options.
     const std::string kSamplesPerPixel = "samplesPerPixel";
+    // §9.4 WS-cascade ReGIR step (b): two-pass pool fill mode. When true, the
+    // path skips shading after the K-fresh pool insert — this instance
+    // exists only to populate the cell pool for the next instance.
+    const std::string kWSCellPoolFillOnly = "wsCellPoolFillOnly";
     const std::string kMaxSurfaceBounces = "maxSurfaceBounces";
     const std::string kMaxDiffuseBounces = "maxDiffuseBounces";
     const std::string kMaxSpecularBounces = "maxSpecularBounces";
@@ -214,6 +219,7 @@ void PathTracer::parseProperties(const Properties& props)
     {
         // Rendering parameters
         if (key == kSamplesPerPixel) mStaticParams.samplesPerPixel = value;
+        else if (key == kWSCellPoolFillOnly) mWSCellPoolFillOnly = value;
         else if (key == kMaxSurfaceBounces) mStaticParams.maxSurfaceBounces = value;
         else if (key == kMaxDiffuseBounces) mStaticParams.maxDiffuseBounces = value;
         else if (key == kMaxSpecularBounces) mStaticParams.maxSpecularBounces = value;
@@ -339,6 +345,7 @@ Properties PathTracer::getProperties() const
 
     // Rendering parameters
     props[kSamplesPerPixel] = mStaticParams.samplesPerPixel;
+    props[kWSCellPoolFillOnly] = mWSCellPoolFillOnly;
     props[kMaxSurfaceBounces] = mStaticParams.maxSurfaceBounces;
     props[kMaxDiffuseBounces] = mStaticParams.maxDiffuseBounces;
     props[kMaxSpecularBounces] = mStaticParams.maxSpecularBounces;
@@ -459,10 +466,10 @@ void PathTracer::execute(RenderContext* pRenderContext, const RenderData& render
     // This should be called after all resources have been created.
     preparePathTracer(renderData);
 
-    // Subframe loop: for VISCACHE_SUBFRAME_N>1 we split a logical frame into N²
+    // Subframe loop: for VISCACHE_BAYER_N>1 we split a logical frame into N²
     // Bayer-interleaved sub-dispatches. Downstream passes see a fully-populated
     // frame after all N² iterations; resolve + endFrame run once at the end.
-    const uint32_t kSubframeCount = mVisCacheSubframeN * mVisCacheSubframeN;
+    const uint32_t kSubframeCount = mVisCacheBayerN * mVisCacheBayerN;
     for (uint32_t sf = 0; sf < kSubframeCount; ++sf)
     {
         mParams.subframeIdx = sf;
@@ -1030,6 +1037,9 @@ bool PathTracer::prepareLighting(RenderContext* pRenderContext)
             case EmissiveLightSamplerType::Power:
                 mpEmissiveSampler = std::make_unique<EmissivePowerSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
                 break;
+            case EmissiveLightSamplerType::PdfMipmap:
+                mpEmissiveSampler = std::make_unique<EmissivePdfMipmapSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
+                break;
             default:
                 FALCOR_THROW("Unknown emissive light sampler type");
             }
@@ -1227,7 +1237,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasLightSel = mVisCacheLightSelection;
         bool wasDirDist = mVisCacheDirDistAddr;
-        uint32_t wasSubframeN = mVisCacheSubframeN;
+        uint32_t wasBayerN = mVisCacheBayerN;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
         mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr &&
@@ -1263,6 +1273,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.enableHierarchicalConsistency = getU("vhfParam_enableHierarchicalConsistency", 0u);
             mVCParams.hierarchicalMuTolerance       = getF("vhfParam_hierarchicalMuTolerance", 0.2f);
             mVCParams.accelDecayDisagreeThresh      = getF("vhfParam_accelDecayDisagreeThresh", 0.f);
+            mVCParams.mlAlphaFloorN                 = getU("vhfParam_mlAlphaFloorN", 0u);
             mVCParams.bootThresholdFine             = getU("vhfParam_bootThresholdFine", 0u);
             mVCParams.jitterFilter   = getF("vhfParam_jitterFilter", 0.f);
             mVCParams.jitterCell     = getF("vhfParam_jitterCell",   0.f);
@@ -1275,12 +1286,13 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.cameraPosY   = getF("vhfParam_cameraPosY", 0.f);
             mVCParams.cameraPosZ   = getF("vhfParam_cameraPosZ", 0.f);
             mVCParams.pixelSize1   = getF("vhfParam_pixelSize1", 0.001f);
-            mVCParams.subframeN    = getU("vhfParam_subframeN", 1u);
+            mVCParams.bayerN       = getU("vhfParam_bayerN", 1u);
             mVCParams.warmupFirst  = getU("vhfParam_warmupFirst", 0u);
             mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
             // §9.4 WS-ReSTIR DI cbuffer fields
             mVCParams.wsEnable            = getU("vhfParam_wsEnable", 0u);
-            mVCParams.wsLevelOffset       = getU("vhfParam_wsLevelOffset", 1u);
+            mVCParams.wsCellLevel         = getU("vhfParam_wsCellLevel", 4u);
+            mVCParams.wsCellLevelJitter   = getU("vhfParam_wsCellLevelJitter", 0u);
             mVCParams.wsCapacity          = getU("vhfParam_wsCapacity", 0u);
             mVCParams.wsMCap              = getF("vhfParam_wsMCap", 30.f);
             mVCParams.wsSpatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
@@ -1288,16 +1300,29 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.wsLightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
             mVCParams.wsNormalAddr        = getU("vhfParam_wsNormalAddr", 0u);
             mVCParams.wsInitialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
-            mVCParams.wsJitterFilter      = getF("vhfParam_wsJitterFilter", 0.f);
-            mVCParams.wsJitterCell        = getF("vhfParam_wsJitterCell", 0.f);
+            // (wsJitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
             mVCParams.wsUseCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
             mVCParams.wsVisInPHat         = getU("vhfParam_wsVisInPHat", 1u);
+            // §9.4 WS-cascade ReGIR cell-pool cbuffer fields
+            mVCParams.wsCellPoolEnable    = getU("vhfParam_wsCellPoolEnable", 0u);
+            mVCParams.wsCellPoolCapacity  = getU("vhfParam_wsCellPoolCapacity", 0u);
+            mVCParams.wsCellPoolDrawK     = getU("vhfParam_wsCellPoolDrawK", 0u);
+            mVCParams.wsSpatialPixelsK      = getU("vhfParam_wsSpatialPixelsK", 4u);
+            mVCParams.wsSpatialPixelsRadius = getU("vhfParam_wsSpatialPixelsRadius", 32u);
+            mVCParams.wsPoolAddrMode        = getU("vhfParam_wsPoolAddrMode", 0u);
+            mVCParams.wsPoolTileSize        = getU("vhfParam_wsPoolTileSize", 16u);
+            mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
+            mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
+            mVCParams.wsCellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
+            mVCParams.wsCellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
         }
         bool wasWSReservoirs = mVisCacheWSReservoirs;
         mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
             ? dict.getValue<ref<Buffer>>("wsReservoirBuffer") : nullptr;
         mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("wsPixelReservoirBuffer"))
             ? dict.getValue<ref<Buffer>>("wsPixelReservoirBuffer") : nullptr;
+        mpVHFWSCellPools = (mVisCacheAvailable && dict.keyExists("wsCellPoolBuffer"))
+            ? dict.getValue<ref<Buffer>>("wsCellPoolBuffer") : nullptr;
         mVHFPixelDimX = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimX"))
             ? dict.getValue<uint32_t>("vhfParam_wsFrameDimX") : 0u;
         mVHFPixelDimY = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimY"))
@@ -1310,8 +1335,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         mVisCacheLightSelection = mVisCacheAvailable &&
             dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
         mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-        mVisCacheSubframeN = (mVisCacheAvailable && dict.keyExists("vhfSubframeN")) ? dict.getValue<uint32_t>("vhfSubframeN") : 1u;
-        if (mVisCacheSubframeN != 1 && mVisCacheSubframeN != 2 && mVisCacheSubframeN != 4) mVisCacheSubframeN = 1;
+        mVisCacheBayerN = (mVisCacheAvailable && dict.keyExists("vhfBayerN")) ? dict.getValue<uint32_t>("vhfBayerN") : 1u;
+        if (mVisCacheBayerN != 1 && mVisCacheBayerN != 2 && mVisCacheBayerN != 4) mVisCacheBayerN = 1;
 
         // Diagnostic textures — bound at root var like PixelStats so all RT stages
         // can write per-pixel heatmap data inline during tracing.
@@ -1340,12 +1365,12 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheLightSelection != wasLightSel
             || mVisCacheDirDistAddr != wasDirDist
-            || mVisCacheDiagnostics != wasDiag || mVisCacheSubframeN != wasSubframeN
+            || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN
             || mVisCacheWSReservoirs != wasWSReservoirs)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} subframeN={} wsRes={}",
+            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={} wsRes={}",
                     mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheLightSelection,
-                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheSubframeN, mVisCacheWSReservoirs);
+                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN, mVisCacheWSReservoirs);
             mRecompile = true;
         }
     }
@@ -1468,7 +1493,7 @@ void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& 
     // samples assuming all threads in a group share a full tile — which reduced+remap
     // can't guarantee at N>1. Fall back to full dispatch; shader gates spp on
     // inactive Bayer slots (option 1 in the design notes).
-    const uint32_t N = mVisCacheSubframeN;
+    const uint32_t N = mVisCacheBayerN;
     const uint32_t effectiveN = (!mFixedSampleCount && N > 1) ? 1u : N;
     const uint2 reducedTiles = (mParams.screenTiles + uint2(effectiveN - 1)) / effectiveN;
     mpGeneratePaths->execute(pRenderContext, { reducedTiles.x * tileSize, reducedTiles.y, 1u });
@@ -1537,6 +1562,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gEnableHierarchicalConsistency"] = mVCParams.enableHierarchicalConsistency;
         vc["gHierarchicalMuTolerance"]       = mVCParams.hierarchicalMuTolerance;
         vc["gAccelDecayDisagreeThresh"]      = mVCParams.accelDecayDisagreeThresh;
+        vc["gMLAlphaFloorN"]                 = mVCParams.mlAlphaFloorN;
         vc["gBootThresholdFine"]             = mVCParams.bootThresholdFine;
         vc["gJitterFilter"]                  = mVCParams.jitterFilter;
         vc["gJitterCell"]                    = mVCParams.jitterCell;
@@ -1547,12 +1573,13 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gCameraPosY"]                    = mVCParams.cameraPosY;
         vc["gCameraPosZ"]                    = mVCParams.cameraPosZ;
         vc["gPixelSize1"]                    = mVCParams.pixelSize1;
-        vc["gSubframeN"]                     = mVCParams.subframeN;
+        vc["gBayerN"]                        = mVCParams.bayerN;
         vc["gWarmupFirst"]                   = mVCParams.warmupFirst;
         vc["gWarmupRun"]                     = mVCParams.warmupRun;
         // §9.4 WS-ReSTIR DI cbuffer fields
         vc["gWSEnable"]                      = mVCParams.wsEnable;
-        vc["gWSLevelOffset"]                 = mVCParams.wsLevelOffset;
+        vc["gWSCellLevel"]                   = mVCParams.wsCellLevel;
+        vc["gWSCellLevelJitter"]             = mVCParams.wsCellLevelJitter;
         vc["gWSCapacity"]                    = mVCParams.wsCapacity;
         vc["gWSMCap"]                        = mVCParams.wsMCap;
         vc["gWSSpatialNeighbours"]           = mVCParams.wsSpatialNeighbours;
@@ -1560,16 +1587,28 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gWSLightSoftness"]               = mVCParams.wsLightSoftness;
         vc["gWSNormalAddr"]                  = mVCParams.wsNormalAddr;
         vc["gWSInitialCandidates"]           = mVCParams.wsInitialCandidates;
-        vc["gWSJitterFilter"]                = mVCParams.wsJitterFilter;
-        vc["gWSJitterCell"]                  = mVCParams.wsJitterCell;
+        // (gWSJitterFilter / gWSJitterCell cbuffer fields are now padding;
+        //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)
         vc["gWSUseCellInRIS"]                = mVCParams.wsUseCellInRIS;
         vc["gWSVisInPHat"]                   = mVCParams.wsVisInPHat;
+        vc["gWSCellPoolEnable"]              = mVCParams.wsCellPoolEnable;
+        vc["gWSCellPoolCapacity"]            = mVCParams.wsCellPoolCapacity;
+        vc["gWSCellPoolDrawK"]               = mVCParams.wsCellPoolDrawK;
+        vc["gWSSpatialPixelsK"]              = mVCParams.wsSpatialPixelsK;
+        vc["gWSSpatialPixelsRadius"]         = mVCParams.wsSpatialPixelsRadius;
+        vc["gWSPoolAddrMode"]                = mVCParams.wsPoolAddrMode;
+        vc["gWSPoolTileSize"]                = mVCParams.wsPoolTileSize;
+        vc["gDirSolidAngleScale"]            = mVCParams.dirSolidAngleScale;
+        vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
+        vc["gWSCellReservoirMerge"]          = mVCParams.wsCellReservoirMerge;
+        vc["gWSCellPoolFootprintPx"]         = mVCParams.wsCellPoolFootprintPx;
     }
     // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
     if (mVisCacheWSReservoirs)
     {
         var["gWSReservoirs"]      = mpVHFWSReservoirs;
         if (mpVHFPixelReservoirs) var["gWSPixelReservoirs"] = mpVHFPixelReservoirs;
+        if (mpVHFWSCellPools)     var["gWSCellPools"]       = mpVHFWSCellPools;
         var["VisCacheParams"]["gWSFrameDimX"] = mVHFPixelDimX;
         var["VisCacheParams"]["gWSFrameDimY"] = mVHFPixelDimY;
     }
@@ -1591,7 +1630,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     // full-res pixel via subframeRemap(). Variable-spp + N>1 falls back to full
     // dispatch (see comment in generatePaths); the raygen shader chooses its
     // pixel-compute path based on kSamplesPerPixel, mirroring this host split.
-    const uint32_t N = mVisCacheSubframeN;
+    const uint32_t N = mVisCacheBayerN;
     const uint32_t effectiveN = (!mFixedSampleCount && N > 1) ? 1u : N;
     const uint2 reducedDim = (mParams.frameDim + uint2(effectiveN - 1)) / effectiveN;
     mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(reducedDim, 1));
@@ -1688,12 +1727,14 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    defines.add("VISCACHE_SUBFRAME_N", std::to_string(owner.mVisCacheSubframeN));
+    defines.add("VISCACHE_BAYER_N", std::to_string(owner.mVisCacheBayerN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
     // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
     // §9.4 WS-ReSTIR DI: master define gates all reservoir paths in slang.
     defines.add("USE_WS_RESERVOIRS", owner.mVisCacheWSReservoirs ? "1" : "0");
+    // §9.4 Step (b): WS cell-pool pre-pass mode (this instance fills pool, skips shading).
+    defines.add("WS_CELL_POOL_FILL_ONLY", owner.mWSCellPoolFillOnly ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults
