@@ -535,6 +535,8 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
                         # Custom perceptual metrics:
                         "mean_err_pct",       # mean OkLab perceptual error vs GT (2× L weight)
                         "mean_noise_pct",     # mean bilateral CoV — stochastic grain
+                        # Cost (cache-amortized per-pixel ray fraction; None for non-cache variants):
+                        "rays_traced_pct",    # mean(VisCache.AccumRaysNoiseErrorCold.R) × 100 — % rays vs always-trace
                         # Visible-artifact-area thresholds (paper-comparable):
                         "artifact_3_pct",     # % pixels with err > 3%
                         "artifact_5_pct",     # % pixels with err > 5%
@@ -553,6 +555,7 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
 
 def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                         variant="vanilla",
+                        rays_traced_pct=None,
                         artifact_3_pct=None, artifact_5_pct=None, artifact_11_pct=None,
                         mse=None, rmse=None, psnr_db=None, relmse=None,
                         smape=None, mape=None, ms_ssim=None, flip=None):
@@ -573,6 +576,7 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
         "key": key, "scene": scene, "variant": variant, "spp": str(spp),
         "mean_err_pct":     fmt(mean_err_pct),
         "mean_noise_pct":   fmt(mean_noise_pct),
+        "rays_traced_pct":  fmt(rays_traced_pct),
         "artifact_3_pct":   fmt(artifact_3_pct),
         "artifact_5_pct":   fmt(artifact_5_pct),
         "artifact_11_pct":  fmt(artifact_11_pct),
@@ -2909,16 +2913,19 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
     return all_stats
 
 
-def _baseline_noise_floor(captureDir, gt_spp, res_tag):
+def _baseline_noise_floor(captureDir, gt_spp, res_tag, gt_variant_tag="vanilla"):
     """Compute + cache GT self-noise for a baseline capture directory.
 
     The x4096 bilateral noise map is subtracted from every lower-SPP noise plate
     (clamped ≥0) — the residual bilateral CoV in the converged reference is the
     detector's own response to edge aliasing, not MC noise. Returns the cached
-    numpy array, or None if the GT render PNG is missing."""
+    numpy array, or None if the GT render PNG is missing.
+
+    `gt_variant_tag` selects which GT to read (default "vanilla" = canonical
+    direct-only reference; pass e.g. "vanilla_b4" for a bounce-matched GT)."""
     from viscache_exr import bilateral_noise_cached
-    gt_render       = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_r1c1_accum_render.png")
-    noise_floor_npy = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_noise_floor.npy")
+    gt_render       = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_{gt_variant_tag}_r1c1_accum_render.png")
+    noise_floor_npy = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_{gt_variant_tag}_noise_floor.npy")
     if not os.path.exists(gt_render):
         return None
     return bilateral_noise_cached(gt_render, cache_path=noise_floor_npy)
@@ -2967,7 +2974,25 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
     # flip. Implementation in viscache_exr._pixel_metrics_suite.
     from viscache_exr import compute_research_metrics_hdr
     research = compute_research_metrics_hdr(xN_hdr, gt_hdr) or {}
+
+    # rays_traced_pct from cache diag EXR (saved alongside HDR by
+    # _run_baseline_variant when the variant has a VisCache pass). Vanilla /
+    # RTXDI / restirpt have no diag EXR — column stays None for them.
+    rays_traced_pct = None
+    rays_exr = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_rays.exr")
+    if os.path.exists(rays_exr):
+        try:
+            from viscache_exr import read_exr
+            data = read_exr(rays_exr).get("RGBA")
+            if data is not None and data.shape[2] >= 1:
+                # R channel = per-pixel rays-traced fraction (running mean,
+                # accumulated across frames). × 100 → percentage.
+                rays_traced_pct = float(data[:, :, 0].mean() * 100)
+        except Exception as e:
+            print(f"[{step_name}] [rays-extract] {variant_tag}_x{spp}: failed: {e}")
+
     extra = {
+        "rays_traced_pct": rays_traced_pct,
         "artifact_3_pct":  err_stats.get("artifact_3_pct")  if err_stats else None,
         "artifact_5_pct":  err_stats.get("artifact_5_pct")  if err_stats else None,
         "artifact_11_pct": err_stats.get("artifact_11_pct") if err_stats else None,
@@ -3020,12 +3045,13 @@ def run_baseline(step_name, frame_configs, scene_file,
         captureDir = f"captures/ladder/{step_name}/{scene_name}"
         os.makedirs(captureDir, exist_ok=True)
 
-        # GT (gt_spp) is rendered once by the canonical "vanilla" call. Multi-
-        # bounce variants (variant_tag != "vanilla") share that GT — skip the
-        # gt_spp render and the post-process plate generation, which both look
-        # for "vanilla"-suffixed files specifically.
-        skip_gt_and_plates = (variant_tag != "vanilla")
-        spp_list = sorted(set([1] + ([] if skip_gt_and_plates else [gt_spp]) + (extra_spp or [])))
+        # Each variant_tag gets its OWN GT + post-process plates. Previously
+        # only the canonical "vanilla" tag produced a GT, and multi-bounce
+        # variants shared it — but a 4-bounce render compared against a
+        # 0-bounce GT measures "indirect contribution" rather than convergence
+        # error. Per-variant GT keys the comparison correctly. Disk cost: one
+        # x4096 EXR per variant (≈1MB each).
+        spp_list = sorted(set([1, gt_spp] + (extra_spp or [])))
         for spp in spp_list:
             # Vanilla tag depends only on virtual SPP (total samples/pixel) — the
             # outer `frames` loop multiplies the sample count but isn't exposed in
@@ -3127,14 +3153,14 @@ def run_baseline(step_name, frame_configs, scene_file,
         # compares x4096 to itself (error trivially 0) and subtracts the
         # cached self-noise (plate should read 0). Non-zero residuals reveal
         # metric quirks before they contaminate variant deltas.
-        if not skip_gt_and_plates:
-            gt_hdr_candidates = glob.glob(os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_hdr.exr"))
-            gt_hdr = gt_hdr_candidates[0] if gt_hdr_candidates else None
-            if gt_hdr:
-                noise_floor = _baseline_noise_floor(captureDir, gt_spp, res_tag)
-                for spp in spp_list:
-                    postprocess_baseline_spp(step_name, captureDir, scene_name,
-                                              spp, res_tag, gt_hdr, noise_floor)
+        # Per-variant post-processing using this variant's own GT.
+        gt_hdr = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_{variant_tag}_hdr.exr")
+        if os.path.exists(gt_hdr):
+            noise_floor = _baseline_noise_floor(captureDir, gt_spp, res_tag, variant_tag)
+            for spp in spp_list:
+                postprocess_baseline_spp(step_name, captureDir, scene_name,
+                                          spp, res_tag, gt_hdr, noise_floor,
+                                          variant_tag=variant_tag)
 
     print(f"\n[{step_name}] All done.")
 
@@ -3712,6 +3738,23 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                 shutil.copy2(src, hdr_out)
                 print(f"[{step_name}] Copied HDR {os.path.basename(hdr_out)} ({sz} bytes)")
 
+            # Cache diag EXR (R = rays_traced fraction). Saved alongside HDR
+            # so postprocess_baseline_spp can extract rays_traced_pct for
+            # cache-enabled variants (smokeA_viscache_b{N}, smokeC_*, etc).
+            # Vanilla / RTXDI / restirpt have no VisCache pass → no diag EXR
+            # → rays_traced_pct stays None in the CSV.
+            rays_glob = os.path.join(captureDir, f"{tag_suffix}_x{spp}.VisCache.vcAccumRaysNoiseErrorCold.*")
+            rays_matches = glob.glob(rays_glob)
+            if rays_matches:
+                rays_out = os.path.join(captureDir, f"{tag}_{tag_suffix}_rays.exr")
+                src = rays_matches[0]
+                prev_sz = 0
+                for _ in range(50):
+                    sz = os.path.getsize(src)
+                    if sz > 1024 and sz == prev_sz: break
+                    prev_sz = sz; time.sleep(0.1)
+                shutil.copy2(src, rays_out)
+
             # Clean raw outputs
             for f in glob.glob(os.path.join(captureDir, f"{tag_suffix}_x{spp}.*")):
                 try: os.remove(f)
@@ -3719,8 +3762,13 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
 
             m.removeGraph(g)
 
-            # Per-variant postprocess: error vs GT + noise + plate + CSV row.
-            if gt_hdr_for_post:
+        # Per-variant postprocess at all requested SPPs (runs even when render
+        # was cached) — error vs GT + noise + plate + CSV row. Hoisted out of
+        # the cached-skip path so re-runs with an updated GT (e.g. switching
+        # from default vanilla to bounce-matched vanilla_bN) regenerate the
+        # error metrics from the existing cached HDR captures.
+        if gt_hdr_for_post:
+            for spp in capture_spps:
                 postprocess_baseline_spp(
                     step_name, captureDir, scene_name,
                     spp, res_tag, gt_hdr_for_post, noise_floor_for_post,
@@ -3728,13 +3776,39 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                 )
 
 
-def _resolve_gt_for_variant(captureDir, gt_spp, res_tag):
-    """Find vanilla GT HDR + cached noise floor for this scene, if produced."""
-    gt_hdr = os.path.join(captureDir, f"s_x{gt_spp}_{res_tag}_vanilla_hdr.exr")
-    if not os.path.exists(gt_hdr):
-        return None, None
-    floor = _baseline_noise_floor(captureDir, gt_spp, res_tag)
-    return gt_hdr, floor
+def _resolve_gt_for_variant(captureDir, gt_spp, res_tag, gt_variant_tag="vanilla"):
+    """Find GT HDR + cached noise floor. GTs live canonically in step 00's
+    capture dir (rendered there once by Ladder00, reused by every other
+    ladder step). Falls back to the current step's `captureDir` if step 00
+    hasn't run yet — but the canonical home is `captures/ladder/00/`.
+
+    `gt_variant_tag` selects which vanilla reference to use as ground truth.
+    Default "vanilla" (canonical direct-only); pass e.g. "vanilla_b4" so a
+    4-bounce ReSTIRPT variant compares against a 4-bounce vanilla GT
+    (apples-to-apples convergence error). Falls back to the canonical
+    "vanilla" GT if the bounce-specific one is absent."""
+    # Step-00 canonical GT location: same scene name, but step swapped to "00".
+    # captureDir format: "captures/ladder/<step>/<scene_name>"
+    parts = captureDir.replace("\\", "/").split("/")
+    if len(parts) >= 4 and parts[-3] == "ladder":
+        scene_name = parts[-1]
+        step00_dir = os.path.join(*parts[:-2], "00", scene_name)
+    else:
+        step00_dir = captureDir  # unrecognized layout; fall through
+
+    def _find(d, tag):
+        p = os.path.join(d, f"s_x{gt_spp}_{res_tag}_{tag}_hdr.exr")
+        return p if os.path.exists(p) else None
+
+    # Search order: step 00 with bounce-matched, step 00 with default vanilla,
+    # current step with bounce-matched, current step with default vanilla.
+    for d in (step00_dir, captureDir):
+        for tag in (gt_variant_tag, "vanilla"):
+            gt_hdr = _find(d, tag)
+            if gt_hdr:
+                floor = _baseline_noise_floor(d, gt_spp, res_tag, tag)
+                return gt_hdr, floor
+    return None, None
 
 
 def _run_baseline_restir(step_name, frame_configs, scene_file,
@@ -3850,15 +3924,16 @@ def run_baseline_restir_3d(step_name, frame_configs, scene_file,
 def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                     maxBounces=3, resX=kResX, resY=kResY,
                                     mogwai_globals=None, capture_spps=(1, 4),
-                                    gt_spp=4096, variant_tag=None):
-    """ReSTIRPT reference baseline — DQLin's canonical config (ReSTIR mode +
-    RTXDI direct feed). After PORT_NOTES.md §1-§10 backports this is finite
-    and usable on Cornell scenes with mild bias (-6% to +15% vs vanilla).
-    Larger scenes (Sponza) currently over-bias because the §10 magnitude
-    thresholds are not scene-aware — TODO; EARS (Rath 2022) will replace.
+                                    gt_spp=4096, variant_tag=None,
+                                    fireflyClampK=1e9,
+                                    pathSamplingMode="ReSTIR"):
+    """ReSTIRPT reference baseline. Modes:
+      - pathSamplingMode="ReSTIR" (default): DQLin canonical GRIS resampling
+      - pathSamplingMode="PathReuse": Bekaert-style path reuse (BPR=1 in shader)
+    Both share the RTXDI direct feed (`disableDirectIllumination=true`).
 
-    PT-mode + DI=on bypasses GRIS resampling and is therefore not a meaningful
-    ReSTIR-PT reference; only the canonical config exercises the algorithm."""
+    `fireflyClampK` controls the §15 chroma-preserving soft-clamp; default 1e9
+    leaves it disabled (BoilingFilter pattern). Engage via positive K."""
     if render_graph_ReSTIRPT is None:
         print(f"[{step_name}] ReSTIRPT graph not importable — skipping restirpt baseline")
         return
@@ -3866,12 +3941,19 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
         return render_graph_ReSTIRPT(
             viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
             useRTXDIDirect=True, useDirectLighting=True,
-            pathSamplingMode="ReSTIR",
-            disableDirectIllumination=True,  # DQLin canonical — RTXDI handles direct
+            pathSamplingMode=pathSamplingMode,
+            disableDirectIllumination=True,
+            fireflyClampK=fireflyClampK,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
-    gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
+    # Bounce-matched GT: restirpt_bN compares against vanilla_bN_x4096, not the
+    # default direct-only vanilla GT. Falls back to vanilla GT if bounce-matched
+    # one is absent (graceful degradation for steps that only ran the canonical).
+    gt_hdr, noise_floor = _resolve_gt_for_variant(
+        captureDir, gt_spp, f"{resX}x{resY}",
+        gt_variant_tag=f"vanilla_b{maxBounces}",
+    )
     tag = variant_tag or f"restirpt_b{maxBounces}"
     _run_baseline_variant(
         step_name, frame_configs, scene_file, tag,
@@ -3884,23 +3966,31 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
 
 def run_baseline_rtxdi(step_name, frame_configs, scene_file,
                        resX=kResX, resY=kResY, mogwai_globals=None,
-                       capture_spps=(1, 4), gt_spp=4096):
+                       capture_spps=(1, 4), gt_spp=4096,
+                       biasCorrection="Basic", variant_tag=None):
     """RTXDI (ReSTIR DI) baseline reference. Direct-illumination only.
 
     RTXDI is intrinsically a 1-sample-per-renderFrame algorithm; for x4
     quality the harness renders 4 frames into the accumulator. We pin
     `force_actual_spp=1` so `num_frames = spp` (not `spp // spp = 1`).
+
+    `biasCorrection`: "Basic" (default; uses stored V on reuse — biased; matches
+    our restir_2d/3d's behavior since they also re-evaluate pHat at the reader
+    but DO NOT re-trace V on temporal/spatial reuse), "RayTraced" (re-traces V
+    during MIS — unbiased but expensive). Use "RayTraced" for the strict-mode
+    reference that paper §12 cache-V revalidation aims to match cheaper.
     """
     if render_graph_RTXDI is None:
         print(f"[{step_name}] RTXDI graph not importable — skipping rtxdi baseline")
         return
     def _build(actual_spp):
-        return render_graph_RTXDI(viscache=False)
+        return render_graph_RTXDI(viscache=False, biasCorrection=biasCorrection)
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
     gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
+    tag = variant_tag or ("rtxdi" if biasCorrection == "Basic" else f"rtxdi_{biasCorrection.lower()}")
     _run_baseline_variant(
-        step_name, frame_configs, scene_file, "rtxdi",
+        step_name, frame_configs, scene_file, tag,
         _build, "RTXDIPass.color",
         capture_spps=capture_spps, maxBounces=0,
         resX=resX, resY=resY, mogwai_globals=mogwai_globals,
