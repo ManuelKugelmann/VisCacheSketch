@@ -30,7 +30,7 @@ The output is **a minimal set of fixed or interdependent parameters that produce
 | 2 | All-scenes canonical at x{4, 16} | ~15-20 min | validates SPONZA-derived per-SPP carry across full scene matrix; surfaces per-class divergence | script ready (`ALL_X16`) |
 | 3 | Sponza b=8 / b=16 | ~10 min + 2× GT renders | does rays-savings trend continue past b=4 or saturate? | not started |
 | 4 | Stage D step 21 formal opening | ~30 min | open WS-ReSTIR DI ladder with `wsRetraceOnReuseMode=2` carry as numbered ladder step | not started |
-| 5 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False | not started |
+| 5 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False | **partially diagnosed 2026-05-06** — two write paths overlap on `gVCAccumRaysNoiseErrorCold[pixel].r`: `vcWriteDiag` (only fires under USE_VISCACHE_VISIBILITYCHECK) and `vcDiagCountRay` (added 2026-05-06 for WS-ReSTIR sites). For `restir_2d_vblind` (visibilityCheck=False, mode=0): only the K-RIS-winner V-test at PathTracer.slang:1529 fires, always with traced=true. The 13% "saved" is therefore not from this run — most likely **stale accumulator state from an earlier config sharing the same EXR**, or a not-yet-found additional vcWriteDiag site. Needs print-instrumentation + Mogwai run to confirm |
 
 ### Proposed improvements (design ideas, not yet implemented)
 

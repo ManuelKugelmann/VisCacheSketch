@@ -1,5 +1,7 @@
 # References
 
+- [Agresti and Coull 1998] A. Agresti and B. A. Coull. "Approximate is Better than 'Exact' for Interval Estimation of Binomial Proportions." *The American Statistician*, 52(2):119–126, 1998. DOI: 10.1080/00031305.1998.10480550.
+
 - [Aldous and Vazirani 1994] D. Aldous and U. Vazirani. "'Go with the Winners' Algorithms." *Proc. 35th IEEE FOCS*, pp. 492–501, 1994.
 
 - [Alber et al. 2025] L. Alber, J. Hanika, C. Dachsbacher. "Real-Time Markov Chain Path Guiding for Global Illumination and Single Scattering." *Proc. ACM Comput. Graph. Interact. Tech.* (HPG), 2025.
@@ -25,6 +27,8 @@
 - [Boksanský et al. 2021] J. Boksanský, P. Sahlin, P. McKinney, and J. Bikker. "Rendering Many Lights with Grid-Based Reservoirs (ReGIR)." Chapter 23 in *Ray Tracing Gems II*, Apress, 2021.
 
 - [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
+
+- [Brown et al. 2001] L. D. Brown, T. T. Cai, and A. DasGupta. "Interval Estimation for a Binomial Proportion." *Statistical Science*, 16(2):101–117, 2001. DOI: 10.1214/ss/1009213286.
 
 - [Conner et al. 2025] M. Conner et al. "MegaLights." *SIGGRAPH 2025 Advances in Real-Time Rendering*, Epic Games, 2025.
 
@@ -89,6 +93,8 @@
 - [Vorba and Křivánek 2016] J. Vorba and J. Křivánek. "Adjoint-Driven Russian Roulette and Splitting in Light Transport Simulation." *ACM Trans. Graph.* (SIGGRAPH), 35(4):42, 2016.
 
 - [Ward 1991] G. J. Ward. "Adaptive Shadow Testing for Ray Tracing." *2nd Eurographics Workshop on Rendering*, Barcelona, 1991. Published in *Photorealistic Rendering in Computer Graphics*, pp. 11–20, Springer-Verlag, 1994.
+
+- [Wilson 1927] E. B. Wilson. "Probable Inference, the Law of Succession, and Statistical Inference." *Journal of the American Statistical Association*, 22(158):209–212, 1927. DOI: 10.1080/01621459.1927.10502953.
 
 - [Zeng et al. 2025] Z. Zeng et al. "ReSTIR Path Guiding." *ACM SIGGRAPH*, 2025.
 
