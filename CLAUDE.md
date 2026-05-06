@@ -171,3 +171,4 @@ topic: <what>
 - **Never chain `cd &&` before commands** — do a solo `cd` in a separate Bash call, then run commands from there
 - **No Co-Authored-By in commits** — no AI attribution lines
 - **Color in CLI output** — highlight calls to action and salient findings
+- **Use the FULL battery of available metrics when evaluating sweep results** — never report only `mean_err_pct` (OkLab) or only `art5_pct`. The variant-CSV schema includes RMSE, PSNR, relmse, MS-SSIM, FLIP, smape, mape, art_{3,5,11}, mean_noise — each measures a different failure mode. Single-metric analysis MISSES the trade-offs: the cache trades linear-space variance (RMSE/PSNR) for rays cost while preserving perceptual quality (OkLab/MS-SSIM); vt has anti-correlated optima between art5 (local spike penalty) and RMSE (global average). Tables and prose conclusions must report at minimum: err%, art5%, RMSE, PSNR, rays% — and call out when metrics disagree about the winner.
