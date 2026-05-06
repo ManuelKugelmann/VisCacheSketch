@@ -3927,23 +3927,32 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                     mogwai_globals=None, capture_spps=(1, 4),
                                     gt_spp=4096, variant_tag=None,
                                     fireflyClampK=1e9,
-                                    pathSamplingMode="ReSTIR"):
+                                    pathSamplingMode="ReSTIR",
+                                    unifiedDIGI=False):
     """ReSTIRPT reference baseline. Modes:
       - pathSamplingMode="ReSTIR" (default): DQLin canonical GRIS resampling
       - pathSamplingMode="PathReuse": Bekaert-style path reuse (BPR=1 in shader)
     Both share the RTXDI direct feed (`disableDirectIllumination=true`).
 
     `fireflyClampK` controls the §15 chroma-preserving soft-clamp; default 1e9
-    leaves it disabled (BoilingFilter pattern). Engage via positive K."""
+    leaves it disabled (BoilingFilter pattern). Engage via positive K.
+
+    `unifiedDIGI` (Lin 2026 §6.1 Stage A): when True, drops the external RTXDI
+    direct-light feed and lets internal NEE handle primary-hit direct + indirect
+    in one unified GRIS reservoir. Existing single-sample MIS at d=2 boundary
+    (evalMIS(1,p_NEE,1,p_BSDF)) handles the strategy split. Probe variant —
+    earlier reverted attempt (200k+ Infs) was on different code era; current
+    state retests the bare config flip."""
     if render_graph_ReSTIRPT is None:
         print(f"[{step_name}] ReSTIRPT graph not importable — skipping restirpt baseline")
         return
     def _build(actual_spp):
         return render_graph_ReSTIRPT(
             viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
-            useRTXDIDirect=True, useDirectLighting=True,
+            useRTXDIDirect=not unifiedDIGI,
+            useDirectLighting=not unifiedDIGI,
             pathSamplingMode=pathSamplingMode,
-            disableDirectIllumination=True,
+            disableDirectIllumination=not unifiedDIGI,
             fireflyClampK=fireflyClampK,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]

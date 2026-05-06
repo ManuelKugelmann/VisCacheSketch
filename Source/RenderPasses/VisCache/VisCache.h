@@ -102,6 +102,12 @@ public:
                                           ///< combines "low variance" and "enough samples" into
                                           ///< one criterion. Few-sample cells (high stderr) refuse
                                           ///< trust even if their var estimate is spuriously low.
+        float    wilsonZSquared;          ///< Wilson interval gate z² (0 = off, 3.8416 = 95% CI,
+                                          ///< 6.6349 = 99% CI). Takes precedence over stderr/vt
+                                          ///< when >0. Trust if Wilson LB > 1−ε OR UB < ε.
+                                          ///< SPP-adaptive: small-N → wide interval → no trust.
+        float    wilsonEps;               ///< Margin for "definitely visible/occluded" decision.
+                                          ///< 0.01 = trust when 95% CI within 1% of corner.
         uint32_t enableHierarchicalConsistency; ///< 1 = at each converged level, peek the next
                                                 ///< finer level's μ and require agreement within
                                                 ///< gHierarchicalMuTolerance before early-stop.
@@ -248,6 +254,12 @@ public:
                                                       ///< on variance ≤ gVarThreshold; the cascade always
                                                       ///< descends to refine them. 0 = off (prior behavior).
         float    stderrThreshold             = 0.0f;  ///< Bernoulli stderr gate; 0 = off (fallback to vt).
+        float    wilsonZSquared              = 0.0f;  ///< Wilson interval gate z² (0 = off, 3.8416 = 95% CI,
+                                                      ///< 6.6349 = 99% CI). Takes precedence over stderr/vt
+                                                      ///< when >0. Trust if Wilson LB > 1−ε OR UB < ε.
+                                                      ///< SPP-adaptive: small-N → wide interval → no trust.
+        float    wilsonEps                   = 0.01f; ///< Margin for Wilson-gate "definitely visible/occluded"
+                                                      ///< decision. 0.01 = trust within 1% of corner.
         bool     enableHierarchicalConsistency = false; ///< Peek finer-level μ for agreement check.
         float    hierarchicalMuTolerance     = 0.20f; ///< |μ_next − μ_this| above which trust is refused.
         float    accelDecayDisagreeThresh    = 0.0f;  ///< |sample−μ| that triggers in-insert half-decay; 0 = off.

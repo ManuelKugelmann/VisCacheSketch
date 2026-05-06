@@ -98,6 +98,8 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("forceDescendFootprintPx"))       mParams.forceDescendFootprintPx       = props["forceDescendFootprintPx"];
     if (props.has("cascadeWindowForward"))          mParams.cascadeWindowForward          = props["cascadeWindowForward"];
     if (props.has("stderrThreshold"))               mParams.stderrThreshold               = props["stderrThreshold"];
+    if (props.has("wilsonZSquared"))                mParams.wilsonZSquared                = props["wilsonZSquared"];
+    if (props.has("wilsonEps"))                     mParams.wilsonEps                     = props["wilsonEps"];
     if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
     if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
@@ -189,6 +191,8 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("forceDescendFootprintPx"))       mParams.forceDescendFootprintPx       = props["forceDescendFootprintPx"];
     if (props.has("cascadeWindowForward"))          mParams.cascadeWindowForward          = props["cascadeWindowForward"];
     if (props.has("stderrThreshold"))               mParams.stderrThreshold               = props["stderrThreshold"];
+    if (props.has("wilsonZSquared"))                mParams.wilsonZSquared                = props["wilsonZSquared"];
+    if (props.has("wilsonEps"))                     mParams.wilsonEps                     = props["wilsonEps"];
     if (props.has("enableHierarchicalConsistency")) mParams.enableHierarchicalConsistency = props["enableHierarchicalConsistency"];
     if (props.has("hierarchicalMuTolerance"))       mParams.hierarchicalMuTolerance       = props["hierarchicalMuTolerance"];
     if (props.has("accelDecayDisagreeThresh"))      mParams.accelDecayDisagreeThresh      = props["accelDecayDisagreeThresh"];
@@ -271,6 +275,8 @@ Properties VisCache::getProperties() const
     p["bootThresholdFactorFootprintPx"]                = mParams.bootThresholdFactorFootprintPx;
     p["forceDescendFootprintPx"]       = mParams.forceDescendFootprintPx;
     p["stderrThreshold"]               = mParams.stderrThreshold;
+    p["wilsonZSquared"]                = mParams.wilsonZSquared;
+    p["wilsonEps"]                     = mParams.wilsonEps;
     p["enableHierarchicalConsistency"] = mParams.enableHierarchicalConsistency;
     p["hierarchicalMuTolerance"]       = mParams.hierarchicalMuTolerance;
     p["accelDecayDisagreeThresh"]      = mParams.accelDecayDisagreeThresh;
@@ -671,6 +677,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.forceDescendFootprintPx = mParams.forceDescendFootprintPx;
     gpu.cascadeWindowForward    = mParams.cascadeWindowForward;
     gpu.stderrThreshold = mParams.stderrThreshold;
+    gpu.wilsonZSquared  = mParams.wilsonZSquared;
+    gpu.wilsonEps       = mParams.wilsonEps;
     gpu.enableHierarchicalConsistency = mParams.enableHierarchicalConsistency ? 1u : 0u;
     gpu.hierarchicalMuTolerance = mParams.hierarchicalMuTolerance;
     gpu.accelDecayDisagreeThresh = mParams.accelDecayDisagreeThresh;
@@ -850,6 +858,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_forceDescendFootprintPx"]         = mParams.forceDescendFootprintPx;
     dict["vhfParam_cascadeWindowForward"]            = mParams.cascadeWindowForward;
     dict["vhfParam_stderrThreshold"]                 = mParams.stderrThreshold;
+    dict["vhfParam_wilsonZSquared"]                  = mParams.wilsonZSquared;
+    dict["vhfParam_wilsonEps"]                       = mParams.wilsonEps;
     dict["vhfParam_enableHierarchicalConsistency"]   = mParams.enableHierarchicalConsistency ? 1u : 0u;
     dict["vhfParam_hierarchicalMuTolerance"]         = mParams.hierarchicalMuTolerance;
     dict["vhfParam_accelDecayDisagreeThresh"]        = mParams.accelDecayDisagreeThresh;
@@ -1290,6 +1300,8 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("K: bootThresholdFactorFootprintPx (0=off)", mParams.bootThresholdFactorFootprintPx, 0.f, 8.f, 0.1f);
         g.var("forceDescend cellPx (0=off)", mParams.forceDescendFootprintPx, 0u, 1u << 16);
         g.var("stderrThreshold (0=off)", mParams.stderrThreshold, 0.f, 1.f, 0.01f);
+        g.var("wilsonZSquared (0=off; 3.84=95%, 6.63=99%)", mParams.wilsonZSquared, 0.f, 10.f, 0.1f);
+        g.var("wilsonEps (margin)", mParams.wilsonEps, 0.001f, 0.1f, 0.001f);
         g.checkbox("Hierarchical consistency check", mParams.enableHierarchicalConsistency);
         g.var("hierarchical μ tolerance", mParams.hierarchicalMuTolerance, 0.f, 1.f, 0.05f);
         g.var("accelDecay |Δ| thresh (0=off)", mParams.accelDecayDisagreeThresh, 0.f, 1.f, 0.05f);

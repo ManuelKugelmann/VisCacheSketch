@@ -205,6 +205,12 @@ cbuffer VisCacheParams
                                      ///< Default 12. 0 = entry-level-only (debug).
     float  gStderrThreshold;          ///< Bernoulli stderr gate — trust iff sqrt(var/N) ≤ this.
                                       ///< 0 = off (fall back to gVarThreshold).
+    float  gWilsonZSquared;           ///< Wilson interval gate: z² value (0 = off, 3.8416 = 95% CI,
+                                      ///< 6.6349 = 99% CI). When >0 takes precedence over stderr/vt.
+                                      ///< Trust if Wilson LB > 1−ε OR UB < ε. SPP-adaptive: small N
+                                      ///< → wide interval → no trust regardless of μ̂ point estimate.
+    float  gWilsonEps;                ///< Margin for "definitely visible/occluded" Wilson trust
+                                      ///< decision. 0.01 = trust when 95% CI is within 1% of corner.
     uint   gEnableHierarchicalConsistency; ///< 1 = peek next level μ for agreement check.
     float  gHierarchicalMuTolerance;  ///< |μ_next − μ_this| gate for the hierarchical check.
     float  gAccelDecayDisagreeThresh; ///< |sample − μ| that triggers in-insert half-decay. 0 = off.
@@ -1013,15 +1019,33 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         best.valid = true;
 
         // Determine "converged" via whichever gate is active:
-        //   stderr gate (preferred): sqrt(var/N) ≤ gStderrThreshold. Principled
-        //     Bernoulli standard-error criterion — combines "low variance" and
-        //     "enough samples" into one. Rejects few-sample cells with spurious
-        //     low var (the x16-correlation pathology).
+        //   Wilson gate (preferred when gWilsonZSquared > 0): trust if the
+        //     Bernoulli (1−ε) Wilson confidence interval lies entirely above
+        //     1−ε or entirely below ε. Absorbs the SPP-dependent vt finding —
+        //     small N gives a wide interval that refuses trust regardless of
+        //     the point estimate, large N gives a narrow interval that trusts
+        //     whichever side μ̂ lands on. See .plans/wilson-interval-prototype.md.
+        //   stderr gate: sqrt(var/N) ≤ gStderrThreshold. Principled Bernoulli
+        //     standard-error criterion — combines "low variance" and "enough
+        //     samples" into one. Rejects few-sample cells with spurious low
+        //     var (the x16-correlation pathology).
         //   varThreshold (legacy): var ≤ gVarThreshold, ignores N.
         bool converged;
-        if (gStderrThreshold > 0.f)
+        if (gWilsonZSquared > 0.f)
         {
-            // stderr² = var / N. Gate: stderr² ≤ gStderrThreshold².
+            float Nf   = max(float(total), 1.f);
+            float zsq  = gWilsonZSquared;
+            float p    = mu;
+            float invD = 1.f / (1.f + zsq / Nf);
+            float numCenter = p + zsq / (2.f * Nf);
+            float radical = sqrt(zsq * (p * (1.f - p) / Nf + zsq / (4.f * Nf * Nf)));
+            float LB = (numCenter - radical) * invD;
+            float UB = (numCenter + radical) * invD;
+            float eps = gWilsonEps;
+            converged = (LB > 1.f - eps) || (UB < eps);
+        }
+        else if (gStderrThreshold > 0.f)
+        {
             float invN   = 1.f / max(float(total), 1.f);
             float stderr2 = var * invN;
             converged = stderr2 <= gStderrThreshold * gStderrThreshold;

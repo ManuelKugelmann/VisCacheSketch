@@ -91,6 +91,30 @@ low-variance regions trace rarely *and* stop propagation early.
 This coupled adaptation is self-regulating
 and only becomes possible with a multilevel cache.
 
+**Wilson interval at small sample counts (in progress).**
+The Bernoulli variance `μ(1−μ)` is the *plug-in* (Wald) variance of a
+binomial proportion — well-behaved when `n` is large, but it collapses
+spuriously near the boundaries `μ ≈ 0` and `μ ≈ 1`. A cell that has seen
+one observation `V = 1` reports `μ = 1`, `var = 0` — the Wald gate trusts
+the cache absolutely on a single sample. This is exactly the regime our
+cells spend most of their time in: small `n`, μ at one of the two
+boundaries. Empirically it surfaces as an SPP-dependent `vt`: the optimal
+trust threshold drifts with the per-frame sample count
+(`vt ≈ 0.10` at x4 SPP vs. `vt ≈ 0.001` at x16 on Sponza). Both regimes
+collapse into a single criterion under the Wilson score interval
+[Wilson 1927; Brown et al. 2001]: confirm cache trust when the Wilson
+*lower* bound exceeds `1 − ε` (μ believed close to 1) or the *upper*
+bound is below `ε` (μ believed close to 0). The score interval inverts
+the score test rather than the Wald test, producing well-behaved
+coverage at all `n` and all μ — the principled fix for the small-`n`
+boundary regime our cells live in. We adopt the closed form
+`p̂_W = (k + z²/2) / (n + z²)` with the standard 95% quantile `z = 1.96`;
+[Agresti and Coull 1998] gives a simpler "+2 successes, +2 failures"
+approximation that is practically equivalent at this confidence level
+and may be preferable in the inner shader loop. *Implementation in
+progress; the SPP-dependent `vt` finding is the empirical evidence the
+ladder produced for needing it.*
+
 **Analogy to ADRRS p_lim.**
 In adjoint-driven RR/splitting [Vorba and Křivánek 2016],
 the limiting survival probability p_lim sets a floor
