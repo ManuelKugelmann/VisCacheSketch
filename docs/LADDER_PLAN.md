@@ -2,14 +2,17 @@
 
 This document is the **forward** half of the ladder paperwork; the **backward** half — what was decided and why for steps 00–18 — lives in [LADDERLOG.md](LADDERLOG.md). The Dev Log ([devlog/DEVLOG.md](devlog/DEVLOG.md)) keeps cross-cutting findings (e.g. RTXDI parity story) outside the per-step ladder.
 
-The ladder is a **tool for understanding the algorithm**, not a search for one canonical config. Each stage opens an axis of complexity (single-level → multilevel → ReSTIR DI → multibounce → ReSTIR PT → BDPT) and uses sweeps to:
+The ladder is a **tool for understanding the algorithm**, not a search for one canonical config. Each stage opens an axis of complexity (single-level → multilevel → ReSTIR DI → multibounce → ReSTIR PT → BDPT) and follows the typical research-ladder shape:
 
+0. **Kick off with broad smoke tests** based on best prior knowledge / educated guesses — coarse parameter ranges, small scene sets, low SPP. The smoke pass reveals the rough sensitivity surface and rules out the obvious "doesn't work" cases before any expensive deep sweep.
 1. **Verify each aspect of the algorithm works** at that complexity level — failure modes get characterised before tuning starts.
 2. **Map parameter sensitivity** — which knobs move quality / cost, by how much, in which regime.
 3. **Identify parameter interrelations** — which knobs decouple, which couple (e.g. ct + vt couple at the saturated corner; vt + SPP couple in the SPP-dependent-vt finding).
 4. **Surface shortcomings** that point to mechanism-level changes (e.g. SPP-dependent vt → Wilson-interval; firefly-class DI saturation → multibounce solves it).
 
 The output is **a minimal set of fixed or interdependent parameters that produce a metric-weighted win** — `quality + cost` with the weighting determined by what the user / paper / use-case values. A "win" is metric-relative: at one extreme it's a Pareto improvement on every axis (firefly-class multibounce), at the other it's a tradeoff on perceptual vs linear-space metrics (penumbra-class single-bounce). When metrics disagree, the ladder's job is to make the trade explicit and tunable, not pick a winner.
+
+**Each step ideally lands at a local optimum** for the parameters it sweeps. **Prune dead ends and failures from the ladder** — move the learnings into the devlog (`docs/LADDERLOG.md` for the per-step result rows, `docs/devlog/DEVLOG.md` for narrative threads). The live ladder should read as a clean progression from one local optimum to the next, with the rubble of disproven hypotheses kept out of the path. A failed sweep is a finding, not a step — record what was learned, then drop the step from the active ladder.
 
 ## Roadmap (2026-05-06 consolidated)
 
