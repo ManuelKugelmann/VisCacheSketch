@@ -17,20 +17,20 @@ The output is **a minimal set of fixed or interdependent parameters that produce
 ## Roadmap (2026-05-06 consolidated)
 
 ### Where we are
-- **Stages A, B, C.1, C.2 done.** 11 sweeps complete (SMOKE, SPONZA_CT, SPONZA_VT, BISTRO_CT, BISTRO_ADD, BISTRO_DECAY, SPONZA_MB, BISTRO_MB, plus original 00–18 ladder). Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
+- **Stages A, B, C.1, C.2 done.** Live ladder pruned to 11 keep-rows + 9 pruned-with-learnings (LADDERLOG/DEVLOG split). Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
 - **Stage D plumbing landed**: `wsRetraceOnReuseMode` toggle (Off / FullTrace / CacheCV) + `rays_traced_pct` schema + `vcDiagCountRay`. SMOKE3 confirmed all three modes give correct unbiased results within stochastic noise.
-- **Stage E green-lit**: validated on Sponza (penumbra-class, perceptual win + linear loss, −74pp rays at b=4) and BistroInt (firefly-class multibounce, **wins on every metric**, −53pp rays + 2.4× better relmse at b=4).
+- **Stage E green-lit on the full Sponza/Bistro/Cornell matrix.** Sponza (−74pp rays b=4, perceptual win + linear loss), BistroInt (b=4 wins every metric, relmse 2.4× better), Cornell × 4 lighting regimes (rays savings monotonic in bounce depth, OkLab matches vanilla within 0.05pp at b=4). The Sponza-vs-Bistro multibounce dichotomy resolves into a single light-count gradient: linear-space cost scales with firefly density (1AL/1PL minor, 32PL massive RMSE +150%); relmse improves at high firefly density (cache averages magnitude tails). BistroExt MB queued (running).
 
 ### Knowledge gaps (priority order)
 
-| # | gap | cost | informational gain |
-|---|-----|-----|---:|
-| 1 | Cornell scenes multibounce + cache | ~15-20 min Mogwai | tests penumbra-class generalization across 4 different lighting characteristics (1AL/3AL/1PL/32PL) |
-| 2 | BistroExt multibounce | ~30 min (needs vanilla_b{1,4} GTs) | extends BistroInt's "wins everywhere" within firefly-class |
-| 3 | All-scenes canonical at x16 | ~20 min | only Sponza has SPP-dependent vt data; need x16 across 7 scenes to validate |
-| 4 | Sponza b=8 / b=16 | ~10 min | does the rays-savings trend continue past b=4 or saturate? |
-| 5 | Stage D step 21 formal opening | ~30 min | open WS-ReSTIR DI ladder with `wsRetraceOnReuseMode=2` carry as numbered ladder step |
-| 6 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False |
+| # | gap | cost | informational gain | status |
+|---|-----|-----|---:|---|
+| ~~1~~ | ~~Cornell scenes multibounce + cache~~ | ~~~15-20 min~~ | ~~Cornell-class generalization~~ | ✅ DONE 2026-05-06 — confirmed (light-count gradient resolves Sponza-vs-Bistro dichotomy) |
+| 1 | BistroExt multibounce | ~30 min (needs vanilla_b{1,4} GTs) | extends BistroInt's "wins everywhere" within firefly-class | running (job baoghcdph) |
+| 2 | All-scenes canonical at x{4, 16} | ~15-20 min | validates SPONZA-derived per-SPP carry across full scene matrix; surfaces per-class divergence | script ready (`ALL_X16`) |
+| 3 | Sponza b=8 / b=16 | ~10 min + 2× GT renders | does rays-savings trend continue past b=4 or saturate? | not started |
+| 4 | Stage D step 21 formal opening | ~30 min | open WS-ReSTIR DI ladder with `wsRetraceOnReuseMode=2` carry as numbered ladder step | not started |
+| 5 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False | not started |
 
 ### Proposed improvements (design ideas, not yet implemented)
 
@@ -47,12 +47,13 @@ The output is **a minimal set of fixed or interdependent parameters that produce
 
 ### Next experiments (compute-side, prioritised)
 
-1. **Cornell multibounce** (`scripts/VisCache_LadderCORNELL_MB.py` — ready) — fast generalization test across 4 Cornell lighting characteristics. **Queued for Mogwai-free.**
-2. **BistroExt multibounce** — same script pattern as BISTRO_MB, swap scene. Needs missing vanilla_b{1,4} GTs first.
-3. **Wilson-interval prototype** — implement `bootThresholdConfirm` (or full Wilson) as a separate trust gate; sweep on Sponza x4+x16 to verify it absorbs both vt regimes.
-4. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder. Sweep K_pre / K_pool / MCap at the validated `wsRetraceOnReuseMode=2` carry.
-5. **All-scenes canonical x16 sweep** — 7 scenes × 1 config = 7 captures; takes ~30 min; validates per-class config under canonical metric.
-6. **c1+c2 patch** — slang change to inject μ in `pHat_reader`; sweep on Sponza+BistroInt at the WS-ReSTIR canonical.
+1. ✅ **Cornell multibounce** (`scripts/VisCache_LadderCORNELL_MB.py`) — DONE 2026-05-06. Light-count gradient resolves Sponza-vs-Bistro dichotomy.
+2. ⏳ **BistroExt multibounce** — running (job baoghcdph). Auto-generates vanilla_b{1,4} GTs first.
+3. **All-scenes canonical x{4, 16}** (`scripts/VisCache_LadderALL_X16.py` — ready) — 7-scene smoke validation of SPONZA per-SPP carry. Queue after BistroExt.
+4. **Wilson-interval prototype** — slang patch; replaces vt with binomial confidence interval. Code change ~1h, sweep on Sponza x{4, 16}. Highest-leverage open improvement.
+5. **Sponza b=8 / b=16** — extend the bounce-depth axis to confirm asymptote behaviour. Quick smoke (~10 min).
+6. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder. Sweep K_pre / K_pool / MCap at the validated `wsRetraceOnReuseMode=2` carry.
+7. **c1+c2 patch** — slang change to inject μ in `pHat_reader` at reservoir + pool reads; sweep on Sponza+BistroInt at the WS-ReSTIR canonical. Higher mu_min than 1% (cache as guide).
 
 ### Documentation hygiene (no compute)
 
