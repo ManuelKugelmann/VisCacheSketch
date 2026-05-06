@@ -3939,13 +3939,24 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
 
     `unifiedDIGI` (Lin 2026 §6.1 Stage A): when True, drops the external RTXDI
     direct-light feed and lets internal NEE handle primary-hit direct + indirect
-    in one unified GRIS reservoir. Existing single-sample MIS at d=2 boundary
-    (evalMIS(1,p_NEE,1,p_BSDF)) handles the strategy split. Probe variant —
-    earlier reverted attempt (200k+ Infs) was on different code era; current
-    state retests the bare config flip."""
+    in one unified GRIS reservoir.
+
+    *** UNSUPPORTED 2026-05-06 *** — Stage A is architecturally blocked on
+    Phase 1 §6.2.3 (forced NEE light reconnection). Bare config flip produces
+    4× canonical mean_err regression on Cornell. Three iterations of fixes
+    plateaued at ~4× off; correct fix needs Lin 2026 supplemental §5 + Lin 2022
+    supplemental MIS re-derivation. See PORT_NOTES.md §12 #3 +
+    .plans/restirpt-stage-a-unification.md +
+    .plans/restirpt-forced-nee-reconnection.md for retro and reactivation
+    steps. Probe variant kept for future re-engagement; do not use as a
+    canonical reference until Phase 1 ships."""
     if render_graph_ReSTIRPT is None:
         print(f"[{step_name}] ReSTIRPT graph not importable — skipping restirpt baseline")
         return
+    if unifiedDIGI:
+        print(f"[{step_name}] WARNING: unifiedDIGI=True (Stage A probe) is UNSUPPORTED — "
+              f"4x canonical mean_err regression; needs Phase 1 §6.2.3 first. "
+              f"See PORT_NOTES.md §12 #3 + .plans/restirpt-forced-nee-reconnection.md.")
     def _build(actual_spp):
         return render_graph_ReSTIRPT(
             viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
