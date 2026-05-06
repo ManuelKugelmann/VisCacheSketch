@@ -12,7 +12,13 @@ The ladder is a **tool for understanding the algorithm**, not a search for one c
 
 The output is **a minimal set of fixed or interdependent parameters that produce a metric-weighted win** — `quality + cost` with the weighting determined by what the user / paper / use-case values. A "win" is metric-relative: at one extreme it's a Pareto improvement on every axis (firefly-class multibounce), at the other it's a tradeoff on perceptual vs linear-space metrics (penumbra-class single-bounce). When metrics disagree, the ladder's job is to make the trade explicit and tunable, not pick a winner.
 
-**Each step ideally lands at a local optimum** for the parameters it sweeps. **Prune dead ends and failures from the ladder** — move the learnings into the devlog (`docs/LADDERLOG.md` for the per-step result rows, `docs/devlog/DEVLOG.md` for narrative threads). The live ladder should read as a clean progression from one local optimum to the next, with the rubble of disproven hypotheses kept out of the path. A failed sweep is a finding, not a step — record what was learned, then drop the step from the active ladder.
+**Each step ideally lands at a local optimum** for the parameters it sweeps. **Archive failed sweeps and dead ends out of the live ladder, but keep the archive around for a while** — they often reframe later when an adjacent investigation lands. Delete an archived entry only when the underlying problem is **fully obsolete** (solved a different way, or otherwise resolved into the live ladder). Mechanism:
+
+- Live narrowing chain (`docs/LADDERLOG.md` table at top) holds only steps with a real local optimum.
+- "Pruned dead ends (learnings preserved)" footer in LADDERLOG holds recently-archived sweeps with one-line learnings + cross-link to DEVLOG for cross-cutting findings (`docs/devlog/DEVLOG.md`).
+- An entry leaves the archive only when it's fully obsolete — the problem is solved (e.g. a downstream sweep absorbs the same lesson cleanly) or the result is no longer actionable. Until then it stays as an audit trail; reframings tend to land months later.
+
+A failed sweep is a finding, not a step.
 
 ## Roadmap (2026-05-06 consolidated)
 

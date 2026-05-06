@@ -423,9 +423,9 @@ See [LADDER_PLAN.md](LADDER_PLAN.md) for stages C.2 → G:
 
 ---
 
-# Pruned dead ends (learnings preserved)
+# Archived dead ends (kept until fully obsolete)
 
-These steps ran but produced no local optimum (all-variants-tied) or were superseded by a downstream sweep. Per the methodology rule (LADDER_PLAN intro), they're pruned from the live narrowing chain above. Their per-step body narratives stay below for audit; one-line learnings are listed here, with cross-cutting findings cross-linked to DEVLOG.
+These steps ran but produced no local optimum (all-variants-tied) or were superseded by a downstream sweep. Per the methodology rule (LADDER_PLAN intro), they're archived out of the live narrowing chain above but **kept here while the underlying problem is still open** — dead ends often reframe months later when an adjacent investigation lands. An entry leaves the archive only when its problem is fully obsolete (solved differently / no longer actionable). Per-step body narratives stay below for audit; one-line learnings are listed here, with cross-cutting findings cross-linked to DEVLOG.
 
 | pruned step | sweep | learning (one line) | promoted to |
 |-------------|-------|---------------------|-------------|
