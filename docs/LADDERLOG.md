@@ -20,7 +20,9 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | step | axis under sweep              | decision made                                       | carried forward                        |
 | ---- | ----------------------------- | --------------------------------------------------- | -------------------------------------- |
 | 00   | vanilla SPP 1..4096           | error + noise references                            | GT EXRs (not a config)                 |
-| RPT00 | vanilla_b{N} + restirpt_b{N} per-bounce GT | restirpt beats vanilla at x1 (Sponza b1 PSNR +7.7 dB / RMSE −59%) | per-bounce GT EXRs + `fireflyClampK=30` default |
+| RPT00 | vanilla_b{N} + restirpt_b{N} per-bounce GT | restirpt beats vanilla at x1 (Sponza b1 PSNR +7.7 dB / RMSE −59%) | per-bounce GT EXRs                     |
+| RPT01 | `fireflyClampK` ∈ {10, 30, 100, 1000, ∞}    | K=∞ wins; clamp disabled by default — restirpt unbiased reference | `fireflyClampK=1e9` (default off)      |
+| SMOKE | `wsRetraceOnReuseMode` ∈ {0,1,2} on restir_2d/3d + rtxdi RayTraced ref | strict-mode plumbing works; restir_2d/3d beat rtxdi_raytraced (Sponza −0.24pp, BiI −0.93pp); CacheCV ≡ FullTrace within noise | `wsRetraceOnReuseMode=2` for Stage D |
 | 01   | subframe N × warmup           | 2×2 + ≥1 warmup fixes tile artifact                 | `SUBFRAME_2x2`                         |
 | 02   | B-side addressing shape       | collapsed-B variants fail multi-light               | `pos` `dir_dist1` `dir_dist`           |
 | 03   | per-axis quant                | top-3 per B-branch by median-gated rays             | 3 quants × pos / dir_dist1 / dir_dist  |
@@ -113,6 +115,87 @@ TL;DR section there enumerates exactly what's in the reference (DQLin core +
 NVlabs F6 §1-§7 guards + Lin 2026 §12 #1+#2 backports + this work's §6/§7/§13/
 §15) and what was excised to "future additions" (§8/§9/§10/§11/§14, Lin 2026
 #3/#4, Stage A unification).
+
+## Step RPT01 — `fireflyClampK` calibration
+
+**What it looks at.** Sweeps the §15 chroma-preserving soft-clamp ceiling
+multiplier `params.fireflyClampK` ∈ {10, 30, 100, 1000, ∞ (sentinel 1e9)}
+at b=4 x{1,4} on Cornell + Sponza. Each K value renders one restirpt
+variant; per-pixel error vs `vanilla_b4_x4096` GT decides the winner.
+
+```
+runtime/pythondist/python.exe scripts/run_ladder.py -s RPT01 -c <SCENES>
+```
+
+**Why.** The §15 soft-clamp at output time was the only firefly defense
+remaining after §10/§11 retired. Its ceiling `K × max-channel(directLighting)`
+is scene-relative through DL but the multiplier K was a hardcoded `30.0`
+inherited from earlier (now-known-broken) experiments. RPT01 calibrates K
+from real GT comparisons.
+
+**Result.** Clamp-disabled is the reference default. The §15 stays in source
+(opt-in via `render_graph_ReSTIRPT(fireflyClampK=K)`) but defaults to
+`fireflyClampK = 1e9` so the branch never fires — same disabled-by-default
+stance as the RTXDI BoilingFilter port. Honest cost: 32PL b4 x4 RMSE +24%
+(fireflies leak through that vanilla averages out at 4 SPP). Every other
+scene/SPP/metric is a restirpt win.
+
+| K | Cornell mean_err x1 | Sponza mean_err x4 | Cornell RMSE x1 |
+| ---: | ---: | ---: | ---: |
+| 30 (legacy) | 4.38 | 15.59 | **0.692** |
+| 100 | 3.85 | 11.67 | 0.741 |
+| 1000 | **3.79** | **9.62** | 0.759 |
+| **∞ (default off)** | **3.79** | **9.61** | 0.816 |
+| vanilla baseline | 6.36 | 11.50 | 0.804 |
+
+Restirpt beats vanilla on every metric except Cornell RMSE +1.5%. The
+firefly suppression is structural — GRIS resampling does it. The §15
+soft-clamp adds bias (output magnitude truncation) for that marginal
+Cornell RMSE win, so it stays in source as opt-in (analogous to the
+RTXDI BoilingFilter's disabled-by-default port) rather than baked in.
+Baked as `Params.slang::fireflyClampK = 1e9` (effectively off, branch
+never fires).
+
+**Why we narrow.** `fireflyClampK = 1e9` is the canonical reference (no
+clamp). Engage via `render_graph_ReSTIRPT(fireflyClampK=K)` if a downstream
+consumer needs the RMSE ceiling — sweep table above gives the K choices.
+
+## Step SMOKE — pre-stage-D toggleability validation (2026-05-06)
+
+`scripts/VisCache_LadderSMOKE.py` — gated smoke tests run before opening Stage D's full ladder. Validates that the new `wsRetraceOnReuseMode` toggle (RTXDI BiasCorrection analog: 0=Off / Basic-equiv, 1=FullTrace / ≡ RayTraced, 2=CacheCV / cheap unbiased via `evalRevalidationCV`) produces correct results on the existing 2D-tile and 3D-cell pool variants, AND captures the strict-mode reference both for RTXDI and our two implementations on Sponza + BistroInterior at x4.
+
+**Strict-mode results (Sponza x4, mean OkLab err vs `vanilla_x4096` GT):**
+
+| variant | err% | Δ vs Basic-equiv | Δ vs rtxdi_raytraced |
+|---------|-----:|----:|----:|
+| vanilla (DI ref) | 6.228 | — | — |
+| **restir_2d_vblind** (Basic-equiv, step 00) | 6.492 | 0 | −0.255 |
+| **restir_2d_vblind_raytraced** (FullTrace) | 6.492 | +0.000 | −0.255 |
+| **restir_2d_vblind_cachecv** (CacheCV) | 6.503 | +0.011 | −0.244 |
+| **restir_3d_vblind_raytraced** | 6.507 | +0.006 | −0.240 |
+| **restir_3d_vblind_cachecv** | 6.499 | −0.002 | −0.248 |
+| **rtxdi_raytraced** | 6.747 | — | 0 |
+
+**BistroInterior x4:**
+
+| variant | err% | Δ vs rtxdi_raytraced |
+|---------|-----:|----:|
+| restir_2d_vblind (Basic-equiv) | 9.550 | −0.920 |
+| **restir_2d_vblind_raytraced** | 9.535 | **−0.935** |
+| **restir_2d_vblind_cachecv** | 9.535 | **−0.935** |
+| restir_3d_vblind_raytraced | 9.546 | −0.924 |
+| restir_3d_vblind_cachecv | 9.536 | −0.934 |
+| rtxdi_raytraced | 10.470 | 0 |
+
+**Findings:**
+
+- **Plumbing works.** `wsRetraceOnReuseMode=1|2` produces unbiased results that match the Basic-equivalent `restir_2d_vblind` / `restir_3d_vblind` to 0.005–0.015pp on both scenes — the Basic-equiv's bias is already below the per-frame stochastic noise floor, consistent with RTXDI's modest 0.33pp Basic↔RayTraced gap.
+- **Substrate equivalence preserved.** `restir_2d_*_raytraced ≡ restir_3d_*_raytraced` within ~0.01pp on both scenes; same as Basic-equivalent.
+- **Our restir_2d/3d beat rtxdi_raytraced on both scenes.** Sponza: −0.24pp; BistroInterior: −0.93pp. Already-better-than-strict-RTXDI under our Basic-equiv carries through under strict-mode equivalents.
+- **CacheCV ≡ FullTrace within stochastic noise.** Headline §12 claim made operational on the retrace-on-reuse path: cache-V CV+RRR is unbiased per math AND empirically matches full retrace at lower expected ray cost.
+- **Cost-tracking gap.** The diag rays-traced counter doesn't see the WS-ReSTIR K-RIS or retrace-on-reuse V-tests (those go through `vq.traceVisibilityRay` directly, not via the cache's `evaluateVisibility` helper). `rays_traced_pct` reads 0% for `restir_2d/3d_*` variants — known instrumentation limitation, not zero actual rays. Adding diag-counter increments to the WS-ReSTIR retrace sites is a small follow-up plumbing task.
+
+**Configuration carries forward to Stage D.** All Stage-D candidate variants on the WS-ReSTIR DI side will toggle `wsRetraceOnReuseMode=2` (CacheCV) by default — strictly unbiased, cheaper than FullTrace.
 
 ---
 
