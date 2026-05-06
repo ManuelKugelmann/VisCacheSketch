@@ -101,12 +101,14 @@ struct PathTracer
     */
     struct LightSample
     {
-        float3  Li;         ///< Incident radiance at the shading point (unshadowed). This is already divided by the pdf.
-        float   pdf;        ///< Pdf with respect to solid angle at the shading point.
-        float3  origin;     ///< Ray origin for visibility evaluation (offseted to avoid self-intersection).
-        float   distance;   ///< Ray distance for visibility evaluation (shortened to avoid self-intersection).
-        float3  dir;        ///< Ray direction for visibility evaluation (normalized).
-        uint    lightType;  ///< Light type this sample comes from (LightSampleType casted to uint).
+        float3  Li;            ///< Incident radiance at the shading point (unshadowed). This is already divided by the pdf.
+        float   pdf;           ///< Pdf with respect to solid angle at the shading point.
+        float3  origin;        ///< Ray origin for visibility evaluation (offseted to avoid self-intersection).
+        float   distance;      ///< Ray distance for visibility evaluation (shortened to avoid self-intersection).
+        float3  dir;           ///< Ray direction for visibility evaluation (normalized).
+        uint    lightType;     ///< Light type this sample comes from (LightSampleType casted to uint).
+        HitInfo packedHit;     ///< Lin 2026 §6.2.3: light surface hit (Triangle for Emissive; invalid otherwise). Used by addNeeVertex to populate rcVertexHit when force-marking NEE light as rcVertex.
+        float3  lightNormalW;  ///< Lin 2026 §6.2.3: light surface normal (only meaningful for Emissive). Used to compute G_src = cos(N_light, -dir) / dist² for force-NEE rcVertex's cachedJacobian.
 
         Ray getVisibilityRay() { return Ray(origin, dir, 0.f, distance); }
     };
@@ -637,6 +639,20 @@ struct PathTracer
         float3 toLight = lightPos - ls.origin;
         ls.distance = length(toLight);
         ls.dir = normalize(toLight);
+
+        // Lin 2026 §6.2.3: synthesize a Falcor TriangleHit from the global emissive
+        // triangle index so addNeeVertex can store it in rcVertexHit (matching the
+        // BSDF-hit-emissive escape-vertex format). MeshLightData.triangleOffset
+        // gives the global→(instanceID, localPrimIdx) mapping. Also stash the
+        // light surface normal — used by the addNeeVertex caller to compute the
+        // source-pixel geometric factor G_src for the force-NEE cachedJacobian.
+        MeshLightData mld = gScene.lightCollection.getMeshData(tls.triangleIndex);
+        TriangleHit triHit;
+        triHit.instanceID = GeometryInstanceID(mld.instanceID, 0);
+        triHit.primitiveIndex = tls.triangleIndex - mld.triangleOffset;
+        triHit.barycentrics = tls.uv;
+        ls.packedHit = HitInfo(triHit);
+        ls.lightNormalW = tls.normalW;
 
         return any(ls.Li > 0.f);
     }
@@ -1378,12 +1394,34 @@ struct PathTracer
                                     path.rcVertexPathTreeIrradiance += weight * ls.Li * path.thp;
                                 }
 
+                                // Lin 2026 §6.2.3 force-NEE plumbing:
+                                //   lightLeThp     = Le × thp (no BSDF×cos factor); recovers Le by
+                                //                    undoing the `ls.Li *= misWeight` folded earlier:
+                                //                    ls.Li × ls.pdf / misWeight = Le.
+                                //   forceNeeJacob  = (scatterPdf_at_primary, 0, G_src) for the source's
+                                //                    cachedJacobian. scatterPdf is the BSDF pdf at primary
+                                //                    for direction ls.dir; G_src = cos(N_light, -ls.dir) / dist²
+                                //                    (only meaningful for Emissive — others fall through to
+                                //                    existing random-replay shift via the rcVertexHit-invalid
+                                //                    gate in PathBuilder).
+                                float3 lightLeThp = ls.Li * ls.pdf / max(misWeight, 1e-30f) * path.thp;
+                                float forceNeeScatterPdf = (scatterPdf > 0.f) ? scatterPdf : evalPdfBSDF(sd, ls.dir);
+                                float forceNeeCosLight = max(dot(ls.lightNormalW, -ls.dir), 0.f);
+                                float forceNeeGsrc = (ls.distance > 1e-6f) ? forceNeeCosLight / (ls.distance * ls.distance) : 0.f;
+                                float3 forceNeeJacob = float3(forceNeeScatterPdf, 0.f, forceNeeGsrc);
                                 bool selected = path.pathBuilder.addNeeVertex(params, path.length, ls.dir, Lr,
                                     is_rcVertex ? weight * ls.Li * path.thp : path.rcVertexPathTreeIrradiance, path.useHybridShift,
-                                    path.russianRoulettePdf, misWeight, ls.pdf, ls.lightType, path.pathReservoir, path.enableRandomReplay);
+                                    path.russianRoulettePdf, misWeight, ls.pdf, ls.lightType, path.pathReservoir, path.enableRandomReplay,
+                                    ls.packedHit, lightLeThp, forceNeeJacob);
 #else
+                                float3 lightLeThp = ls.Li * ls.pdf / max(misWeight, 1e-30f) * path.thp;
+                                float forceNeeScatterPdf = (scatterPdf > 0.f) ? scatterPdf : evalPdfBSDF(sd, ls.dir);
+                                float forceNeeCosLight = max(dot(ls.lightNormalW, -ls.dir), 0.f);
+                                float forceNeeGsrc = (ls.distance > 1e-6f) ? forceNeeCosLight / (ls.distance * ls.distance) : 0.f;
+                                float3 forceNeeJacob = float3(forceNeeScatterPdf, 0.f, forceNeeGsrc);
                                 bool selected = path.pathBuilder.addNeeVertex(params, path.length, ls.dir, Lr, weight * ls.Li * path.thp, path.useHybridShift,
-                                    path.russianRoulettePdf, misWeight, ls.pdf, ls.lightType, path.pathReservoir, path.enableRandomReplay);
+                                    path.russianRoulettePdf, misWeight, ls.pdf, ls.lightType, path.pathReservoir, path.enableRandomReplay,
+                                    ls.packedHit, lightLeThp, forceNeeJacob);
 #endif
                             }
                         }

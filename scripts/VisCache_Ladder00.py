@@ -121,19 +121,22 @@ for scene_file in get_scenes():
             pathSamplingMode="PathReuse",
         )
         # Lin 2026 §6.1 Stage A — unified DI+GI in one ReSTIR reservoir
-        # (no external RTXDI feed). Probe variant; canonical reference
-        # (`restirpt_b{N}`) preserved above for ablation comparison.
-        run_baseline_reference_restirpt(
-            step_name="00",
-            frame_configs=[(0, 0, 1)],
-            scene_file=scene_file,
-            resX=res, resY=res,
-            maxBounces=mb,
-            capture_spps=(1, 4),
-            mogwai_globals=globals(),
-            variant_tag=f"restirpt_unified_b{mb}",
-            unifiedDIGI=True,
-        )
+        # (no external RTXDI feed). Probe variant DISABLED 2026-05-06 (Phase 3
+        # blocked on Phase 1 §6.2.3 — see .plans/restirpt-forced-nee-reconnection.md).
+        # Re-enable when Phase 1's force-NEE shift MIS bookkeeping is corrected.
+        # The `unifiedDIGI=True` kwarg path in run_baseline_reference_restirpt and
+        # the test scaffold scripts/ReSTIRPT_StageA_Test.py are preserved.
+        #run_baseline_reference_restirpt(
+        #    step_name="00",
+        #    frame_configs=[(0, 0, 1)],
+        #    scene_file=scene_file,
+        #    resX=res, resY=res,
+        #    maxBounces=mb,
+        #    capture_spps=(1, 4),
+        #    mogwai_globals=globals(),
+        #    variant_tag=f"restirpt_unified_b{mb}",
+        #    unifiedDIGI=True,
+        #)
 
     # 2. RTXDI external reference — the parity target.
     #    RTXDI = 1-sample-per-frame; x4 = 4 frames into accumulator.

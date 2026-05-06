@@ -70,6 +70,27 @@ Path contribution: `F(x̄) × m_1` for an NEE-terminated path, `F(x̄) × m_2` f
 - **§14 ADRRS-without-adjoint splitting** — needs path-walk-loop refactor in `TracePass.cs.slang`; separate plan.
 - **VisCache integration of Stage A** — defer until Phase 3 ships standalone. Adding cache-amortized direct-light visibility on top of unified GRIS is its own design problem.
 
+## 2026-05-06 status — BLOCKED on Phase 1 §6.2.3
+
+Probe variant `restirpt_unified_b{N}` exercised on Cornell_1AL (bare config flip:
+`disableDirectIllumination=False, useRTXDIDirect=False, useDirectLighting=False`).
+Results: 4× canonical regression on mean_err (20.43% → canonical 3.87%) across all
+bounce counts. Three iterations of Phase 1 §6.2.3 forced-NEE-as-rcVertex fixes
+plateau at 16.78% (still 4× off canonical). Diagnosis: Shift.slang's MIS weight
+form for NEE-at-rcVertex evaluates the BSDF-sampling alternative pdf at the light
+surface (returns 0 for emissive) → MIS degenerates to 1.0 → no proper bias correction
+against the BSDF-hit-x_2 escape-vertex strategy that also fires for d=2 in Stage A
+config.
+
+Phase 3 is **architecturally blocked** on a multi-issue MIS bookkeeping reform that
+needs Lin 2026 supplemental §5 + Lin 2022 supplemental re-derivation, not patch-by-
+patch fixes. See `.plans/restirpt-forced-nee-reconnection.md` "Paper re-read
+priorities" + "Re-enable checklist" for the path forward.
+
+Probe variant + Phase 1 plumbing left as scaffolding (commented out in step 00,
+gated `force_nee_as_rcVertex = false` in PathBuilder); flip a small set of gates
+to re-engage after the MIS derivation lands.
+
 ## Cross-references
 
 - Phase 0 research notes: `.plans/restirpt-gris-finish.notes.md`

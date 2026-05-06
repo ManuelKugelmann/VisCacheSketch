@@ -125,6 +125,23 @@ struct ReSTIRPathFlags
         return ((flags >> 16) & 1) != 0;
     }
 
+    // Lin 2026 §6.2.3: bit 17 — forced-NEE-as-rcVertex topology discriminator.
+    // True: rcVertex IS the NEE light vertex (no scatter at rcVertex). Shift
+    // dispatches to computeShiftedIntegrandForcedNEELight which evaluates Le ×
+    // BSDF_dst × visibility cleanly without BPR's scatter-rcVertex assumptions.
+    // False: classic rcVertex semantics (scatter point or escape vertex).
+    [mutating]
+    void insertIsForcedNEE(bool isForcedNEE)
+    {
+        flags &= ~0x20000;
+        flags |= (int(isForcedNEE) & 1) << 17;
+    }
+
+    bool isForcedNEE()
+    {
+        return ((flags >> 17) & 1) != 0;
+    }
+
     [mutating]
     void insertLightType(uint lightType)
     {

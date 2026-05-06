@@ -398,13 +398,40 @@ luminance). Expected to matter more at higher bounces or HDR scenes
 where RR-pdf accumulates significantly.
 
 **Open / Pending:**
-- **#3 — Forced NEE light reconnection (Lin 2026 §6.2.3):** replay-side
-  re-sampling of NEE lights causes shift validity failures. Fix: hydrate
-  LightSample from the source reservoir's stored light-index instead of
-  calling `generateLightSample` afresh in replay. Touches
-  `traceTemporalUpdate` and `traceRandomReplayPath` NEE-terminating cases.
-  Likely to materially improve hybrid-shift acceptance rate on
-  multi-light scenes.
+- **#3 — Forced NEE light reconnection (Lin 2026 §6.2.3):**
+  ATTEMPTED + DISABLED 2026-05-06. Three structurally correct fixes
+  applied incrementally on Cornell Stage A test (`restirpt_unified_b{N}`,
+  unified DI+GI config): (a) `dstF2 = 1` for force-NEE-as-light topology
+  in Shift.slang reconnection branch (gated on new `pathFlags.isForcedNEE()`
+  flag — bit 17), (b) `lightLeOnlyContribution` override in PathBuilder
+  removing source's BSDF×cos from `rcVertexIrradiance[0]` for force-NEE,
+  (c) `cachedJacobianForceNEE` populated with (scatterPdf_at_primary, 0,
+  G_src) so Shift's existing Jacobian computation has valid source values.
+  Plumbing landed: `LightSample.packedHit` (Triangle HitInfo synthesized
+  from emissive sampler's `tls.triangleIndex` via `lightCollection.getMeshData`
+  inverse map), `LightSample.lightNormalW` (for G_src), `addNeeVertex`
+  param extensions. Result: Cornell mean_err 20.43% → 16.78% (still 4×
+  canonical 3.87%); plateau across bounce counts; further fixes had zero
+  effect.
+
+  Root cause hypothesis: Shift.slang's MIS weight at line ~569 evaluates
+  `dstRcVertexScatterPdfAll = evalPdfBSDF(rcVertexSd, ...)` at the LIGHT
+  SURFACE (returns 0 for emissive material) → MIS degenerates to
+  `lightPdf / (lightPdf + 0) = 1.0` → no proper bias correction against
+  the BSDF-sample alternative strategy that also fires at d=2 in unified
+  DI+GI config (PathTracer.slang line 1094 escape-vertex emissive hit).
+  Both NEE-from-x_1 and BSDF-hit-x_2 paths flow into the resampler with
+  effectively unit MIS weight, double-counting. The correct MIS form
+  needs the BSDF-sampling alternative pdf evaluated at PRIMARY (`dstPDF1All`),
+  not at the light surface — but this rewires multiple Shift.slang code
+  paths (the existing `dstRcVertexScatterPdfAll` is shared with BPR's
+  legitimate NEE-at-scatter-rcVertex case). Needs Lin 2026 supplemental
+  §5 + Lin 2022 supplemental re-derivation, not patch-by-patch.
+
+  Code state: `force_nee_as_rcVertex = false` gate in PathBuilder.slang
+  disables activation. All plumbing kept as scaffolding for re-enable.
+  See `.plans/restirpt-forced-nee-reconnection.md` for detailed retro +
+  paper re-read priorities + re-enable checklist.
 
 - **#4 — Vector-valued resampling weights (Lin 2026 §6.3):**
   IMPLEMENTED 2026-05-06 (corrected derivation). The May 2026-05-05 attempt
@@ -474,20 +501,26 @@ where RR-pdf accumulates significantly.
   Sponza +1920% — reverted same day. The corrected derivation (above)
   identifies both bugs and ships the right form.
 
-- **Stage A unification (Lin 2026 §5 supplemental):**
-  ATTEMPTED + REVERTED 2026-05-05. Switched canonical config to
-  `disableDirectIllumination=false`, `useRTXDIDirect=false`,
-  `useDirectLighting=false` (no external DI feed; internal NEE handles
-  primary-hit direct light). Combined with §12 #1 footprint criterion as
-  Lin 2026 prescribed.
+- **Stage A unification (Lin 2026 §6.1 + supplemental §5):**
+  ATTEMPTED 2026-05-05 (200k+ Infs — different code era), retried 2026-05-06
+  with current §1/§13 guards in place. Bare config flip
+  (`disableDirectIllumination=false, useRTXDIDirect=false, useDirectLighting=false`)
+  no longer crashes (current guards catch what blew up in 2026-05-05) but
+  produces 4-5× canonical regression: Cornell_1AL b1 mean_err 20.43% vs
+  canonical 3.87%, b4 16.58% vs 3.73%, b8 16.43% vs 3.73%. PSNR drop
+  ~2.5 dB across bounces.
 
-  Result: 200k+ Infs on all 3 scenes — even with §12 #1 active, d=2 paths
-  whose rcVertex is at x_1 fail the GRIS shift. The supplemental's full
-  multi-sample MIS weight `ω_1 = M·p_1 / (M·p_1 + p_2)` is needed to make
-  d=2 + d≥3 share the path tree correctly; Stage A "minimal" without that
-  weight is incorrect at the boundary.
+  Stage A is **architecturally blocked** on Phase 1 §6.2.3 (forced NEE
+  reconnection) — the d=2 NEE paths in unified DI+GI config require force-
+  NEE-as-rcVertex marking + corresponding shift code support. Phase 1
+  partial implementation reduced the regression to 16.78% (still 4× off);
+  remaining gap traced to multi-issue MIS bookkeeping in Shift.slang that
+  needs Lin 2026 supplemental §5 re-derivation. See §12 #3 above.
 
-  Reverted to canonical config (RTXDI feed mode + `disableDirectIllumination=true`).
+  Probe variant `restirpt_unified_b{N}` left commented out in
+  `scripts/VisCache_Ladder00.py` and `scripts/ReSTIRPT_StageA_Test.py`,
+  ready for re-engagement once Phase 1 ships. See
+  `.plans/restirpt-stage-a-unification.md`.
 
 **Status (2026-05-06):** §12 #1, #2, #4 active in the reference port. #3
 (forced NEE reconnection) deferred — paper claim is performance, not

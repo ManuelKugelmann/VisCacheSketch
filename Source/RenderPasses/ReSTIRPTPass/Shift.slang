@@ -413,6 +413,7 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
                                 ShadingData srcPrimarySd, inout PathReservoir srcReservoir, bool evalVisibility,
                                 bool useHybridShift=false, bool useCachedJacobian = false)
 {
+
     float3 dstCachedJacobian;
     dstJacobian = 0.f;
 
@@ -544,7 +545,14 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
 
     float3 dstF2 = 1.f;
 
-    if (!isRcVertexEscapedVertex)
+    // Lin 2026 §6.2.3 forced-NEE-at-light topology: when the rcVertex IS the
+    // light surface (no scatter), evalBSDFCosine on the emissive material would
+    // return 0 and zero the integrand. The correct behavior is dstF2 = 1.0.
+    // Gated on the explicit isForcedNEE flag so BPR's NEE-at-scatter-rcVertex
+    // (where rcVertex IS a scatter point with valid BSDF) is unaffected.
+    // Currently disabled at the source (PathBuilder force_nee_as_rcVertex = false);
+    // when re-enabled the flag activates this branch automatically.
+    if (!isRcVertexEscapedVertex && !srcReservoir.pathFlags.isForcedNEE())
         dstF2 = evalBSDFCosine(rcVertexSd, rcVertexWi, allowedSampledTypes2);
 
     // connection point behind surface
