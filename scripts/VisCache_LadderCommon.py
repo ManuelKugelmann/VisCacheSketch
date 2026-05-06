@@ -3818,6 +3818,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          wsInitialCandidates=32, wsMCap=5.0,    # K_pre=32 + Conv B reader-pdf canonical 2026-05-05. Trade: 2× pre-pass eval reduction for ~+0.1-0.2pp quality (vs K_pre=64). Still BETTER than prior canonical (Conv A + K=64) on Cornell_3AL_x4 (3.55 vs 3.61) and BistroExt_x4 (10.88 vs 11.69) — Conv B's gains outweigh K_pre's loss. Pre-pass cost-optimization per user "slim down prepass samples, keep fat prepass plumbing".
                          wsVisInPHat=0,
                          wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
+                         wsRetraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -3841,6 +3842,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             wsCellPool=True, wsCellPoolDrawK=16,    # 8 fresh + 16 pool = 24 total = RTXDI's localLightCandidateCount. K_pool=24 retested with Conv B 2026-05-05: still uniformly +0.15-0.22pp worse — over-weighting pool's shading-agnostic distribution dilutes 8 fresh shading-conditional samples regardless of read convention.
             wsCellPoolPrePass=True,
             wsVisInPHat=wsVisInPHat,
+            wsRetraceOnReuseMode=wsRetraceOnReuseMode,
             # Pre-pass: PdfMipmap (RTXDI-style hierarchical, Task #34).
             # Main-pass: LightBVH default (shading-CONDITIONAL — required by
             # BistroInt; mixed-sampler test 2026-05-05 with both PdfMipmap
@@ -3882,6 +3884,12 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
         )
     vmode_tag = {0: "vblind", 1: "vcache", 2: "vevaluate"}.get(wsVisInPHat, f"v{wsVisInPHat}")
     tag_suffix = f"{tag_prefix}_{vmode_tag}"
+    # Retrace-on-reuse mode shows up in the tag so the (Basic-equiv) and
+    # (RayTraced-equiv) outputs sit side-by-side in the CSV.
+    if wsRetraceOnReuseMode == 1:
+        tag_suffix += "_raytraced"
+    elif wsRetraceOnReuseMode == 2:
+        tag_suffix += "_cachecv"
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
     gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")
