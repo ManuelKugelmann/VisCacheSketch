@@ -4,6 +4,65 @@ This document is the **forward** half of the ladder paperwork; the **backward** 
 
 The ladder progresses in stages, each adding one axis of complexity over the previous stage's canonical config. Every stage's first step is a reference run that ties cost+quality back to the new reference baseline; every stage's last step picks a single canonical config that the next stage opens with.
 
+## Roadmap (2026-05-06 consolidated)
+
+### Where we are
+- **Stages A, B, C.1, C.2 done.** 11 sweeps complete (SMOKE, SPONZA_CT, SPONZA_VT, BISTRO_CT, BISTRO_ADD, BISTRO_DECAY, SPONZA_MB, BISTRO_MB, plus original 00–18 ladder). Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
+- **Stage D plumbing landed**: `wsRetraceOnReuseMode` toggle (Off / FullTrace / CacheCV) + `rays_traced_pct` schema + `vcDiagCountRay`. SMOKE3 confirmed all three modes give correct unbiased results within stochastic noise.
+- **Stage E green-lit**: validated on Sponza (penumbra-class, perceptual win + linear loss, −74pp rays at b=4) and BistroInt (firefly-class multibounce, **wins on every metric**, −53pp rays + 2.4× better relmse at b=4).
+
+### Knowledge gaps (priority order)
+
+| # | gap | cost | informational gain |
+|---|-----|-----|---:|
+| 1 | Cornell scenes multibounce + cache | ~15-20 min Mogwai | tests penumbra-class generalization across 4 different lighting characteristics (1AL/3AL/1PL/32PL) |
+| 2 | BistroExt multibounce | ~30 min (needs vanilla_b{1,4} GTs) | extends BistroInt's "wins everywhere" within firefly-class |
+| 3 | All-scenes canonical at x16 | ~20 min | only Sponza has SPP-dependent vt data; need x16 across 7 scenes to validate |
+| 4 | Sponza b=8 / b=16 | ~10 min | does the rays-savings trend continue past b=4 or saturate? |
+| 5 | Stage D step 21 formal opening | ~30 min | open WS-ReSTIR DI ladder with `wsRetraceOnReuseMode=2` carry as numbered ladder step |
+| 6 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False |
+
+### Proposed improvements (design ideas, not yet implemented)
+
+| # | improvement | why | effort | precondition |
+|---|------------|-----|-------|--------------|
+| A | **Wilson-interval / two-tier ct** | Principled fix for SPP-dependent vt finding (`vt=0.10` x4 vs `vt=0.001` x16). Wilson lower-bound > 0.99 OR upper-bound < 0.01 collapses both regimes into one criterion. | ~1h slang patch + sweep | none |
+| B | **c1+c2: μ at reservoir + pool READ** | Visibility-aware presampling at reservoir/pool merge. Multiply `pHat_reader` by cache μ in cross-pixel/temporal merge. | ~30 min slang + sweep | (a)+(b) ✅ |
+| C | **c3: μ at presample WRITE** | Filter cell-pool candidate SET toward visible lights at insert time. | ~30 min slang + sweep | c1+c2 |
+| D | **Scene classifier** | Bayer-rotation cell-μ-stability monitor: penumbra cells' μ varies across rotations; firefly-locked cells' μ stays constant. Self-tunes per-scene config. | ~1h investigation + ~1h prototype | none (orthogonal) |
+| E | **BoilingFilter separable include** | Re-enable the disabled BoilingFilter via the documented separable-include fix path. | ~1h | none; but quality unaffected per data |
+| F | **Lean compute pre-pass for cell-pool fill** (Task #29) | RTXDI eval-cost parity (3-4× reduction). | ~2h slang + integration | useful for Stage D step 27 |
+| G | **Per-pass VisCacheParams** (Task #32) | Different `bayerN` / `wsVisInPHat` for pre-pass vs main pass. | ~1h cpp/cbuffer wiring | useful for Stage D step 27 |
+| H | **Bayer-aligned cell-pool slot indexing** (Task #33) | Eliminate random-replace contention in cell-pool. | ~1h slang | useful for Stage D step 22+ |
+
+### Next experiments (compute-side, prioritised)
+
+1. **Cornell multibounce** (`scripts/VisCache_LadderCORNELL_MB.py` — ready) — fast generalization test across 4 Cornell lighting characteristics. **Queued for Mogwai-free.**
+2. **BistroExt multibounce** — same script pattern as BISTRO_MB, swap scene. Needs missing vanilla_b{1,4} GTs first.
+3. **Wilson-interval prototype** — implement `bootThresholdConfirm` (or full Wilson) as a separate trust gate; sweep on Sponza x4+x16 to verify it absorbs both vt regimes.
+4. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder. Sweep K_pre / K_pool / MCap at the validated `wsRetraceOnReuseMode=2` carry.
+5. **All-scenes canonical x16 sweep** — 7 scenes × 1 config = 7 captures; takes ~30 min; validates per-class config under canonical metric.
+6. **c1+c2 patch** — slang change to inject μ in `pHat_reader`; sweep on Sponza+BistroInt at the WS-ReSTIR canonical.
+
+### Documentation hygiene (no compute)
+
+- **Renumber recent diagnostic sweeps** (SMOKE / SPONZA_CT / SPONZA_VT / BISTRO_CT / BISTRO_ADD / BISTRO_DECAY / SPONZA_MB / BISTRO_MB) as steps 19–25 in LADDERLOG → continuous numbering before opening Stage D.
+- **Update DEVLOG** with the metric-selects-policy finding + bounce-depth taxonomy update.
+- **Open issues / Tasks** for improvements A–H above.
+
+### Stage progression summary
+
+| stage | status | next concrete step |
+|-------|--------|-------------------|
+| A | ✅ done | refresh GTs as needed (Cornell_1PL, Cornell_3AL, BistroExt: b{1,4}) |
+| B | ✅ done | — |
+| C.1 | ✅ done | — |
+| C.2 | ✅ done (effectively, via SPONZA_*/BISTRO_* sweeps) | renumber as steps 19–25 |
+| D | (a)+(b) plumbing ✅; ladder open | open step 21 |
+| E | green-lit on both classes; not formally opened | sweep all 7 scenes at canonical × b{1,4,8} |
+| F | pending parallel agent's RPT integration | wait |
+| G | open | wait |
+
 ## Where VisCache plugs in
 
 VisCache is a single substrate (flat multilevel hash, CV+RRR estimator, μ output) that touches the rendering algorithm at four distinct points. Each point is opened in its own stage so the gain is attributable rather than tangled.
