@@ -44,12 +44,12 @@ WILSON_VARIANTS = [
     # (label, vt, wz, eps)
     ("vt100_wzoff",     0.100, 0.0, 0.01),  # SPONZA_VT x4 carry reference
     ("vt001_wzoff",     0.001, 0.0, 0.01),  # SPONZA_VT x16 carry reference
-    ("wz38_eps005",     0.001, 3.8416, 0.005),  # 95% CI, ε=0.005 (strictest)
-    ("wz38_eps010",     0.001, 3.8416, 0.010),  # 95% CI, ε=0.01 (canonical)
-    ("wz38_eps020",     0.001, 3.8416, 0.020),  # 95% CI, ε=0.02
-    ("wz38_eps050",     0.001, 3.8416, 0.050),  # 95% CI, ε=0.05 (loosest)
-    ("wz66_eps010",     0.001, 6.6349, 0.010),  # 99% CI, ε=0.01
-    ("wz66_eps020",     0.001, 6.6349, 0.020),  # 99% CI, ε=0.02
+    ("wz38_eps005",     0.001, 3.8416, 0.005),  # 95% CI, ε=0.005 (strict)
+    ("wz38_eps050",     0.001, 3.8416, 0.050),  # 95% CI, ε=0.05
+    ("wz38_eps100",     0.001, 3.8416, 0.100),  # 95% CI, ε=0.10 (loose)
+    ("wz38_eps200",     0.001, 3.8416, 0.200),  # 95% CI, ε=0.20 (very loose)
+    ("wz38_eps400",     0.001, 3.8416, 0.400),  # 95% CI, ε=0.40 (vt=0.10-like trust window)
+    ("wz66_eps200",     0.001, 6.6349, 0.200),  # 99% CI, ε=0.20 (Wilson stricter via larger z)
 ]
 
 DEFAULT_SCENES = ["Sponza"]
