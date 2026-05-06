@@ -39,6 +39,8 @@ The post-merge-order multilevel sweep at steps 19–25 lives in `runtime/capture
 
 The WS-ReSTIR parity matrix from the *Final canonical config* section of DEVLOG.md is the natural starting point for Stage D step 21; its EXRs live under `runtime/captures/wsrestir/` (not the ladder root). Stage D step 21 imports them by reference rather than re-rendering.
 
+A ReSTIRPT-specific reference harness already exists as `scripts/VisCache_LadderRPT00.py` (`captures/ladder/RPT00/`) — it runs vanilla + `restirpt_b{1,4,8}` per scene with the canonical centimetre-scale Sponza camera. Treat that as a sub-step of Stage A: its EXRs are the references Stage F (steps 41–50) compares against, so Stage F does not need to regenerate ReSTIRPT references — only render fresh `viscache+restirpt` variants and read from `RPT00/` for the ground-truth side. The `RPT00` naming convention is a separate sibling track for *reference generation* and stays as-is; the unified numbering 41–50 is for *integration* steps that don't currently exist.
+
 ---
 
 # Stage C.2 — multilevel PT DI: validation + canonical (steps 19–20)
