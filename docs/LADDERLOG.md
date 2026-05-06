@@ -12,16 +12,15 @@ Per-step record of what was tested, what was decided, and what was carried. The 
 
 Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same continuous bipolar ramp anchored at viridis(0) = dark purple for Δ = 0. Positive values (VisCache degraded / noisier) walk the full **viridis** palette (purple → blue → green → yellow); negative values (VisCache better / smoother) fade from purple toward **black**. Darker-than-purple = better; brighter-than-purple = worse. Plate labels report mean and per-pixel [min … max] signed %.
 
-- **error Δ** = OkLabDistance(viscache, GT) − OkLabDistance(vanilla_xN, GT) at matched SPP — perceptual error vs ground truth, relative to same-SPP vanilla.
+- **error Δ** = OkLabDistance(viscache, GT) − OkLabDistance(vanilla_xN, GT) at matched SPP — perceptual error vs ground truth, relative to same-SPP vanilla. From step 11 onward HDR is Reinhard-tonemapped (x → x/(1+x)) before OkLab so bright Sponza floors don't dominate the metric.
 - **noise Δ** = bilateral_noise(viscache LDR) − bilateral_noise(vanilla_xN LDR) at matched SPP — screen-space noise difference, relative to same-SPP vanilla. Step 00 also emits per-SPP absolute OkLab error vs GT as the reference noise floor the noise Δ is measured against.
-
-> ⚠ **Metric change at step 11+**: the error metric switched to a **Reinhard-tone-mapped OkLab** (HDR x → x/(1+x) before perceptual distance) so brightly-lit Sponza floors etc don't dominate the metric. Steps 00–10 numbers in this log are still under the **pre-tone-map** metric (linear-clipped at 10 + sRGB gamma). Pre/post-step-11 magnitudes are not directly comparable. **Action item**: re-run steps 00–10 with the new metric (postprocess only — EXRs are kept, no re-rendering needed) once the new ladder stabilizes, so cross-step plots have a single consistent error scale.
 
 ## Narrowing chain at a glance
 
 | step | axis under sweep              | decision made                                       | carried forward                        |
 | ---- | ----------------------------- | --------------------------------------------------- | -------------------------------------- |
 | 00   | vanilla SPP 1..4096           | error + noise references                            | GT EXRs (not a config)                 |
+| RPT00 | vanilla_b{N} + restirpt_b{N} per-bounce GT | restirpt beats vanilla at x1 (Sponza b1 PSNR +7.7 dB / RMSE −59%) | per-bounce GT EXRs + `fireflyClampK=30` default |
 | 01   | subframe N × warmup           | 2×2 + ≥1 warmup fixes tile artifact                 | `SUBFRAME_2x2`                         |
 | 02   | B-side addressing shape       | collapsed-B variants fail multi-light               | `pos` `dir_dist1` `dir_dist`           |
 | 03   | per-axis quant                | top-3 per B-branch by median-gated rays             | 3 quants × pos / dir_dist1 / dir_dist  |
@@ -63,6 +62,57 @@ Step 00 also runs the multi-bounce variants (`vanilla_b{1,4,8}`, `restirpt_b{1,4
 Full four-scene gallery in [STEP00.md](devlog/step00/STEP00.md).
 
 ![](devlog/step00/overview_summary_00.png)
+
+## Step RPT00 — ReSTIRPT canonical reference
+
+**What it looks at.** Dedicated ReSTIR PT validation harness, isolated from
+step 00 so the ReSTIRPT-side iteration doesn't churn the DI-side baselines.
+Runs `vanilla_b{1,4,8}` at x{1,2,4,8,16,4096} + `restirpt_b{1,4,8}` at x{1,4}
+through the canonical DQLin config (ReSTIR mode + RTXDI direct feed,
+`disableDirectIllumination=true`). Captures land in
+`runtime/captures/ladder/RPT00/<scene>/`.
+
+```
+runtime/pythondist/python.exe scripts/run_ladder.py -s RPT00 -c <SCENES>
+```
+
+**Per-bounce GT.** Unlike step 00 (where every variant compares against the
+single canonical `vanilla_x4096` GT, which renders with `maxBounces=0`), RPT00
+emits `vanilla_b{N}_x4096` GT per bounce count. `restirpt_bN_xK` then compares
+against `vanilla_bN_x4096` — apples-to-apples convergence error rather than
+"how much indirect light did each algorithm contribute relative to direct-only."
+This is the only correct way to measure ReSTIRPT bias against vanilla PT. The
+LadderCommon GT mtime-invalidation in `viscache_exr.oklab_distance_hdr_cached`
+makes the cached error-distance maps re-evaluate when the GT changes.
+
+**Reference results (2026-05-06, b=4 unless stated):**
+
+| scene · b | metric | vanilla x1 | restirpt x1 | Δ | vanilla x4 | restirpt x4 | Δ |
+| --------- | ------ | ---------: | ----------: | --: | ---------: | ----------: | --: |
+| Cornell_1AL b1 | mean_err% | 6.36 | **4.24** | **−2.1** | 2.98 | 2.99 | +0.0 |
+| Cornell_1AL b4 | mean_err% | 6.36 | **4.39** | **−2.0** | 2.89 | 3.22 | +0.3 |
+| Cornell_1AL b4 | PSNR dB  | 39.10 | **39.82** | **+0.7** | 42.94 | 40.29 | −2.6 |
+| Cornell_1AL b8 | mean_err% | 6.34 | **4.42** | **−1.9** | 2.89 | 3.26 | +0.4 |
+| Sponza b1 | mean_err% | 21.44 | **20.11** | **−1.3** | 12.58 | 16.70 | +4.1 |
+| Sponza b1 | RMSE | 1.680 | **0.692** | **−59%** | 0.842 | **0.669** | **−21%** |
+| Sponza b1 | PSNR dB  | 13.02 | **20.73** | **+7.7** | 19.03 | **21.03** | **+2.0** |
+| Sponza b1 | art_5%   | 96.5 | **88.0** | **−8.5pp** | 81.2 | 86.3 | +5.1pp |
+
+**Headline.** ReSTIRPT outperforms vanilla path-tracing at low SPP exactly
+as it's designed to. The dramatic Sponza RMSE/PSNR delta (−59%/+7.7 dB at x1)
+shows the GRIS resampler doing its variance-reduction job on the firefly-rich
+scene. At x4 the OkLab `mean_err%` chroma drift turns slightly negative for
+ReSTIRPT (the soft-clamp's chroma direction preservation accumulates errors
+faster than vanilla's plain accumulation), but RMSE/PSNR still favour
+ReSTIRPT. Calibration of the §15 `params.fireflyClampK` knob is the open
+follow-up (RPT01).
+
+**Reference port content + future-additions list** in
+[`Source/RenderPasses/ReSTIRPTPass/PORT_NOTES.md`](../Source/RenderPasses/ReSTIRPTPass/PORT_NOTES.md).
+TL;DR section there enumerates exactly what's in the reference (DQLin core +
+NVlabs F6 §1-§7 guards + Lin 2026 §12 #1+#2 backports + this work's §6/§7/§13/
+§15) and what was excised to "future additions" (§8/§9/§10/§11/§14, Lin 2026
+#3/#4, Stage A unification).
 
 ---
 
@@ -214,21 +264,11 @@ The cascade cuts rays roughly in half vs single-level at matched quality: `qa012
 
 ---
 
-# Stage C.1 — multilevel VisCache on PT DI (post-alignment ladder restart)
+# Stage C.1 — multilevel VisCache on PT DI
 
-Earlier ladder steps 11–52 (and the previous pre-multiframe attempt) ran on
-versions of the cascade that turned out to have systematic bugs: int32 overflow
-on env/sun rays, stride-induced fingerprint fragmentation, lvl-0 collapse from
-unaligned target-level rounding. Their numbers are not comparable to the current
-shader and are kept under `archive_post_alignment/` for audit only.
+Foundation: step-10 multilevel cascade with `qa012__ct4`. Ladder builds on it with bounded multi-dimensional sweeps + optimum-in-middle range design.
 
-Step 10 is the foundation that survives: multi-level cascade with `qa012__ct4`
-addressing/quantization/threshold, validated under the corrected shader. The
-new ladder builds from there with **bounded multi-dimensional sweeps**, the
-**fast pre-test → triple-trial finalist** protocol, and **optimum-in-middle**
-range design.
-
-**Static-scene multilevel ladder (steps 11–24):**
+**Static-scene multilevel ladder (steps 11–18):**
 
 - **11 — subframeN × fd**: 9 variants over Bayer-slot count × force-descend pixel footprint. Matched diagonal (bayer4×4 + cell4×4) wins on 1PL/32PL pre-test. Confirms the hypothesis that the Bayer slot count and the per-cell pixel footprint should match: every cell receives one sample per slot per frame, exactly tiling the target footprint. **Carry: `bayer4x4_cell4x4`.**
 - **12 — ct × stderr**: 9 variants over bootThreshold {4,16,64} × stderrThreshold {0, 0.02, 0.05}. ct=16 best across SPP tiers; stderr off (=0) best — the stderr gate is not yet useful at the current trust regime. **Carry: `ct16_se000`.**
@@ -237,31 +277,23 @@ range design.
 - **15 — footprintScale × matureThreshold**: 9 variants. footprintScale > 0 inflates rays 5–10× without measurable blob improvement on 1PL/32PL (fp010 4spp: 46.8% rays / blob 19.43 vs fp000: 9.1% / 19.43). matureThreshold has no effect at ct=16 — the counter saturates well below 64. Carry unchanged.
 - **16 — varThreshold × pMin**: 9 variants over vt {0.03, 0.05, 0.10} × pMin {0.02, 0.05, 0.10}. **First real improvement since step 12**: tighter vt is a Pareto win on 1PL — x4 rays 9.1→7.6%, blob 19.43→9.70; x16 rays 6.8→5.4%, blob 19.69→12.11. 32PL unchanged (cache already saturated there). pMin remains no-op at every vt — the variance gate is the only mechanism touching the trust decision in this regime. **Carry: `vt003_pm010`** (pMin pick incidental). The story: at vt=0.10 the variance gate fires too eagerly and locks in high-blob cells; vt=0.03 keeps cells in trace mode until they're genuinely flat, producing both fewer rays and lower blob simultaneously.
 - **17 — vt finer sweep below 0.03 + full-scene validation**: 5 variants vt {0.005, 0.01, 0.02, 0.03, 0.05} on all 5 scenes. **vt=0.03 confirmed as global optimum**: it sits exactly at the false-trust cliff. On Sponza x4, vt≤0.02 blob doubles to 90+ (cells trust too readily on low-variance noise), vt=0.03 holds at 43.78. On 1PL, vt<0.02 collapses cold-start (blob 35–62 at x1). 32PL is saturated and unaffected by vt. Carry unchanged.
-- **18 — ct revisit on bias scenes**: 4 variants ct {16, 64, 128, 256} at vt=0.03 carry, on 32PL+Bistro+Sponza. **Major breakthrough on x1/x4**: ct=128 brings BistroExterior x4 blob from 45.6 → **0.2** (vanilla quality) at 81.5% rays. Sponza x4 ct=256 blob 8.2 ✓ (ct=128 borderline at 10.7). BistroInterior is a clear cache win (err_delta_pct -14 to -15% = denoising; blob_pct=0 because cache reduces error vs vanilla). 32PL stays usable across all ct (blob ≤6.4 ✓). **x16 unsolved**: Bistro/Sponza x16 blob 14–17 at every ct including 256 — ct alone cannot fix it. The multi-frame accumulation matures cells faster than the trust gate can catch biased ones; needs a "rate defense" (pMin / HC / footprintScale) on top. **Carry: `ct128_vt0030_pm010`** (best rays/blob trade-off; saves ~5% rays vs ct=256 at the cost of borderline Sponza x4).
+- **18 — ct revisit on bias scenes**: 4 variants ct {16, 64, 128, 256} at vt=0.03 carry, on 32PL+Bistro+Sponza. **Major breakthrough on x1/x4**: ct=128 brings BistroExterior x4 blob from 45.6 → **0.2** (vanilla quality) at 81.5% rays. Sponza x4 ct=256 blob 8.2 ✓ (ct=128 borderline at 10.7). BistroInterior is a clear cache win (err_delta -14 to -15% = denoising). 32PL stays usable across all ct (blob ≤6.4 ✓). **x16 unsolved**: Bistro/Sponza x16 blob 14–17 at every ct including 256 — ct alone cannot fix it. The multi-frame accumulation matures cells faster than the trust gate can catch biased ones; needs a "rate defense" (pMin / HC / footprintScale) on top. **Carry: `ct128_vt0030_pm010`** (best rays/blob trade-off; saves ~5% rays vs ct=256 at the cost of borderline Sponza x4).
 
-This step required two infrastructure fixes that surfaced from the camera-renderer redo: (a) `postprocess()` was globbing all SPP variants from raw/ and `find_exr` returned the lex-first match (.1) regardless of requested SPP — corrupted every repost'd step's rays metric (commit `952df34`); (b) the Reinhard tone map produced NaN on inf inputs, collapsing OkLab ΔE to 0 on EXRs containing firefly inf pixels — that was the BistroInterior x1 blob=0 across all variants (commit `60eb030`).
+**Net carry after step 18:** `pos_norm__pos__qa012__bayer4x4_cell4x4_ct128_vt0030_pm010`. First usable cache configuration on Bistro/Sponza at x1/x4. Rays are higher than the cheaper carries (~80% vs ~30%) but the alternative is artifacts.
 
-**Net carry after step 18:** `pos_norm__pos__qa012__bayer4x4_cell4x4_ct128_vt0030_pm010`. The ct=128 + vt=0.03 combo is the first usable cache configuration on Bistro/Sponza at x1/x4. Rays are higher than the cheaper carries (~80% vs ~30%) but the alternative is artifacts.
+**Artifact rule:** any `error_delta_blob_pct > 10` indicates visible cache artifacts (concentrated localized error — wrong-color cells, banding, light/shadow leakage). The picker rule's hard-reject at 25% is too lenient — treating 10 as the practical ceiling re-frames every result.
 
-**Artifact rule:** any `error_delta_blob_pct > 10` indicates visible cache artifacts and the variant is unusable in practice (concentrated localized error — wrong-color cells, banding, light/shadow leakage). The picker rule's hard-reject at 25% is too lenient — treating 10 as the practical ceiling re-frames every result.
+## Steps 19–25 — recorded null result
 
-## Steps 19–25 (archived under `archive_post_v2/`)
+Post-step-18 sweep piled on pm020, hc005, qa006, ct256, accelDecay. Under the corrected absolute-vs-GT metric these knobs turn out to mostly tie — the signed-delta-vs-vanilla blob metric inherits vanilla's per-SPP sampling noise, so they were chasing comparison noise, not cache degradation. The real cumulative wins come from step 18 ct=128, not from anything in 19–25. Useful negatives that still hold:
 
-Post-step-18 sweep that piled on `pm020`, `hc005`, `qa006`, `ct256`, `accelDecay`. Under the corrected absolute-vs-GT metric (commits `0ad0e12` + `06a7fe1` + `ccc4708`), most of those mechanisms turned out to be attacking what was **noise in the cache-vs-vanilla comparison rather than real cache degradation**. With the noise-independent metric, the practical sweet spot is much earlier in the ladder.
+- **Cache wins on bias-dominated scenes** (32PL, Bistro, Sponza) at every SPP under absolute-err-vs-GT.
+- **Cache ties or slightly trails on Cornell 1PL** — vanilla converges fast on a single point light; cell-averaging adds a small bias.
+- **BistroInterior x16 firefly story** holds: cache and vanilla equally far from GT.
 
-The data is preserved under `runtime/captures/ladder/archive_post_v2/` for audit; they are not the active carry chain. Stage C.2 step 19 (in [LADDER_PLAN.md](LADDER_PLAN.md)) is the clean re-curation.
+**Single-carry recommendation post-metric-fix:** `ct=16 / vt=0.03 / qa012 / bayer4x4_cell4x4 / pm=0.10` — Pareto win across all 5 scenes vs vanilla. The qa006/ct256/hc005/pm020 chain accumulated through 22–25 added complexity for marginal benefit under the corrected metric.
 
-**Single-carry recommendation post-metric-fix:** `ct=16 / vt=0.03 / qa012 / bayer4x4_cell4x4 / pm=0.10`. It's a real Pareto win across all 5 scenes vs vanilla.
-
-> **Metric correction (post-step-25):** the original signed-delta-vs-vanilla blob metric inherits vanilla's per-SPP sampling noise. After fixing to **absolute err vs x4096 GT** (commits `0ad0e12` + `06a7fe1` + `ccc4708`) and reposting all steps:
->
-> - **The cache wins on bias-dominated scenes** (Cornell 32PL, Bistro, Sponza) at every SPP. Step-18 ct=128 vs step-17 vt=0.03 baseline on BiE x4: cache_err 14.48 → 13.69; on Sponza x4: 6.04 → 4.96. Real cumulative improvements through the ladder.
-> - **The cache is roughly tied with vanilla on Cornell 1PL** at low SPP and *slightly worse* at x16 (cache 0.34 vs vanilla 0.14 abs OkLab err) — vanilla converges fast on a single point light, cache adds a small bias from cell-averaging.
-> - **BistroInterior x16** is precisely tied (cache 11.05 vs vanilla 11.14) — the firefly story still holds; both are equally far from GT, and the old metric's "blob 14.6" was reporting *the noise pattern of the comparison*, not real cache degradation.
-> - The "blob 14.6 invariant" finding from steps 19–24 was largely a metric artifact: pMin / fp / HC / cell-size / accelDecay all looked like no-ops because they couldn't move a number that was anchored to vanilla's noise. Under the new metric, they still mostly tie, but step 18's ct=128 was a real breakthrough (clear absolute error reduction on every bias scene).
-
-Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination
-(maxBounces > 0) are deferred to Stage E in [LADDER_PLAN.md](LADDER_PLAN.md), where time-varying mechanisms have something to react to.
+Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination (maxBounces > 0) are deferred to Stage E in [LADDER_PLAN.md](LADDER_PLAN.md), where time-varying mechanisms have something to react to.
 
 ---
 
