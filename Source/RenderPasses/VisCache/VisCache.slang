@@ -269,6 +269,10 @@ cbuffer VisCacheParams
                                   ///< level whose cell projects to ~footprint² screen pixels at this
                                   ///< primary hit (via shared vhfLevelForFootprint). e.g. 16 → 256
                                   ///< px tile-equivalent footprint, matching restir_2d's tile size.
+    uint   gWSRetraceOnReuseMode; ///< Retrace V on reservoir temporal/spatial reuse — RTXDI
+                                  ///< BiasCorrection analog. 0 = Off (Basic-equiv: stored W carries
+                                  ///< write-time V), 1 = FullTrace (≡ RTXDI RayTraced), 2 = CacheCV
+                                  ///< (cheap CV+RRR via evalRevalidationCV with PT-canonical knobs).
 };
 
 // ---------------------------------------------------------------------------

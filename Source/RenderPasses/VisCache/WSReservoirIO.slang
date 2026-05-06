@@ -3,22 +3,22 @@
  *
  * §9.4 World-space ReSTIR DI — cell selector + reservoir CRUD.
  *
+ * Functionally independent of VisCache (the level it picks is its own
+ * choice) but shares all the addressing building blocks: posA cascade
+ * (vhfPosASize), quantization with jitter (jitterQuantize, gJitterFilter,
+ * gJitterCell), and the pcgHashA / pcgHashEndpoint hash family. WS-ReSTIR
+ * picks a level via gWSCellLevel; everything else inherits from the shared
+ * cascade. They may also interact via the μ-aware target function (§9.1).
+ *
  * v1 scope (this file):
- *   - posA-keyed cell at a configurable cascade level (gWSLevelOffset).
+ *   - posA-keyed cell at a configurable cascade level (gWSCellLevel).
  *   - Single-slot, fingerprint-tagged reservoir (no probing in v1).
  *   - Local-RIS into a thread-local reservoir, then temporal merge into
  *     the cell's persistent reservoir.
- *   - SPATIAL NEIGHBOUR GATHER is intentionally not implemented in v1 —
- *     temporal cell-sharing already concentrates many pixels onto one
- *     reservoir, recovering most of the many-lights low-SPP gain.
- *
- * The hash addresses ONLY posA (primary hit) — reservoirs cluster pixels
- * by their primary surface, not by light, so the (posA, posB) pairing of
- * the visibility cache does not apply here.
  *
  * Symbols imported from VisCache.slang:
- *   pcg3d, vhfPosASize, gNumLevels, gFrameCount, gWSLevelOffset,
- *   gWSCapacity, gWSMCap, gWSLightMuMin
+ *   pcgHashA, pcgHashEndpoint, kSaltA, gFrameCount, gWSCellLevel,
+ *   vhfPosASize, jitterQuantize, gWSCapacity, gWSMCap, gWSLightMuMin
  ***************************************************************************/
 
 #pragma once
@@ -42,56 +42,50 @@ bool wsPixelReservoirEnabled() { return gWSFrameDimX > 0u && gWSFrameDimY > 0u; 
 uint wsPixelIndex(uint2 pixel) { return pixel.y * gWSFrameDimX + pixel.x; }
 uint wsVisInPHatMode() { return gWSVisInPHat; }       ///< 0=blind, 1=cache, 2=explicit
 float wsLightMuMin() { return gWSLightMuMin; }
+uint wsRetraceOnReuseMode() { return gWSRetraceOnReuseMode; } ///< 0=Off, 1=FullTrace, 2=CacheCV — RTXDI BiasCorrection analog for reservoir reuse.
 
 // ---------------------------------------------------------------------------
-// Reservoir cascade level. Mirrors the §9.4 design call: reservoirs read at
-// `wsLevelOffset` levels coarser than the visibility cascade's finest level.
-// gNumLevels is the total cascade depth; default gWSLevelOffset=1 places
-// reservoirs one level above the finest cell — a deliberate coarsening so
-// many pixels share one reservoir.
+// Quantize primary-hit position to integer cell coords by REUSING VisCache's
+// posA cascade. The level is gWSCellLevel (0=coarse..numLevels-1=fine);
+// jitter (gJitterFilter, gJitterCell) is shared with VisCache rather than
+// duplicated. WS-ReSTIR is functionally independent of VisCache (the level
+// it picks is its own choice) but it shares the addressing building blocks.
 // ---------------------------------------------------------------------------
-int wsCascadeLevel()
+int wsLevel()
 {
     int N = int(gNumLevels);
-    int lvl = (N - 1) - int(gWSLevelOffset);
-    return max(0, min(N - 1, lvl));
+    return clamp(int(gWSCellLevel), 0, N - 1);
 }
 
-// ---------------------------------------------------------------------------
-// Quantize primary-hit position to integer cell coords at the chosen cascade
-// level, with optional home-cell jitter (mirrors VisCache's jitterQuantize):
+// Per-pixel LOD jitter: pick a level at base+offset where offset is drawn
+// from a one-sided exponential distribution clamped to [0, J] (J =
+// gWSCellLevelJitter). Most queries hit base; coarser levels with falling
+// probability ½, ¼, ⅛, … . Never queries below base — cells finer than
+// the ray footprint can't hold meaningful state, and the cold-cell
+// fallback we want is *coarser*, not finer.
 //
-//   gWSJitterFilter (ours): per-position-seed jitter → smooth/soft cell
-//     boundaries. Pixels straddling a boundary distribute across both cells,
-//     dissolving the cell-quantization patterns visible in low-SPP renders.
-//   gWSJitterCell [Binder 2018]: per-cell-index-seed jitter → all positions
-//     in a cell shift as a unit; boundaries stay hard but at jittered
-//     positions. Useful for breaking up grid-aligned artifacts.
-//
-// Both scales are in cells (1.0 = ±0.5-cell offset). Stackable.
-// ---------------------------------------------------------------------------
-int3 wsQuantizePosA(float3 posA, int lvl)
+// Form follows MCPG 2025 (Alber/Hanika/Dachsbacher, merian-quake/mc.glsl):
+//     level = target + uint(-log2(1 - u))
+// which is the inverse-CDF of Exp(λ = ln 2). Clamping to [0, J] gives a
+// truncated exponential.
+int wsLevelJittered(uint2 pixel)
 {
-    float cs = max(vhfPosASize(lvl), 1e-6f);
-    if (gWSJitterFilter == 0.f && gWSJitterCell == 0.f)
-        return int3(floor(posA / cs));
+    int N = int(gNumLevels);
+    int base = clamp(int(gWSCellLevel), 0, N - 1);
+    if (gWSCellLevelJitter == 0u) return base;
+    uint3 r = pcg3d(uint3(pixel.x, pixel.y, gFrameCount + 0xCAA5u));
+    float u = float(r.x & 0xFFFFu) / 65535.f;            // [0, 1)
+    // -log2(1 - u): u=0→0, u=0.5→1, u=0.75→2, u=0.875→3, ...
+    float fOff = -log2(max(1.f - u, 1e-7f));
+    int dl = clamp(int(fOff), 0, int(gWSCellLevelJitter));
+    return clamp(base + dl, 0, N - 1);
+}
 
-    int3 baseIdx = int3(round(posA / cs));
-    float3 offset = float3(0.f);
-    const uint kSeed = 0xCAFE0000u ^ uint(lvl);
-    if (gWSJitterFilter != 0.f)
-    {
-        uint3 r = pcg3d(asuint(posA) ^ kSeed);
-        float3 j = float3(r & 0xFFFFu) / 65535.f - 0.5f;
-        offset += j * gWSJitterFilter;
-    }
-    if (gWSJitterCell != 0.f)
-    {
-        uint3 r = pcg3d(uint3(baseIdx) ^ kSeed);
-        float3 j = float3(r & 0xFFFFu) / 65535.f - 0.5f;
-        offset += j * gWSJitterCell;
-    }
-    return int3(round((posA + offset * cs) / cs));
+int3 wsQuantizePosA(float3 posA)
+{
+    int lvl = wsLevel();
+    float cs = max(vhfPosASize(lvl), 1e-6f);
+    return jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
 }
 
 // ---------------------------------------------------------------------------
@@ -109,24 +103,29 @@ uint wsNormalBin(float3 n)
 }
 
 // ---------------------------------------------------------------------------
-// Two pcg3d-derived 32-bit hashes from quantized cell coords + level.
-// When gWSNormalAddr is on, the 6-axis normal bin is mixed into the salt so
-// different orientations at the same posW resolve to different cells.
+// Two hashes from quantized cell coords. Uses VisCache's pcgHashA
+// (kSaltA-salted pcgHashEndpoint) for the address — same hash family as
+// VisCache's A-side, just at WS-ReSTIR's own quantization. Fingerprint
+// uses the same coords with a different salt so address and fingerprint
+// are uncorrelated. When gWSNormalAddr is on, the 6-axis normal bin is
+// mixed in so different orientations at the same posW resolve to
+// different cells.
 //   addr        — slot index, masked to capacity at call site.
 //   fingerprint — collision tag stored in the slot. Always nonzero (0 = empty).
 // ---------------------------------------------------------------------------
-uint wsAddressHash(int3 q, int lvl, uint normalBin)
+static const uint kWSFpSalt = 0xA5C3F09Bu;
+
+uint wsAddressHash(int3 q, uint normalBin)
 {
-    uint salt = uint(lvl) * 0xC2B2AE35u + normalBin * 0x9E370001u;
-    uint3 h = pcg3d(uint3(q) + uint3(0x9E3779B9u, 0x85EBCA6Bu, salt));
-    return h.x ^ h.y ^ h.z;
+    uint h = pcgHashA(q, 0u);
+    if (gWSNormalAddr != 0u) h ^= normalBin * 0x9E370001u;
+    return h;
 }
-uint wsFingerprintHash(int3 q, int lvl, uint normalBin)
+uint wsFingerprintHash(int3 q, uint normalBin)
 {
-    uint salt = uint(lvl) * 0xFEEDFACEu + normalBin * 0xB5297A4Du;
-    uint3 h = pcg3d(uint3(q) + uint3(0xDEADBEEFu, 0xC0FFEE13u, salt));
-    uint fp = h.x ^ h.y ^ h.z;
-    return fp == 0u ? 1u : fp;     // 0 reserved for empty slot
+    uint h = pcgHashEndpoint(q, 0u, kSaltA ^ kWSFpSalt);
+    if (gWSNormalAddr != 0u) h ^= normalBin * 0xB5297A4Du;
+    return (h == 0u) ? 1u : h;     // 0 reserved for empty slot
 }
 
 // ---------------------------------------------------------------------------
@@ -136,12 +135,11 @@ uint wsFingerprintHash(int3 q, int lvl, uint normalBin)
 struct WSCellAddress { uint slot; uint fingerprint; };
 WSCellAddress wsResolveCell(float3 posA, float3 faceN)
 {
-    int lvl = wsCascadeLevel();
-    int3 q  = wsQuantizePosA(posA, lvl);
+    int3 q  = wsQuantizePosA(posA);
     uint nb = (gWSNormalAddr != 0u) ? wsNormalBin(faceN) : 0u;
     WSCellAddress a;
-    a.slot        = wsAddressHash(q, lvl, nb) & (gWSCapacity - 1u);
-    a.fingerprint = wsFingerprintHash(q, lvl, nb);
+    a.slot        = wsAddressHash(q, nb) & (gWSCapacity - 1u);
+    a.fingerprint = wsFingerprintHash(q, nb);
     return a;
 }
 
@@ -188,10 +186,44 @@ struct WSLocalReservoir
         }
     }
 
-    // Note: a previous mass-weighted merge primitive (streamingMergeCell)
-    // was removed in the §9.4 selection-only fix. Cells are now added as
-    // single RIS candidates via streamingAdd above, with per-pixel pdf at
-    // the new shading point — keeps W per-pixel.
+    // Cross-pixel Bitterli reservoir merge — fold a foreign reservoir
+    // (e.g. world-space cell-pool slot) into our local stream while
+    // recomputing the weight at OUR pHat instead of inheriting the
+    // writer's normalization. M-cap to prevent unbounded persistence.
+    //
+    // Math:  the foreign reservoir stored
+    //          wSum_other  = Σ_i pHat_writer(cand_i) / pdf_i  (Bitterli RIS weights)
+    //          M_other     = candidate count (writers that hit the slot)
+    //          pHat_writer = pHat at write time for the SELECTED winner
+    //        Bitterli's spatial-merge weight at the reader, with a temporal
+    //        cap M_capped = min(M_other, M_cap):
+    //          W_other      = wSum_other / (pHat_writer × M_other)
+    //          w_at_reader  = pHat_reader × W_other × M_capped
+    //                       = pHat_reader × wSum_other × M_capped / (pHat_writer × M_other)
+    //        We add `w_at_reader` to `wSum` and `M_capped` to `M`. The
+    //        approximation is `pHat_writer ≈ pHat_reader` within the cell;
+    //        bias is bounded by pHat-variance among writers. Standard
+    //        cross-pixel reuse assumption (same as ReSTIR's spatial merge).
+    [mutating]
+    void streamingMergeReservoir<S : ISampleGenerator>(uint cand_lightTypeIndex, uint cand_payload,
+                                                       float pHat_reader, float wSum_other,
+                                                       float pHat_writer, float M_other,
+                                                       float M_cap,
+                                                       inout S sg)
+    {
+        if (M_other <= 0.f || pHat_writer <= 0.f || pHat_reader <= 0.f) return;
+        float Mcapped = min(M_other, M_cap);
+        float w = pHat_reader * wSum_other * Mcapped / (pHat_writer * M_other);
+        if (!(w > 0.f) || isnan(w)) { M += Mcapped; return; }
+        wSum += w;
+        M    += Mcapped;
+        if (sampleNext1D(sg) * wSum <= w)
+        {
+            lightTypeIndex = cand_lightTypeIndex;
+            payload        = cand_payload;
+            targetPdf      = pHat_reader;
+        }
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -320,8 +352,7 @@ void wsTangentBasis(float3 n, out float3 tA, out float3 tB)
 // ---------------------------------------------------------------------------
 WSCellAddress wsResolveJitteredCell(float3 posA, float3 faceN, uint i, uint nTotal, float2 jitter2D)
 {
-    int lvl = wsCascadeLevel();
-    float cellSize = max(vhfPosASize(lvl), 1e-6f);
+    float cellSize = max(vhfPosASize(wsLevel()), 1e-6f);
 
     // 2x2 stratification across [-1, 1] x [-1, 1], jittered within stratum.
     // For nTotal up to 4 we use a 2x2 stratum grid; for higher N we just
@@ -330,9 +361,13 @@ WSCellAddress wsResolveJitteredCell(float3 posA, float3 faceN, uint i, uint nTot
     uint sy = (i >> 1) & 1u;
     float2 inStratum = (float2(sx, sy) + jitter2D) * 0.5f;     // [0,1]
     float2 strat = inStratum * 2.f - 1.f;                       // [-1,1]
-    // Magnitude 1.5x cellSize: enough to land in adjacent cells but not so
-    // far we cross multiple cells.
-    float2 disp = strat * (1.5f * cellSize);
+    // Magnitude 8x cellSize: large enough to span a wide spatial neighbourhood
+    // (8 cells across), giving RTXDI-style screen-spread spatial coverage —
+    // each jittered query hits a *different* cell with a *different* popular
+    // winner, providing the sample-diversity that small jitter (≤2 cells)
+    // does not. This is the WS-only equivalent of RTXDI's k=5 random
+    // screen-pixel spatial reuse.
+    float2 disp = strat * (8.f * cellSize);
 
     float3 tA, tB;
     wsTangentBasis(faceN, tA, tB);

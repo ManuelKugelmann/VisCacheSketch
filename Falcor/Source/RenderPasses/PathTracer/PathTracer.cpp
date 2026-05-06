@@ -134,6 +134,7 @@ namespace
     const std::string kLightBVHOptions = "lightBVHOptions";
     const std::string kUseRTXDI = "useRTXDI";
     const std::string kRTXDIOptions = "RTXDIOptions";
+    const std::string kUseRestirPT = "useRestirPT";
 
     const std::string kUseAlphaTest = "useAlphaTest";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
@@ -238,6 +239,7 @@ void PathTracer::parseProperties(const Properties& props)
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kUseRTXDI) mStaticParams.useRTXDI = value;
         else if (key == kRTXDIOptions) mRTXDIOptions = value;
+        else if (key == kUseRestirPT) mStaticParams.useRestirPT = value;
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
@@ -364,6 +366,7 @@ Properties PathTracer::getProperties() const
     if (mStaticParams.emissiveSampler == EmissiveLightSamplerType::LightBVH) props[kLightBVHOptions] = mLightBVHOptions;
     props[kUseRTXDI] = mStaticParams.useRTXDI;
     props[kRTXDIOptions] = mRTXDIOptions;
+    props[kUseRestirPT] = mStaticParams.useRestirPT;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
@@ -1315,6 +1318,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
             mVCParams.wsCellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
             mVCParams.wsCellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
+            mVCParams.wsRetraceOnReuseMode  = getU("vhfParam_wsRetraceOnReuseMode", 0u);
         }
         bool wasWSReservoirs = mVisCacheWSReservoirs;
         mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
@@ -1602,6 +1606,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
         vc["gWSCellReservoirMerge"]          = mVCParams.wsCellReservoirMerge;
         vc["gWSCellPoolFootprintPx"]         = mVCParams.wsCellPoolFootprintPx;
+        vc["gWSRetraceOnReuseMode"]          = mVCParams.wsRetraceOnReuseMode;
     }
     // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
     if (mVisCacheWSReservoirs)
@@ -1702,6 +1707,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_MIS", useMIS ? "1" : "0");
     defines.add("USE_RUSSIAN_ROULETTE", useRussianRoulette ? "1" : "0");
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
+    defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");

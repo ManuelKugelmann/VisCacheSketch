@@ -175,6 +175,12 @@ public:
         uint32_t wsCellPoolFootprintPx;///< Target cell screen-space footprint in pixels. 0 = fixed-level
                                        ///< (gWSCellLevel). >0 = analytical entry level via shared
                                        ///< vhfLevelForFootprint helper.
+        uint32_t wsRetraceOnReuseMode; ///< Retrace V on temporal/spatial reservoir reuse (RTXDI BiasCorrection
+                                       ///< analog). 0 = Off (Basic-equiv: stored W carries write-time V — what
+                                       ///< we ship today), 1 = FullTrace (≡ RTXDI BiasCorrection::RayTraced —
+                                       ///< unbiased, expensive), 2 = CacheCV (cache CV+RRR via existing
+                                       ///< evalRevalidationCV — same PT-canonical knobs as the regular shadow
+                                       ///< gate). Layer (b) of the WS-ReSTIR DI plan.
     };
 
     /// Full parameter set — includes GPU params + host-only knobs (decay, auto-tune,
@@ -356,6 +362,10 @@ public:
                                                         ///< via shared vhfLevelForFootprint(targetPx²). e.g.
                                                         ///< 16 → ~256 px² cell footprint, matching the 2D
                                                         ///< tile-pool's 16-px tile.
+        uint32_t wsRetraceOnReuseMode          = 0u;    ///< 0 = Off (Basic-equiv, current default), 1 = FullTrace
+                                                        ///< (≡ RTXDI RayTraced), 2 = CacheCV (cheap CV+RRR via
+                                                        ///< evalRevalidationCV with PT-canonical knobs). Toggleable
+                                                        ///< like RTXDI's BiasCorrection enum.
     };
 
     const Params& getParams() const { return mParams; }

@@ -1693,6 +1693,27 @@ struct PathTracer
                                     // pHat = luminance(Lr) at reader; consistent
                                     // with K-RIS path. Works for Dirac lights.
                                     float pHatPrev = luminance(prevW3 * prevLs.Li);
+                                    // §9.4 layer (b) — retrace V on reservoir reuse (RTXDI BiasCorrection
+                                    // analog). Mode 0=Off (default; matches RTXDI Basic, our shipping
+                                    // behaviour: stored W carries write-time V). Mode 1=FullTrace (≡ RTXDI
+                                    // RayTraced — unbiased, expensive). Mode 2=CacheCV (cheap CV+RRR via
+                                    // cache, same PT-canonical knobs as the regular shadow gate). Env-map
+                                    // samples have no finite-distance V — skip retrace for them.
+                                    uint reuseMode = wsRetraceOnReuseMode();
+                                    if (reuseMode != 0u && prevType != (uint)LightType::EnvMap && pHatPrev > 0.f)
+                                    {
+                                        Ray vrayR = prevLs.getVisibilityRay();
+                                        float vR = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                                        if (reuseMode == 2u)
+                                            vR = vq.traceVisibilityRayCV(vrayR, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                        else
+                                            vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
+#else
+                                        vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
+#endif
+                                        pHatPrev *= vR;
+                                    }
                                     if (pHatPrev > 0.f)
                                     {
                                         float Mcap = min(prev.M, gWSMCap);
@@ -1767,6 +1788,22 @@ struct PathTracer
                             // pHat = luminance(Lr); consistent with K-RIS path.
                             // Works for Dirac lights.
                             float pHatN = luminance(nbrW3 * nbrLs.Li);
+                            // §9.4 layer (b) — retrace V on spatial reuse. See temporal block above.
+                            uint reuseModeN = wsRetraceOnReuseMode();
+                            if (reuseModeN != 0u && nbrType != (uint)LightType::EnvMap && pHatN > 0.f)
+                            {
+                                Ray vrayN = nbrLs.getVisibilityRay();
+                                float vN = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                                if (reuseModeN == 2u)
+                                    vN = vq.traceVisibilityRayCV(vrayN, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                else
+                                    vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
+#else
+                                vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
+#endif
+                                pHatN *= vN;
+                            }
                             if (pHatN <= 0.f) continue;
                             float Mcn = min(nbr.M, gWSMCap);
                             float wn  = pHatN * nbr.W * Mcn;

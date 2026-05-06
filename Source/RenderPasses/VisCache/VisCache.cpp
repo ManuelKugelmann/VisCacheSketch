@@ -135,6 +135,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
     if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
     if (props.has("wsCellPoolFootprintPx"))         mParams.wsCellPoolFootprintPx         = props["wsCellPoolFootprintPx"];
+    if (props.has("wsRetraceOnReuseMode"))          mParams.wsRetraceOnReuseMode          = props["wsRetraceOnReuseMode"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -225,6 +226,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
     if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
     if (props.has("wsCellPoolFootprintPx"))         mParams.wsCellPoolFootprintPx         = props["wsCellPoolFootprintPx"];
+    if (props.has("wsRetraceOnReuseMode"))          mParams.wsRetraceOnReuseMode          = props["wsRetraceOnReuseMode"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
@@ -305,6 +307,7 @@ Properties VisCache::getProperties() const
     p["distSolidAngleScale"]           = mParams.distSolidAngleScale;
     p["wsCellReservoirMerge"]          = mParams.wsCellReservoirMerge;
     p["wsCellPoolFootprintPx"]         = mParams.wsCellPoolFootprintPx;
+    p["wsRetraceOnReuseMode"]          = mParams.wsRetraceOnReuseMode;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
     p["resetAccum"]                    = mResetAccum;
@@ -755,6 +758,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.distSolidAngleScale = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
     gpu.wsCellReservoirMerge = mParams.wsCellReservoirMerge;
     gpu.wsCellPoolFootprintPx = mParams.wsCellPoolFootprintPx;
+    gpu.wsRetraceOnReuseMode = std::min(2u, mParams.wsRetraceOnReuseMode);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
     mpParamsBuffer->unmap();
@@ -902,6 +906,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_distSolidAngleScale"] = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
     dict["vhfParam_wsCellReservoirMerge"] = mParams.wsCellReservoirMerge;
     dict["vhfParam_wsCellPoolFootprintPx"] = mParams.wsCellPoolFootprintPx;
+    dict["vhfParam_wsRetraceOnReuseMode"] = std::min(2u, mParams.wsRetraceOnReuseMode);
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
     dict["vhfHitRate"]      = mStats.hitRate;

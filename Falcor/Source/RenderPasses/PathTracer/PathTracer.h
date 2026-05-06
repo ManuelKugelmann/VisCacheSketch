@@ -131,6 +131,7 @@ private:
         float       misPowerExponent = 2.f;                     ///< MIS exponent for the power heuristic. This is only used when 'PowerExp' is chosen.
         EmissiveLightSamplerType emissiveSampler = EmissiveLightSamplerType::LightBVH;  ///< Emissive light sampler to use for NEE.
         bool        useRTXDI = false;                           ///< Use RTXDI for direct illumination.
+        bool        useRestirPT = false;                        ///< Enable ReSTIR-PT path-reservoir reuse (restirpt_2d). v1: per-pixel addressing, parity target = Source/RenderPasses/ReSTIRPTPass/.
 
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
@@ -264,7 +265,8 @@ private:
              float    dirSolidAngleScale=1.0f;
              float    distSolidAngleScale=1.0f;
              uint32_t wsCellReservoirMerge=0;
-             uint32_t wsCellPoolFootprintPx=0; } mVCParams;
+             uint32_t wsCellPoolFootprintPx=0;
+             uint32_t wsRetraceOnReuseMode=0; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
     ref<Buffer> mpVHFWSReservoirs;

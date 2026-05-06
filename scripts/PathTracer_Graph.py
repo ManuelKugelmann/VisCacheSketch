@@ -25,6 +25,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                             wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
                             wsInitialCandidates=8,
                             wsVisInPHat=1,
+                            wsRetraceOnReuseMode=0,    # 0=Off (default; matches RTXDI Basic / our shipping behaviour), 1=FullTrace (≡ RTXDI RayTraced), 2=CacheCV (cheap CV+RRR via cache, same PT-canonical knobs).
                             wsCellPool=False, wsCellPoolCapacity=1 << 18, wsCellPoolDrawK=0,
                             wsCellPoolPrePass=False,
                             wsSpatialPixelsK=4, wsSpatialPixelsRadius=32,
@@ -83,6 +84,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                 "enableWSReservoirs":   True,
                 "wsInitialCandidates":  wsInitialCandidates,
                 "wsVisInPHat":          wsVisInPHat,
+                "wsRetraceOnReuseMode": wsRetraceOnReuseMode,
                 "wsCellLevel":          wsCellLevel,
                 "wsCellLevelJitter":    wsCellLevelJitter,
                 "wsReservoirCapacity":  wsReservoirCapacity,
