@@ -20,27 +20,44 @@ VisCache is a single substrate (flat multilevel hash, CV+RRR estimator, μ outpu
 
 **Stage D layered framework (designed 2026-05-06).** Treat ReSTIR DI like the PathTracer first — use cache to resolve visibility queries before touching the reservoir math:
 
-- **(a) fresh-sample V** — cache CV+RRR replaces unconditional shadow trace at the K-RIS winner's V test. Already wired (`enableVisCacheVisibilityCheck`); needs proper rays+err joint capture via `run_variants` to judge cost/quality. Use PathTracer DI canonical knobs (`ct128_vt0030_pm010`, `qa012`, `bayer4x4_cell4x4`) as the starting cache config.
-- **(b) reconnected-sample V** — cache-V revalidation on temporal/spatial reuse (RTXDI's `BiasCorrection::RayTraced` slot, but cheaper). Same `evalRevalidationCV` code path; gated to fire at the read site instead of (or in addition to) the post-RIS site.
+- **(a) fresh-sample V** — cache CV+RRR replaces unconditional shadow trace at the K-RIS winner's V test. **Wired and tested 2026-05-06** (commits `94a6ba1` plumbing, `4f93f8c` rays counter, SMOKE3 verification). PT-DI canonical cache config (now updated per scene class — see "Scene-class taxonomy" above; `ct=8 vt=0.10` for penumbra-class scenes).
+- **(b) reconnected-sample V** — cache-V revalidation on temporal/spatial reuse (RTXDI's `BiasCorrection::RayTraced` analog). **`wsRetraceOnReuseMode` toggle plumbed and validated 2026-05-06** (`94a6ba1`): 0=Off (Basic-equiv), 1=FullTrace, 2=CacheCV. SMOKE3 confirmed all three modes match within stochastic noise on Sponza+BistroInt; `restir_2d/3d_*_raytraced` already beats `rtxdi_raytraced` by −0.24pp on Sponza, −0.93pp on BistroInt.
 - **(c1) μ at per-pixel reservoir READ** — multiply `pHat_reader` by cache μ in the cross-pixel/temporal merge. Bitterli streaming-merge formula already does `pHat_reader / pHat_writer` ratio: just include μ in `pHat_reader`.
 - **(c2) μ at pool→pixel READ** — same `pHat_reader` site (often shared with c1); pool candidate gets μ-weighted by the reader's cache state.
 - **(c3) μ at cell-pool WRITE (presample)** — multiply `pHat_writer` (per-cell μ) at the K-RIS that fills the pool. Filters the pool's candidate SET toward visible lights; reader's `pHat_reader / pHat_writer` ratio cancels writer-side μ in W (no double-count).
 - **μ_min trust floor** — when implementing c1/c2/c3, bump default `wsLightMuMin` from 0.01 → 0.25 (cache treated as a rough guide, 4× ratio favoring visible vs occluded). The 1% floor presumes a precise cache; current cache on Bistro/Sponza at x4 is noise-dominated.
 
-Order: (a) and (b) first (config-only, no slang patch); c1+c2 next (one patch — `pHat_reader` site); c3 last (separate patch at cell-pool insert).
+Order: ~~(a) and (b) first~~ ✅ (a) and (b) DONE 2026-05-06; c1+c2 next (one patch — `pHat_reader` site); c3 last (separate patch at cell-pool insert).
 
 ## Stage layout
 
 | range  | stage | rendering algorithm                                | status                      |
 |--------|-------|----------------------------------------------------|-----------------------------|
-| 00     | A     | references (vanilla / RTXDI / restirpt / restir_2d/3d) | done — keep as-is       |
+| 00     | A     | references (vanilla / RTXDI / restirpt / restir_2d/3d / rtxdi_raytraced) | done       |
 | 01–10  | B     | single-level VisCache on PT DI                     | done                        |
 | 11–18  | C.1   | multilevel VisCache on PT DI                       | done (post-alignment)       |
-| 19–20  | C.2   | multilevel PT DI — final validation + canonical    | **next**                    |
-| 21–30  | D     | multilevel + WS-ReSTIR DI                          | parity achieved off-ladder; ladder structure pending |
+| SMOKE / SPONZA_CT / SPONZA_VT / BISTRO_CT / BISTRO_ADD / BISTRO_DECAY | C.2 | scene-class trust-gate diagnosis | **done** (2026-05-06) |
+| 21–30  | D     | multilevel + WS-ReSTIR DI                          | (a)+(b) plumbing landed; c1/c2/c3 deferred |
 | 31–40  | E     | multilevel + PT multibounce                        | new                         |
 | 41–50  | F     | multilevel + ReSTIR PT multibounce                 | new                         |
 | 51+    | G     | BDPT (open)                                         | open                        |
+
+## Scene-class taxonomy (validated 2026-05-06)
+
+The recent SPONZA / BISTRO sweeps revealed two distinct cache-behaviour regimes. Carry configs and lever-effectiveness depend on which class a scene falls into:
+
+| class | example scenes | failure mode | productive levers | useless levers |
+|-------|---------------|--------------|-------------------|----------------|
+| **penumbra-class** | Sponza, Cornell 1AL/3AL | cells trust at suboptimal μ — premature all-same-evidence trust at low ct | raise base ct (SPONZA_CT: ct=2→8 cuts art5 −5.83pp at x4); tighten vt at high SPP (SPONZA_VT: vt=0.001 cuts art5 −14pp at x16) | accelDecayDisagreeThresh (creates oscillation) |
+| **firefly-class** | BistroExt, BistroInt | cache already at the irreducible variance floor | none — cache is already winning −18 to −46pp art5 vs vanilla | ALL trust gates + decay knobs (BISTRO_CT, BISTRO_ADD, BISTRO_DECAY all bit-identical) |
+| **diagnostic** | Cornell 1PL | hard-shadow blob canary | tight vt prevents blob at any cell size | — |
+
+**Per-scene-class canonical config:**
+- **penumbra-class x4**: `cell4×4 + bayer2×2 + ct=8 + vt=0.10 + pm=0.02`
+- **penumbra-class x16**: `cell4×4 + bayer2×2 + ct=8 + vt=0.001 + pm=0.02`
+- **firefly-class (any SPP)**: any reasonable `(ct, vt)` — knobs have no leverage; pick by rays cost. Defaults `ct=8 + vt=0.10` are fine.
+
+**Implication for paper §11 / §12**: a single universal carry doesn't exist. Either ship per-scene-class configs or build a **scene classifier** (e.g. via Bayer-rotation cell-μ-stability monitor: penumbra cells have varying μ across rotations, firefly-locked cells stay constant). The classifier is a self-tuning extension worth investigating but not blocking Stage D.
 
 ## Reuse from existing data
 
