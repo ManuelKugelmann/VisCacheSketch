@@ -60,7 +60,7 @@ Two largely-independent threads developed structurally-equivalent multilevel spa
 | 2025 | Alber, Hanika, Dachsbacher — **MCPG** (multi-level adaptive + static, MLE α-floor) ; Stotko — MrHash | Liu — Reservoir Splatting ; Lin — ReSTIR BDPT | |
 | **2026** | | | **VisCache (this work)** — 2006 framework brought to GPU + multi-level cascade + ReSTIR-family composition |
 
-Reading top-to-bottom in the rightmost column is the shortest version of the priority story: 2006 establishes the cell-keying and CV+RRR machinery; **2007–2025 is silent**; the field re-develops elements of it independently in the two left columns; we pick up the rightmost column in 2026 and integrate with both threads.
+Reading top-to-bottom in the rightmost column is the shortest version of the timeline: 2006 already explores the cell-keying and CV+RRR machinery (in an unpublished thesis, invisible to the field); **2007–2025 is silent on the visibility-caching specifically**; the field develops elements of it independently in the two left columns; we pick up the rightmost column in 2026 and integrate with both threads.
 
 The citation graph below makes the structure explicit. Solid arrows are actual citations from one paper to another. Dotted arrows labelled *same idea* are pairs of works that arrived at structurally equivalent designs *without* citing each other — convergent re-development across thread boundaries:
 
@@ -71,8 +71,8 @@ flowchart TB
     T03["2003 Teschner et al.<br/>Optimized Spatial Hashing for<br/>Collision Detection of Deformable Objects<br/>(unknown to MK2006 in 2006;<br/>academic ancestor of the path-filtering thread)"]:::ancestor
     TA05["2005 Talbot et al.<br/>RIS (foundational for ReSTIR thread)"]:::ancestor
 
-    %% ============ Visibility-cache priority ============
-    MK06["<b>2006 Kugelmann (Diplomarbeit)</b><br/>pos+normal+grid cell key<br/>CV+RRR · unbiased Light Cuts<br/>(unpublished, invisible to the field)"]:::priority
+    %% ============ Visibility-cache lineage ============
+    MK06["<b>2006 Kugelmann (Diplomarbeit)</b><br/>pos+normal+grid cell key<br/>CV+RRR · unbiased Light Cuts<br/>(unpublished, invisible to the field)"]:::lineage
 
     %% ============ Path-filtering / path-guiding thread ============
     K14["2014 Keller, Dahm, Binder<br/>Path Space Filtering"]:::pfThread
@@ -111,7 +111,7 @@ flowchart TB
     %% ============ This work ============
     US["<b>2026 VisCache (this work)</b><br/>GPU realization · multi-level cascade<br/>ReSTIR-family composition"]:::ours
 
-    %% ---- Inspiration into the visibility-cache priority node ----
+    %% ---- Inspiration into the visibility-cache lineage node ----
     %% (Teschner 2003 is NOT the inspiration: not in MK2006 bibliography, and
     %%  ODE predates Teschner anyway. ODE is the only inspiration for MK2006.)
     ODE ==> MK06
@@ -131,7 +131,7 @@ flowchart TB
     WS21 --> GI22
     WS21 --> Z23
 
-    %% ---- Citations into this work (solid, thick = priority) ----
+    %% ---- Citations into this work (solid, thick = direct lineage) ----
     MK06 ==> US
     B1819 --> US
     BI20 --> US
@@ -190,7 +190,7 @@ flowchart TB
     FVDB -. "same design: topology/value split" .-> US
 
     %% ============ Styles ============
-    classDef priority fill:#fdb,stroke:#a40,stroke-width:3px,color:#000
+    classDef lineage fill:#fdb,stroke:#a40,stroke-width:3px,color:#000
     classDef ours fill:#fcc,stroke:#900,stroke-width:3px,color:#000
     classDef pfThread fill:#cef,stroke:#048,color:#000
     classDef rcThread fill:#cfc,stroke:#060,color:#000

@@ -91,29 +91,44 @@ low-variance regions trace rarely *and* stop propagation early.
 This coupled adaptation is self-regulating
 and only becomes possible with a multilevel cache.
 
-**Wilson interval at small sample counts (in progress).**
-The Bernoulli variance `μ(1−μ)` is the *plug-in* (Wald) variance of a
-binomial proportion — well-behaved when `n` is large, but it collapses
-spuriously near the boundaries `μ ≈ 0` and `μ ≈ 1`. A cell that has seen
-one observation `V = 1` reports `μ = 1`, `var = 0` — the Wald gate trusts
-the cache absolutely on a single sample. This is exactly the regime our
-cells spend most of their time in: small `n`, μ at one of the two
-boundaries. Empirically it surfaces as an SPP-dependent `vt`: the optimal
-trust threshold drifts with the per-frame sample count
-(`vt ≈ 0.10` at x4 SPP vs. `vt ≈ 0.001` at x16 on Sponza). Both regimes
-collapse into a single criterion under the Wilson score interval
-[Wilson 1927; Brown et al. 2001]: confirm cache trust when the Wilson
-*lower* bound exceeds `1 − ε` (μ believed close to 1) or the *upper*
-bound is below `ε` (μ believed close to 0). The score interval inverts
+**Sample-count-aware trust gate (`stderrThreshold`).**
+The naked Bernoulli variance `μ(1−μ)` is the *plug-in* (Wald) variance of a
+binomial proportion: well-behaved when the per-cell sample count `N` is
+large, but ignoring `N` itself. A cell with `N = 1` and `V = 1` reports
+`μ = 1`, `var = 0` — the gate trusts the cache absolutely after a single
+observation. Our cells spend most of their time in this regime (small
+`N`, μ near 0 or 1), and the symptom in early ladder runs was an
+SPP-dependent `vt`: the optimal threshold drifted with the per-frame
+sample count (`vt ≈ 0.10` at x4 SPP, `vt ≈ 0.001` at x16 on Sponza).
+The fix folds `N` directly into the gate via the standard error of
+the cell's μ estimate:
+
+```
+stderr = √(μ(1−μ) / N)        — standard error of the cached proportion
+p_trust = stderr ≤ τ          — gate is "the estimate is precise enough"
+```
+
+A single ladder sweep (SPONZA_STDERR, 2026-05-06) found `τ = 0.10`
+covers both x4 and x16 with one config: at low `N` (x4, cold cells)
+the gate refuses trust safely (matches the strict `vt = 0.001` baseline);
+at higher `N` (x16, mature cells) it trusts aggressively, recovering
+the loose-`vt` regime (relMSE 2.5× better than `vt = 0.001`,
+artifact-fraction `+0.04 pp`, negligible). A scene-matrix follow-up
+(ALL_STDERR) confirmed Pareto-improvement across the full 7-scene
+suite with no regressions, so `stderrThreshold = 0.10` replaces `vt`
+as the canonical trust gate.
+
+We tested two more theoretically-motivated alternatives in parallel.
+The Wilson score interval [Wilson 1927; Brown et al. 2001] inverts
 the score test rather than the Wald test, producing well-behaved
-coverage at all `n` and all μ — the principled fix for the small-`n`
-boundary regime our cells live in. We adopt the closed form
-`p̂_W = (k + z²/2) / (n + z²)` with the standard 95% quantile `z = 1.96`;
-[Agresti and Coull 1998] gives a simpler "+2 successes, +2 failures"
-approximation that is practically equivalent at this confidence level
-and may be preferable in the inner shader loop. *Implementation in
-progress; the SPP-dependent `vt` finding is the empirical evidence the
-ladder produced for needing it.*
+coverage at the boundaries and small `N`; in our regime it is
+empirically equivalent to the stderr gate (no measurable leverage)
+and we keep the simpler form. The Agresti–Coull "+2 successes,
++2 failures" shrinkage [Agresti and Coull 1998] is a closed-form
+prior pulling cold-cell μ toward `0.5`; orthogonal to the gate (it
+changes the *cached value*, not the *trust criterion*) and queued
+as a separate refinement for the CV+RRR estimator's residual
+behaviour in the `μ ∈ {0, 1}` corners.
 
 **Analogy to ADRRS p_lim.**
 In adjoint-driven RR/splitting [Vorba and Křivánek 2016],

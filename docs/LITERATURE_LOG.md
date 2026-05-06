@@ -175,7 +175,7 @@ vMF-mixture sufficient statistics in **two world-space hash grids in parallel**
 the right learning target, not radiance. Sampling proportional to a
 variance-aware proxy beats radiance-proportional guidance.
 
-**Reframing (post-MK2006-priority correction): convergent validation, not deltas to port.**
+**Reframing (post-MK2006 reread): convergent validation, not deltas to port.**
 
 MCPG 2025 and our 2026 work arrived at structurally equivalent multilevel-hash
 designs from completely different problem framings — theirs from

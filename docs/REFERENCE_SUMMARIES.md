@@ -481,7 +481,7 @@ right, not as the source of the design. The Sponza ceiling saturation is a
 structural ct=2 problem (`project_sponza_trust_gate_saturated.md`), unrelated.
 
 **Transitive citations:**
-- Kugelmann 2006 §3.2.2 — original priority for pos+normal+grid-cell key
+- Kugelmann 2006 §3.2.2 — already explored pos+normal+grid-cell key (unpublished thesis, invisible to the field)
 - Boissé 2021 — independent world-space reservoir re-development
 - Lin 2022 — GRIS theory (unbiased reuse over heterogeneous samples)
 
