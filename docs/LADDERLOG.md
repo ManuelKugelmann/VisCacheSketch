@@ -1,6 +1,8 @@
-# Ladder Log — Steps 00–18 (Backward-Looking)
+# Ladder Log (Backward-Looking)
 
-Per-step record of what was tested, what was decided, and what was carried. The ladder structure and forward plan live in [LADDER_PLAN.md](LADDER_PLAN.md). Cross-cutting findings (e.g. RTXDI parity, BoilingFilter disable) stay in [devlog/DEVLOG.md](devlog/DEVLOG.md).
+Per-step record of what was tested, what was decided, and what was carried. The ladder structure and forward plan live in [LADDER_PLAN.md](LADDER_PLAN.md). Cross-cutting findings (e.g. RTXDI parity, BoilingFilter disable, Bistro firefly-floor reframe) stay in [devlog/DEVLOG.md](devlog/DEVLOG.md).
+
+Per the methodology rule (LADDER_PLAN intro), each ladder step ideally lands at a local optimum. Dead-end / failed-leverage sweeps are pruned from the live narrowing chain below — their learnings are kept in the [Pruned dead ends](#pruned-dead-ends-learnings-preserved) footer and cross-linked to DEVLOG where the finding is cross-cutting. Step body narratives are preserved for audit.
 
 **Diagnostic plate layout** (4×3 grid):
 
@@ -17,37 +19,28 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 
 ## Narrowing chain at a glance
 
-| step | axis under sweep              | decision made                                       | carried forward                        |
-| ---- | ----------------------------- | --------------------------------------------------- | -------------------------------------- |
-| 00   | vanilla SPP 1..4096           | error + noise references                            | GT EXRs (not a config)                 |
-| RPT00 | vanilla_b{N} + restirpt_b{N} per-bounce GT | restirpt beats vanilla at x1 (Sponza b1 PSNR +7.7 dB / RMSE −59%) | per-bounce GT EXRs                     |
-| RPT01 | `fireflyClampK` ∈ {10, 30, 100, 1000, ∞}    | K=∞ wins; clamp disabled by default — restirpt unbiased reference | `fireflyClampK=1e9` (default off)      |
-| SMOKE | `wsRetraceOnReuseMode` ∈ {0,1,2} on restir_2d/3d + rtxdi RayTraced ref | strict-mode plumbing works; restir_2d/3d beat rtxdi_raytraced (Sponza −0.24pp, BiI −0.93pp); CacheCV ≡ FullTrace within noise | `wsRetraceOnReuseMode=2` for Stage D |
-| 01   | subframe N × warmup           | 2×2 + ≥1 warmup fixes tile artifact                 | `SUBFRAME_2x2`                         |
-| 02   | B-side addressing shape       | collapsed-B variants fail multi-light               | `pos` `dir_dist1` `dir_dist`           |
-| 03   | per-axis quant                | top-3 per B-branch by median-gated rays             | 3 quants × pos / dir_dist1 / dir_dist  |
-| 04   | SPP × step-03 top-3           | winners don't degrade with SPP                      | keep quants                            |
-| 05   | bootThreshold × quantAB       | select `qA024_qB036__ct2`, `ct1` is noise           | `qA024_qB036__ct2`                     |
-| 06   | varThreshold (expanded vt0..vt060) | tightening vt improves blob monotonically (single-level) | `vt005`                          |
-| 07   | stderrThreshold pure curve (single-level) | **se005 beats vt005 on 1PL x4 blob 17→11** at matched rays; 32PL blob cost 3.4→5.9 (still below 10) | `qA024_qB036__ct2__se005` |
-| 09   | jitter f / c × fine companion | slightly worse but adds graceful degradation        | (likely `jf05_jc05`, pending review)   |
-| 10   | multi-level quant × threshold | multi-level beats single-level                      | multi-level                            |
-| 11   | bayerN × cell-footprint (entry-level)       | 8 variants {bayer2×2, bayer4×4} × {cell1×1, cell2×2, cell4×4, cell8×8}; entry-level only (no cascade descent). 1AL only | rays=100% across all 8 (entry-only debug, no descent → no skipping) |
-| 12   | bayerN × cell-footprint (cascade-on)        | Same 8 variants as step 11 but cascade enabled; 1AL only | identical numbers to step 11 at 1AL — cascade has no leverage on 1AL at this matrix |
-| 13   | ct × vt × pMin (12-variant 3-axis)          | ct{16,64} × vt{010,030,080} × pm{002,010} on 1PL+32PL. Tightest gate (ct=16, vt=010, pm=002) hits 67% rays on 1PL with err_d=0.16; 32PL stays at 100% rays across all 12 — multi-light is rays-saturated regardless of trust gate | `ct016_vt010_pm002` (cheapest within artifact-clean) |
-| 14   | cell-size × ct (multi-scene cascade)        | 12 variants {cell4×4, cell8×8, cell16×16} × ct{small..large} on 4 scenes (1PL, 32PL, Sponza, BistroInterior). cell16×16+ct=32 hits 18% rays on 1PL but 90% rays + art5=43% on BistroInt — **scene-dependent ct is required** | per-scene picks (no single carry) |
-| 15   | jitter sweep (jitterFilter × jitterCell)    | 8 variants jf×jc {0, 0.12, 0.25, 0.5, 1.0} on 4 scenes. jf000_jc000 reads identical to base; non-zero jitter mostly neutral within stochastic noise (scene-dependent) | unchanged (no jitter as default) |
-| 16   | varThreshold × pMin                         | tighter vt is a Pareto win on 1PL                                   | `vt003_pm010`                          |
-| 17   | posB-quant fine sweep on Sponza             | 4 variants {qB004, qB009, qB018, qB036} at cell4×4 ct=2 vt=0.10 pm=0.02 carry. Sponza only. **Bit-identical** rays=73.48% / err_d=2.58 / art5≈23.4 across all 4 — posB quantization has zero effect at the saturated cell4×4 ct=2 corner | structural saturation; same lesson as step 18 |
-| 18   | vt/se/cwf 4-axis sweep on Sponza (cell4×4 ct=2 vs cell16×16 ct=2) | **cell4×4 ct=2 saturated — all 8 variants bit-identical** (rays=73.48%, err_d=2.58, art5=23.36); cell16×16 ct=2 saves rays (~41%) at art5 cost (~70%). Trust gates have zero leverage at the saturated ct=2 corner | superseded by SPONZA_CT — ct=2 itself was the bottleneck, not the trust gates |
-| SPONZA_CT | base-ct sweep on Sponza (cell4×4 ct ∈ {2,4,8,16,32,64}) | **Naive raise-base-ct breaks the saturation.** x4: knee at ct=8 (art5 23.36→17.53, rays 73→87%). x16: monotonic art5 reduction 29.10→15.27 from ct=2→64 (rays 59→94%). x1: zero leverage (cache too cold). Validates user reframe "if samples agree we can't be sure until N is high enough" | `ct=8` carry for x4, `ct=64` for x16 if rays-cost acceptable |
-| SPONZA_VT | vt sweep at ct=8 on Sponza (vt ∈ {0.001..1.0}) | **Trust gates re-activate at ct=8.** x4: weak leverage (art5 17.5→20.5 swing, optimum vt=0.10). x16: strong leverage (art5 15.2→29.1, optimum vt=0.001-0.05). SPP-dependent vt — low SPP wants looser, high SPP wants tighter. Step-18 "vt has zero leverage" was ct=2-bottlenecked | x4: `ct=8 vt=0.10` (art5 17.5); x16: `ct=8 vt=0.001` (art5 15.2 → −14pp vs step-18 ct=2) |
-| BISTRO_CT | 4-corner (ct,vt) on BistroExt + BistroInt | **Sponza framework does NOT generalize.** BistroExt x16 + BistroInt x4/x16 art5 **bit-identical** across all 4 corners (29.93 / 42.87). Bistro saturation is **structural** (bias-locked cells, not premature all-same trust). Penumbra-class scenes (Sponza) want patient trust gates; geometry-bias-locked scenes (Bistro) need different mechanism | scene-classifier needed; Bistro needs decay/migration, not ct/vt |
-| BISTRO_ADD | accelDecayDisagreeThresh sweep on Bistro (ad ∈ {0, 0.05..0.5}) | **Mechanism is empirically broken.** Every non-zero value REGRESSES Bistro art5 dramatically: BiE x16 21.78 → 132.82 (6×); BiI x16 29.93 → 93.14 (3×); BiI x4 art5 bit-identical (no leverage at low SPP). Cause: half-decay-on-disagreement creates **runaway oscillation** on cells with legitimate mixed visibility. ad=0.05/0.10/0.30 produce identical art5=93.14 — cells reach a new (worse) attractor | `accelDecayDisagreeThresh = 0` (default off; mechanism toxic) |
-| BISTRO_DECAY | decayPeriod sweep on BistroInt (dp ∈ {OFF, 2..300}) | **Periodic decay also has zero leverage.** art5 = 42.87 / 29.93 BIT-IDENTICAL across all 7 dp values. **Reframes the Bistro saturation finding**: cache is **already at the firefly floor** — vanilla art5 88.89% (x4) / 48.23% (x16) → cache 42.87% / 29.93% means the cache absorbs ~46pp / 18pp of vanilla's variance. The residual is irreducible firefly noise, not bias-lock. Bistro doesn't need a fix; it's working as designed | no carry change; framework stops iterating on Bistro mechanisms |
-| SPONZA_MB | multibounce smoke at canonical (ct=8 vt=0.10/0.001 pm=0.02, b ∈ {0,1,4}) | **Stage E green-lit on perceptual; trade-off in linear.** Cache delivers MASSIVE rays savings at all bounce depths: b=0 −68pp (32% rays), b=1 −72pp (28%), b=4 **−74pp (26%)**. Savings INCREASE with bounce depth. **OkLab err matches vanilla within 0.03pp** at b=1/b=4 + art5 +1pp. **BUT** linear-space metrics worsen: RMSE +16%, PSNR −1.3 dB, relmse +16% at b=4 (and +282% relmse at b=0). The cache trades linear-space variance for rays cost (CV+RRR theory): perceptual-quality wins, linear-error metrics lose. Paper §11/§12 must report both honestly | Stage E canonical: SPONZA_VT carry × maxBounces; metric-honest framing required |
-| (full-battery insight) | vt has **anti-correlated optima** across metric families | At Sponza x16: vt=0.001 best art5 (15.21) but RMSE/relmse worse; **vt=0.30 best RMSE/PSNR/relmse** (relmse 0.09 vs 0.45 at tight) but worst art5 (28.42). art5 penalizes LOCAL spikes, RMSE penalizes AVERAGE error — tight vt kills firefly spots locally, loose vt smooths per-pixel noise globally | metric-selects-policy: ship per-metric carry tables, no universal vt |
-| BISTRO_MB | multibounce + cache on BistroInt at canonical (b ∈ {0,1,4}) | **Cache wins on EVERY metric on Bistro multibounce — INVERTS the Sponza linear-space loss.** OkLab err matched within 0.05pp; RMSE/PSNR slightly cache-better at all bounces; **relmse: vanilla_b1=78.70 → viscache_b1=22.17 (3.5× better)**, vanilla_b4=89.93 → viscache_b4=37.98 (2.4× better). Rays savings ~50pp (cache 47-50% rays). Cache amortizes per-bounce firefly variance via cell-level mean — multibounce fireflies are exactly what spatial correlation captures. Reframes BISTRO_CT/DECAY: 'cache at floor' was for SINGLE-bounce DI; each indirect bounce adds a fresh firefly source the cache amortizes independently | Stage E canonical confirmed on firefly-class multibounce (best regime so far for cache); BistroInt vanilla_b{1,4}_x4096 GTs added to step 00 |
+| step | axis under sweep              | local optimum | carried forward                        |
+| ---- | ----------------------------- | ------------- | -------------------------------------- |
+| 00   | vanilla SPP 1..4096           | reference (no opt) | GT EXRs (not a config)            |
+| RPT00 | vanilla_b{N} + restirpt_b{N} per-bounce GT | reference (no opt) — restirpt beats vanilla at x1 | per-bounce GT EXRs |
+| RPT01 | `fireflyClampK` ∈ {10, 30, 100, 1000, ∞}    | K=∞ wins on every metric except marginal Cornell RMSE; clamp disabled by default | `fireflyClampK=1e9` (default off) |
+| SMOKE | `wsRetraceOnReuseMode` ∈ {0,1,2} on restir_2d/3d + rtxdi RayTraced ref | mode=2 (CacheCV) ≡ mode=1 (FullTrace) within stochastic noise; both unbiased | `wsRetraceOnReuseMode=2` for Stage D |
+| 01   | subframe N × warmup           | 2×2 + ≥1 warmup fixes tile artifact (cleanest 1PL) | `SUBFRAME_2x2` + warmup |
+| 02   | B-side addressing shape       | full-position B (`pos`) wins multi-light by 11pp (x4) / 40pp (x16) | `pos` `dir_dist1` `dir_dist` (collapsed-B parked) |
+| 03   | per-axis quant                | qA024_qB036 (pos branch) — clear pos winner over dir_dist | 3 quants × pos / dir_dist1 / dir_dist |
+| 04   | SPP × step-03 top-3           | step-03 winners SPP-stable (no flip across x1/x4/x16) | keep quants                       |
+| 05   | bootThreshold × quantAB       | `ct2` (1 confirming sample) — `ct1` cuts blob 9.4→5.8 only marginally on rays | `qA024_qB036__ct2`             |
+| 06   | varThreshold sweep            | `vt005` — tied-best 1PL blob, best 32PL blob; tight vt monotonic on single-level | `vt005`                  |
+| 10   | multi-level quant × threshold | `qa012__ct4` cascade — half rays vs single-level at matching quality | multi-level cascade carry             |
+| 11   | bayerN × cell-footprint (entry vs cascade) | merged 11+12 ablation — cascade descent IS the rays-savings mechanism | (sanity check; no axis carry change) |
+| 13   | ct × vt × pMin (12-variant 3-axis) | `ct016_vt010_pm002` — 67% rays on 1PL with err_d=0.16; 32PL rays-saturated | `ct016_vt010_pm002` |
+| 14   | cell-size × ct (multi-scene cascade) | per-scene picks; surfaces "scene-dependent ct required" finding | per-scene picks (no single carry) |
+| 16   | varThreshold × pMin           | `vt003_pm010` Pareto win on 1PL (rays −1.5pp, blob halved) | `vt003_pm010`              |
+| SPONZA_CT | base-ct sweep on Sponza (cell4×4 ct ∈ {2..64}) | x4 knee at `ct=8` (art5 23→17, rays 73→87%); x16 monotonic to `ct=64` | `ct=8` x4 / `ct=64` x16 |
+| SPONZA_VT | vt sweep at ct=8 on Sponza (vt ∈ {0.001..1.0}) | x4 `vt=0.10`, x16 `vt=0.001` — SPP-dependent vt finding | per-SPP carry |
+| (insight)  | full-metric battery on SPONZA_VT | vt has **anti-correlated optima**: art5 wants tight, RMSE/relmse wants loose | metric-selects-policy: ship per-metric carry tables |
+| SPONZA_MB | multibounce on Sponza (b ∈ {0,1,4}) | b=4 −74pp rays + OkLab match; linear-space tradeoff (PSNR −1.3 dB) | Stage E canonical on penumbra-class multibounce |
+| BISTRO_MB | multibounce on BistroInt (b ∈ {0,1,4}) | b=4 −53pp rays + **wins every metric** (relmse 2.4× better) | Stage E canonical on firefly-class multibounce |
 
 ---
 
@@ -425,3 +418,23 @@ See [LADDER_PLAN.md](LADDER_PLAN.md) for stages C.2 → G:
 - **E (steps 31–40)** — multilevel + PT multibounce: open the bounce axis.
 - **F (steps 41–50)** — multilevel + ReSTIR PT multibounce: paper §12 reconnection-shift V revalidation.
 - **G (steps 51+)** — BDPT (open).
+
+---
+
+# Pruned dead ends (learnings preserved)
+
+These steps ran but produced no local optimum (all-variants-tied) or were superseded by a downstream sweep. Per the methodology rule (LADDER_PLAN intro), they're pruned from the live narrowing chain above. Their per-step body narratives stay below for audit; one-line learnings are listed here, with cross-cutting findings cross-linked to DEVLOG.
+
+| pruned step | sweep | learning (one line) | promoted to |
+|-------------|-------|---------------------|-------------|
+| **07** (single-level stderr) | `stderrThreshold` curve at single-level | se005 marginal over vt005 (32PL blob 3.4→5.9 at matched rays); single-level metric-saturated | superseded by step 10 cascade (different leverage regime) |
+| **09** (jitter, single-level) | `jitterFilter × jitterCell` 3×3 | no Pareto improvement; visual call only, picker rule silent | jitter retried in step 15 (multi-scene), also dead end |
+| **12** (cascade-on, 1AL only) | Same 8 variants as step 11 with cascade enabled | bit-identical to step 11 on 1AL — cascade has no leverage at this scene+matrix | merged into step 11 narrative (cascade-active vs cascade-off as one ablation) |
+| **15** (multi-scene jitter) | `jitterFilter × jitterCell` on 4 scenes at step-13 carry | non-zero jitter mostly neutral within stochastic noise | "no jitter as default" (jitter parked) |
+| **17** (Sponza posB-quant) | qB ∈ {004, 009, 018, 036} at cell4×4 ct=2 | bit-identical across all 4 — saturated at ct=2 | redundant with step 18 (same saturation cause) |
+| **18** (Sponza vt/se/cwf 4-axis) | vt × se × fd × cwf at cell4×4 ct=2 vs cell16×16 ct=2 | cell4×4 ct=2 saturated (8 variants bit-identical); trust gates have zero leverage at this corner | superseded by SPONZA_CT — `ct=2` itself was the bottleneck → DEVLOG "Sponza ct=2 saturation" |
+| **BISTRO_CT** (Sponza framework on Bistro) | 4-corner (ct, vt) on BistroExt + BistroInt | Sponza framework does NOT generalize — Bistro art5 bit-identical across all 4 corners (firefly-floor, not premature trust) | DEVLOG "Bistro firefly-floor reframe" |
+| **BISTRO_ADD** (accelDecayDisagreeThresh) | ad ∈ {0, 0.05..0.5} on Bistro | mechanism toxic — runaway oscillation; non-zero values regress 3–6× | DEVLOG "Failed approaches": `accelDecayDisagreeThresh = 0` (default off, mechanism toxic) |
+| **BISTRO_DECAY** (periodic decay) | decayPeriod ∈ {OFF, 2..300} on BistroInt | bit-identical across all 7 dp values; no leverage. The investigation produced the **"cache-at-firefly-floor"** reframe: cache absorbs ~46pp / 18pp of vanilla's variance at x4/x16, residual is irreducible firefly noise | DEVLOG "Bistro firefly-floor reframe" + Stage E (multibounce) instead of more DI levers |
+
+**Step 19–25 (post-step-18 multi-axis pile-on)** — already pruned in earlier rewrite (see "Steps 19–25 — recorded null result" section above). Useful negatives recorded; dead-end content not in active ladder.
