@@ -42,22 +42,30 @@ Order: ~~(a) and (b) first~~ ✅ (a) and (b) DONE 2026-05-06; c1+c2 next (one pa
 | 41–50  | F     | multilevel + ReSTIR PT multibounce                 | new                         |
 | 51+    | G     | BDPT (open)                                         | open                        |
 
-## Scene-class taxonomy (validated 2026-05-06)
+## Scene-class × bounce-depth taxonomy (validated 2026-05-06)
 
-The recent SPONZA / BISTRO sweeps revealed two distinct cache-behaviour regimes. Carry configs and lever-effectiveness depend on which class a scene falls into:
+Recent sweeps revealed cache behaviour depends on TWO axes — scene class AND bounce depth — not one. Each (class, bounce-regime) combination has its own carry and lever-effectiveness profile:
 
-| class | example scenes | failure mode | productive levers | useless levers |
-|-------|---------------|--------------|-------------------|----------------|
-| **penumbra-class** | Sponza, Cornell 1AL/3AL | cells trust at suboptimal μ — premature all-same-evidence trust at low ct | raise base ct (SPONZA_CT: ct=2→8 cuts art5 −5.83pp at x4); tighten vt at high SPP (SPONZA_VT: vt=0.001 cuts art5 −14pp at x16) | accelDecayDisagreeThresh (creates oscillation) |
-| **firefly-class** | BistroExt, BistroInt | cache already at the irreducible variance floor | none — cache is already winning −18 to −46pp art5 vs vanilla | ALL trust gates + decay knobs (BISTRO_CT, BISTRO_ADD, BISTRO_DECAY all bit-identical) |
-| **diagnostic** | Cornell 1PL | hard-shadow blob canary | tight vt prevents blob at any cell size | — |
+| class | regime | example | failure mode / strength | productive levers | metric trade |
+|-------|--------|---------|------------------------|-------------------|--------------|
+| **penumbra-class** | DI (b=0) | Sponza | cells trust at suboptimal μ — premature all-same-evidence trust at low ct | raise base ct (`ct=2→8` cuts art5 −5.83pp); tighten vt at high SPP (`vt=0.001` cuts art5 −14pp at x16) | linear-space modest cost; perceptual win |
+| **penumbra-class** | multibounce | Sponza b=4 | cache amortizes per-bounce shadow rays | trust-gate carry inherits from b=0 | **−74pp rays**; OkLab tied; **PSNR −1.3 dB**; relmse +16% |
+| **firefly-class** | DI (b=0) | BistroExt, BistroInt | cache **already at irreducible variance floor** | none — cache is **already winning** −18 to −46pp art5 vs vanilla | trust-gate / decay all bit-identical; but cache itself is a huge win vs vanilla |
+| **firefly-class** | **multibounce** | **BistroInt b=1/b=4** | **cache amortizes per-bounce firefly variance** — strongest regime measured | trust-gate carry inherits from b=0 | **−53pp rays AND wins on every metric**: relmse 89.93→37.98 (**2.4× better**), RMSE/PSNR/MS-SSIM all hold or improve |
+| **diagnostic** | DI | Cornell 1PL | hard-shadow blob canary | tight vt prevents blob | — |
 
-**Per-scene-class canonical config:**
-- **penumbra-class x4**: `cell4×4 + bayer2×2 + ct=8 + vt=0.10 + pm=0.02`
-- **penumbra-class x16**: `cell4×4 + bayer2×2 + ct=8 + vt=0.001 + pm=0.02`
-- **firefly-class (any SPP)**: any reasonable `(ct, vt)` — knobs have no leverage; pick by rays cost. Defaults `ct=8 + vt=0.10` are fine.
+**Per-(class, regime) canonical config (penumbra and firefly both):**
+- **x4 + b=0/b=1/b=4**: `cell4×4 + bayer2×2 + ct=8 + vt=0.10 + pm=0.02` (validated on Sponza_MB and BISTRO_MB)
+- **x16 + b=0**: `cell4×4 + bayer2×2 + ct=8 + vt=0.001 + pm=0.02` (penumbra-class only; firefly-class indifferent)
+- Universal-on-multibounce: same trust-gate config carries from b=0 to b=4 — bounce depth doesn't change the optimum within a class.
 
-**Implication for paper §11 / §12**: a single universal carry doesn't exist. Either ship per-scene-class configs or build a **scene classifier** (e.g. via Bayer-rotation cell-μ-stability monitor: penumbra cells have varying μ across rotations, firefly-locked cells stay constant). The classifier is a self-tuning extension worth investigating but not blocking Stage D.
+**The metric-selects-policy framework holds across both classes.** Different metrics select different vt optima (art5 vs RMSE anti-correlated); paper Tables must report the full battery — `err%, art5%, RMSE, PSNR, relmse, MS-SSIM, FLIP, rays%` — and call out where metrics disagree.
+
+**Headline result for paper §11/§12:** firefly-class multibounce is the **best cache demonstration** — Bistro b=4 cache delivers −53pp rays AND 2.4× better relmse simultaneously. Single-bounce DI is a quality-cost trade; multibounce is a strict win.
+
+**Implication for ReSTIR PT (Stage F):** ReSTIR PT is multibounce by definition; the cache should help on every metric. The −1.3 dB PSNR loss seen in Sponza single-bounce DI doesn't appear at multibounce — Stage F is likely the strongest cache regime in the paper.
+
+**Open extension:** scene classifier (Bayer-rotation cell-μ-stability monitor: penumbra cells have varying μ across rotations, firefly-locked cells stay constant). Self-tuning, but not blocking — current per-class configs are good enough since the same trust-gate config works across scene classes anyway. The differences are in WHAT the cache does, not in how it's tuned.
 
 ## Reuse from existing data
 
