@@ -59,6 +59,13 @@ import Utils.Math.MathHelpers;           // sample_triangle for emissive uv → 
 import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gWSLightMuMin
 #endif
 
+// vcDiagCountRay() helper for ray-counter bumps at the WS-ReSTIR V-test sites
+// that don't go through the cache's vhfGate/vhfCommit path. Lives in
+// VisCacheDiagnostics.slang alongside the diag textures it writes.
+#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
+import RenderPasses.VisCache.VisCacheDiagnostics;
+#endif
+
 /** Interface for querying visibility in the scene.
     This is used in `handleHit`.
 */
@@ -1518,6 +1525,9 @@ struct PathTracer
                         {
                             Ray vrayWin = winnerLs.getVisibilityRay();
                             bool winnerVisible = vq.traceVisibilityRay(vrayWin);
+#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
+                            vcDiagCountRay(path.getPixel(), true);   // K-RIS winner V-test
+#endif
                             if (!winnerVisible)
                             {
                                 // Shadowed → zero the winner's pHat. wSum/M
@@ -1706,11 +1716,23 @@ struct PathTracer
                                         float vR = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                                         if (reuseMode == 2u)
+                                        {
+                                            // CacheCV path — vcWriteDiag inside evalRevalidationCV
+                                            // already bumps the diag rays counter; no extra count here.
                                             vR = vq.traceVisibilityRayCV(vrayR, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                        }
                                         else
+                                        {
                                             vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
+#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
+                                            vcDiagCountRay(path.getPixel(), true);   // FullTrace retrace-on-reuse (temporal)
+#endif
+                                        }
 #else
                                         vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
+#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
+                                        vcDiagCountRay(path.getPixel(), true);
+#endif
 #endif
                                         pHatPrev *= vR;
                                     }
@@ -1796,11 +1818,22 @@ struct PathTracer
                                 float vN = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                                 if (reuseModeN == 2u)
+                                {
+                                    // CacheCV — vcWriteDiag inside evalRevalidationCV bumps counter.
                                     vN = vq.traceVisibilityRayCV(vrayN, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                }
                                 else
+                                {
                                     vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
+#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
+                                    vcDiagCountRay(path.getPixel(), true);   // FullTrace retrace-on-reuse (spatial)
+#endif
+                                }
 #else
                                 vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
+#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
+                                vcDiagCountRay(path.getPixel(), true);
+#endif
 #endif
                                 pHatN *= vN;
                             }

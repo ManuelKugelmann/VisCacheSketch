@@ -125,3 +125,23 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         accumColdmissRate           // A: accumulated cold miss rate [0,1]
     );
 }
+
+/// Lightweight ray-counter bump for V-tests that do NOT go through the
+/// vhfGate/vhfCommit cache path — used by the WS-ReSTIR pipeline whose
+/// K-RIS winner V-test and (mode=1 FullTrace) retrace-on-reuse sites
+/// fire `vq.traceVisibilityRay` directly. Bumps total by 1 and (for
+/// `traced=false`) saved by 1; rebuilds the rays_traced_ratio in
+/// `gVCAccumRaysNoiseErrorCold.r`.  Mode=2 (CacheCV) paths go through
+/// `evalRevalidationCV` → `vcWriteDiag`, so they are NOT counted here
+/// (would double-count).
+void vcDiagCountRay(uint2 pixel, bool traced)
+{
+    uint saved = gVCAccumSaved[pixel] + (traced ? 0u : 1u);
+    uint total = gVCAccumTotal[pixel] + 1u;
+    gVCAccumSaved[pixel] = saved;
+    gVCAccumTotal[pixel] = total;
+
+    float ratio = float(total - saved) / float(total);
+    float4 prev = gVCAccumRaysNoiseErrorCold[pixel];
+    gVCAccumRaysNoiseErrorCold[pixel] = float4(ratio, prev.g, prev.b, prev.a);
+}
