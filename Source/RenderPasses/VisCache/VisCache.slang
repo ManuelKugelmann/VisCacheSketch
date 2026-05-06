@@ -211,6 +211,18 @@ cbuffer VisCacheParams
                                       ///< → wide interval → no trust regardless of μ̂ point estimate.
     float  gWilsonEps;                ///< Margin for "definitely visible/occluded" Wilson trust
                                       ///< decision. 0.01 = trust when 95% CI is within 1% of corner.
+    float  gCtSppScaleK;              ///< SPP-dependent scaling exponent for bootThreshold:
+                                      ///< ct_eff = round(gBootThreshold * pow(max(gSpp, 1) / 4.0, k)).
+                                      ///< 0 = off (legacy). Calibration: with k≈1.5 and base ct=8
+                                      ///< (SPONZA_CT x4 knee), ct_eff at spp=16 is ≈64 (SPONZA_CT x16
+                                      ///< monotonic-best). Higher SPP → wait longer before trusting μ.
+    float  gVtSppScaleK;              ///< SPP-dependent scaling exponent for varThreshold AND
+                                      ///< wilsonEps: param_eff = param * pow(4.0 / max(gSpp, 1), k).
+                                      ///< 0 = off (legacy). Calibration: with k≈3.32 and base
+                                      ///< vt=0.10 (SPONZA_VT x4 optimum), vt_eff at spp=16 is ≈0.001
+                                      ///< (SPONZA_VT x16 optimum). Same scaling applies to wilsonEps
+                                      ///< because both knobs mean "looser trust window" at the
+                                      ///< corner-of-Bernoulli — Wilson gate tightens the same way.
     uint   gEnableHierarchicalConsistency; ///< 1 = peek next level μ for agreement check.
     float  gHierarchicalMuTolerance;  ///< |μ_next − μ_this| gate for the hierarchical check.
     float  gAccelDecayDisagreeThresh; ///< |sample − μ| that triggers in-insert half-decay. 0 = off.
@@ -991,6 +1003,13 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
             float t = float(lvl) / float(gNumLevels - 1u);
             ctLvl = uint(lerp(float(gBootThreshold), float(gBootThresholdFine), t));
         }
+        // SPP-scaled ct: ct_eff = ctLvl * pow(spp/4, gCtSppScaleK). Higher SPP
+        // → more samples required before trust. k=0 keeps legacy behaviour.
+        if (gCtSppScaleK != 0.f)
+        {
+            float sppMult = pow(float(max(gSpp, 1u)) / 4.f, gCtSppScaleK);
+            ctLvl = uint(round(float(ctLvl) * sppMult));
+        }
 
         // Footprint-aware trust: gBootThresholdFactorFootprintPx * log2(cellPixels) gives a
         // conservative spatial diversity requirement that scales with cell
@@ -1030,6 +1049,14 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         //     samples" into one. Rejects few-sample cells with spurious low
         //     var (the x16-correlation pathology).
         //   varThreshold (legacy): var ≤ gVarThreshold, ignores N.
+        // SPP-scaled trust window: vt_eff = gVarThreshold * pow(4/spp, k_vt),
+        // applied to both varThreshold AND wilsonEps (same direction — both
+        // mean "looser trust window at corner-of-Bernoulli"). k_vt=0 keeps
+        // legacy. Per SPONZA_VT calibration k_vt≈3.32 takes vt=0.10 (x4) →
+        // 0.001 (x16), matching the per-SPP vt optima.
+        float trustSppMult = (gVtSppScaleK != 0.f)
+            ? pow(4.f / float(max(gSpp, 1u)), gVtSppScaleK)
+            : 1.f;
         bool converged;
         if (gWilsonZSquared > 0.f)
         {
@@ -1041,7 +1068,7 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
             float radical = sqrt(zsq * (p * (1.f - p) / Nf + zsq / (4.f * Nf * Nf)));
             float LB = (numCenter - radical) * invD;
             float UB = (numCenter + radical) * invD;
-            float eps = gWilsonEps;
+            float eps = gWilsonEps * trustSppMult;
             converged = (LB > 1.f - eps) || (UB < eps);
         }
         else if (gStderrThreshold > 0.f)
@@ -1052,7 +1079,8 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         }
         else
         {
-            converged = var <= gVarThreshold;
+            float vtEff = gVarThreshold * trustSppMult;
+            converged = var <= vtEff;
         }
 
         if (converged)

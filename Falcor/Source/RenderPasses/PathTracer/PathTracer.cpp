@@ -1275,6 +1275,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.stderrThreshold               = getF("vhfParam_stderrThreshold", 0.f);
             mVCParams.wilsonZSquared                = getF("vhfParam_wilsonZSquared", 0.f);
             mVCParams.wilsonEps                     = getF("vhfParam_wilsonEps", 0.01f);
+            mVCParams.ctSppScaleK                   = getF("vhfParam_ctSppScaleK", 0.f);
+            mVCParams.vtSppScaleK                   = getF("vhfParam_vtSppScaleK", 0.f);
             mVCParams.enableHierarchicalConsistency = getU("vhfParam_enableHierarchicalConsistency", 0u);
             mVCParams.hierarchicalMuTolerance       = getF("vhfParam_hierarchicalMuTolerance", 0.2f);
             mVCParams.accelDecayDisagreeThresh      = getF("vhfParam_accelDecayDisagreeThresh", 0.f);
@@ -1567,6 +1569,8 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gStderrThreshold"]               = mVCParams.stderrThreshold;
         vc["gWilsonZSquared"]                = mVCParams.wilsonZSquared;
         vc["gWilsonEps"]                     = mVCParams.wilsonEps;
+        vc["gCtSppScaleK"]                   = mVCParams.ctSppScaleK;
+        vc["gVtSppScaleK"]                   = mVCParams.vtSppScaleK;
         vc["gEnableHierarchicalConsistency"] = mVCParams.enableHierarchicalConsistency;
         vc["gHierarchicalMuTolerance"]       = mVCParams.hierarchicalMuTolerance;
         vc["gAccelDecayDisagreeThresh"]      = mVCParams.accelDecayDisagreeThresh;

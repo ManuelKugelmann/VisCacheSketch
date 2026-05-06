@@ -108,6 +108,9 @@ public:
                                           ///< SPP-adaptive: small-N → wide interval → no trust.
         float    wilsonEps;               ///< Margin for "definitely visible/occluded" decision.
                                           ///< 0.01 = trust when 95% CI within 1% of corner.
+        float    ctSppScaleK;             ///< SPP-scaling exponent for ct: ct_eff = ct*pow(spp/4,k).
+        float    vtSppScaleK;             ///< SPP-scaling exponent for vt+wilsonEps: param_eff =
+                                          ///< param*pow(4/spp,k).
         uint32_t enableHierarchicalConsistency; ///< 1 = at each converged level, peek the next
                                                 ///< finer level's μ and require agreement within
                                                 ///< gHierarchicalMuTolerance before early-stop.
@@ -260,6 +263,13 @@ public:
                                                       ///< SPP-adaptive: small-N → wide interval → no trust.
         float    wilsonEps                   = 0.01f; ///< Margin for Wilson-gate "definitely visible/occluded"
                                                       ///< decision. 0.01 = trust within 1% of corner.
+        float    ctSppScaleK                 = 0.0f;  ///< SPP-scaling exponent for bootThreshold:
+                                                      ///< ct_eff = ct * pow(spp/4, k). 0 = off.
+                                                      ///< Calibration: k≈1.5 takes ct=8 (x4) → 64 (x16).
+        float    vtSppScaleK                 = 0.0f;  ///< SPP-scaling exponent for varThreshold AND
+                                                      ///< wilsonEps: param_eff = param * pow(4/spp, k).
+                                                      ///< 0 = off. Calibration: k≈3.32 takes vt=0.10
+                                                      ///< (x4) → 0.001 (x16) per SPONZA_VT.
         bool     enableHierarchicalConsistency = false; ///< Peek finer-level μ for agreement check.
         float    hierarchicalMuTolerance     = 0.20f; ///< |μ_next − μ_this| above which trust is refused.
         float    accelDecayDisagreeThresh    = 0.0f;  ///< |sample−μ| that triggers in-insert half-decay; 0 = off.
