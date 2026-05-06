@@ -404,6 +404,12 @@ _CSV_FIELDS = ["key", "scene", "variant", "spp", "frames", "warmup_first", "warm
                "cache_mape", "vanilla_mape", "mape_minus_vanilla",
                "cache_ms_ssim", "vanilla_ms_ssim", "ms_ssim_minus_vanilla",
                "cache_flip", "vanilla_flip", "flip_minus_vanilla",
+               # Falcor GPU profiler timing (averaged across this variant's
+               # render frames). Captured in run_variants render loop; the
+               # algorithmic rays_traced_pct is the cost-proxy, this is the
+               # actual GPU wall-clock. Optional — empty string when profiler
+               # not enabled or events not present.
+               "gpu_tracepass_ms", "gpu_total_ms",
                "timestamp"]
 
 def _step_csv(step_name):
@@ -2728,7 +2734,7 @@ def postprocess(captureDir, prefix, variant_name, total_frames=None, spp=1, resX
 
 def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name,
                          frames, spp, warmup_first, warmup_run, bayer_n,
-                         resX=kResX, resY=kResY):
+                         resX=kResX, resY=kResY, gpu_times=None):
     """Run the full per-variant post-capture pipeline — PNG extraction via
     postprocess(), plate stitch, CSV upsert — then annotate the stats dict
     for overview plotting. Shared between the live-render path (run_variants,
@@ -2793,6 +2799,12 @@ def postprocess_variant(step_name, scene_name, capture_dir, prefix, variant_name
            for m in ("mse", "rmse", "psnr_db", "relmse", "smape", "mape",
                      "ms_ssim", "flip")
            if stats.get(f"{m}_minus_vanilla") is not None},
+        # GPU profiler timing forwarded via extra_metrics. Optional —
+        # only present when run_variants enabled the profiler.
+        **({"gpu_tracepass_ms": gpu_times["gpu_tracepass_ms"]}
+           if gpu_times and "gpu_tracepass_ms" in gpu_times else {}),
+        **({"gpu_total_ms": gpu_times["gpu_total_ms"]}
+           if gpu_times and "gpu_total_ms" in gpu_times else {}),
     )
 
     stats["variant"] = variant_name
@@ -2893,23 +2905,72 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             fc.outputDir = captureDir
             fc.baseFilename = variant_name
 
+            # Enable Falcor's GPU profiler so per-pass GPU ms gets logged into
+            # the CSV alongside rays_traced_pct. Reset stats before the render
+            # loop so the average reflects only this variant's frames.
+            # NOTE: the FIRST variant per scene-load shows 1.5–2× higher
+            # gpu_tracepass_ms than steady-state due to GPU warmup / state-
+            # cache effects (PSO compilation already happens at graph-add
+            # time, but L2 / shader-cache warming amortizes across the first
+            # variant's render_frames). Treat first-variant gpu_time numbers
+            # as warmup-noisy. For clean cross-variant ms comparison render
+            # the same variant twice and use the second timing.
+            try:
+                m.profiler.enabled = True
+                m.profiler.reset_stats()
+            except Exception as _e:
+                pass
+
             # Render `render_frames` = `frames * N²`. Write-only Bayer slots are
             # defined per-frame by warmupSlotsFirst (frame 0) and warmupSlotsRun
             # (frames 1..N-1). No separate warmup phase, no accum reset.
             for _ in range(render_frames):
                 m.renderFrame()
 
+            # Read GPU time averages (across this variant's render frames)
+            # before fc.capture() runs the postprocess passes.
+            gpu_times = {}
+            try:
+                events = m.profiler.events
+                for k, v in events.items():
+                    if "/gpu_time" in k and isinstance(v, dict):
+                        avg = v.get("average", -1.0)
+                        if avg is not None and avg > 0:
+                            gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
+            except Exception as _e:
+                pass
+
             fc.capture()
             m.renderFrame()
             m.renderFrame()  # extra frame to ensure capture is fully flushed to disk
 
             print(f"[{step_name}] Captured ({tag})")
+            if gpu_times:
+                pt = gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
+                  or gpu_times.get("/PathTracer/tracePass")
+                if pt is not None:
+                    print(f"[{step_name}]  GPU tracePass avg: {pt:.3f} ms")
             pfx = f"{tag}_{variant_name}_"
+            # Resolve GPU time event names to compact keys for the CSV.
+            # Falcor's profiler nests events; the path differs slightly by
+            # whether the trace pass is wrapped in a render-graph "execute"
+            # scope. Look up both common forms.
+            gpu_csv = {}
+            if gpu_times:
+                pt = gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
+                  or gpu_times.get("/PathTracer/tracePass")
+                if pt is not None:
+                    gpu_csv["gpu_tracepass_ms"] = pt
+                tot = gpu_times.get("/onFrameRender/RenderGraphExe::execute()") \
+                   or gpu_times.get("/onFrameRender")
+                if tot is not None:
+                    gpu_csv["gpu_total_ms"] = tot
             stats = postprocess_variant(
                 step_name, scene_name, captureDir, pfx, variant_name,
                 frames=frames, spp=spp,
                 warmup_first=warmupFirst, warmup_run=warmupRun, bayer_n=bayerN,
                 resX=resX, resY=resY,
+                gpu_times=gpu_csv if gpu_csv else None,
             )
             all_stats.append(stats)
 
