@@ -23,9 +23,10 @@ A failed sweep is a finding, not a step.
 ## Roadmap (2026-05-06 consolidated)
 
 ### Where we are
-- **Stages A, B, C.1, C.2 done.** Live ladder pruned to 11 keep-rows + 9 pruned-with-learnings (LADDERLOG/DEVLOG split). Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
+- **Stages A, B, C.1, C.2 done.** Live ladder pruned to 11 keep-rows + archived dead ends. Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
 - **Stage D plumbing landed**: `wsRetraceOnReuseMode` toggle (Off / FullTrace / CacheCV) + `rays_traced_pct` schema + `vcDiagCountRay`. SMOKE3 confirmed all three modes give correct unbiased results within stochastic noise.
-- **Stage E green-lit on the full Sponza/Bistro/Cornell matrix.** Sponza (−74pp rays b=4, perceptual win + linear loss), BistroInt (b=4 wins every metric, relmse 2.4× better), Cornell × 4 lighting regimes (rays savings monotonic in bounce depth, OkLab matches vanilla within 0.05pp at b=4). The Sponza-vs-Bistro multibounce dichotomy resolves into a single light-count gradient: linear-space cost scales with firefly density (1AL/1PL minor, 32PL massive RMSE +150%); relmse improves at high firefly density (cache averages magnitude tails). BistroExt MB queued (running).
+- **Stage E green-lit on the full Sponza/Bistro/Cornell matrix.** Sponza (−74pp rays b=4, perceptual win + linear loss), BistroInt (b=4 wins every metric, relmse 2.4× better), Cornell × 4 lighting regimes (rays savings monotonic in bounce depth, OkLab matches vanilla within 0.05pp at b=4). BistroExt b=4 wins perceptual + loses linear (RMSE +58%), refining the light-count gradient: cache-amortization scales with **light count**, not just firefly density.
+- **Trust-gate canonical: `stderrThreshold = 0.10`.** SPONZA_STDERR (2026-05-06) resolved the SPP-dependent vt finding from SPONZA_VT cleanly. stderr=0.10 covers both SPPs with one config: at x4 (cold cells) it refuses trust safely (matches strict-vt baseline); at x16 (mature cells) it trusts aggressively, achieving the loose-vt regime (relmse 2.5× better than vt=0.001, art5 +0.04pp negligible). Wilson-interval and Python-side SPP-scaling also tested — both archived: Wilson is stderr-equivalent (no leverage), SPP-scaling is architecturally meaningless (gSpp=1 always due to frame-accumulation mode; param tuning belongs in the harness, not the algorithm).
 
 ### Knowledge gaps (priority order)
 
@@ -40,26 +41,28 @@ A failed sweep is a finding, not a step.
 
 ### Proposed improvements (design ideas, not yet implemented)
 
-| # | improvement | why | effort | precondition |
-|---|------------|-----|-------|--------------|
-| A | **Wilson-interval / two-tier ct** | Principled fix for SPP-dependent vt finding (`vt=0.10` x4 vs `vt=0.001` x16). Wilson lower-bound > 0.99 OR upper-bound < 0.01 collapses both regimes into one criterion. | ~1h slang patch + sweep | none |
-| B | **c1+c2: μ at reservoir + pool READ** | Visibility-aware presampling at reservoir/pool merge. Multiply `pHat_reader` by cache μ in cross-pixel/temporal merge. | ~30 min slang + sweep | (a)+(b) ✅ |
-| C | **c3: μ at presample WRITE** | Filter cell-pool candidate SET toward visible lights at insert time. | ~30 min slang + sweep | c1+c2 |
-| D | **Scene classifier** | Bayer-rotation cell-μ-stability monitor: penumbra cells' μ varies across rotations; firefly-locked cells' μ stays constant. Self-tunes per-scene config. | ~1h investigation + ~1h prototype | none (orthogonal) |
-| E | **BoilingFilter separable include** | Re-enable the disabled BoilingFilter via the documented separable-include fix path. | ~1h | none; but quality unaffected per data |
-| F | **Lean compute pre-pass for cell-pool fill** (Task #29) | RTXDI eval-cost parity (3-4× reduction). | ~2h slang + integration | useful for Stage D step 27 |
-| G | **Per-pass VisCacheParams** (Task #32) | Different `bayerN` / `wsVisInPHat` for pre-pass vs main pass. | ~1h cpp/cbuffer wiring | useful for Stage D step 27 |
-| H | **Bayer-aligned cell-pool slot indexing** (Task #33) | Eliminate random-replace contention in cell-pool. | ~1h slang | useful for Stage D step 22+ |
+| # | improvement | why | effort | precondition | status |
+|---|------------|-----|-------|--------------|---|
+| ~~A~~ | ~~Wilson-interval / two-tier ct~~ | ~~SPP-dependent vt~~ | ~~~1h~~ | ~~none~~ | ✅ DONE — implemented + tested 2026-05-06; archived as stderr-equivalent (no strict improvement). |
+| B | **c1+c2: μ at reservoir + pool READ** | Visibility-aware presampling at reservoir/pool merge. Multiply `pHat_reader` by cache μ in cross-pixel/temporal merge. | ~30 min slang + sweep | (a)+(b) ✅ | not started |
+| C | **c3: μ at presample WRITE** | Filter cell-pool candidate SET toward visible lights at insert time. | ~30 min slang + sweep | c1+c2 | not started |
+| D | **Scene classifier** | Bayer-rotation cell-μ-stability monitor: penumbra cells' μ varies across rotations; firefly-locked cells' μ stays constant. Self-tunes per-scene config. | ~1h investigation + ~1h prototype | none (orthogonal) | not started |
+| E | **BoilingFilter separable include** | Re-enable the disabled BoilingFilter via the documented separable-include fix path. | ~1h | none; but quality unaffected per data | not started |
+| F | **Lean compute pre-pass for cell-pool fill** (Task #29) | RTXDI eval-cost parity (3-4× reduction). | ~2h slang + integration | useful for Stage D step 27 | not started |
+| G | **Per-pass VisCacheParams** (Task #32) | Different `bayerN` / `wsVisInPHat` for pre-pass vs main pass. | ~1h cpp/cbuffer wiring | useful for Stage D step 27 | not started |
+| H | **Bayer-aligned cell-pool slot indexing** (Task #33) | Eliminate random-replace contention in cell-pool. | ~1h slang | useful for Stage D step 22+ | not started |
+| I | **A-C shrinkage on cached μ** | Bayesian shrinkage of cached μ via `μ̃ = (X+2)/(N+4)` Beta-prior style. Stabilises CV+RRR at cold cells; orthogonal to the trust gate. See `.plans/agresti-coull-shrinkage.md`. | ~2h | none; build only if CV+RRR cold-cell variance becomes a measurable pain point | filed only |
 
 ### Next experiments (compute-side, prioritised)
 
-1. ✅ **Cornell multibounce** (`scripts/VisCache_LadderCORNELL_MB.py`) — DONE 2026-05-06. Light-count gradient resolves Sponza-vs-Bistro dichotomy.
-2. ⏳ **BistroExt multibounce** — running (job baoghcdph). Auto-generates vanilla_b{1,4} GTs first.
-3. **All-scenes canonical x{4, 16}** (`scripts/VisCache_LadderALL_X16.py` — ready) — 7-scene smoke validation of SPONZA per-SPP carry. Queue after BistroExt.
-4. **Wilson-interval prototype** — slang patch; replaces vt with binomial confidence interval. Code change ~1h, sweep on Sponza x{4, 16}. Highest-leverage open improvement.
-5. **Sponza b=8 / b=16** — extend the bounce-depth axis to confirm asymptote behaviour. Quick smoke (~10 min).
-6. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder. Sweep K_pre / K_pool / MCap at the validated `wsRetraceOnReuseMode=2` carry.
-7. **c1+c2 patch** — slang change to inject μ in `pHat_reader` at reservoir + pool reads; sweep on Sponza+BistroInt at the WS-ReSTIR canonical. Higher mu_min than 1% (cache as guide).
+1. ✅ **Cornell multibounce** — DONE. Light-count gradient resolves Sponza/Bistro dichotomy.
+2. ✅ **BistroExt multibounce** — DONE. Refines: cache scales with light-count (single-sun loses linear-space).
+3. ✅ **Wilson-interval prototype** — DONE. Equivalent to stderr; archived.
+4. ✅ **SPONZA_STDERR** — DONE. **stderr=0.10 is the canonical** SPP-adaptive trust gate.
+5. ⏳ **ALL_STDERR** — running (Cornell first, then queue Sponza+Bistro+BistroExt with `-c`). Cross-scene validation of stderr=0.10 carry.
+6. **Sponza b=8 / b=16** — extend bounce-depth axis to confirm asymptote behaviour. Quick smoke (~10 min). Worth doing after ALL_STDERR confirms stderr=0.10 generalizes.
+7. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder at stderr=0.10 + `wsRetraceOnReuseMode=2` carry. Sweep K_pre / K_pool / MCap.
+8. **c1+c2 patch** — slang change to inject μ in `pHat_reader` at reservoir + pool reads; sweep on Sponza+BistroInt at the WS-ReSTIR canonical.
 
 ### Documentation hygiene (no compute)
 
