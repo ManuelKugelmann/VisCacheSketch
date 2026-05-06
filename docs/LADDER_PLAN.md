@@ -85,7 +85,7 @@ A failed sweep is a finding, not a step.
 
 ## Where VisCache plugs in
 
-VisCache is a single substrate (flat multilevel hash, CV+RRR estimator, μ output) that touches the rendering algorithm at four distinct points. Each point is opened in its own stage so the gain is attributable rather than tangled.
+VisCache is a single data structure (flat multilevel hash, CV+RRR estimator, μ output) that touches the rendering algorithm at four distinct points. Each point is opened in its own stage so the gain is attributable rather than tangled.
 
 | stage | rendering algorithm | VisCache use | reference baseline |
 |-------|---------------------|--------------|--------------------|
@@ -206,7 +206,7 @@ The WS-ReSTIR DI work in `viscachepaper/sections/09-restir-integration.md` reach
 
 **Axis.** {64K, 128K (default), 256K, 512K, 1M} slots.
 
-**Hypothesis.** 128K = sweet spot; 64K thrashes on Bistro, ≥256K shows diminishing returns. Tests the substrate-density sensitivity claim.
+**Hypothesis.** 128K = sweet spot; 64K thrashes on Bistro, ≥256K shows diminishing returns. Tests the table-density sensitivity claim.
 
 **Scenes.** Sponza, BistroExt, BistroInt (Cornell_3AL as architecture-trail probe).
 
@@ -222,9 +222,9 @@ The WS-ReSTIR DI work in `viscachepaper/sections/09-restir-integration.md` reach
 
 **Axes.** `wsPoolAddrMode` ∈ {0=3D cell, 1=2D tile} × `wsCellPoolFootprintPx` ∈ {0=fixed-level, 8², 16², 32²}.
 
-**Hypothesis.** Substrate equivalence — 2D-tile and footprint-derived 3D-cell within sampling noise on every scene at matched density.
+**Hypothesis.** Structural equivalence — 2D-tile and footprint-derived 3D-cell within sampling noise on every scene at matched density.
 
-**Pass criterion.** `|restir_2d_err − restir_3d_err| ≤ 0.05pp` on all 7 scenes — proof of paper §3.0 substrate-equivalence claim.
+**Pass criterion.** `|restir_2d_err − restir_3d_err| ≤ 0.05pp` on all 7 scenes — proof of paper §3.0 structural-equivalence claim.
 
 ## Step 25 — μ-aware target function (`wsVisInPHat`)
 

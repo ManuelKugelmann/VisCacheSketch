@@ -247,7 +247,7 @@ Reservoir was 88 B → 64 B; spatial reuse cost 14.8 → 4.1 ms; total frame cos
 
 **VisCache link (sorted by directness):**
 
-- **Footprint criteria == our analytical cell-size derivation.** The §3.0 substrate-
+- **Footprint criteria == our analytical cell-size derivation.** The §3.0 design-
   convergence row "analytical footprint entry-level" is the *same* `R_pri` formula
   Lin 2026 uses for shift-validity. Both compute primary-ray footprint from
   `‖x0−x1‖²·cos(θ)/4π`. Direct cross-cite: their reconnection-vertex check and our
@@ -288,7 +288,7 @@ discussed and rejected as too block-structured), Bekaert 2003 / Müller 2021 NRC
 footprint precedent for §4). Zeng 2021 (dual motion vectors). Talbot 2005 (RIS).
 
 **Action points for our paper:**
-- Add Lin 2026 to §3.0 substrate-convergence framing as 7th independent team —
+- Add Lin 2026 to §3.0 design-convergence framing as 7th independent team —
   except they hit the *same primary-ray footprint primitive* explicitly (§4), making
   the convergence claim formally tighter, not just empirically.
 - Add a §11.3 paragraph linking duplication-map decorrelation to our cold-cache

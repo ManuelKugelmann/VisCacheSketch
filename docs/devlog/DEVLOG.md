@@ -6,7 +6,7 @@ Cross-cutting findings, failed approaches, and reasoning that don't belong to a 
 - **[Ladder Plan](../LADDER_PLAN.md)** — forward plan for steps 19–50+ (multilevel PT DI canonical, multilevel + WS-ReSTIR DI, multilevel + PT multibounce, multilevel + ReSTIR PT multibounce, BDPT open).
 
 This file keeps:
-- Cross-cutting parity / substrate-equivalence story (RTXDI baseline, restir_2d ≡ restir_3d).
+- Cross-cutting parity / structural-equivalence story (RTXDI baseline, restir_2d ≡ restir_3d).
 - Sampler artefacts that are reusable beyond the ladder (e.g. `EmissivePdfMipmapSampler`).
 - Failed approaches with their diagnoses (one paragraph each, anchored to dates / commits).
 - Cross-cutting reasoning paragraphs.
@@ -15,7 +15,7 @@ This file keeps:
 
 ## RTXDI Baseline — Final Result
 
-**Status:** Functional + qualitative parity with RTXDI achieved on the seven-scene matrix; substrate equivalence (restir_2d ≡ restir_3d) demonstrated within sampling noise.
+**Status:** Functional + qualitative parity with RTXDI achieved on the seven-scene matrix; structural equivalence (restir_2d ≡ restir_3d) demonstrated within sampling noise.
 
 ### Final canonical config
 
@@ -62,9 +62,9 @@ The single remaining trail is CornellBox_3AreaLights (+0.95pp). Confirmed struct
 
 Shadow-ray parity on five scenes; restir uses fewer rays on three. Cornell_3AL/Cornell_1AL fire ~2× because their K-RIS produces valid winners more often (visibility patterns differ from RTXDI's tile fill). Eval-cost gap (pre-pass uses PathTracer instance, ~3-4× more light-evaluations than RTXDI's lean compute presample) is plumbing — addressed by the lean dedicated compute pre-pass when ready (Task #29).
 
-### Substrate equivalence — the proving result
+### Structural equivalence — the proving result
 
-`restir_2d` (RTXDI's exact substrate: pixel reservoir + screen-space tile pool) and `restir_3d` (3D-cell pool + per-pixel reservoir) produce identical results within sampling noise on every scene tested:
+`restir_2d` (RTXDI's exact data structure: pixel reservoir + screen-space tile pool) and `restir_3d` (3D-cell pool + per-pixel reservoir) produce identical results within sampling noise on every scene tested:
 
 | Scene_x4       | restir_2d err | restir_3d err | \|2d − 3d\| |
 | -------------- | ------------- | ------------- | ----------- |
@@ -76,7 +76,7 @@ Shadow-ray parity on five scenes; restir uses fewer rays on three. Cornell_3AL/C
 | BistroInt      | 9.54          | 9.53          | 0.01        |
 | Sponza         | 6.49          | 6.47          | 0.02        |
 
-**|2d − 3d| ≤ 0.03pp on all scenes — well below the per-frame stochastic noise floor.** This is the substrate-equivalence claim from paper §3.0 made operational: the 3D-cell pool with footprint-derived entry level is the substrate-equivalent of RTXDI's 2D-tile pool at matching parameters. The novelty isn't the addressing scheme; it's the curve beyond. Setting the footprint-derived entry level to one screen tile recovers RTXDI's exact pool layout; beyond that operating point, 3D admits cross-tile world-space sharing that 2D cannot express.
+**|2d − 3d| ≤ 0.03pp on all scenes — well below the per-frame stochastic noise floor.** This is the structural-equivalence claim from paper §3.0 made operational: the 3D-cell pool with footprint-derived entry level is structurally equivalent to RTXDI's 2D-tile pool at matching parameters. The novelty isn't the addressing scheme; it's the curve beyond. Setting the footprint-derived entry level to one screen tile recovers RTXDI's exact pool layout; beyond that operating point, 3D admits cross-tile world-space sharing that 2D cannot express.
 
 ### Sampler artefact: `EmissivePdfMipmapSampler`
 
@@ -108,4 +108,4 @@ These didn't fit any single ladder step's narrative — emerged from the union o
 ### Lessons distilled
 
 - **Convention B requires reader-evaluated pdf.** `emissiveSampler.evalPdf()` at the receiver's vertex; never store the writer's solid-angle pdf — its `r²/cos` factor amplifies into firefly tails at distant readers.
-- **Substrate equivalence is structural.** 2D screen tile and 3D world cell are interchangeable at matched density; the mechanism is flat-multilevel-hash + reservoir reuse + RIS pool fill regardless of which one you address.
+- **Data-structure equivalence is structural.** 2D screen tile and 3D world cell are interchangeable at matched density; the mechanism is flat-multilevel-hash + reservoir reuse + RIS pool fill regardless of which one you address.

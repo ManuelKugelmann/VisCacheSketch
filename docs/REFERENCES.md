@@ -44,7 +44,7 @@ Forward-projects primary hits for temporal reuse instead of backprojection. Orth
 
 ### Zheng et al. 2024 — ReSTIR PG
 **Z. Zheng, P. Sen, R. Ramamoorthi, "ReSTIR PG: Path Guiding with Spatiotemporally Resampled Reservoirs," SIGGRAPH Asia 2024.**
-Bridges GRIS theory and path guiding by treating the path-guiding distribution as a reservoir-sampled cache. Belongs to both threads — ReSTIR-family and path-guiding — and is a useful cross-thread reference for the §3.0 substrate-convergence claim. Cites the ReSTIR lineage deeply; its substrate is a per-region reservoir of guiding samples, structurally similar to ReGIR but with path-guiding semantics.
+Bridges GRIS theory and path guiding by treating the path-guiding distribution as a reservoir-sampled cache. Belongs to both threads — ReSTIR-family and path-guiding — and is a useful cross-thread reference for the §3.0 design-convergence claim. Cites the ReSTIR lineage deeply; its data structure is a per-region reservoir of guiding samples, structurally similar to ReGIR but with path-guiding semantics.
 - PDF: [UCSD preprint](https://cseweb.ucsd.edu/~ravir/zhengsiga.pdf) | **Auto**
 
 ### Zhang 2024 — Area ReSTIR

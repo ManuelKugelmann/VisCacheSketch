@@ -184,7 +184,7 @@ from MK2006's binary-V visibility cache (Bernoulli, CV+RRR, shadow-ray
 reduction). Different cached quantity. Different update math. Different
 bias defence. **Same data structure**.
 
-Eight primitives in common (the substrate convergence list):
+Eight primitives in common (the design-convergence list):
 
 1. Flat single-buffer hash table, levels co-mingled
 2. Pos+normal joint cell key (`hash_grid_normal_level` ↔ our `qa` with oct-normal)
@@ -196,12 +196,12 @@ Eight primitives in common (the substrate convergence list):
 8. MLE α-floor on per-cell EWMA blending (their `α = max(1/N, MIN_ALPHA)` ↔ our `mlAlphaFloorN`)
 
 The convergence is **not on the algorithm**. Algorithms differ. The
-convergence is **on the substrate**: the flat multilevel jittered spatial
+convergence is **on the data structure**: the flat multilevel jittered spatial
 hash with pos+normal cell key, fingerprint collision check, distance-driven
-sizing, and α-floor blending is the right substrate for online-learned
+sizing, and α-floor blending is the right data structure for online-learned
 per-cell statistics in real-time path tracing. Five other contemporary
 teams (Boissé 2021, ReGIR 2021, GI-1.0 2022, SHaRC 2024, MCPG 2025)
-arrived at the same substrate from the radiance-caching, light-reservoir,
+arrived at the same design from the radiance-caching, light-reservoir,
 and path-guiding lineages. We arrived at it from the visibility-caching
 lineage (MK2006 → 2026). **Six independent confirmations of the design.**
 
@@ -241,11 +241,11 @@ lineage (MK2006 → 2026). **Six independent confirmations of the design.**
   we need for binary visibility — but the *online learning during render*
   idea is shared, and the paper is the canonical reference.
 
-**Citation framing for paper §3.0** (Substrate as Convergent Design Point):
+**Citation framing for paper §3.0** (Data Structure as Convergent Design Point):
 list MCPG 2025 alongside Boissé 2021 / ReGIR 2021 / GI-1.0 2022 / SHaRC
-2024 as one of five independent re-developments of the substrate. Cite
-[Kugelmann 2006 §3.2.2] for priority on the cell-keying criteria. Frame
-the structural convergence as **validation that the design is right**,
+2024 as one of five independent re-developments of the design. The
+[Kugelmann 2006 §3.2.2] thesis already explored the cell-keying criteria.
+Frame the structural convergence as **validation that the design is right**,
 not as derivation from any single contemporary work.
 
 Sources: [PG 2017 (CGF)](https://onlinelibrary.wiley.com/doi/abs/10.1111/cgf.13227) ·
