@@ -104,7 +104,7 @@ struct PathReusePass
 
         // randomly select one N-rooks pattern from 256 patterns
         const uint patternIndex = min(255, sampleNext1D(sg) * 256);
-        const int2 pixelInBlock = (pixel - blockShiftOffset + 16) % 16;
+        int2 pixelInBlock = (pixel - blockShiftOffset + 16) % 16;
         int pixelInBlockId = pixelInBlock.y * 16 + pixelInBlock.x;
         int byteAddress = pixelInBlockId / 2;
         uint word = nRooksPattern.Load(patternIndex * 256 + 128 + 4 * (byteAddress / 4));

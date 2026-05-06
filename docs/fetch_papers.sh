@@ -45,13 +45,19 @@ download "Ouyang2021_ReSTIR_GI.pdf" \
     "https://arxiv.org/pdf/2108.05263.pdf"
 
 download "Lin2022_GRIS_ReSTIR_PT.pdf" \
-    "https://arxiv.org/pdf/2211.09648.pdf"
+    "https://graphics.cs.utah.edu/research/projects/gris/sig22_GRIS.pdf"
+
+download "Lin2022_GRIS_ReSTIR_PT_supplemental.pdf" \
+    "https://graphics.cs.utah.edu/research/projects/gris/GRIS_supplemental.pdf"
 
 download "Muller2022_InstantNGP.pdf" \
     "https://arxiv.org/pdf/2201.05989.pdf"
 
 download "Zhang2024_AreaReSTIR.pdf" \
-    "https://arxiv.org/pdf/2401.02293.pdf"
+    "https://research.nvidia.com/labs/rtr/publication/zhang2024area/zhang2024area.pdf"
+
+download "Lin2026_ReSTIR_PT_Enhanced.pdf" \
+    "https://research.nvidia.com/labs/rtr/publication/lin2026restirptenhanced/lin2026restirptenhanced.pdf"
 
 download "Stotko2025_MrHash.pdf" \
     "https://arxiv.org/pdf/2511.21459.pdf"
@@ -117,6 +123,46 @@ echo "NVIDIA Research:"
 
 download "Liu2025_ReservoirSplatting.pdf" \
     "https://research.nvidia.com/labs/rtr/publication/liu2025splatting/liu2025splatting_paper.pdf"
+
+download "Boksansky2021_ReGIR.pdf" \
+    "https://cwyman.org/papers/rtg2-manyLightReGIR.pdf"
+
+echo ""
+
+# ── Adjacent literature (literature log additions) ───────────────────────
+echo "Adjacent literature (RR, path guiding, radiance caches, denoising):"
+
+download "Vorba2016_ADRRS.pdf" \
+    "https://cgg.mff.cuni.cz/~jaroslav/papers/2016-adrrs/2016-vorba-adrrs-paper.pdf"
+
+download "Rath2022_EARS.pdf" \
+    "https://graphics.cg.uni-saarland.de/papers/rath-2022-ears.pdf"
+
+download "Muller2021_NRC.pdf" \
+    "https://tom94.net/data/publications/mueller21realtime/mueller21realtime.pdf"
+
+download "Muller2017_PracticalPathGuiding.pdf" \
+    "https://tom94.net/data/publications/mueller17practical/mueller17practical.pdf"
+
+download "Vevoda2018_BayesianLightSampling.pdf" \
+    "https://cgg.mff.cuni.cz/~jaroslav/papers/2018-bayesianlighting/2018-vevoda-bayesianlighting-paper.pdf"
+
+download "Majercik2019_DDGI.pdf" \
+    "https://jcgt.org/published/0008/02/01/paper-lowres.pdf"
+
+download "Schied2017_SVGF.pdf" \
+    "https://research.nvidia.com/sites/default/files/pubs/2017-07_Spatiotemporal-Variance-Guided-Filtering%3A/svgf_preprint.pdf"
+
+download "Zheng2024_ReSTIR_PG.pdf" \
+    "https://cseweb.ucsd.edu/~ravir/zhengsiga.pdf"
+
+# ── GRIS / mutation lineage (algorithmic basis of ReSTIR PT) ─────────────
+download "Hedstrom2025_ReSTIR_BDPT.pdf" \
+    "https://cwyman.org/papers/tog25_ReSTIR_BDPT.pdf"
+
+# Note: Veach 1997 MLT (Stanford thesis), Kelemen 2002 PSS-MLT (Eurographics),
+# Lehtinen 2013 / Kettunen 2015 gradient-domain MLT/BDPT — author-hosted PDFs
+# move regularly; left for manual fetch. See docs/REFERENCES.md.
 
 echo ""
 

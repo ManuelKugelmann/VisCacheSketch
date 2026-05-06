@@ -26,10 +26,7 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
 
-// [Falcor 8] Ported from Falcor 4.x ShadingData fields to BSDFProperties.
-// Old fields (diffuseTransmission, specularTransmission, diffuse, N,
-// linearRoughness, specular) no longer exist on ShadingData.
-// Material properties are now queried via IMaterialInstance::getProperties().
+// [Falcor 8] Material properties queried via IMaterialInstance::getProperties().
 
 import Rendering.Materials.IMaterialInstance;
 import Rendering.Materials.IsotropicGGX;

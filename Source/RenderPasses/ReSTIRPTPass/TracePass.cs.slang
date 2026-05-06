@@ -16,14 +16,8 @@ cbuffer CB
     int gSampleId;
 }
 
-void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
+void walkPath(inout PathState path)
 {
-    PathState path;
-    gPathTracer.generatePath(pathID, path);
-
-    printSetPixel(path.getPixel());
-    logSetPixel(path.getPixel());
-
     while (path.isActive())
     {
         if (path.isHit())
@@ -37,6 +31,17 @@ void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
             gPathTracer.handleMiss(path);
         }
     }
+}
+
+void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
+{
+    PathState path;
+    gPathTracer.generatePath(pathID, path);
+
+    printSetPixel(path.getPixel());
+    logSetPixel(path.getPixel());
+
+    walkPath(path);
 
     gPathTracer.finalize(path);
     gPathTracer.writeOutput(path, giReservoir, sampleIdx);

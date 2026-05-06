@@ -89,6 +89,9 @@ struct PathState
     float      russianRoulettePdf = 1.f;
     float3      sharedScatterDir;
     float      prevScatterPdf = 1.f;
+    // Lin 2026 §4: squared ray-cone footprint area at primary hit
+    // = ||x0-x1||² · cos(θ) / (4π). Used at reconnection-vertex selection.
+    float      pathPrimaryFootprint2 = 0.f;
 
     HitInfo rcPrevVertexHit;   // daqi: save the previous vertex of rcVertex, used in hybrid shift replay, for later reconnection
     float3 rcPrevVertexWo; // daqi: save the outgoing direction at the previous vertex of rcVertex, used in hybrid shift replay, for later reconnection

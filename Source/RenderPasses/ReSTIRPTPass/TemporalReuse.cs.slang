@@ -296,9 +296,29 @@ struct PathReusePass
                 dstReservoir.finalizeRIS();
             }
 
-            if (dstReservoir.weight < 0.f || isinf(dstReservoir.weight) || isnan(dstReservoir.weight)) dstReservoir.weight = 0.f;
+            // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
+            if (dstReservoir.weight < 0.f || isinf(dstReservoir.weight) || isnan(dstReservoir.weight) || dstReservoir.weight > 1e10f) dstReservoir.weight = 0.f;
+            if (any(isnan(dstReservoir.F) || isinf(dstReservoir.F) || dstReservoir.F > 1e10f)) dstReservoir.F = 0.f;
             outputReservoirs[centralOffset] = dstReservoir;
             color = dstReservoir.F * dstReservoir.weight;
+            // Guard color BEFORE the directLighting branch.
+            if (any(isnan(color) || isinf(color) || color < 0.f)) color = 0.f;
+            // §15 — Static chroma-preserving soft-clamp at K × DL ceiling.
+            // K = params.fireflyClampK is a tunable knob calibrated offline
+            // via the RPT00 ladder against per-bounce GT. The shader does not
+            // read GT or use any feedback loop — the ladder sweeps K, picks
+            // the value minimizing RMSE/PSNR vs GT, and bakes it into Params.
+            // Soft-clamp preserves chroma direction; only magnitude is bounded.
+            if (useDirectLighting)
+            {
+                float colorLum = max(max(color.r, color.g), color.b);
+                float dlLum = max(max(directLighting[pixel].r, directLighting[pixel].g), directLighting[pixel].b);
+                float ceiling = params.fireflyClampK * max(dlLum, 0.01f);
+                if (colorLum > ceiling)
+                {
+                    color = color * (ceiling / colorLum);
+                }
+            }
 
             if (gIsLastRound)
             {

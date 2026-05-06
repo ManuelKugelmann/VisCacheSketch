@@ -22,3 +22,6 @@
 [submodule "refs/NVlabs_conditional_ReSTIR"]
 	path = refs/NVlabs_conditional_ReSTIR
 	url = https://github.com/NVlabs/conditional-restir-prototype
+[submodule "refs/NVIDIAGameWorks_RTXPT"]
+	path = refs/NVIDIAGameWorks_RTXPT
+	url = https://github.com/NVIDIAGameWorks/Path-Tracing-SDK.git

@@ -1,17 +1,9 @@
 /***************************************************************************
- # Falcor 4.x -> 8.0 porting shims for ReSTIR PT Pass.
+ # [Falcor 8] Compatibility shims for ReSTIR PT.
  #
- # These free functions wrap Falcor 8's IMaterialInstance interface to
- # provide call-compatible replacements for the Falcor 4.x BSDF helpers
- # that DQLin's ReSTIR PT code relied on.  Keeping shims in one place
- # minimises the diff in PathTracer.slang and Shift.slang.
- #
- # Per-lobe PDF filtering uses IMaterialInstance::evalBsdfAndPdf() which
- # was ported from the NVlabs Conditional ReSTIR prototype. This avoids
- # the setActiveLobes renormalization issue: the original DQLin/NVlabs
- # code used unnormalized partial PDFs (sum of pLobe*lobePdf for selected
- # lobes only, with original full-BSDF weights). evalBsdfAndPdf() provides
- # exactly this, giving correct shift mapping Jacobians for ReSTIR PT.
+ # Wraps IMaterialInstance to provide BSDF helpers used by PathTracer.slang
+ # and Shift.slang. Per-lobe PDF filtering uses evalBsdfAndPdf() which
+ # returns un-normalized partial PDFs (required for correct shift Jacobians).
  **************************************************************************/
 
 import Scene.Shading;
@@ -23,10 +15,9 @@ import Scene.Camera.Camera;                 // Camera, CameraData
 import Utils.Math.Ray;                      // Ray
 
 // ---------------------------------------------------------------------------
-// BSDFSample_ -- compatibility struct
-// Falcor 4.x used `wi` for the sampled direction; Falcor 8 uses `wo`.
-// ReSTIR PT also stores a per-component PDF (`pdfSingle`) used when
-// kSeparatePathBSDF is enabled.
+// BSDFSample_ -- compatibility struct.
+// Stores `wi` (== Falcor 8 BSDFSample::wo) and a per-component PDF
+// `pdfSingle` used when kSeparatePathBSDF is enabled.
 // ---------------------------------------------------------------------------
 struct BSDFSample_
 {
@@ -49,7 +40,7 @@ IMaterialInstance _getMI(const ShadingData sd)
 }
 
 // ---------------------------------------------------------------------------
-// sampleBSDF  --  Falcor 4.x: sampleBSDF(sd, sg, result, useImportanceSampling)
+// sampleBSDF -- BSDF importance sampling.
 // ---------------------------------------------------------------------------
 bool sampleBSDF(const ShadingData sd, inout SampleGenerator sg, out BSDFSample_ result, bool useImportanceSampling = true)
 {
@@ -64,11 +55,8 @@ bool sampleBSDF(const ShadingData sd, inout SampleGenerator sg, out BSDFSample_ 
         result.weight    = bs.weight;
         result.lobe      = bs.lobeType;
 
-        // Compute pdfSingle: the PDF contribution from only the sampled lobe class.
-        // In DQLin's Falcor 4.4, bsdf.sample() returned this as a separate output
-        // (the per-lobe selection-weighted PDF before adding cross-lobe MIS terms).
-        // We use evalBsdfAndPdf with a lobeMask to get the unnormalized partial PDF,
-        // matching the original DQLin/NVlabs behavior exactly.
+        // Compute pdfSingle: PDF contribution from only the sampled lobe class
+        // (un-normalized partial PDF — required for correct shift Jacobians).
         bool isSampledSpecular = (bs.lobeType & ((uint)LobeType::Specular | (uint)LobeType::Delta)) != 0;
         // Specular class: 0x66 = Specular|Delta (reflection+transmission)
         // Diffuse class:  0x11 = Diffuse (reflection+transmission)
@@ -92,9 +80,8 @@ bool sampleBSDF_Reference(const ShadingData sd, inout SampleGenerator sg, out BS
 }
 
 // ---------------------------------------------------------------------------
-// evalBSDFCosine  --  evaluate BSDF*cosTheta for a given direction
-//
-// Overloads mirror the original Falcor 4.x signatures:
+// evalBSDFCosine -- evaluate BSDF*cosTheta for a given direction.
+// Overloads:
 //   evalBSDFCosine(sd, dir)
 //   evalBSDFCosine(sd, dir, allowedFlags)
 //   evalBSDFCosine(sd, dir, allowedFlags, isDelta)
@@ -112,11 +99,7 @@ float3 evalBSDFCosine(const ShadingData sd, float3 dir, uint allowedFlags)
     let mi = _getMI(sd);
     if (allowedFlags != 0xffffffff && allowedFlags != 0xff)
     {
-        // Use evalBsdfAndPdf for per-lobe filtering without setActiveLobes
-        // renormalization. The BSDF eval values are not affected by lobe
-        // weight renormalization (they use material blend weights directly),
-        // but we use evalBsdfAndPdf for consistency and to avoid the extra
-        // material instance construction.
+        // evalBsdfAndPdf handles per-lobe filtering without renormalization.
         float pdf = 0.f;
         float pdfAll = 0.f;
         return mi.evalBsdfAndPdf(sd, dir, sg, allowedFlags, pdf, pdfAll);
@@ -181,12 +164,15 @@ float evalPdfBSDF(const ShadingData sd, float3 dir, out float pdfAll, uint allow
     return evalPdfBSDF(sd, dir, pdfAll, allowedFlags);
 }
 
+float evalPdfBSDF(const ShadingData sd, float3 dir, uint allowedFlags, bool isDelta)
+{
+    float pdfAll;
+    return evalPdfBSDF(sd, dir, pdfAll, allowedFlags, isDelta);
+}
+
 // ---------------------------------------------------------------------------
-// evalPdfBSDFWithV  --  evaluate PDF using a different incident direction
-//
-// In the original DQLin code this re-evaluates the BSDF PDF at a vertex
-// as if the path arrived from direction `-V` (the given view direction)
-// rather than the one stored in ShadingData.
+// evalPdfBSDFWithV -- evaluate PDF as if the path arrived from direction
+// `-newV` rather than the one stored in ShadingData.
 // ---------------------------------------------------------------------------
 float evalPdfBSDFWithV(const ShadingData sd, float3 newV, float3 dir, uint allowedFlags)
 {
@@ -211,10 +197,7 @@ float evalPdfBSDFWithV(const ShadingData sd, float3 newV, float3 dir, uint allow
 }
 
 // ---------------------------------------------------------------------------
-// classifyAsRough / hasRoughComponent
-//
-// Falcor 4.x had these on ShadingData using sd.linearRoughness.
-// Falcor 8 obtains roughness from BSDFProperties.
+// classifyAsRough / hasRoughComponent — roughness comes from BSDFProperties.
 // ---------------------------------------------------------------------------
 
 /// Returns true if the surface should be treated as "rough" (diffuse-like).
@@ -226,8 +209,7 @@ bool classifyAsRough(const ShadingData sd, float specularRoughnessThreshold)
 }
 
 /// Returns true if the surface has any lobe whose roughness exceeds the threshold.
-/// In the original DQLin code, hasRoughComponent(sd, 1.f) effectively checks
-/// whether the material has any non-specular (diffuse) lobes.
+/// `hasRoughComponent(sd, 1.f)` effectively checks for any diffuse lobe.
 bool hasRoughComponent(const ShadingData sd, float threshold)
 {
     let mi = _getMI(sd);
@@ -258,12 +240,8 @@ float3 getEmission(const ShadingData sd)
 }
 
 // ---------------------------------------------------------------------------
-// computeRayPinholePrevFrame  --  Falcor 4.x camera helper
-//
-// Falcor 4 had Camera::computeRayPinholePrevFrame().  Falcor 8 removed it.
-// We reconstruct the previous-frame ray using prevViewMat (rotation part)
-// combined with current-frame intrinsics (cameraU/V/W lengths = FOV scaling,
-// which don't change between frames).
+// [Falcor 8] computeRayPinholePrevFrame — reconstruct the previous-frame ray
+// from prevViewMat (rotation) + current-frame intrinsic lengths.
 // ---------------------------------------------------------------------------
 extension Camera
 {
@@ -300,3 +278,4 @@ extension Camera
         return ray;
     }
 }
+

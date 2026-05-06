@@ -145,6 +145,8 @@ def main():
     if raw_steps:
         steps = [_normalize_step(s) for s in raw_steps]
     else:
+        # Numeric ladder steps (00..99); RDI_NN steps must be requested
+        # explicitly via -s RDI_01 etc to keep the default run focused.
         steps = sorted(os.path.basename(p)
                        for p in glob.glob(os.path.join(SCRIPTS_DIR, "VisCache_Ladder??.py")))
     scenes = [_normalize_scene(s) for s in raw_scenes]

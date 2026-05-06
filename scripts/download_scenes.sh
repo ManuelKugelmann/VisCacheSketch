@@ -114,10 +114,11 @@ if [ ! -d "$MEDIA_DIR/TestScenes" ]; then
 else
     echo "[scenes] TestScenes already exists, skipping"
 fi
-# Copy CornellBox pyscene from repo if missing
-if [ -d "$MEDIA_DIR/TestScenes" ] && [ ! -f "$MEDIA_DIR/TestScenes/CornellBox_1AreaLight.pyscene" ] && [ -f "$SCENES_DIR/CornellBox_1AreaLight.pyscene" ]; then
+# Always sync CornellBox pyscene from scenes/ (the canonical source) — overwrites
+# any stale runtime copy so camera/light edits in scenes/ propagate.
+if [ -d "$MEDIA_DIR/TestScenes" ] && [ -f "$SCENES_DIR/CornellBox_1AreaLight.pyscene" ]; then
     cp "$SCENES_DIR/CornellBox_1AreaLight.pyscene" "$MEDIA_DIR/TestScenes/CornellBox_1AreaLight.pyscene"
-    echo "[scenes] Copied CornellBox_1AreaLight.pyscene from scenes/"
+    echo "[scenes] Synced CornellBox_1AreaLight.pyscene from scenes/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -138,11 +139,12 @@ if [ ! -d "$MEDIA_DIR/Bistro" ]; then
     case "$yn" in
         [Yy]*)
             download_and_extract "Bistro" "$BISTRO_URL"
-            # Copy pyscenes from repo if not already present (NVIDIA ORCA ships its own too)
+            # Always sync our pyscenes from scenes/ (overwrites any NVIDIA ORCA
+            # default + any prior stale copy). The canonical source is scenes/.
             for pf in BistroInterior.pyscene BistroExterior.pyscene; do
-                if [ ! -f "$MEDIA_DIR/Bistro/$pf" ] && [ -f "$SCENES_DIR/$pf" ]; then
+                if [ -f "$SCENES_DIR/$pf" ]; then
                     cp "$SCENES_DIR/$pf" "$MEDIA_DIR/Bistro/$pf"
-                    echo "[scenes] Copied $pf from scenes/"
+                    echo "[scenes] Synced $pf from scenes/"
                 fi
             done
             ;;
@@ -175,10 +177,14 @@ if [ ! -d "$MEDIA_DIR/Sponza" ]; then
                 sed -i 's/^d 0\.000000$/d 1.000000/' "$MEDIA_DIR/Sponza/sponza.mtl"
                 echo "[scenes] Fixed Sponza MTL opacity (d 0.0 → d 1.0)"
             fi
-            # Copy pyscene from repo if not already present
-            if [ ! -f "$MEDIA_DIR/Sponza/Sponza.pyscene" ] && [ -f "$SCENES_DIR/Sponza.pyscene" ]; then
+            # Always sync our pyscene from scenes/ — Crytek ships only OBJ + MTL,
+            # no pyscene. Overwrite mode keeps the runtime copy in sync with
+            # camera/light edits in scenes/ (was: "if not exists" guard, which
+            # caused the metre→centimetre revert in commit 012ab8f to NOT
+            # propagate to local runtime copies, breaking Sponza camera).
+            if [ -f "$SCENES_DIR/Sponza.pyscene" ]; then
                 cp "$SCENES_DIR/Sponza.pyscene" "$MEDIA_DIR/Sponza/Sponza.pyscene"
-                echo "[scenes] Copied Sponza.pyscene from scenes/"
+                echo "[scenes] Synced Sponza.pyscene from scenes/"
             fi
             ;;
         *) echo "[scenes] Skipping Sponza" ;;

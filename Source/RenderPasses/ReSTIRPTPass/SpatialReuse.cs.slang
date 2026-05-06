@@ -533,13 +533,27 @@ struct PathReusePass
         }
 #endif
 
+        // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
         if (dstReservoir.weight < 0.f) dstReservoir.weight = 0.f;
-        if (isnan(dstReservoir.weight) || isinf(dstReservoir.weight)) dstReservoir.weight = 0.f;
+        if (isnan(dstReservoir.weight) || isinf(dstReservoir.weight) || dstReservoir.weight > 1e10f) dstReservoir.weight = 0.f;
+        if (any(isnan(dstReservoir.F) || isinf(dstReservoir.F) || dstReservoir.F > 1e10f)) dstReservoir.F = 0.f;
 
         if (PathSamplingMode(kPathSamplingMode) != PathSamplingMode::PathReuse)
             temporalReservoirs[centralOffset] = dstReservoir;
 
         if (any(isnan(color) || isinf(color) || color < 0.f)) color = 0.f;
+        // §15 — Static chroma-preserving soft-clamp; K calibrated offline via
+        // the RPT00 ladder (see TemporalReuse for rationale).
+        if (useDirectLighting)
+        {
+            float colorLum = max(max(color.r, color.g), color.b);
+            float dlLum = max(max(directLighting[pixel].r, directLighting[pixel].g), directLighting[pixel].b);
+            float ceiling = params.fireflyClampK * max(dlLum, 0.01f);
+            if (colorLum > ceiling)
+            {
+                color = color * (ceiling / colorLum);
+            }
+        }
         if (gIsLastRound)
         {
             if (useDirectLighting)

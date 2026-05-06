@@ -579,12 +579,21 @@ def _oklab_distance_hdr(a_exr, b_exr):
 def oklab_distance_hdr_cached(a_exr, b_exr, cache_path=None):
     """Like _oklab_distance_hdr, but reads/writes a .npy cache if cache_path is given.
     Bad or missing cache falls through to recompute. Used to skip recomputing
-    vanilla-vs-GT (same across variants) for every ladder variant."""
+    vanilla-vs-GT (same across variants) for every ladder variant.
+
+    Cache is invalidated when either input EXR is newer than the cache (mtime
+    check). Without this, swapping the GT (e.g. default vanilla → bounce-
+    matched vanilla_bN) silently returns the stale distance map and the CSV
+    error metric never updates."""
     if cache_path and os.path.exists(cache_path):
-        try:
-            return np.load(cache_path).astype(np.float32)
-        except (IOError, OSError, ValueError):
-            pass  # bad cache → fall through
+        cache_mtime = os.path.getmtime(cache_path)
+        a_mtime = os.path.getmtime(a_exr) if os.path.exists(a_exr) else 0
+        b_mtime = os.path.getmtime(b_exr) if os.path.exists(b_exr) else 0
+        if cache_mtime >= max(a_mtime, b_mtime):
+            try:
+                return np.load(cache_path).astype(np.float32)
+            except (IOError, OSError, ValueError):
+                pass  # bad cache → fall through to recompute
     arr = _oklab_distance_hdr(a_exr, b_exr)
     if arr is not None and cache_path:
         try:
@@ -755,6 +764,36 @@ def _flip_score(render_lin, gt_lin):
         return None
 
 
+def compute_research_metrics_hdr(render_exr, gt_exr, nodata=None):
+    """Public wrapper: full battery of literature-standard rendering metrics on
+    linear HDR EXRs vs GT EXR. Returns dict of:
+      mse, rmse, psnr_db, relmse, smape, mape  (numerical, on luminance)
+      ms_ssim, flip                             (perceptual)
+    `relmse` is the Bitterli/ReSTIR-paper convention. `flip` is Andersson 2020
+    HDR-FLIP. Empty dict on failure / shape mismatch."""
+    a = read_exr(render_exr)
+    b = read_exr(gt_exr)
+    if not a or not b: return {}
+    def stack(d):
+        # Falcor saves as a single 'RGB' channel (HxWx3), Falcor8/external EXRs
+        # may use separate 'R'/'G'/'B' channels. Handle both.
+        if "RGB" in d:
+            arr = d["RGB"]
+            if arr.ndim == 3 and arr.shape[-1] >= 3:
+                return arr[..., :3]
+            return None
+        if "R" in d and "G" in d and "B" in d:
+            return np.stack([d["R"], d["G"], d["B"]], axis=-1)
+        return None
+    r_lin = stack(a); g_lin = stack(b)
+    if r_lin is None or g_lin is None or r_lin.shape != g_lin.shape:
+        return {}
+    mask = _valid_mask_from_nodata(nodata, r_lin.shape[:2])
+    if mask is None:
+        mask = np.ones(r_lin.shape[:2], dtype=bool)
+    return _pixel_metrics_suite(r_lin, g_lin, mask)
+
+
 def _pixel_metrics_suite(render_lin, gt_lin, mask):
     """Pixel-domain HDR metrics suite vs ground truth.
 
@@ -778,6 +817,14 @@ def _pixel_metrics_suite(render_lin, gt_lin, mask):
     if not mask.any():
         return {}
     EPS = 1e-2
+    # Drop NaN/Inf pixels from the mask — sun/sky directions can produce Inf
+    # or NaN in HDR EXR output, which would poison MSE/PSNR/relMSE means.
+    # Keep only pixels where BOTH render and GT are finite.
+    finite_mask = (np.all(np.isfinite(render_lin[..., :3]), axis=-1) &
+                   np.all(np.isfinite(gt_lin[..., :3]),     axis=-1))
+    mask = mask & finite_mask
+    if not mask.any():
+        return {}
     cl = _to_luminance(np.clip(render_lin[..., :3], 0.0, None))
     gl = _to_luminance(np.clip(gt_lin[..., :3],     0.0, None))
     cv = cl[mask]; gv = gl[mask]
@@ -1136,9 +1183,25 @@ def compute_render_error_hdr(render_exr, baseline_exr, outpath, nodata=None,
     viridis_png(np.clip(err / 1.4, 0, 1), outpath, nodata=nodata)
     mask = _valid_mask_from_nodata(nodata, err.shape)
     s = _map_stats(err, mask=mask, blob_sigma=ERR_WINDOW_SIGMA, norm=1.4)
+    # Extended paper-comparable metrics: blob (worst-region peak) is already in
+    # `max_err_pct` above; expose under `blob_err_pct` for clarity. Artifact-area
+    # metrics: fraction of pixels whose perceptual error exceeds 3 / 5 / 11 %
+    # — a direct measure of "visible artifact area".
+    err_pct_map = 100.0 * err / 1.4
+    if mask is not None:
+        valid = err_pct_map[mask]
+    else:
+        valid = err_pct_map[~np.isnan(err_pct_map)]
+    if valid.size > 0:
+        artifact_3_pct  = 100.0 * float(np.mean(valid > 3.0))
+        artifact_5_pct  = 100.0 * float(np.mean(valid > 5.0))
+        artifact_11_pct = 100.0 * float(np.mean(valid > 11.0))
+    else:
+        artifact_3_pct = artifact_5_pct = artifact_11_pct = 0.0
     return {
-        "mean_err":     s["mean"],
-        "mean_err_pct": s["mean_pct"],
-        "max_err":      s["max"],
-        "max_err_pct":  s["max_pct"],
+        "mean_err":         s["mean"],
+        "mean_err_pct":     s["mean_pct"],
+        "artifact_3_pct":   artifact_3_pct,
+        "artifact_5_pct":   artifact_5_pct,
+        "artifact_11_pct":  artifact_11_pct,
     }

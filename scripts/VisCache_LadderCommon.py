@@ -3777,37 +3777,23 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
 
 
 def _resolve_gt_for_variant(captureDir, gt_spp, res_tag, gt_variant_tag="vanilla"):
-    """Find GT HDR + cached noise floor. GTs live canonically in step 00's
-    capture dir (rendered there once by Ladder00, reused by every other
-    ladder step). Falls back to the current step's `captureDir` if step 00
-    hasn't run yet — but the canonical home is `captures/ladder/00/`.
+    """Find GT HDR + cached noise floor. GTs live exclusively in step 00's
+    capture dir — `captures/ladder/00/<scene>/`. No other step renders or
+    stores GTs. Run `run_ladder.py -s 00` first.
 
-    `gt_variant_tag` selects which vanilla reference to use as ground truth.
-    Default "vanilla" (canonical direct-only); pass e.g. "vanilla_b4" so a
-    4-bounce ReSTIRPT variant compares against a 4-bounce vanilla GT
-    (apples-to-apples convergence error). Falls back to the canonical
-    "vanilla" GT if the bounce-specific one is absent."""
-    # Step-00 canonical GT location: same scene name, but step swapped to "00".
-    # captureDir format: "captures/ladder/<step>/<scene_name>"
+    `gt_variant_tag` picks which vanilla reference (e.g. "vanilla_b4" for
+    4-bounce restirpt). Falls back to the canonical "vanilla" GT (direct-only)
+    if the bounce-specific one is absent in step 00."""
     parts = captureDir.replace("\\", "/").split("/")
-    if len(parts) >= 4 and parts[-3] == "ladder":
-        scene_name = parts[-1]
-        step00_dir = os.path.join(*parts[:-2], "00", scene_name)
-    else:
-        step00_dir = captureDir  # unrecognized layout; fall through
+    if len(parts) < 4 or parts[-3] != "ladder":
+        return None, None
+    scene_name = parts[-1]
+    step00_dir = os.path.join(*parts[:-2], "00", scene_name)
 
-    def _find(d, tag):
-        p = os.path.join(d, f"s_x{gt_spp}_{res_tag}_{tag}_hdr.exr")
-        return p if os.path.exists(p) else None
-
-    # Search order: step 00 with bounce-matched, step 00 with default vanilla,
-    # current step with bounce-matched, current step with default vanilla.
-    for d in (step00_dir, captureDir):
-        for tag in (gt_variant_tag, "vanilla"):
-            gt_hdr = _find(d, tag)
-            if gt_hdr:
-                floor = _baseline_noise_floor(d, gt_spp, res_tag, tag)
-                return gt_hdr, floor
+    for tag in (gt_variant_tag, "vanilla"):
+        gt_hdr = os.path.join(step00_dir, f"s_x{gt_spp}_{res_tag}_{tag}_hdr.exr")
+        if os.path.exists(gt_hdr):
+            return gt_hdr, _baseline_noise_floor(step00_dir, gt_spp, res_tag, tag)
     return None, None
 
 

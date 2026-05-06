@@ -38,7 +38,7 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
                           spatialNeighborCount=5, spatialReuseRadius=30,
                           candidateSamples=1, useRTXDIDirect=True,
                           useDirectLighting=True, pathSamplingMode="ReSTIR",
-                          disableDirectIllumination=True):
+                          disableDirectIllumination=True, fireflyClampK=1e9):
     # pathSamplingMode (string): "ReSTIR" (default), "PathReuse" (Bekaert),
     # or "PathTracing" — use "PathTracing" to bypass ReSTIR resampling and
     # validate the basic PT setup independently.
@@ -120,6 +120,7 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         "useDirectLighting":       useDirectLighting,
         "pathSamplingMode":        pathSamplingMode,
         "disableDirectIllumination": disableDirectIllumination,
+        "fireflyClampK":           fireflyClampK,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 

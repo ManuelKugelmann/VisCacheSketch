@@ -35,18 +35,18 @@ VARIANTS = [
     ("ws_blind",       lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
         wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=0,
-        wsJitterFilter=0.3, visibilityCheck=True, lightSelection=True,
-        extraVCProps={"wsUseCellInRIS": False})),
+        visibilityCheck=True, lightSelection=True,
+        extraVCProps={"jitterFilter": 0.3, "wsUseCellInRIS": False})),
     ("ws_cache",       lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
         wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=1,
-        wsJitterFilter=0.3, visibilityCheck=True, lightSelection=True,
-        extraVCProps={"wsUseCellInRIS": False})),
+        visibilityCheck=True, lightSelection=True,
+        extraVCProps={"jitterFilter": 0.3, "wsUseCellInRIS": False})),
     ("ws_explicit",    lambda: render_graph_PathTracer(
         viscache=True, wsReservoirs=True, maxBounces=0,
         wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=2,
-        wsJitterFilter=0.3, visibilityCheck=True, lightSelection=True,
-        extraVCProps={"wsUseCellInRIS": False})),
+        visibilityCheck=True, lightSelection=True,
+        extraVCProps={"jitterFilter": 0.3, "wsUseCellInRIS": False})),
     ("rtxdi",          lambda: render_graph_RTXDI(viscache=False)),
 ]
 WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate

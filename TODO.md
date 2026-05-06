@@ -441,3 +441,395 @@ All cross-refs, threshold naming, and Table 1b added. No remaining discrepancies
 - [ ] Rename `.scripts/sync_to_runtime.sh` → `.scripts/sync-to-runtime.sh`
 - [ ] Update all cross-references: CI workflows, quickstart.bat/sh, run_release.bat/sh, update.bat/sh, docs/
 - Convention: kebab-case for .sh and .bat; Mogwai .py = PascalCase; utility .py = snake_case
+
+---
+
+## 8. WS-Cascade ReGIR (RTXDI Parity Track) — 2026-04-30 (status updated 2026-05-01)
+
+Design notes: `.plans/rtxdi-parity-ws-cascade.md`. **STATUS: RTXDI PARITY ACHIEVED ON 3 SCENES.**
+
+After two compounding bug fixes (Dirac-pdf RIS weight = 0; cache-amortized V
+at cold cache compounding variance), wsrestir matches or beats RTXDI on all
+three test scenes:
+
+| Scene + SPP | vanilla | RTXDI | wsrestir | result |
+|---|---|---|---|---|
+| Cornell x1 | 10.16 | **6.08** | 5.63 | **MATCH** |
+| Sponza x1 | 11.27 | **9.20** | 10.77 | within 1.6pp |
+| **Sponza x4** | 6.23 | **9.20** (x1) | **8.71** | **BEATS rtxdi x1** |
+| **Bistro x1** | 29.15 | **24.97** | **20.79** | **BEATS by 4.2pp** |
+| Bistro x4 | 18.12 | — | 14.72 | better than vanilla x4 |
+
+Other variants on Cornell x1 (rtxdi 6.08): pixel_vaware **5.62** (BEATS),
+regir_ws **5.59** (BEATS). On Sponza x1: pixel_vaware 10.58. The cell-pool
+layered variants (regir, regir_ws) help on point-light scenes but are
+noise-additive on emissive-heavy scenes — keeping the wsrestir variant
+(without cell pool) as the flagship for emissive scenes.
+
+Two corrected old over-claims: "Sponza 3.81% beats RTXDI 2.4×" (misread of
+vanilla-x16 comparison; corrected during audit). And "structural gap to
+RTXDI on Sponza x1 requires tile pre-sample" (still true at 1.6pp residual,
+but the bulk of the gap turned out to be the K-RIS bugs, not architecture).
+
+- [x] Step (a) — multi-light cell pool (`WSCellPool`, 168 B/slot, N=8) with
+      sourcePdf+pHat+wSum arrays and Bitterli streaming reservoir per slot
+      (RIS-at-insert). Reads use `1/sourcePdf` for unbiased RIS.
+- [x] Step (b) — `wsCellPoolFillOnly` PathTracer property + dedicated
+      `PathTracerPrePass` instance in graph. UAV barrier between PrePass
+      and Main serializes pool fill before reads; output marked to
+      survive graph optimizer pruning.
+- [ ] Step (c) — cascade-descend pool inheritance. Pool keyed by
+      (cell, level); pre-pass writes coarse reliably + finer sparsely;
+      main read descends fine→coarse using whichever level has data.
+- [x] Step (d) — V-aware re-presample via probabilistic acceptance.
+      Each insert is gated by `accept = max(μ_cached, μ_min)`; stored
+      sourcePdf is multiplied by `accept` so reader's RIS reweights
+      correctly. Defensive sampling preserves unbiasedness.
+- [x] **Normal-aware spatial reuse rejection** (2026-05-01) —
+      WSReservoir._pad repurposed as `normalOct`; per-pixel reservoir
+      stamps shading normal at write; spatial gather + temporal read
+      drop neighbours with `cos(N) < 0.9`. Standard ReSTIR variance
+      reduction (Bitterli 2020 §6.1).
+
+### RDI ladder (RTXDI-parity progression)
+
+- [x] `VisCache_LadderRDI_01.py` — step (a) only at 16-frame warmup
+      (isolates the data structure)
+- [x] `VisCache_LadderRDI_02.py` — step (a)+(b) at single-frame
+      (isolates the pre-pass UAV barrier)
+- [x] `VisCache_LadderRDI_03.py` — WS-ReSTIR (full stack: temporal +
+      spatial pixel reuse + cell-in-RIS) layered on ReGIR pool
+- [x] `VisCache_LadderRDI_04.py` — Bayer-sparse pre-pass (quick win 1)
+- [ ] `VisCache_LadderRDI_05.py` — `wsCellPoolDrawK=4` cost reduction
+      (quick win 2)
+- [ ] `VisCache_LadderRDI_06.py` — V-aware re-presample (quick win 3 ≡
+      step (d) above; biggest quality lever)
+
+### ReGIR-paper directives (Boksanský 2021 chapter, Boissé 2021/2022, Zhang 2023)
+
+- [ ] **P1** Cite ReGIR (Boksanský 2021) as primary anchor in WS-ReSTIR
+      / WSCellPool paper section. Boissé 2021 = screen-side; ReGIR =
+      grid-side; we are grid-side.
+- [ ] **P2** Adopt M-cap + decay schedule in `wsCellPoolInsert` (replace
+      one-shot random replace with RIS update rule + exponential M-cap).
+      Smoother bias/variance trade. Addresses saturated-`ct=2` finding
+      (project memory `project_sponza_trust_gate_saturated`).
+- [ ] **P3** Visibility-in-p̂ at fill time (NEE-style) — equivalent to
+      step (d) above. Cheaper than per-pixel V which we tried + rejected
+      (project memory `project_wsrestir_visibility_blind_bias`).
+- [ ] **P4** Footprint-derived cell size (Binder 2018/2019). Replace
+      constant `quantSceneScale` multiplier with per-hit cell size from
+      area pdf — ≈constant samples-per-cell across distance. Removes
+      Sponza/Bistro tuning gap.
+- [ ] **P5** Two-level promotion/decay policy (Boissé 2022 GI-1.0).
+      Explicit "promote when stable, decay when missing" rule for cell
+      entries — more principled than discrete `numLevels` cascade with
+      fixed quant shifts. Plugs into adaptive-`ct` idea
+      (`project_scene_dependent_ct`).
+
+### Cell-key normal axis (Zhang 2023, Boissé 2021)
+
+- [x] **Implemented** — `gWSNormalAddr` flag in `WSReservoirIO.slang`
+      folds 6-axis face-normal bin (`wsNormalBin(faceN)`) into the cell
+      hash. Off by default; opt-in via `wsNormalAddr=True` Python prop.
+- [ ] Add references to paper section 9 (WS-ReSTIR integration) and
+      `references.md`: Zhang et al. 2023, Boissé 2021. Document the
+      6-axis bin choice (vs continuous octahedral encoding) and the
+      address-vs-fingerprint mixing.
+- [ ] Document in `docs/` how to enable + when normal addressing helps
+      (corners, thin shells, cross-orientation pollution at cell
+      boundaries).
+
+
+### Footprint + cascade composition (Binder 2018/2019 + ours)
+
+- [ ] **Per-hit footprint → entry level**, replacing the constant
+      `wsCellSize`. Compute footprint = pixel solid angle × hit
+      distance²; map to nearest cascade level via log₂ of cell-size
+      step factor. Writes/reads at this level by default.
+- [ ] **Cascade-descend fallback** when the footprint-selected level is
+      empty: descend fine→coarse (existing `vhfLookup` pattern).
+- [ ] **Active-level histogram.** Add a `gWSHitsPerLevel[N]` atomic
+      counter incremented on every primary hit. Pre-pass uses this to
+      skip empty levels and target write effort at the active subset.
+- [ ] **Inactive-level pool reuse.** Free-list of pool slots from
+      levels with zero hits in past K frames; recycled to active
+      levels under pressure. Decouples pool memory from `numLevels`.
+- [ ] **Jittered footprint** — `gWSJitterLevel` knob, single uniform
+      random per pixel offsetting the footprint→level mapping.
+      Stochastic boundary smoothing in lieu of two-level blended read.
+      Composes with existing `gWSJitterFilter` (position-jitter) and
+      `gWSJitterCell` (cell-index-jitter).
+- [ ] **Footprint-stability-gated decay** [Boissé 2022]: cells whose
+      footprint-implied level changes (camera motion, geometry edge)
+      decay faster so stale entries do not stick at an inappropriate
+      level.
+
+
+### Bidirectional cascade escape from footprint entry level
+
+- [ ] **Prefer footprint level.** Read at footprint-derived level first;
+      cascade traversal only fires on starvation or high variance.
+- [ ] **Coarsen on starvation.** `pool.count < count_min` (or
+      `reservoir.M < M_floor`) → back up to next coarser level. Cap by
+      `footprintMaxScale × pixel_footprint` to prevent runaway
+      coarsening into spatially-meaningless cells.
+- [ ] **Refine on inconsistency.** `M ≥ M_floor && variance > vt` →
+      descend to next finer level. Reuses existing Bernoulli-variance
+      gate; finer level's spatial discrimination wins on
+      shadow/geometry edges.
+- [ ] Tune `count_min`, `M_floor`, `footprintMaxScale`, and the
+      variance threshold per the existing ladder methodology
+      (`VisCache_Ladder06.py` style — single-axis sweep at fixed
+      pinned other params).
+
+
+### Decouple reservoir / pool / VisCache cells
+
+- [ ] **Independent cell-key for the cell pool.** Currently the pool
+      uses `wsResolveCell()` (the reservoir's resolver) re-masked to
+      pool capacity. Add `wsResolvePoolCell(posA, faceN)` with its own
+      cell-size knob (`gWSPoolCellSize`) so pool and reservoir can sit
+      at different cascade levels.
+- [ ] **Pool union read.** `wsLoadCellPool` reads only the home cell.
+      Extend with K jittered-neighbour pool reads, concat'd into a
+      single iteration loop in the K-RIS draw block. Each entry's
+      `sourcePdf` is already stored, so the union is unbiased without
+      extra weighting. Net: wider effective pool without coarser keys.
+- [ ] **Pool spreading is free** — document this in the paper's
+      cost-comparison table: pool spread = (K_pool × N candidates ×
+      BSDF eval), no extra rays. Reservoir spread = K_res × shadow
+      rays (or K_res × PWC lookups via §9.3).
+- [ ] **VisCache ↔ pool similarity** — explore folding visibility into
+      the pool entry's `sourcePdf` (i.e. multiply sourcePdf by μ at
+      write time): the pool then represents the writer's *visibility-
+      weighted* proposal pdf, and read-side RIS unbiasing already
+      cancels it correctly. This is a one-line change at the insert
+      site.
+
+
+### Unified cascade addressing — one mechanism, three target footprints
+
+VisCache, WS-ReSTIR reservoir, WS-ReSTIR cell pool all share:
+- footprint → entry level (per-hit)
+- `jitterQuantize(posA, vhfPosASize(lvl), salt)` (existing)
+- normal-bin hash mixing (existing)
+
+They differ ONLY in the per-structure target-footprint multiplier α
+that picks the entry level:
+
+| Structure | α | Rationale |
+|---|---|---|
+| VisCache | ≈1 | finest cells; per-shading-point visibility |
+| WS-ReSTIR reservoir | ≈8–16 | many pixels share → M grows, temporal stability |
+| WS-ReSTIR cell pool | ≈4 | middle: candidate diversity without reservoir's temporal bias |
+
+- [ ] **`cascadeLevelForFootprint(footprint × α)` shared helper** in
+      `VisCache.slang` (or a new common header). Replaces:
+      - VisCache's existing target-level selection
+      - WS-ReSTIR's `gWSCellLevel` (becomes `gWSCellTargetAlpha`,
+        derives level from per-hit footprint)
+      - Future cell-pool's level selection
+- [ ] **Per-hit pixel footprint helper** — `pixelFootprintAtHit(sd)`
+      using `gPixelSize1 × hitDistance²` from the existing
+      `gPixelSize1` and the path's hit point.
+- [ ] **Decouple `gWSCellLevel` (fixed) from `gWSCellTargetAlpha`
+      (footprint-driven).** Keep both as runtime modes — fixed level
+      for ablation, footprint-driven for production.
+
+
+### Multi-level prefill on overlapping cells
+
+Each hit at footprint entry level L writes to L, L-1 (parent), L+1
+(finer cell containing the hit point). 3× prepass write cost, ~0.2×
+vanilla at 1/16 Bayer-sparsity. Reader at L±1 finds populated cells
+without reader-side cascade descent.
+
+- [ ] **Extend `wsCellPoolInsert` call site in `PathTracer.slang`
+      prepass path** to loop over `lvl ∈ {L-1, L, L+1}`, computing
+      `wsResolvePoolCellAt(posA, faceN, lvl)` for each, calling
+      `wsCellPoolInsert` with the same `(lightTypeIndex, payload,
+      sourcePdf)`.
+- [ ] **`wsResolvePoolCellAt(posA, faceN, lvl)` helper** — variant of
+      `wsResolveCell` that takes an explicit level instead of using
+      `gWSCellLevel` / `wsLevel()`. Keeps the existing
+      jitter/normal-bin/hash machinery.
+- [ ] **Edge cases:** at `lvl == 0` skip the L-1 write; at
+      `lvl == numLevels - 1` skip the L+1 write.
+- [ ] **Verify unbiasedness** — each entry's `sourcePdf` is its writer-
+      side proposal pdf, independent of which level it landed in.
+      Reader's RIS handles the level mismatch correctly. Spot-check
+      against vanilla reference.
+- [ ] **Test on Sponza/Bistro at 1-frame x1** — expect to retain the
+      ReGIR step (a)+(b) quality (3.81% Sponza) at higher fill
+      throughput, with stochastic LOD jitter or starvation-driven
+      coarsen/refine no longer triggering empty reads.
+
+
+### Step (d) refinement — μ-aware fill via VisCache (no extra rays)
+
+The original step (d) called for M shadow rays per cell prepass to weight
+candidates by `p̂ × V`. RTXDI declined this for cost. Replacement plan:
+reuse VisCache's μ + μmin defensive floor (§9.1) at *fill time*:
+
+```
+for each of M candidates at cell:
+    μ = vhfLookup(cellPosA → light's posB)
+    weight = pHat × max(μ, μmin)
+keep top-N by weight
+```
+
+- [ ] **In `WSCellPoolIO.slang::wsCellPoolInsert`** add an optional
+      μ-aware mode (gated by `gWSCellPoolVAware`): before inserting,
+      evaluate `μ = vhfLookup(...)` for the candidate's `(posA → posB)`
+      pair, multiply `sourcePdf` by `1 / max(μ, μmin)` so the writer-
+      side proposal pdf accounts for the cache-predicted visibility.
+      RIS unbiasing on the read side already cancels it correctly.
+- [ ] **Integration with M-from-N re-presample** (the original step d
+      bag-and-resample). Draw M=32 candidates per cell, score by
+      `pHat × max(μ, μmin)`, keep top-N=8. Cell pool ends up with
+      visible-bright candidates only without a single shadow ray.
+- [ ] **Wire as RDI_06 ladder step** (already scaffolded as
+      `VisCache_LadderRDI_06.py`). Test on Sponza/Bistro — expect
+      noticeable improvement over RDI_02's 3.81% Sponza result.
+- [ ] **Defensive-sampling unbiasedness check.** μmin floor means even
+      a cold/stale cache cell cannot exclude any light from the pool
+      (matches the §9.1 argument). Spot-check vs vanilla GT.
+
+
+### Code consolidation — single cascade-address helper for all three structures
+
+All three (VisCache, WS-ReSTIR reservoir, WS-ReSTIR cell pool) key on
+`(posA, faceN, level)` with the same primitives. Today the addressing
+is duplicated across `vhfQuantizePair` (VisCache) and `wsResolveCell`
+(WS-ReSTIR). Consolidation:
+
+- [ ] **Single helper `cascadeAddress(posA, faceN, lvl) → (slot, fp)`**
+      in `VisCache.slang`. All three structures call it with their own
+      level (chosen via their own α multiplier).
+- [ ] **Drop `gWSNormalAddr`** as a separate enable; use the same
+      `kFlag_EnableNormalAddr` flag VisCache already exposes. One
+      orientation-folding policy across the whole system.
+- [ ] **Remove `wsResolveCell`, `wsQuantizePosA`, `wsAddressHash`,
+      `wsFingerprintHash`** — replace call sites with the consolidated
+      helper. ~80 lines deleted, no behavior change.
+- [ ] **`gWSCellLevel` becomes "the level the cell pool / reservoir
+      reads from"**, computed from α via the new
+      `cascadeLevelForFootprint` helper (initially constant α; later
+      per-hit footprint-driven).
+
+
+### Bayer-prepass density ↔ pool cell footprint coupling
+
+The prepass Bayer stride must scale with the pool's cell footprint so
+each cell receives ≈1 active prepass pixel on average. Mismatched:
+
+| Pool cell footprint | Bayer N (per side) | Active fraction |
+|---|---|---|
+| Per-pixel (α=1) | 1 (no Bayer) | 100% |
+| ~4 pixels (α=2) | 2 (2×2 Bayer) | 25% |
+| ~16 pixels (α=4) | 4 (4×4 Bayer) | 6.25% |
+| ~64 pixels (α=8) | 8 (8×8 Bayer) | 1.6% |
+
+Rule: `BayerN ≈ sqrt(α)` (the linear pixel-count per side that matches
+the pool cell side length).
+
+- [ ] **Auto-couple `gSubframeN` (prepass) to `wsCellLevel`**: the
+      effective α at that level dictates the appropriate Bayer
+      density. Either derive `subframeN` from cell size at fill time,
+      or expose as a single knob `gWSPrePassBayer` derived from α.
+- [ ] **Empirically validate** — sweep BayerN at fixed pool cell size
+      (e.g. on Sponza with α=4) and measure error vs cost. Expect
+      sweet spot at BayerN that gives ≈1–2 active fills per cell.
+- [ ] **Adjust per-level if prefill is multi-level** (L−1, L, L+1) —
+      the coarsest (L−1) cell needs less Bayer density than L+1, so
+      ideally each level gets its own Bayer schedule.
+
+### Hash-address extensions for pool / reservoir
+
+VisCache adds a `posB` (pairwise-receiver) axis to its key (`pcgHashB`,
+`pcgHashDist` for dirdist). Pool / reservoir currently use `posA + faceN`
+only. Extension candidates and their use cases:
+
+- [ ] **`viewDir`-axis** for the reservoir, when the cache shifts
+      from DI to GI / specular: orientation-of-incoming-ray matters
+      for view-dependent shading. Per-(posA, viewBin) reservoirs
+      handle highlight transitions.
+- [ ] **Receiver-normal axis** is already optionally folded in
+      (`gWSNormalAddr`) — separates floor/wall at corners.
+- [ ] **Light-direction bin** for the cell pool, partitioning entries
+      by *direction from cell to light*. A reader querying a specific
+      bounce direction draws candidates aligned with that bounce —
+      direction-conditioned importance. Useful for GI extension.
+- [ ] **Distance-to-light bin** in pool: groups by emitter distance
+      bucket. Reader at specific depth gets distance-matched
+      candidates (less noise on near-vs-far lights mixed in one cell).
+- [ ] None of these are needed for pure DI shading on diffuse
+      surfaces — DI is view-independent there. Adopt only if the
+      cache extends to GI / specular use cases.
+
+
+### Refined Bayer-cell coupling formula
+
+For a prepass at Bayer N (1 of N² pixels active) to deliver M fill
+samples per pool cell, cell area = M × N² pixels²; cell side ≈ √M × N.
+
+| Bayer N | active frac | cell side @ M=8 | cell area @ M=8 |
+|---|---|---|---|
+| 1  | 100%   | 3 px   | 8 px²    |
+| 2  | 25%    | 6 px   | 32 px²   |
+| 4  | 6.25%  | 11 px  | 128 px²  |
+| 8  | 1.6%   | 23 px  | 512 px²  |
+| 16 | 0.4%   | 45 px  | 2048 px² |
+
+- [ ] **Auto-derive `wsCellLevel` from `gSubframeN` + target M.**
+      Choose Bayer first (cost budget), then cell footprint follows
+      from the M=pool_N constraint. Replace fixed `wsCellLevel`
+      default with this formula at runtime; keep the explicit knob
+      as an override.
+- [ ] **Per-level Bayer schedule** when multi-level prefill is on:
+      L−1 (coarser) uses smaller BayerN, L+1 (finer) uses larger,
+      so each level gets ≈M samples per cell at appropriate cost.
+
+
+### Coarser pool cells — RTXDI tile-equivalent regime
+
+RTXDI tile pre-sample uses 16×16 to 32×32 screen-space tiles (256–1024
+pixels). Our default α=4 (16 pixels per cell) is FINER than RTXDI's
+tile. We can go coarser without quality penalty — RTXDI's existence
+proof shows large tiles + many candidates per tile work fine.
+
+| α | Cell footprint (px) | Notes |
+|---|---|---|
+| 1 | 1 | per-pixel — pool == per-pixel reservoir, defeats sharing |
+| 4 | 16 (4×4) | current default — finer than RTXDI |
+| 8 | 64 (8×8) | matches RTXDI 8×8 sub-tile |
+| 16 | 256 (16×16) | matches RTXDI 16×16 tile |
+| 32 | 1024 (32×32) | matches RTXDI 32×32 tile |
+
+- [ ] **Sweep `wsCellLevel`** at the cell-pool layer: try levels
+      mapping to α ∈ {4, 8, 16, 32} on Sponza. Expect coarser cells
+      to improve due to candidate diversity.
+- [ ] **Memory savings**: at α=16, total pool slots ≈ pixels / 256
+      = 1K cells for 512x512. 1K × 104B = 104KB pool. Tiny vs
+      current 256K-cell × 104B = 26MB.
+
+
+### Decouple prepass-K from main-K + expose pixel-spatial-reuse knob
+
+Currently `gWSInitialCandidates` controls BOTH prepass and main K-RIS
+candidate count. RTXDI's recipe asks for K_pre=8 (tile pre-sample) and
+K_main=32 (initial pixel samples). Decoupling:
+
+- [ ] **Cbuffer field `gWSCellPoolPrePassK`** (default 8) used by the
+      `WS_CELL_POOL_FILL_ONLY` path; main pass keeps reading
+      `gWSInitialCandidates`. Lets us run K_pre=8 prepass + K_main=32
+      main fresh (RTXDI-faithful) without code duplication.
+- [ ] **Cbuffer field `gWSPixelSpatialNeighbours`** (default 4) for the
+      currently-hardcoded `kSpatialPixels=4` loop in PathTracer.slang.
+      Make it tunable so the RTXDI parity (k=5) is reachable; expose
+      via `wsPixelSpatialNeighbours` Python kwarg.
+- [ ] **Distinguish in docs** — `wsSpatialNeighbours` is *cell-based*
+      spatial gather (gated on `wsUseCellInRIS`); the always-on pixel
+      spatial reuse is a separate mechanism. Easy source of confusion.
+

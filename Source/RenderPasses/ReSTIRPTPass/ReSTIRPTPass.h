@@ -1,6 +1,5 @@
 /***************************************************************************
  # Copyright (c) 2022, Daqi Lin.  All rights reserved.
- # Ported to Falcor 8.0 API for VisCacheSketch (2026).
  **************************************************************************/
 #pragma once
 #include "Falcor.h"
@@ -21,14 +20,13 @@
 
 using namespace Falcor;
 
-/** Path tracer that uses TraceRayInline() in DXR 1.1.
-    1:1 port of DQLin's ReSTIR PT (SIGGRAPH 2022) to Falcor 8.0.
+/** ReSTIR PT path tracer using TraceRayInline (DXR 1.1).
 */
 class ReSTIRPTPass : public RenderPass
 {
 public:
     FALCOR_PLUGIN_CLASS(ReSTIRPTPass, "ReSTIRPTPass",
-                        "ReSTIR PT path tracer (DQLin) using DXR 1.1 TraceRayInline");
+                        "ReSTIR PT path tracer using DXR 1.1 TraceRayInline");
 
     static ref<ReSTIRPTPass> create(ref<Device> pDevice, const Properties& props);
 
@@ -92,6 +90,11 @@ private:
         uint32_t    maxTransmissionReflectionDepth = 0;         ///< Maximum transmission depth at which to sample specular reflection.
         uint32_t    maxTransmissionRefractionDepth = 0;         ///< Maximum transmission depth at which to sample specular refraction (after that, IoR is set to 1).
         bool        disableCaustics = false;                    ///< Disable sampling of caustics.
+        // Supported configurations:
+        //   1. PT-mode + disableDirectIllumination=false: standalone PT with internal NEE.
+        //   2. ReSTIR mode + disableDirectIllumination=true + RTXDI directLighting feed
+        //      (canonical configuration).
+        //   3. ReSTIR mode + disableDirectIllumination=false (no RTXDI): unsupported.
         bool        disableDirectIllumination = true;           ///< Disable all direct illumination.
         TexLODMode  primaryLodMode = TexLODMode::Mip0;          ///< Use filtered texture lookups at the primary hit.
         ColorFormat colorFormat = ColorFormat::LogLuvHDR;       ///< Color format used for internal per-sample color and denoiser buffers.
@@ -161,32 +164,6 @@ private:
     bool                            mOutputTime = false;        ///< True if time data should be generated as output.
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mEnableRayStats = false;      ///< Set to true when the stats tab in the UI is open. This may negatively affect performance.
-
-    // -----------------------------------------------------------------
-    // VisCache integration state.
-    //
-    // GPU resources are obtained from the upstream VisCache pass via
-    // InternalDictionary each frame in beginFrame(). They are bound to
-    // every compute pass that may evaluate visibility (PathReusePass,
-    // PathRetracePass) in their respective binding functions.
-    //
-    // Per-feature flags are compile-time defines that trigger shader
-    // recompilation when toggled. This is intentional: compile-time
-    // gating lets the Slang compiler eliminate dead code and avoid
-    // register pressure from unused VisCache cbuffer bindings.
-    // -----------------------------------------------------------------
-    ref<Buffer> mpVHFTable;                ///< RWStructuredBuffer<VHFEntry> — the hash table
-    struct { uint32_t tableCapacity=0, bootThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
-             uint32_t numLevels=0, flags=1;
-             float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
-             float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
-             float normalACoarse=0, normalAFine=0;
-             uint32_t diagAccumWindow=128; } mVCParams;
-    bool mVisCacheAvailable = false;       ///< True when upstream VisCache pass exported valid resources
-    bool mVisCacheVisibilityCheck = false;    ///< CV+RRR gating for all visibility checks (Shift.slang)
-    bool mVisCacheLightSelection = false;  ///< §11.1: cached mu gates NEE shadow rays (PathTracer.slang)
-    bool mVisCacheDirDistAddr = false;     ///< G: dir+dist addressing (vs endpoint pairs)
-    bool mLocalCVRRR = false;       ///< Ablation: reservoir-local CV+RRR (reuses VisCacheParams)
 
     uint64_t                        mAccumulatedRayCount = 0;
     uint64_t                        mAccumulatedClosestHitRayCount = 0;

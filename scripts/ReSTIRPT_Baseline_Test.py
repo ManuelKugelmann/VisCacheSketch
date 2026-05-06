@@ -117,25 +117,24 @@ def build_graph():
 
 
 def resolve_scene(scene_name):
-    """Find a .pyscene by stem. Prefer paths where the scene's external
-    geometry assets (fbx, obj) are co-located with the .pyscene — Falcor's
-    asset search starts from the .pyscene's directory, so an isolated copy in
-    runtime/media/scenes/ that references "BistroInterior.fbx" relatively
-    will fail to load.
-    """
+    """Find a .pyscene by stem. Prefer `scenes/` (the canonical source) first
+    so camera/light edits there always take effect, matching the ladder's
+    LadderCommon::resolve_scene order. Falcor's importScene() resolves
+    geometry paths relative to the .pyscene's directory, so the canonical
+    scenes/*.pyscene files build absolute obj/fbx paths via __file__ to
+    point into runtime/media/<X>/."""
     rt = PROJECT_ROOT or "."
     candidates = [
-        # Prefer geometry-co-located locations FIRST so relative asset paths
-        # resolve. Bistro fbx lives in runtime/media/Bistro/, Sponza obj in
-        # runtime/media/Sponza/, VeachAjar in runtime/data/ReSTIRPTPass/.
+        os.path.join(rt, "scenes", scene_name + ".pyscene"),
+        # VeachAjar lives next to its assets in the source tree.
+        os.path.join(rt, "Source", "RenderPasses", "ReSTIRPTPass", "Data",
+                     scene_name, scene_name + ".pyscene"),
+        # Runtime copies (synced by download_scenes.bat/sh) — fallback only.
         os.path.join(rt, "runtime", "media", "Bistro", scene_name + ".pyscene"),
         os.path.join(rt, "runtime", "media", "Sponza", scene_name + ".pyscene"),
+        os.path.join(rt, "runtime", "media", "scenes", scene_name + ".pyscene"),
         os.path.join(rt, "runtime", "data", "ReSTIRPTPass", scene_name,
                      scene_name + ".pyscene"),
-        # CornellBox is procedural — runtime/media/scenes/ is the right home.
-        os.path.join(rt, "runtime", "media", "scenes", scene_name + ".pyscene"),
-        # Project-root scenes/ as a final non-runtime fallback.
-        os.path.join(rt, "scenes", scene_name + ".pyscene"),
         scene_name + ".pyscene",
         scene_name,
     ]

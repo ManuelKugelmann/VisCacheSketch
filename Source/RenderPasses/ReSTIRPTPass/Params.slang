@@ -191,8 +191,22 @@ struct RestirPathTracerParams
     // params for roughness condition in mixed strategy
     float   specularRoughnessThreshold = 0.2f; ///< Specular reflection events are only classified as specular if the material's roughness value is equal or smaller than this threshold. Otherwise they are classified diffuse.
     // params for distance condition in mixed strategy
-    float   nearFieldDistance = 0.1f; //TODO: make this adaptive to spatial reuse size / scene size
-    uint2 dummy; // padding
+    // Interpreted as a fraction of `sceneRadius` (set in setScene); shaders
+    // multiply by sceneRadius at use sites.
+    float   nearFieldDistance = 0.03f;
+    float   sceneRadius = 1.f;          ///< min(extent.x,y,z) of scene bounds, set by setScene().
+    // §8 pathThpMax retired (Lin 2026 footprint criterion + RTXPT FireflyFilter
+    // K make path-throughput clamping unnecessary). Slot kept for cbuffer ABI
+    // stability; remove fully in the next ABI-breaking pass.
+    float   _retiredField0 = 0.f;       // was pathThpMax
+    // §15 chroma-preserving soft-clamp: ceiling = K × max-channel(DL).
+    // Default 1e9 → branch never fires → effectively disabled. Disabled by
+    // default because the GRIS resampling itself handles firefly suppression
+    // structurally; the clamp adds bias (output magnitude truncation) for a
+    // marginal RMSE win on low-firefly scenes. Same disabled-by-default
+    // stance as the RTXDI BoilingFilter port. Set fireflyClampK ≈ 100-1000
+    // via render_graph_ReSTIRPT(...) kwarg to engage.
+    float   fireflyClampK = 1.e9f;
 
 #ifndef HOST_CODE
 

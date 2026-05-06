@@ -19,13 +19,20 @@ except ImportError:
     pass
 
 
-def render_graph_RTXDI(viscache=False):
+def render_graph_RTXDI(viscache=False, biasCorrection="Basic"):
     """Build an RTXDI (ReSTIR DI) render graph.
 
     Args:
         viscache: If True, add VisCache pass for light selection (§11.1).
+        biasCorrection: RTXDI's BiasCorrection mode — one of "Off", "Basic"
+                        (default; uses stored V on reuse, biased), "Pairwise",
+                        "RayTraced" (re-traces V during MIS normalization,
+                        unbiased). Default "Basic" matches RTXDI's own default
+                        and matches what our restir_2d/3d implementation does.
     """
     name = "RTXDI_VisCache" if viscache else "RTXDI"
+    if biasCorrection != "Basic":
+        name += f"_{biasCorrection}"
     g = RenderGraph(name)
 
     # G-Buffer
@@ -48,6 +55,7 @@ def render_graph_RTXDI(viscache=False):
             "mode":                       "SpatiotemporalResampling",
             "localLightCandidateCount":    8,
             "infiniteLightCandidateCount": 1,
+            "biasCorrection":             biasCorrection,
         },
     })
     g.addPass(rtxdi, "RTXDIPass")

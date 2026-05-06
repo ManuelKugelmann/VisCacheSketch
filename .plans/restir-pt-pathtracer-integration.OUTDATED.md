@@ -1,3 +1,13 @@
+# SUPERSEDED — historical context only
+
+This plan is **outdated and rejected**. The "copy DQLin shaders verbatim into `Falcor/.../PathTracer/restirpt/` and add §9.3 cache-gated revalidation" approach it locks in is not what we're building. The 2026-05-04 staged byte-copy at `Falcor/Source/RenderPasses/PathTracer/restirpt/` (referenced by Decisions #5 and #6 below) has been deleted.
+
+**Replacement:** `~/.claude/plans/plan-a-restirpt-2d-synchronous-horizon.md` — clean port of `Source/RenderPasses/ReSTIRPTPass/` (DQLin reference) into `Falcor/Source/RenderPasses/PathTracer/`, parity-only, no experimental algorithmic content. v1 ships `restirpt_2d` (per-pixel addressing equivalent to current ReSTIRPTPass); `restirpt_3d` (world-cell addressing) is a vNext additive change behind a mode flag.
+
+The Risk #1–#8 mitigations and Ladder19 validation skeleton below remain useful as a checklist of failure modes to watch for in the new port; do not execute the file as-is.
+
+---
+
 # Plan: ReSTIR PT integration into PathTracer (WS-PT v1)
 
 ## Context

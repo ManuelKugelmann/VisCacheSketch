@@ -223,7 +223,7 @@ struct PathReuseMISWeight
 // 88/128 B
 struct PathReservoir
 {
-    float M = 0.f; // this is a float, because temporal history length is allowed to be a fraction. 
+    float M = 0.f; // this is a float, because temporal history length is allowed to be a fraction.
     float weight = 0.f; // during RIS and when used as a "RisState", this is w_sum; during RIS when used as an incoming reseroivr or after RIS, this is 1/p(y) * 1/M * w_sum
     ReSTIRPathFlags pathFlags; // this is a path type indicator, see the struct definition for details
     uint rcRandomSeed; // saved random seed after rcVertex (due to the need of blending half-vector reuse and random number replay)
@@ -294,7 +294,7 @@ struct PathReservoir
 
         float w = toScalar(in_F) / p;
 
-        if (isnan(w) || w == 0.f) return false;
+        if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
 
@@ -324,7 +324,7 @@ struct PathReservoir
 
         M += inReservoir.M;
 
-        if (isnan(w) || w == 0.f) return false;
+        if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
 
@@ -359,7 +359,7 @@ struct PathReservoir
 
         M += inReservoir.M;
 
-        if (isnan(w) || w == 0.f) return false;
+        if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
 
@@ -396,9 +396,10 @@ struct PathReservoir
 
         M += inReservoir.M;
 
-        if (isnan(w) || w == 0.f) return false;
+        if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
+        // Lin 2026 #4 — propagate vector accumulator through same-pixel merges.
 
         // Accept?
         if (sampleNext1D(sg) * weight <= w)
@@ -432,12 +433,15 @@ struct PathReservoir
         weight *= toScalar(F) * M;
     }
 
+    // Post-division Inf/NaN guard: tiny-but-nonzero p_hat from grazing
+    // reconnections can produce Inf weight via division.
     [mutating]
     void finalizeRIS()
     {
         float p_hat = toScalar(F);
         if (p_hat == 0.f || M == 0.f) weight = 0.f;
         else weight = weight / (p_hat * M);
+        if (isnan(weight) || isinf(weight) || weight < 0.f) weight = 0.f;
     }
 
     // assuming using proper resampling MIS weight, no need to divide by M
@@ -447,6 +451,7 @@ struct PathReservoir
         float p_hat = toScalar(F);
         if (p_hat == 0.f) weight = 0.f;
         else weight = weight / p_hat;
+        if (isnan(weight) || isinf(weight) || weight < 0.f) weight = 0.f;
     }
 
 };

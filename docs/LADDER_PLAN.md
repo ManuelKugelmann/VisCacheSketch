@@ -13,10 +13,21 @@ VisCache is a single substrate (flat multilevel hash, CV+RRR estimator, μ outpu
 | A     | n/a (references)    | none         | self (GT)          |
 | B     | PT DI single-bounce | shadow-ray RR (V cache, single level)             | `vanilla` x{1..4096}        |
 | C     | PT DI single-bounce | shadow-ray RR (V cache, multilevel cascade)       | stage B canonical            |
-| D     | ReSTIR DI           | μ-weighted light selection + amortized V          | `rtxdi`, `restir_2d`, `restir_3d` |
+| D     | ReSTIR DI           | (a) cache-V on shadow rays + (b) cache-V revalidation on reused samples + (c1/c2/c3) μ-aware target pdf at reservoir-read / pool-read / presample-write | `rtxdi`, `restir_2d`, `restir_3d` |
 | E     | PT multibounce      | V cache at all bounces + per-bounce RR            | `vanilla_b{1,4,8}`           |
 | F     | ReSTIR PT           | reconnection-shift V revalidation (paper §12) + μ-NEE at indirect | `restirpt_b{1,4,8}` |
 | G     | BDPT (open)         | sensor-side reconnection (MK2006 §7), eye-cache   | TBD                          |
+
+**Stage D layered framework (designed 2026-05-06).** Treat ReSTIR DI like the PathTracer first — use cache to resolve visibility queries before touching the reservoir math:
+
+- **(a) fresh-sample V** — cache CV+RRR replaces unconditional shadow trace at the K-RIS winner's V test. Already wired (`enableVisCacheVisibilityCheck`); needs proper rays+err joint capture via `run_variants` to judge cost/quality. Use PathTracer DI canonical knobs (`ct128_vt0030_pm010`, `qa012`, `bayer4x4_cell4x4`) as the starting cache config.
+- **(b) reconnected-sample V** — cache-V revalidation on temporal/spatial reuse (RTXDI's `BiasCorrection::RayTraced` slot, but cheaper). Same `evalRevalidationCV` code path; gated to fire at the read site instead of (or in addition to) the post-RIS site.
+- **(c1) μ at per-pixel reservoir READ** — multiply `pHat_reader` by cache μ in the cross-pixel/temporal merge. Bitterli streaming-merge formula already does `pHat_reader / pHat_writer` ratio: just include μ in `pHat_reader`.
+- **(c2) μ at pool→pixel READ** — same `pHat_reader` site (often shared with c1); pool candidate gets μ-weighted by the reader's cache state.
+- **(c3) μ at cell-pool WRITE (presample)** — multiply `pHat_writer` (per-cell μ) at the K-RIS that fills the pool. Filters the pool's candidate SET toward visible lights; reader's `pHat_reader / pHat_writer` ratio cancels writer-side μ in W (no double-count).
+- **μ_min trust floor** — when implementing c1/c2/c3, bump default `wsLightMuMin` from 0.01 → 0.25 (cache treated as a rough guide, 4× ratio favoring visible vs occluded). The 1% floor presumes a precise cache; current cache on Bistro/Sponza at x4 is noise-dominated.
+
+Order: (a) and (b) first (config-only, no slang patch); c1+c2 next (one patch — `pHat_reader` site); c3 last (separate patch at cell-pool insert).
 
 ## Stage layout
 

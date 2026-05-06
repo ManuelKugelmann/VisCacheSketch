@@ -78,13 +78,11 @@ if not exist "%MEDIA_DIR%\TestScenes" (
 ) else (
     echo [scenes] TestScenes already exists, skipping
 )
-REM Copy CornellBox pyscene from repo if missing
+REM Always sync CornellBox pyscene from scenes\ (the canonical source).
 if exist "%MEDIA_DIR%\TestScenes" (
-    if not exist "%MEDIA_DIR%\TestScenes\CornellBox_1AreaLight.pyscene" (
-        if exist "%SCENES_DIR%\CornellBox_1AreaLight.pyscene" (
-            copy /y "%SCENES_DIR%\CornellBox_1AreaLight.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox_1AreaLight.pyscene" >nul
-            echo [scenes] Copied CornellBox_1AreaLight.pyscene from scenes\
-        )
+    if exist "%SCENES_DIR%\CornellBox_1AreaLight.pyscene" (
+        copy /y "%SCENES_DIR%\CornellBox_1AreaLight.pyscene" "%MEDIA_DIR%\TestScenes\CornellBox_1AreaLight.pyscene" >nul
+        echo [scenes] Synced CornellBox_1AreaLight.pyscene from scenes\
     )
 )
 
@@ -128,13 +126,12 @@ if not exist "%MEDIA_DIR%\Bistro" (
             rmdir /S /Q "%MEDIA_DIR%\Bistro\%%S" 2>nul
         )
     )
-    REM Copy pyscenes from repo if not already present (NVIDIA ORCA ships its own too)
+    REM Always sync our pyscenes from scenes\ (overwrites any NVIDIA ORCA
+    REM default + any prior stale copy). The canonical source is scenes\.
     for %%P in (BistroInterior.pyscene BistroExterior.pyscene) do (
-        if not exist "%MEDIA_DIR%\Bistro\%%P" (
-            if exist "%SCENES_DIR%\%%P" (
-                copy /y "%SCENES_DIR%\%%P" "%MEDIA_DIR%\Bistro\%%P" >nul
-                echo [scenes] Copied %%P from scenes\
-            )
+        if exist "%SCENES_DIR%\%%P" (
+            copy /y "%SCENES_DIR%\%%P" "%MEDIA_DIR%\Bistro\%%P" >nul
+            echo [scenes] Synced %%P from scenes\
         )
     )
     echo [scenes] Bistro ready
@@ -187,12 +184,14 @@ if not exist "%MEDIA_DIR%\Sponza" (
         powershell -Command "(Get-Content '%MEDIA_DIR%\Sponza\sponza.mtl') -replace '^d 0\.000000$','d 1.000000' | Set-Content '%MEDIA_DIR%\Sponza\sponza.mtl'"
         echo [scenes] Fixed Sponza MTL opacity
     )
-    REM Copy pyscene from repo if not already present
-    if not exist "%MEDIA_DIR%\Sponza\Sponza.pyscene" (
-        if exist "%SCENES_DIR%\Sponza.pyscene" (
-            copy /y "%SCENES_DIR%\Sponza.pyscene" "%MEDIA_DIR%\Sponza\Sponza.pyscene" >nul
-            echo [scenes] Copied Sponza.pyscene from scenes\
-        )
+    REM Always sync our pyscene from scenes\ -- Crytek ships only OBJ + MTL,
+    REM no pyscene. Overwrite mode keeps the runtime copy in sync with
+    REM camera/light edits in scenes\ (was: "if not exists" guard, which
+    REM caused the metre->centimetre revert in commit 012ab8f to NOT
+    REM propagate to local runtime copies, breaking Sponza camera).
+    if exist "%SCENES_DIR%\Sponza.pyscene" (
+        copy /y "%SCENES_DIR%\Sponza.pyscene" "%MEDIA_DIR%\Sponza\Sponza.pyscene" >nul
+        echo [scenes] Synced Sponza.pyscene from scenes\
     )
     echo [scenes] Sponza ready
 ) else (

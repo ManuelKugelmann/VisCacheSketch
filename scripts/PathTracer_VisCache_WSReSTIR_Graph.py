@@ -2,8 +2,8 @@
 PathTracer_VisCache_WSReSTIR_Graph.py — PathTracer + VisCache + §9.4 WS-ReSTIR DI.
 
 Delegates to PathTracer_Graph.render_graph_PathTracer with both viscache and
-wsReservoirs toggles on. Reservoirs ride the VisCache posA cascade at
-`wsLevelOffset` levels coarser than the finest visibility level.
+wsReservoirs toggles on. WS-ReSTIR uses its own posA cell size (`wsCellSize`,
+world units) — independent of the VisCache cascade.
 
 Usage:
     Mogwai.exe --script scripts/PathTracer_VisCache_WSReSTIR_Graph.py --scene Arcade.pyscene

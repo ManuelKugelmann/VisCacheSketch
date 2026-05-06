@@ -25,13 +25,6 @@ import Utils.Debug.PixelDebug;
 import LoadShadingData;
 import Falcor8Compat;
 import PathBuilder;
-
-// ---------------------------------------------------------------------------
-// VisCache integration: VisCache.slang self-guards with #if USE_VISCACHE,
-// so this import is unconditional — it compiles to nothing when VisCache
-// is not in the render graph.
-// ---------------------------------------------------------------------------
-import RenderPasses.VisCache.VisCache;
 import PathReservoir;
 
 #include "Utils/Math/MathConstants.slangh"
@@ -41,15 +34,12 @@ __exported import Params;
 
 uint getAllowedBSDFFlags(bool isSpecularBounce)
 {
-    // DQLin original used SampledBSDFFlags {DiffuseRefl=1, DiffuseTrans=2, SpecRefl=4, SpecTrans=8}.
-    // Falcor 8 LobeType uses different bit layout; map accordingly.
-    // Specular class: SpecularReflection(0x02)|DeltaReflection(0x04)|SpecularTransmission(0x20)|DeltaTransmission(0x40) = 0x66
-    // Diffuse class:  DiffuseReflection(0x01)|DiffuseTransmission(0x10) = 0x11
+    // [Falcor 8] LobeType bit layout — specular = 0x66, diffuse = 0x11.
     if (kSeparatePathBSDF) return isSpecularBounce ? 0x66 : 0x11;
     else return 0xff; // LobeType::All
 }
 
-/// Porting shim: DQLin's getBSDFLobes(sd) -> Falcor 8.0 IMaterialInstance.getLobeTypes(sd).
+/// [Falcor 8] BSDF lobe enumeration via IMaterialInstance.getLobeTypes(sd).
 uint getBSDFLobes(const ShadingData sd)
 {
     let lod = ExplicitLodTextureSampler(0.0f);
@@ -320,10 +310,7 @@ struct PathTracer
         bool valid;
         BSDFSample_ result;
 
-        // Always importance-sample. The original DQLin code's 4th parameter was
-        // "useDeterministicBSDF" (extra lobe-filtered re-evaluation), NOT
-        // "useImportanceSampling". Falcor 8's mi.sample() handles hemisphere
-        // consistency internally, so the deterministic re-eval is not needed.
+        // Always importance-sample.
         if (kUseBSDFSampling) valid = sampleBSDF(sd, path.sg, result, true);
         else valid = sampleBSDF_Reference(sd, path.sg, result);
 
@@ -944,6 +931,10 @@ struct PathTracer
     */
     bool terminatePathByRussianRoulette(inout PathState path)
     {
+        // Lin 2026 §6.2.4: RR at initial sample only, never during replay
+        // (replay must reproduce the path deterministically).
+        if (path.enableRandomReplay) return false;
+
         const float rrVal = luminance(path.getCurrentThp());
         const float prob = max(0.f, 1.f - rrVal);
         if (sampleNext1D(path.sg) < prob)
@@ -1043,6 +1034,17 @@ struct PathTracer
         // Check if this is the primary hit.
         const bool isPrimaryHit = path.length == 0;
 
+        // Lin 2026 §4 primary-hit ray-cone footprint: R_pri² = ||x0-x1||² · cos(θ) / (4π).
+        // Consumed at reconnection-vertex selection sites.
+        if (isPrimaryHit)
+        {
+            float3 x0 = path.origin;
+            float3 x1 = sd.posW;
+            float dist2 = dot(x1 - x0, x1 - x0);
+            float cosTheta = abs(dot(sd.faceN, path.dir));
+            path.pathPrimaryFootprint2 = dist2 * cosTheta * (1.f / (4.f * 3.14159265f));
+        }
+
         // Add emitted radiance.
         // The primary hit is always included, secondary hits only if emissive lights are enabled and the full light contribution hasn't been sampled elsewhere.
         bool computeEmissive = isPrimaryHit || kUseEmissiveLights && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
@@ -1110,21 +1112,23 @@ struct PathTracer
                 {
                     path.rcVertexPathTreeIrradiance += path.thp * emission * misWeight;
                 }
-                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, max(0, path.length - 1), path.dir, Lr, 
+                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, max(0, path.length - 1), path.dir, Lr,
                     path.length - 1 == path.pathBuilder.rcVertexLength ? path.thp * emission * misWeight : path.rcVertexPathTreeIrradiance,
                     path.useHybridShift, path.russianRoulettePdf, misWeight, lightPdf, (uint)LightSampleType::Emissive, path.pathReservoir, path.enableRandomReplay);
 #else
-                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, max(0, path.length - 1), path.dir, Lr, path.thp * emission * misWeight, 
+                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, max(0, path.length - 1), path.dir, Lr, path.thp * emission * misWeight,
                     path.useHybridShift, path.russianRoulettePdf, misWeight, lightPdf, (uint)LightSampleType::Emissive, path.pathReservoir, path.enableRandomReplay);
 #endif
 
                 // daqi: if current escaped vertex has path.length >= 2, then it can be used as a rcVertex
                 if (selectedCurrentPath && path.useHybridShift && path.length >= 2 && path.length < path.pathBuilder.rcVertexLength)
                 {
-                    // insert path flags
-
-                    // daqi: ideally, this should use a smaller nearFieldDistance than the default threshold
-                    bool isFarField = length(sd.posW - path.origin) >= params.nearFieldDistance;
+                    // Lin 2026 §4 footprint criterion.
+                    float3 dispR = sd.posW - path.origin;
+                    float dist2R = dot(dispR, dispR);
+                    float cosR = abs(dot(sd.faceN, path.dir));
+                    float recipPG = (path.prevScatterPdf > 0.f && cosR > 1e-8f) ? dist2R / (path.prevScatterPdf * cosR) : 1e30f;
+                    bool isFarField = recipPG >= 0.02f * path.pathPrimaryFootprint2;
                     bool isLastVertexAcceptableForRcPrev = path.isLastVertexClassifiedAsRough;
 
                     if (!((params.localStrategyType & (uint)LocalStrategy::DistanceCondition) != 0 && !isFarField || (params.localStrategyType & (uint)LocalStrategy::RoughnessCondition) != 0 && !isLastVertexAcceptableForRcPrev))
@@ -1184,7 +1188,14 @@ struct PathTracer
 
         bool is_rcVertex = false;
 
-        bool isFarField = length(path.origin - prevPathOrigin) >= params.nearFieldDistance;
+        // Lin 2026 §4 footprint criterion.
+        float3 dispRC = sd.posW - prevPathOrigin;
+        float dist2RC = dot(dispRC, dispRC);
+        float invDistRC = rsqrt(max(dist2RC, 1e-20f));
+        float3 dirRC = dispRC * invDistRC;
+        float cosRC = abs(dot(sd.faceN, dirRC));
+        float recipPG_rc = (path.prevScatterPdf > 0.f && cosRC > 1e-8f) ? dist2RC / (path.prevScatterPdf * cosRC) : 1e30f;
+        bool isFarField = recipPG_rc >= 0.02f * path.pathPrimaryFootprint2;
         bool isCurrentVertexClassifiedAsRough =
             kSeparatePathBSDF ? hasRoughComponent(sd, params.specularRoughnessThreshold) : classifyAsRough(sd, params.specularRoughnessThreshold);
         bool isLastVertexAcceptableForRcPrev = path.isLastVertexClassifiedAsRough;
@@ -1341,44 +1352,7 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
-                        // -----------------------------------------------------------------
-                        // NEE shadow ray: evaluate V(shading point, light).
-                        //
-                        // With USE_VISCACHE_LIGHTSELECTION (§11.1):
-                        //   Use the deterministic gate (stable xi from cell coords) to
-                        //   decide whether to trace. For finite lights, posB = light pos;
-                        //   for env map / directional lights, encode direction into the
-                        //   far-field hemisphere representation (see vhfEncodeDirection).
-                        //
-                        //   The gate returns shouldTrace=false when the cache has high
-                        //   confidence (low variance). In that case, threshold the cached
-                        //   mu at 0.5 to produce a hard bool — NEE uses binary V because
-                        //   the path contribution C = BRDF * Le * G is computed separately.
-                        //
-                        //   contribLuminance = luminance(Lr) enables firefly-aware pMin:
-                        //   bright contributions get higher trace probability to prevent
-                        //   weight explosion on high-contribution shadow edges.
-                        //
-                        // Without: unconditional shadow ray (baseline).
-                        // -----------------------------------------------------------------
-#if USE_VISCACHE_LIGHTSELECTION
-                        bool visible;
-                        float3 vcPosB = (ray.tMax < 1e10f)
-                            ? (ray.origin + ray.dir * ray.tMax)
-                            : vhfEncodeDirection(ray.dir);
-                        VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, luminance(Lr));
-                        if (!vcGate.shouldTrace)
-                        {
-                            visible = vcGate.visWeight >= 0.5f;
-                        }
-                        else
-                        {
-                            visible = traceVisibilityRay(ray);
-                            vhfCommit(ray.origin, vcPosB, visible ? 1.f : 0.f, vcGate);
-                        }
-#else
                         bool visible = traceVisibilityRay(ray);
-#endif
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -1404,7 +1378,7 @@ struct PathTracer
                                     path.rcVertexPathTreeIrradiance += weight * ls.Li * path.thp;
                                 }
 
-                                bool selected = path.pathBuilder.addNeeVertex(params, path.length, ls.dir, Lr, 
+                                bool selected = path.pathBuilder.addNeeVertex(params, path.length, ls.dir, Lr,
                                     is_rcVertex ? weight * ls.Li * path.thp : path.rcVertexPathTreeIrradiance, path.useHybridShift,
                                     path.russianRoulettePdf, misWeight, ls.pdf, ls.lightType, path.pathReservoir, path.enableRandomReplay);
 #else
@@ -1604,11 +1578,11 @@ struct PathTracer
                 {
                     path.rcVertexPathTreeIrradiance += path.thp * Le * misWeight;
                 }
-                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, path.length, path.dir, Lr, 
+                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, path.length, path.dir, Lr,
                     path.length == path.pathBuilder.rcVertexLength ? path.thp * Le * misWeight : path.rcVertexPathTreeIrradiance,
                     path.useHybridShift, path.russianRoulettePdf, misWeight, lightPdf, (uint)LightSampleType::EnvMap, path.pathReservoir, path.enableRandomReplay);
 #else
-                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, path.length, path.dir, Lr, path.thp * Le * misWeight, 
+                bool selectedCurrentPath = path.pathBuilder.addEscapeVertex(params, path.length, path.dir, Lr, path.thp * Le * misWeight,
                     path.useHybridShift, path.russianRoulettePdf, misWeight, lightPdf, (uint)LightSampleType::EnvMap, path.pathReservoir, path.enableRandomReplay);
 #endif
                 // daqi: if current escaped vertex has path.length >= 2, then it can be used as a rcVertex
@@ -1833,39 +1807,7 @@ struct PathTracer
             if (validSample)
             {
                 const Ray ray = ls.getVisibilityRay();
-                // -----------------------------------------------------------------
-                // Temporal update shadow ray: same VisCache gating logic as the
-                // main NEE path above. This runs during the temporal reservoir
-                // update for dynamic scenes — the reconnection vertex's light
-                // sample is re-tested for visibility. Using the same deterministic
-                // gate ensures temporal coherence between initial and update paths.
-                //
-                // The cache population here is critical: temporal updates observe
-                // the same (P, light) pairs across frames, seeding the cache with
-                // stable visibility data that benefits the main NEE pass.
-                //
-                // contribLuminance = 0: in this context we don't have the full
-                // path contribution (no BRDF eval / throughput). Passing 0 uses
-                // the base pMin without firefly suppression — conservative but
-                // correct, since temporal updates are a small fraction of rays.
-                // -----------------------------------------------------------------
-#if USE_VISCACHE_LIGHTSELECTION
-                float3 vcPosB = (ray.tMax < 1e10f)
-                    ? (ray.origin + ray.dir * ray.tMax)
-                    : vhfEncodeDirection(ray.dir);
-                VHFGateResult vcGate = vhfGateDeterministic(ray.origin, vcPosB, 0.f);
-                if (!vcGate.shouldTrace)
-                {
-                    visible = vcGate.visWeight >= 0.5f;
-                }
-                else
-                {
-                    visible = traceVisibilityRay(ray);
-                    vhfCommit(ray.origin, vcPosB, visible ? 1.f : 0.f, vcGate);
-                }
-#else
                 visible = traceVisibilityRay(ray);
-#endif
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {
@@ -1990,11 +1932,16 @@ struct PathTracer
 
                 if (isLastRound)
                 {
-                    // Write color directly to frame buffer.
                     float3 color = path.pathReservoir.F * path.pathReservoir.weight;
-
                     if (any(isinf(color) || isnan(color))) color = 0.f;
-
+                    // Instant-Radiosity-style fallback: if the ReSTIR estimate is much brighter
+                    // than the vanilla PT contribution, fall back to PT (both unbiased).
+                    float colorLum = luminance(color);
+                    float ptLum = luminance(path.L);
+                    if (colorLum > 5.f * max(ptLum, 0.01f))
+                    {
+                        color = path.L;  // fall back to vanilla PT
+                    }
                     L += color;
                 }
             }
@@ -2015,7 +1962,12 @@ struct PathTracer
                 outputColor[pixel] += float4(L, 1.f);
 
             if (PathSamplingMode(kPathSamplingMode) != PathSamplingMode::PathTracing)
+            {
+                // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
+                if (any(isnan(path.pathReservoir.F) || isinf(path.pathReservoir.F) || path.pathReservoir.F > 1e10f)) path.pathReservoir.F = 0.f;
+                if (isnan(path.pathReservoir.weight) || isinf(path.pathReservoir.weight) || path.pathReservoir.weight < 0.f || path.pathReservoir.weight > 1e10f) path.pathReservoir.weight = 0.f;
                 outputReservoirs[reservoirIdx] = path.pathReservoir;
+            }
         }
         else
         {
@@ -2071,7 +2023,6 @@ struct PathTracer
                     if (isLastRound)
                     {
                         float3 color = giReservoir.F * giReservoir.weight;
-                        
                         if (any(isinf(color) || isnan(color))) color = 0.f;
                         L += color;
                     }
@@ -2089,6 +2040,9 @@ struct PathTracer
                     else
                         outputColor[pixel] += float4(L, 1.f);
 
+                    // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
+                    if (any(isnan(giReservoir.F) || isinf(giReservoir.F) || giReservoir.F > 1e10f)) giReservoir.F = 0.f;
+                    if (isnan(giReservoir.weight) || isinf(giReservoir.weight) || giReservoir.weight < 0.f || giReservoir.weight > 1e10f) giReservoir.weight = 0.f;
                     outputReservoirs[reservoirIdx] = giReservoir;
                 }
             }

@@ -2,7 +2,7 @@
 
 - [Aldous and Vazirani 1994] D. Aldous and U. Vazirani. "'Go with the Winners' Algorithms." *Proc. 35th IEEE FOCS*, pp. 492–501, 1994.
 
-- [Alber et al. 2025] M. Alber et al. "Real-Time Markov Chain Path Guiding." *Proc. High-Performance Graphics (HPG)*, 2025.
+- [Alber et al. 2025] L. Alber, J. Hanika, C. Dachsbacher. "Real-Time Markov Chain Path Guiding for Global Illumination and Single Scattering." *Proc. ACM Comput. Graph. Interact. Tech.* (HPG), 2025.
 
 - [Benyoub et al. 2024] A. Benyoub, K. Marteaux, and P. Boudier. "SHaRC: Spatial Hash Radiance Cache." NVIDIA RTX SDK, GDC 2024. [https://github.com/NVIDIAGameWorks/RTXGI](https://github.com/NVIDIAGameWorks/RTXGI)
 
@@ -12,9 +12,17 @@
 
 - [Bolin and Meyer 1997] M. R. Bolin and G. W. Meyer. "An Error Metric for Monte Carlo Ray Tracing." *Rendering Techniques '97* (Proc. Eurographics Workshop on Rendering), pp. 57–68, Springer, 1997.
 
+- [Binder et al. 2018] N. Binder, S. Fricke, and A. Keller. "Massively Parallel Path Space Filtering." *arXiv:1806.01198*, 2018.
+
+- [Binder et al. 2019] N. Binder, S. Fricke, and A. Keller. "Fast Path Space Filtering by Jittered Spatial Hashing." *SIGGRAPH Talks*, ACM, 2019.
+
 - [Bitterli et al. 2020] B. Bitterli, C. Wyman, M. Pharr, P. Shirley, A. Lefohn, and W. Jarosz. "Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing with Dynamic Direct Lighting." *ACM Trans. Graph.*, 39(4):148, 2020.
 
 - [Boissé 2021] G. Boissé. "World-Space Spatiotemporal Reservoir Reuse for Ray-Traced Global Illumination." *SIGGRAPH Asia 2021 Technical Communications*, ACM, 2021. DOI: 10.1145/3478512.3488613.
+
+- [Boissé 2022] G. Boissé. "GI-1.0: Real-Time Global Illumination for AAA Games." Talk at AMD GPUOpen / GDC, 2022.
+
+- [Boksanský et al. 2021] J. Boksanský, P. Sahlin, P. McKinney, and J. Bikker. "Rendering Many Lights with Grid-Based Reservoirs (ReGIR)." Chapter 23 in *Ray Tracing Gems II*, Apress, 2021.
 
 - [Bokšanský and Meister 2025] J. Bokšanský and D. Meister. "Neural Visibility Cache for Real-Time Light Sampling." *JCGT*, 14(2), 2025.
 
@@ -85,5 +93,7 @@
 - [Zeng et al. 2025] Z. Zeng et al. "ReSTIR Path Guiding." *ACM SIGGRAPH*, 2025.
 
 - [Zhang, Lin et al. 2025] S. Zhang, D. Lin, C. Wyman, and C. Yuksel. "Many-Light Rendering Using ReSTIR-Sampled Shadow Maps." *Computer Graphics Forum* (Eurographics), 44(2), 2025.
+
+- [Zhang et al. 2023] H. Zhang, Y. Lin, T. Akenine-Möller, and J. Salvi. "World-space Path Resampling for Spatially-Coherent Light-Field Sampling in Real-Time Rendering." *Eurographics Symposium on Rendering*, 2023. (Normal-axis cell keying.)
 
 - [Zhang et al. 2024] Y. Zhang et al. "Area ReSTIR: Re-Sampling for Real-Time Defocus and Antialiasing." *ACM SIGGRAPH*, 2024.

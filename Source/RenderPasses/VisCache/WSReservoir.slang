@@ -2,8 +2,9 @@
  * WSReservoir.slang
  *
  * §9.4 World-space ReSTIR DI reservoir — single-cell slot, 32 bytes.
- * Indexed via VisCache's posA cascade with a level offset (gWSLevelOffset);
- * fingerprint disambiguates collisions in the same way as VHFEntry.
+ * Independent system from VisCache: keyed by WS-ReSTIR's own posA
+ * quantization (gWSCellLevel into the shared posA cascade). Fingerprint disambiguates
+ * collisions in the same way as VHFEntry.
  *
  * Stays algorithm-agnostic about which scene light system selected the
  * sample — `lightIdx` is interpreted by the host PathTracer (e.g. as a
@@ -28,7 +29,7 @@ struct WSReservoir
     float  M;                 ///< Accumulated sample count (capped at gWSMCap).
     float  W;                 ///< Unbiased weight: w_sum_total / (p̂(y) * M).
     uint   frameLastUpdated;  ///< gFrameCount at last write — staleness diagnostic.
-    uint   _pad;              ///< Reserved (alignment to 32 B).
+    uint   normalOct;         ///< Oct-packed shading normal at write site. 0 = unset.
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +107,6 @@ WSReservoir wsReservoirInit(uint fingerprint)
     r.M                = 0.0f;
     r.W                = 0.0f;
     r.frameLastUpdated = 0u;
-    r._pad             = 0u;
+    r.normalOct        = 0u;
     return r;
 }

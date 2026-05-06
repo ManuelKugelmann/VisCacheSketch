@@ -48,6 +48,7 @@ static const bool kUseNEE = USE_NEE != 0;
 static const bool kUseMIS = USE_MIS != 0;
 static const bool kUseRussianRoulette = USE_RUSSIAN_ROULETTE != 0;
 static const bool kUseRTXDI = USE_RTXDI != 0;
+static const bool kUseRestirPT = USE_RESTIRPT != 0;
 static const bool kUseAlphaTest = USE_ALPHA_TEST != 0;
 static const bool kUseLightsInDielectricVolumes = USE_LIGHTS_IN_DIELECTRIC_VOLUMES != 0;
 static const bool kDisableCaustics = DISABLE_CAUSTICS != 0;

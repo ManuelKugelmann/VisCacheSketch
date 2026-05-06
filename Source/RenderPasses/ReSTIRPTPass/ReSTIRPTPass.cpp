@@ -1,6 +1,5 @@
 /***************************************************************************
  # Copyright (c) 2022, Daqi Lin.  All rights reserved.
- # Ported to Falcor 8.0 API for VisCacheSketch (2026).
  **************************************************************************/
 #include "ReSTIRPTPass.h"
 #include "RenderGraph/RenderPassHelpers.h"
@@ -186,6 +185,7 @@ namespace
     const std::string kJacobianRejectionThreshold = "jacobianRejectionThreshold";
     const std::string kNearFieldDistance = "nearFieldDistance";
     const std::string kLocalStrategyType = "localStrategyType";
+    const std::string kFireflyClampK = "fireflyClampK";
 
     const std::string kTemporalHistoryLength = "temporalHistoryLength";
     const std::string kUseMaxHistory = "useMaxHistory";
@@ -334,6 +334,7 @@ bool ReSTIRPTPass::parseDictionary(const Properties& props)
         else if (key == kRejectShiftBasedOnJacobian) mParams.rejectShiftBasedOnJacobian = value;
         else if (key == kJacobianRejectionThreshold) mParams.jacobianRejectionThreshold = value;
         else if (key == kNearFieldDistance) mParams.nearFieldDistance = value;
+        else if (key == kFireflyClampK) mParams.fireflyClampK = value;
         else if (key == kTemporalHistoryLength) mTemporalHistoryLength = value;
         else if (key == kUseMaxHistory) mUseMaxHistory = value;
         else if (key == kSeedOffset) mSeedOffset = value;
@@ -490,6 +491,7 @@ Properties ReSTIRPTPass::getProperties() const
     d[kRejectShiftBasedOnJacobian] = mParams.rejectShiftBasedOnJacobian;
     d[kJacobianRejectionThreshold] = mParams.jacobianRejectionThreshold;
     d[kNearFieldDistance] = mParams.nearFieldDistance;
+    d[kFireflyClampK] = mParams.fireflyClampK;
     d[kTemporalHistoryLength] = mTemporalHistoryLength;
     d[kUseMaxHistory] = mUseMaxHistory;
     d[kSeedOffset] = mSeedOffset;
@@ -552,10 +554,16 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
     {
         if (pScene->hasGeometryType(GeometryType::Custom)) logError("This render pass does not support custom primitives.");
 
-        // check if the scene is dynamic
-        bool enableRobustSettingsByDefault = mpScene->hasAnimation() && mpScene->isAnimated();
-        mParams.rejectShiftBasedOnJacobian = enableRobustSettingsByDefault;
-        mStaticParams.temporalUpdateForDynamicScene = enableRobustSettingsByDefault;
+        // Jacobian-rejection and temporal-update gates are enabled only for
+        // animated scenes.
+        bool sceneIsDynamic = mpScene->hasAnimation() && mpScene->isAnimated();
+        mParams.rejectShiftBasedOnJacobian = sceneIsDynamic;
+        mStaticParams.temporalUpdateForDynamicScene = sceneIsDynamic;
+
+        // sceneRadius: shortest scene-bound axis. Makes `nearFieldDistance`
+        // (interpreted as a fraction) scene-scale invariant.
+        const float3 ext = mpScene->getSceneBounds().extent();
+        mParams.sceneRadius = std::min(ext.x, std::min(ext.y, ext.z));
 
         // Reset all programs so updatePrograms() recreates them with
         // scene shader modules and type conformances (lazy creation).
@@ -788,7 +796,7 @@ bool ReSTIRPTPass::renderRenderingUI(Gui::Widgets& widget)
 
             if (auto subgroup = widget.group("Classification thresholds", true))
             {
-                dirty |= widget.var("Near field distance", mParams.nearFieldDistance, 0.f, 100.f);
+                dirty |= widget.var("Near field distance (frac of sceneRadius)", mParams.nearFieldDistance, 0.f, 1.f);
                 dirty |= widget.var("Specular roughness threshold", mParams.specularRoughnessThreshold, 0.f, 1.f);
             }
         }
@@ -1014,23 +1022,6 @@ bool ReSTIRPTPass::renderDebugUI(Gui::Widgets& widget)
         }
 
         mpPixelDebug->renderUI(group);
-    }
-
-    // -----------------------------------------------------------------
-    // Local CV+RRR ablation UI (USE_LOCAL_CVRRR).
-    //
-    // This is the "no hash table" ablation baseline: reservoir-local
-    // CV+RRR using mu = clamp(neighborTargetPdf / pHatNoVis, 0, 1).
-    // Toggling triggers recompile because it's a compile-time define.
-    // Reuses gPMin/gFireflyBudget from VisCacheParams for fair comparison.
-    // -----------------------------------------------------------------
-    if (auto g = widget.group("Ablation: Local CV+RRR"))
-    {
-        if (g.checkbox("Enable local CV+RRR (no hash table)", mLocalCVRRR))
-        {
-            mRecompile = true;
-            dirty = true;
-        }
     }
 
     return dirty;
@@ -1490,70 +1481,6 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mRecompile = true;
     }
 
-    // -----------------------------------------------------------------
-    // VisCache integration: read GPU resources and per-feature toggles
-    // from the upstream VisCache pass via InternalDictionary.
-    //
-    // The VisCache pass exports two GPU resources:
-    //   "vhfTable"    — RWStructuredBuffer<VHFEntry>, the hash table itself
-    //   "vhfParamsCB" — cbuffer VisCacheParams (32 bytes of tuning knobs)
-    //
-    // And per-feature boolean toggles (matching the ablation table in the paper):
-    //   "vhfEnableVisibilityCheck"   — CV+RRR for all visibility checks
-    //   "vhfEnableLightSelection" — §11.1: cached mu in NEE shadow rays
-    //
-    // Any toggle change triggers a shader recompile because the flags are
-    // compile-time defines (USE_VISCACHE_VISIBILITYCHECK, etc.), not runtime
-    // branches. This is intentional: compile-time gating lets the compiler
-    // eliminate dead code entirely, avoiding register pressure from unused
-    // VisCache cbuffer bindings when the feature is off.
-    // -----------------------------------------------------------------
-    {
-        bool wasAvailable = mVisCacheAvailable;
-        bool wasVisCheck = mVisCacheVisibilityCheck;
-        bool wasLightSel = mVisCacheLightSelection;
-
-        mpVHFTable       = dict.keyExists("vhfTable")       ? dict.getValue<ref<Buffer>>("vhfTable")       : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr &&
-            dict.keyExists("vhfParam_tableCapacity"));
-        if (mVisCacheAvailable)
-        {
-            mVCParams.tableCapacity = dict.getValue<uint32_t>("vhfParam_tableCapacity");
-            mVCParams.bootThreshold = dict.getValue<uint32_t>("vhfParam_bootThreshold");
-            mVCParams.varThreshold  = dict.getValue<float>("vhfParam_varThreshold");
-            mVCParams.pMin          = dict.getValue<float>("vhfParam_pMin");
-            mVCParams.fireflyBudget = dict.getValue<float>("vhfParam_fireflyBudget");
-            mVCParams.numLevels     = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
-            mVCParams.posACoarse    = dict.getValue<float>("vhfParam_posACoarse");
-            mVCParams.posAFine      = dict.getValue<float>("vhfParam_posAFine");
-            mVCParams.posBCoarse    = dict.getValue<float>("vhfParam_posBCoarse");
-            mVCParams.posBFine      = dict.getValue<float>("vhfParam_posBFine");
-            mVCParams.dirBCoarse = dict.getValue<float>("vhfParam_dirBCoarse");
-            mVCParams.dirBFine   = dict.getValue<float>("vhfParam_dirBFine");
-            mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
-            mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
-            mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
-            mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
-            mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
-        }
-
-        mVisCacheVisibilityCheck  = mVisCacheAvailable &&
-            dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
-        mVisCacheLightSelection = mVisCacheAvailable &&
-            dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
-        bool wasDirDist = mVisCacheDirDistAddr;
-        mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-
-        // Recompile only when a flag actually changes — avoids unnecessary
-        // shader recompilation on frames where the dict values are stable.
-        if (mVisCacheAvailable != wasAvailable ||
-            mVisCacheVisibilityCheck != wasVisCheck ||
-            mVisCacheLightSelection != wasLightSel ||
-            mVisCacheDirDistAddr != wasDirDist)
-            mRecompile = true;
-    }
-
     // Check if NRD data should be generated.
     mOutputNRDData =
         renderData[kOutputNRDDiffuseRadianceHitDist] != nullptr
@@ -1644,10 +1571,6 @@ void ReSTIRPTPass::generatePaths(RenderContext* pRenderContext, const RenderData
 
     // Launch one thread per pixel.
     // The dimensions are padded to whole tiles to allow re-indexing the threads in the shader.
-    // TODO: mirror PathTracer's reduced N² Bayer-subframe dispatch for symmetry with
-    //       VisCache's cold-start mitigation (see Falcor/LOCAL_FIXES.md #14).
-    //       Needs: N² loop around gen+trace+reuse, reduced dispatch dims, and
-    //       subframeRemap() at shader entry in all ReSTIRPT kernels.
     mpGeneratePaths->execute(pRenderContext, { mParams.screenTiles.x * tileSize, mParams.screenTiles.y, 1u });
 }
 
@@ -1671,37 +1594,6 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
 
     mpPixelStats->prepareProgram(pass->getProgram(), var);
     mpPixelDebug->prepareProgram(pass->getProgram(), var);
-
-    // Bind VisCache hash table at root var level (global-scope gVHFTable).
-    // PathReusePass and PathRetracePass already do this; tracePass needs it
-    // too when USE_VISCACHE_LIGHTSELECTION gates NEE shadow rays.
-    if (mVisCacheAvailable)
-    {
-        var["gVHFTable"] = mpVHFTable;
-        var["VisCacheParams"]["gTableCapacity"]  = mVCParams.tableCapacity;
-        var["VisCacheParams"]["gBootThreshold"]  = mVCParams.bootThreshold;
-        var["VisCacheParams"]["gVarThreshold"]   = mVCParams.varThreshold;
-        var["VisCacheParams"]["gPMin"]           = mVCParams.pMin;
-        var["VisCacheParams"]["gFireflyBudget"]  = mVCParams.fireflyBudget;
-        var["VisCacheParams"]["gNumLevels"]      = mVCParams.numLevels;
-        var["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        var["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
-        var["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
-        var["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
-        var["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
-        var["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
-        var["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
-        var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
-        var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        var["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
-        var["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
-        // Bayer warmup fields — ReSTIRPTPass shaders don't invoke vhfBayerWarmup,
-        // but set to 0 for predictable cbuffer initialization.
-        var["VisCacheParams"]["gSubframeN"]    = 1u;
-        var["VisCacheParams"]["gWarmupFirst"]  = 0u;
-        var["VisCacheParams"]["gWarmupRun"]    = 0u;
-    }
 
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
@@ -1806,38 +1698,6 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
 
-    // -----------------------------------------------------------------
-    // Bind VisCache GPU resources to the PathReusePass shader root.
-    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't
-    // support whole-buffer cbuffer binding.
-    // -----------------------------------------------------------------
-    if (mVisCacheAvailable)
-    {
-        auto rootVar = pass->getRootVar();
-        rootVar["gVHFTable"] = mpVHFTable;
-        rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
-        rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
-        rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
-        rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
-        rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
-        rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        rootVar["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
-        rootVar["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
-        rootVar["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
-        rootVar["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
-        rootVar["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
-        rootVar["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
-        rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
-        rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        rootVar["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
-        rootVar["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
-    }
-    // Local CV+RRR reuses VisCacheParams (gPMin, gFireflyBudget) — no
-    // separate cbuffer needed. VisCacheParams is already bound above
-    // when mVisCacheAvailable is true.
-
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
 
@@ -1888,6 +1748,8 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
         var["motionVectors"] = renderData[kInputMotionVectors]->asTexture();
         var["gEnableTemporalReprojection"] = mEnableTemporalReprojection;
         var["gNoResamplingForTemporalReuse"] = mNoResamplingForTemporalReuse;
+        // gStaticSceneJitterRadius lives on PathReusePass (TemporalReuse.cs.slang),
+        // not on PathRetracePass (TemporalPathRetrace.cs.slang) — bind only there.
         if (!mUseMaxHistory) var["gTemporalHistoryLength"] = 1e30f;
         else var["gTemporalHistoryLength"] = (float)mTemporalHistoryLength;
     }
@@ -1905,32 +1767,6 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
     // [Falcor 8] bindShaderData replaces getParameterBlock.
     mpScene->bindShaderData(pass->getRootVar()["gScene"]);
     pass->getRootVar()["gPathTracer"] = mpPathTracerBlock;
-
-    // Bind VisCache resources to PathRetracePass (same pattern as PathReusePass).
-    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't support whole-buffer cbuffer binding.
-    if (mVisCacheAvailable)
-    {
-        auto rootVar = pass->getRootVar();
-        rootVar["gVHFTable"] = mpVHFTable;
-        rootVar["VisCacheParams"]["gTableCapacity"] = mVCParams.tableCapacity;
-        rootVar["VisCacheParams"]["gBootThreshold"] = mVCParams.bootThreshold;
-        rootVar["VisCacheParams"]["gVarThreshold"]  = mVCParams.varThreshold;
-        rootVar["VisCacheParams"]["gPMin"]          = mVCParams.pMin;
-        rootVar["VisCacheParams"]["gFireflyBudget"] = mVCParams.fireflyBudget;
-        rootVar["VisCacheParams"]["gNumLevels"]     = mVCParams.numLevels;
-        rootVar["VisCacheParams"]["gFlags"]          = mVCParams.flags;
-        rootVar["VisCacheParams"]["gPosACoarse"]    = mVCParams.posACoarse;
-        rootVar["VisCacheParams"]["gPosAFine"]      = mVCParams.posAFine;
-        rootVar["VisCacheParams"]["gPosBCoarse"]    = mVCParams.posBCoarse;
-        rootVar["VisCacheParams"]["gPosBFine"]      = mVCParams.posBFine;
-        rootVar["VisCacheParams"]["gDirBCoarse"] = mVCParams.dirBCoarse;
-        rootVar["VisCacheParams"]["gDirBFine"]   = mVCParams.dirBFine;
-        rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
-        rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
-        rootVar["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
-        rootVar["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
-    }
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
@@ -1986,27 +1822,6 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("INTERIOR_LIST_SLOT_COUNT", std::to_string(maxNestedMaterials));
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
-
-    // -----------------------------------------------------------------
-    // VisCache integration — per-feature compile-time flags.
-    //
-    // Each flag maps to one ablation column in the paper's Table 1:
-    //   USE_VISCACHE              — base: hash table buffer is available
-    //   USE_VISCACHE_VISIBILITYCHECK — CV+RRR for all visibility checks
-    //                                 (Shift.slang: evalSegmentVisibilityWeight)
-    //   USE_VISCACHE_LIGHTSELECTION — §11.1: cached mu gates NEE shadow rays
-    //                                 (PathTracer.slang: two NEE sites)
-    //   USE_LOCAL_CVRRR    — ablation: reservoir-local CV+RRR
-    //                               (RevalidationCommon.slang, no hash table)
-    //
-    // These are compile-time defines (not runtime branches) so the Slang
-    // compiler can eliminate dead code and avoid binding unused resources.
-    // -----------------------------------------------------------------
-    defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
-    defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
-    defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
-    defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    defines.add("USE_LOCAL_CVRRR", owner.mLocalCVRRR ? "1" : "0");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).
     // Scene defines include material system config, geometry types, hit info, etc.
