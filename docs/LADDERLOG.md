@@ -41,6 +41,7 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | (insight)  | full-metric battery on SPONZA_VT | vt has **anti-correlated optima**: art5 wants tight, RMSE/relmse wants loose | metric-selects-policy: ship per-metric carry tables |
 | SPONZA_MB | multibounce on Sponza (b ∈ {0,1,4}) | b=4 −74pp rays + OkLab match; linear-space tradeoff (PSNR −1.3 dB) | Stage E canonical on penumbra-class multibounce |
 | BISTRO_MB | multibounce on BistroInt (b ∈ {0,1,4}) | b=4 −53pp rays + **wins every metric** (relmse 2.4× better) | Stage E canonical on firefly-class multibounce |
+| CORNELL_MB | multibounce on 4 Cornell scenes (b ∈ {0,1,4}) | rays savings monotonic across all 4: 1AL −15pp, 1PL −3.6pp, 3AL −21pp, 32PL −16pp from b0 to b4. Mean OkLab err matches vanilla within 0.05pp on every scene at b=4. **Linear-space loss scales with firefly density**: 1AL RMSE +14% / 1PL +2% / 3AL +15% / 32PL +150%. relmse improves on 1AL/1PL/32PL (cache averages out high-magnitude tails), ties on 3AL. **The Sponza vs Bistro multibounce dichotomy is resolved**: it's a single light-count gradient — single-area-light scenes + low-firefly multipoint stay near Pareto, high-firefly scenes (32PL, BistroInt) get a relmse win that masks an RMSE blow-up | Stage E generalizes across penumbra-class scenes; per-scene linear-space cost reportable in paper §11/§12 |
 
 ---
 
