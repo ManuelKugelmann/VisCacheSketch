@@ -334,7 +334,7 @@ struct PathReusePass
             {
                 dstReservoir.finalizeGRIS();
             }
-            color = dstReservoir.F * dstReservoir.weight;
+            color = dstReservoir.weightVec * PathReservoir::toScalar(dstReservoir.F); // Lin 2026 §6.3 vector shading: chromaticity from Σw_vec, luminance recovered via × p̂_chosen.
         }
         /////////////////////
         /// PAIRWISE RMIS ///
@@ -408,8 +408,9 @@ struct PathReusePass
             {
                 dstReservoir.finalizeGRIS();
                 dstReservoir.weight /= (validNeighborCount + 1); // compensate for the fact that pairwise resampling MIS was not divided by (k+1)
+                dstReservoir.weightVec /= (validNeighborCount + 1); // Lin 2026 §6.3: same scalar divisor preserves lum(weightVec) = weight.
             }
-            color = dstReservoir.F * dstReservoir.weight;
+            color = dstReservoir.weightVec * PathReservoir::toScalar(dstReservoir.F); // Lin 2026 §6.3 vector shading: chromaticity from Σw_vec, luminance recovered via × p̂_chosen.
         }
         /////////////////////
         /// CONSTANT RMIS ///
@@ -528,14 +529,27 @@ struct PathReusePass
 
                 dstReservoir.finalizeRIS();
 
-                color = dstReservoir.F * dstReservoir.weight;
+                color = dstReservoir.weightVec * PathReservoir::toScalar(dstReservoir.F); // Lin 2026 §6.3 vector shading: chromaticity from Σw_vec, luminance recovered via × p̂_chosen.
             }
         }
 #endif
 
         // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
-        if (dstReservoir.weight < 0.f) dstReservoir.weight = 0.f;
-        if (isnan(dstReservoir.weight) || isinf(dstReservoir.weight) || dstReservoir.weight > 1e10f) dstReservoir.weight = 0.f;
+        // Lin 2026 §6.3: weightVec shares fate with scalar weight under the same criterion.
+        if (dstReservoir.weight < 0.f)
+        {
+            dstReservoir.weight = 0.f;
+#if !BPR
+            dstReservoir.weightVec = 0.f;
+#endif
+        }
+        if (isnan(dstReservoir.weight) || isinf(dstReservoir.weight) || dstReservoir.weight > 1e10f)
+        {
+            dstReservoir.weight = 0.f;
+#if !BPR
+            dstReservoir.weightVec = 0.f;
+#endif
+        }
         if (any(isnan(dstReservoir.F) || isinf(dstReservoir.F) || dstReservoir.F > 1e10f)) dstReservoir.F = 0.f;
 
         if (PathSamplingMode(kPathSamplingMode) != PathSamplingMode::PathReuse)

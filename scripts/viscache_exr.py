@@ -689,6 +689,35 @@ def _downsample_2x(img):
 _MSSSIM_WEIGHTS = np.array([0.0448, 0.2856, 0.3001, 0.2363, 0.1333], dtype=np.float32)
 
 
+def _chroma_variance(render_lin, mask, sigma=1.5):
+    """Lin 2026 §6.3 chroma noise metric — per-pixel local chromaticity variance.
+
+    Computes σ²(R/Y), σ²(G/Y), σ²(B/Y) via Gaussian-weighted local statistics
+    (sigma=1.5 ≈ 5×5 effective window), averaged across channels and unmasked
+    pixels. Operates on the render alone (no GT needed): chromaticity = RGB/Y
+    is invariant to luminance, so a uniformly-lit white wall in a noisy render
+    has chrom = (1,1,1) per pixel and zero variance — only stochastic chroma
+    grain contributes. Lower = smoother chroma = §6.3 vector-form win.
+
+    Returns scalar mean per-channel chrom variance, or None if mask empty.
+    """
+    EPS = 1e-3
+    rgb = np.clip(render_lin[..., :3], 0.0, None)
+    lum = _to_luminance(rgb)
+    # Chromaticity coords; EPS guards black pixels (no chroma to measure there).
+    chrom = rgb / (lum[..., None] + EPS)
+    if mask is None or not mask.any():
+        return None
+    per_channel = []
+    for c in range(3):
+        ch = chrom[..., c]
+        mu = _gaussian_blur_2d(ch, sigma)
+        mu2 = _gaussian_blur_2d(ch * ch, sigma)
+        var = np.maximum(mu2 - mu * mu, 0.0)
+        per_channel.append(float(var[mask].mean()))
+    return float(np.mean(per_channel))
+
+
 def _ms_ssim(x, y, mask=None):
     """Multi-Scale SSIM (Wang et al. 2003) on luminance, 5 scales, default
     weights. Inputs (H,W) float ideally normalized to [0,1] (we tonemap HDR
@@ -769,8 +798,10 @@ def compute_research_metrics_hdr(render_exr, gt_exr, nodata=None):
     linear HDR EXRs vs GT EXR. Returns dict of:
       mse, rmse, psnr_db, relmse, smape, mape  (numerical, on luminance)
       ms_ssim, flip                             (perceptual)
+      chroma_var                                (Lin 2026 §6.3 chroma noise)
     `relmse` is the Bitterli/ReSTIR-paper convention. `flip` is Andersson 2020
-    HDR-FLIP. Empty dict on failure / shape mismatch."""
+    HDR-FLIP. `chroma_var` is intra-image (no GT involved). Empty dict on
+    failure / shape mismatch."""
     a = read_exr(render_exr)
     b = read_exr(gt_exr)
     if not a or not b: return {}
@@ -850,6 +881,12 @@ def _pixel_metrics_suite(render_lin, gt_lin, mask):
     # FLIP HDR — uses linear RGB directly (no manual tonemap).
     flip = _flip_score(render_lin, gt_lin)
 
+    # Lin 2026 §6.3 chroma noise — local chromaticity variance, no GT involved
+    # (intra-image stochastic chroma grain). Lower = smoother chroma. The §6.3
+    # vector-form resampler should reduce this metric without changing
+    # luminance-domain metrics (mse / rmse / psnr / etc.).
+    chroma_var = _chroma_variance(render_lin, mask)
+
     out = {
         "mse":     mse,
         "rmse":    rmse,
@@ -858,8 +895,9 @@ def _pixel_metrics_suite(render_lin, gt_lin, mask):
         "smape":   smape,
         "mape":    mape,
     }
-    if ms_ssim is not None: out["ms_ssim"] = ms_ssim
-    if flip    is not None: out["flip"]    = flip
+    if ms_ssim    is not None: out["ms_ssim"]    = ms_ssim
+    if flip       is not None: out["flip"]       = flip
+    if chroma_var is not None: out["chroma_var"] = chroma_var
     return out
 
 

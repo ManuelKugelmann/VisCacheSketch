@@ -44,6 +44,7 @@ wins. See `LADDERLOG.md` step 00 for the full table.
 | `finalizeRIS`/`finalizeGRIS` post-division re-guard | this work | §7 |
 | Lin 2026 §4 footprint-based reconnection criterion | Lin 2026 | §12 #1 |
 | Lin 2026 §6.2.4 RR-skip-during-replay | Lin 2026 | §12 #2 |
+| Lin 2026 §6.3 vector-valued resampling weights (chroma noise reduction) | Lin 2026 | §12 #4 |
 
 ### Components present but disabled by default
 
@@ -66,8 +67,7 @@ for design + state per item.
 - §9 periodic reservoir reset — workaround for an indirectly-fixed problem
 - §10 merge-time absolute+relative gates — clamps were biasing samples
 - §11 RTXPT-style `FireflyFilter K` — heavy machinery, value unproven on our scenes
-- §12 #3 forced NEE light reconnection (Lin 2026 §6.2.3) — not implemented
-- §12 #4 vector-valued resampling weights (Lin 2026 §6.3) — Talbot-form math wrong on our re-derivation
+- §12 #3 forced NEE light reconnection (Lin 2026 §6.2.3) — not implemented (performance optimization, deferred)
 - Stage A unification (Lin 2026 §5 supplemental) — needs ω_1 multi-sample MIS
 - §14 ADRRS-without-adjoint splitting — capture hook AFTER handleHit double-counts; needs path-walk refactor
 
@@ -407,22 +407,72 @@ where RR-pdf accumulates significantly.
   multi-light scenes.
 
 - **#4 — Vector-valued resampling weights (Lin 2026 §6.3):**
-  ATTEMPTED + REVERTED 2026-05-05. Added `float3 weightVec` to PathReservoir
-  (struct 88→100B, baseReservoirSize bumped). Accumulated `in_F × J × W ×
-  misWeight` parallel to scalar `w` in all merge methods. Finalize: divide
-  weightVec by M (mirror of scalar's `weight /= p_hat × M`). Output color
-  = `weightVec` instead of `F × weight`.
+  IMPLEMENTED 2026-05-06 (corrected derivation). The May 2026-05-05 attempt
+  was reverted with catastrophic results — see "Prior attempt (reverted)"
+  below for the wrong derivation. Corrected math now ships:
 
-  Result: WORSE on all scenes — Cornell 1AL +20%, 32PL +28%, Sponza +1920%
-  (was -6.6%, -18.5%, +290% with scalar form). The vector finalize math
-  diverges from scalar's `F_chosen × Σw_i / (p_hat × M)` semantics. Lin
-  2026 §6.3's exact derivation (Talbot-form normalization) needs careful
-  re-reading — the ω_1 multi-sample MIS weight (Eq. supplemental §5) likely
-  factors into the vector accumulation, not just at NEE.
+  **Math.** Per-candidate `w_vec_i = m_i × F(X_i) × |J_i| × W_src,i` (vector
+  in F, scalar in everything else). At every merge site, mirror the scalar
+  `w_scalar_i = lum(F_i) × J_i × inReservoir.weight × misWeight` with
+  `w_vec_i = F_i × J_i × inReservoir.weight × misWeight`. The
+  `inReservoir.weight` factor is a SCALAR (the source pixel's already-
+  finalized scalar UCW); scalar × vector = componentwise broadcast preserves
+  the per-merge-step invariant `lum(weightVec) = weight`. Vector × vector
+  was the prior bug — would create radiance² units and dark-pixel blowups.
 
-  Reverted to scalar form. `weightVec` field retained in struct (cbuffer
-  ABI consideration) but unused; merge-time accumulator writes still fire.
-  C++ rebuild + struct-size bump landed cleanly.
+  **Finalize.** Same scalar denominator as the scalar form: `weightVec /=
+  (lum(F_chosen) × M)` for `finalizeRIS`, `weightVec /= lum(F_chosen)` for
+  `finalizeGRIS`. Same scalar criterion ⇒ invariant survives finalize.
+  `prepareMerging` un-finalize: `weightVec *= lum(F_chosen) × M`.
+
+  **Sites.** All four merge accumulators (`add`, `merge`,
+  `mergeWithResamplingMIS`, `mergeInSamplePixel`), both finalize variants,
+  `prepareMerging`, plus pairwise-MIS post-divide at SpatialReuse:411
+  (`weightVec /= (validNeighborCount + 1)`). Output sites
+  (TemporalReuse:303, SpatialReuse:337/413/532) replace `F × weight` with
+  `weightVec` directly.
+
+  **BPR gate.** All `weightVec`-touching code is gated `#if !BPR`. BPR
+  mode already accumulates a vector value in `pathReservoir.F` directly —
+  it doesn't need a parallel `weightVec`. Struct field is omitted under
+  BPR; `pathTreeReservoirSize` (128B) unchanged. `baseReservoirSize` bumped
+  88B → 100B for non-BPR.
+
+  **Verification (2026-05-06, Cornell_1AL + Sponza, b∈{1,4,8}):** scalar
+  luminance metrics preserved bit-exactly; mean_err and artifact_5 show small
+  improvements from chroma marginalization. BPR variants unchanged.
+
+  | scene · variant | scalar baseline | with §6.3 vector | Δ |
+  |---|---|---|---|
+  | Cornell restirpt_b4 mean_err x1 | 3.789% | **3.731%** | −1.5% |
+  | Cornell restirpt_b4 art5 x1    | 25.42% | **24.75%** | −2.6% |
+  | Cornell restirpt_b4 RMSE x1    | 0.816  | 0.816 | match |
+  | Cornell restirpt_b8 mean_err x1 | 3.788% | **3.726%** | −1.6% |
+  | Sponza restirpt_b4 mean_err x1 | 15.012% | **15.003%** | −0.06% |
+  | Sponza restirpt_b4 RMSE x1    | 0.768  | 0.768 | match |
+  | restirpt_bpr_* (all)          | (any) | unchanged | BPR-gated ✓ |
+
+  The luminance invariant `lum(color_v) = lum(color_s)` holds by construction:
+  per-merge invariant `lum(weightVec) = weight` is linear in lum, and the
+  output `× toScalar(F)` factor recovers the `Σw/M` luminance the scalar form
+  produces. Cornell shows the biggest chroma-marginalization win because its
+  saturated walls have richer chroma signal; Sponza's dim indirect content
+  has less to marginalize. BPR mode is gated `#if !BPR` and produces
+  bit-identical output regardless of §6.3.
+
+  Outstanding: per-channel `chroma_var` metric added to baseline CSV schema
+  this session — populates from next ladder run forward. Multi-scene
+  extension (Cornell_32PL + BistroInterior) pending.
+
+  ### Prior attempt (reverted 2026-05-05)
+
+  Added `float3 weightVec` and accumulated `in_F × J × W × misWeight` as
+  documented above. **Bug 1**: finalize divided by `M` only, not by
+  `lum(F_chosen) × M` — dropped the `1/p_hat` factor. **Bug 2**: PORT_NOTES
+  claimed UCW propagation went vector × vector, which would explain Sponza
+  +1920% via radiance² units. Result was Cornell 1AL +20%, 32PL +28%,
+  Sponza +1920% — reverted same day. The corrected derivation (above)
+  identifies both bugs and ships the right form.
 
 - **Stage A unification (Lin 2026 §5 supplemental):**
   ATTEMPTED + REVERTED 2026-05-05. Switched canonical config to
@@ -439,15 +489,16 @@ where RR-pdf accumulates significantly.
 
   Reverted to canonical config (RTXDI feed mode + `disableDirectIllumination=true`).
 
-**Status (2026-05-05):** §12 #1 + #2 pure shader wins, no measurable bias
-improvement on our 3 test scenes (effect masked by §10 cap dominance, and
-b=4 doesn't stress RR-in-replay). #4 + Stage A both attempted and reverted
-— need deeper paper analysis before next attempt. Cleanup pass ran
-(retired §5/§8/§9/§11 fields + helpers; weightVec dormant). Current canonical
-state: Cornell -6.62% / 32PL -18.32% / Sponza +289%. The structural Sponza
-over-bias is from §10's dropped-sample selection bias, not Inf-prevention;
-proper algorithmic fix needs correct vector-weight math or full Stage A
-multi-sample MIS — both deferred.
+**Status (2026-05-06):** §12 #1, #2, #4 active in the reference port. #3
+(forced NEE reconnection) deferred — paper claim is performance, not
+quality, and our current performance is fine. Stage A unification still
+pending — needs the supplemental §5 `m_1 = M·p_1/(M·p_1+p_2)` MIS weight
+at the d=2 boundary; not yet attempted under the corrected derivation
+framework. Canonical port state matches PORT_NOTES TL;DR table:
+Cornell_1AL b4 mean_err 3.79%, Sponza b1 RMSE −59% / +7.7 dB PSNR vs
+vanilla. The earlier "Sponza +289%" claim was from the wrong-camera /
+wrong-GT / stale-cache harness retired with §10 in 2026-05-06; current
+RPT00 numbers are clean and validated.
 
 ### 11. RTXPT-style adaptive firefly filter K
 

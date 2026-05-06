@@ -297,10 +297,25 @@ struct PathReusePass
             }
 
             // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
-            if (dstReservoir.weight < 0.f || isinf(dstReservoir.weight) || isnan(dstReservoir.weight) || dstReservoir.weight > 1e10f) dstReservoir.weight = 0.f;
+            // Lin 2026 §6.3: weightVec shares fate with the scalar weight under the same
+            // luminance-based criterion to preserve lum(weightVec) = weight downstream.
+            if (dstReservoir.weight < 0.f || isinf(dstReservoir.weight) || isnan(dstReservoir.weight) || dstReservoir.weight > 1e10f)
+            {
+                dstReservoir.weight = 0.f;
+#if !BPR
+                dstReservoir.weightVec = 0.f;
+#endif
+            }
             if (any(isnan(dstReservoir.F) || isinf(dstReservoir.F) || dstReservoir.F > 1e10f)) dstReservoir.F = 0.f;
             outputReservoirs[centralOffset] = dstReservoir;
+#if !BPR
+            // Lin 2026 §6.3 vector shading. weightVec_final = Σw_vec/(p̂_chosen·M);
+            // multiply by p̂_chosen to recover lum(scalar's F·weight) = Σw_scalar/M
+            // while keeping the candidate-averaged chromaticity from the vector sum.
+            color = dstReservoir.weightVec * PathReservoir::toScalar(dstReservoir.F);
+#else
             color = dstReservoir.F * dstReservoir.weight;
+#endif
             // Guard color BEFORE the directLighting branch.
             if (any(isnan(color) || isinf(color) || color < 0.f)) color = 0.f;
             // §15 — Static chroma-preserving soft-clamp at K × DL ceiling.

@@ -220,7 +220,7 @@ struct PathReuseMISWeight
     float rcNEEMISWeight;
 }
 
-// 88/128 B
+// 100/128 B (non-BPR: +12B for weightVec; BPR: unchanged)
 struct PathReservoir
 {
     float M = 0.f; // this is a float, because temporal history length is allowed to be a fraction.
@@ -228,6 +228,9 @@ struct PathReservoir
     ReSTIRPathFlags pathFlags; // this is a path type indicator, see the struct definition for details
     uint rcRandomSeed; // saved random seed after rcVertex (due to the need of blending half-vector reuse and random number replay)
     float3 F = 0.f; // cached integrand (always updated after a new path is chosen in RIS)
+#if !BPR
+    float3 weightVec = 0.f; // Lin 2026 §6.3: vector-valued resampling weight accumulator. Mirrors `weight` per-channel for chroma-noise reduction at shading. BPR mode uses F itself as the vector accumulator and does not need this field.
+#endif
     float lightPdf; // NEE light pdf (might change after shift if transmission is included since light sampling considers "upperHemisphere" of the previous bounce)
     float3 cachedJacobian; // saved previous vertex scatter PDF, scatter PDF, and geometry term at rcVertex (used when rcVertex is not v2)
     uint initRandomSeed; // saved random seed at the first bounce (for recovering the random distance threshold for hybrid shift)
@@ -264,6 +267,9 @@ struct PathReservoir
         pathFlags.flags = 0;
         pathFlags.insertRcVertexLength(kMaximumPathLength);
         F = 0.f;
+#if !BPR
+        weightVec = 0.f;
+#endif
 
 #if BPR
         rcVertexBSDFLightSamplingIrradiance = 0.f;
@@ -297,6 +303,9 @@ struct PathReservoir
         if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
+#if !BPR
+        weightVec += in_F / p; // Lin 2026 §6.3 vector mirror; lum(weightVec) = weight by linearity of lum.
+#endif
 
         // Accept?
         if (sampleNext1D(sg) * weight <= w)
@@ -327,6 +336,12 @@ struct PathReservoir
         if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
+#if !BPR
+        // Lin 2026 §6.3 vector mirror. inReservoir.weight stays scalar (source pixel's
+        // finalized scalar UCW); scalar × vector = componentwise broadcast preserves
+        // the invariant lum(weightVec) = weight.
+        weightVec += in_F * in_Jacobian * inReservoir.M * inReservoir.weight * misWeight;
+#endif
 
         // Accept?
         if (forceAdd || sampleNext1D(sg) * weight <= w)
@@ -362,6 +377,10 @@ struct PathReservoir
         if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
+#if !BPR
+        // Lin 2026 §6.3 vector mirror, GRIS form (no M factor — already in misWeight).
+        weightVec += in_F * in_Jacobian * inReservoir.weight * misWeight;
+#endif
 
         // Accept?
         if (forceAdd || sampleNext1D(sg) * weight <= w)
@@ -399,7 +418,12 @@ struct PathReservoir
         if (isnan(w) || isinf(w) || w == 0.f) return false;
 
         weight += w;
-        // Lin 2026 #4 — propagate vector accumulator through same-pixel merges.
+#if !BPR
+        // Lin 2026 §6.3 vector mirror — pure additive propagation across same-pixel
+        // merges (no shifted integrand to multiply). lum(inReservoir.weightVec) =
+        // inReservoir.weight by source's invariant, so this preserves lum(weightVec) = weight.
+        weightVec += inReservoir.weightVec;
+#endif
 
         // Accept?
         if (sampleNext1D(sg) * weight <= w)
@@ -431,6 +455,10 @@ struct PathReservoir
     void prepareMerging()
     {
         weight *= toScalar(F) * M;
+#if !BPR
+        // Lin 2026 §6.3 mirror: same scalar multiplier preserves lum(weightVec) = weight.
+        weightVec *= toScalar(F) * M;
+#endif
     }
 
     // Post-division Inf/NaN guard: tiny-but-nonzero p_hat from grazing
@@ -439,9 +467,24 @@ struct PathReservoir
     void finalizeRIS()
     {
         float p_hat = toScalar(F);
-        if (p_hat == 0.f || M == 0.f) weight = 0.f;
-        else weight = weight / (p_hat * M);
+        if (p_hat == 0.f || M == 0.f)
+        {
+            weight = 0.f;
+#if !BPR
+            weightVec = 0.f;
+#endif
+        }
+        else
+        {
+            weight = weight / (p_hat * M);
+#if !BPR
+            weightVec = weightVec / (p_hat * M);
+#endif
+        }
         if (isnan(weight) || isinf(weight) || weight < 0.f) weight = 0.f;
+#if !BPR
+        if (any(isnan(weightVec)) || any(isinf(weightVec)) || any(weightVec < 0.f)) weightVec = 0.f;
+#endif
     }
 
     // assuming using proper resampling MIS weight, no need to divide by M
@@ -449,9 +492,24 @@ struct PathReservoir
     void finalizeGRIS()
     {
         float p_hat = toScalar(F);
-        if (p_hat == 0.f) weight = 0.f;
-        else weight = weight / p_hat;
+        if (p_hat == 0.f)
+        {
+            weight = 0.f;
+#if !BPR
+            weightVec = 0.f;
+#endif
+        }
+        else
+        {
+            weight = weight / p_hat;
+#if !BPR
+            weightVec = weightVec / p_hat;
+#endif
+        }
         if (isnan(weight) || isinf(weight) || weight < 0.f) weight = 0.f;
+#if !BPR
+        if (any(isnan(weightVec)) || any(isinf(weightVec)) || any(weightVec < 0.f)) weightVec = 0.f;
+#endif
     }
 
 };

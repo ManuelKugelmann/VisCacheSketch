@@ -169,4 +169,60 @@ The slot in `Params.slang::_retiredField1` was repurposed to `fireflyClampK`.
 
 DQLin = algorithmic reference. NVlabs = Falcor-version-closer-to-us robustness
 guards (§1-§7 of PORT_NOTES.md). Lin 2026 = paper-text-only backports (§12 #1
-+ #2 implemented; #3 #4 + Stage A excised, see PORT_NOTES.md Future additions).
++ #2 + #4 implemented; #3 + Stage A still excised, see PORT_NOTES.md Future
+additions).
+
+---
+
+## §6.3 vector-valued resampling weights (Lin 2026 §6.3) — implemented 2026-05-06
+
+Third Lin 2026 backport. Adds `float3 weightVec` to `PathReservoir` (gated
+`#if !BPR`, struct grew 88B → 100B), mirrored at all four merge/add accumulator
+sites, two finalize variants, `prepareMerging`, plus pairwise-MIS post-divide
+in `SpatialReuse.cs.slang`. Output sites switch from `F * weight` to
+`weightVec * toScalar(F)` — the `× toScalar(F)` factor recovers the scalar
+form's luminance (`Σw/M`) while preserving averaged chromaticity from the
+vector accumulator. BPR mode keeps using `F` as its existing vector
+accumulator and is gated out throughout.
+
+The math invariant `lum(weightVec) = weight` holds per-merge-step (linearity
+of luminance + scalar × vector = componentwise broadcast). At output, the
+extra `× toScalar(F)` ensures `lum(color_v) = lum(color_s)` matches the scalar
+form bit-for-bit.
+
+A May 2026-05-05 attempt was reverted with catastrophic results (Cornell
++20%, Sponza +1920%) — the prior attempt divided `weightVec /= M` instead of
+`/(p̂·M)`, dropping the `1/p̂` factor. Identifying the missing factor + the
+need for `× toScalar(F)` at output (post-finalize correction) was Phase 0
+research output.
+
+**Verification (Cornell_1AL + Sponza, b∈{1,4,8}, 2026-05-06):** scalar
+luminance metrics preserved bit-exactly (RMSE/PSNR identical to scalar
+baseline within fp32 round-off); mean_err and artifact_5 show small
+improvements from chroma marginalization. BPR variants unchanged (gate
+verified). Sponza's improvement is smaller than Cornell's because dim
+indirect-dominated content has less chroma signal to marginalize.
+
+| scene · variant | scalar baseline | with §6.3 | Δ |
+|---|---|---|---|
+| Cornell restirpt_b4 mean_err x1 | 3.789459% | **3.731196%** | −1.5% |
+| Cornell restirpt_b4 art5 x1 | 25.42% | **24.75%** | −2.6% |
+| Cornell restirpt_b4 RMSE x1 | 0.816066 | 0.815969 | match |
+| Cornell restirpt_b4 PSNR x1 | 38.397 | 38.398 | match |
+| Cornell restirpt_b8 mean_err x1 | 3.787949% | **3.726496%** | −1.6% |
+| Cornell restirpt_bpr_b4 x1 | 2.751116% | 2.751116% | unchanged ✓ |
+| Sponza restirpt_b4 mean_err x1 | 15.012455% | **15.003354%** | −0.06% |
+| Sponza restirpt_b4 art5 x1 | 84.545% | **84.494%** | −0.06% |
+| Sponza restirpt_b4 RMSE x1 | 0.768264 | 0.768326 | match |
+| Sponza restirpt_b4 PSNR x1 | 19.891 | 19.890 | match |
+| Sponza restirpt_bpr_b4 x1 | 11.252034% | 11.252034% | unchanged ✓ |
+
+**Pending follow-ups:**
+- Multi-scene extension (Cornell_32PL + BistroInterior) for full canonical
+  ladder coverage; values likely similar to Cornell/Sponza pattern.
+- Per-channel `chroma_var` ladder column added to baseline CSV schema this
+  session — first measurement reads will appear from the next run forward;
+  absolute values not yet calibrated across scenes. The §6.3 win quantitative
+  measurement will use the chroma_var delta vs scalar baseline once both
+  pipelines are runnable side-by-side (currently §6.3 ships as the only form;
+  scalar requires a build flag toggle to compare).

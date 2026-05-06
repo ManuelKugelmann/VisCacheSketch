@@ -551,6 +551,8 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
                         # Perceptual literature-standard:
                         "ms_ssim",            # Wang 2003 multi-scale SSIM (Reinhard-tonemapped luminance)
                         "flip",               # Andersson 2020 HDR-FLIP perceptual error
+                        # Chroma noise (Lin 2026 §6.3 backport — intra-image, no GT):
+                        "chroma_var",         # mean local chromaticity variance (RGB/Y) — lower = less chroma noise
                         "timestamp"]
 
 def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
@@ -558,7 +560,8 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                         rays_traced_pct=None,
                         artifact_3_pct=None, artifact_5_pct=None, artifact_11_pct=None,
                         mse=None, rmse=None, psnr_db=None, relmse=None,
-                        smape=None, mape=None, ms_ssim=None, flip=None):
+                        smape=None, mape=None, ms_ssim=None, flip=None,
+                        chroma_var=None):
     """Upsert one baseline row keyed by (scene, variant, spp).
     Metrics:
       Custom perceptual: mean_err_pct (OkLab × 2L), mean_noise_pct (bilateral CoV).
@@ -588,6 +591,7 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
         "mape":             fmt(mape),
         "ms_ssim":          fmt(ms_ssim),
         "flip":             fmt(flip),
+        "chroma_var":       fmt(chroma_var),
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -599,8 +603,10 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                 # Backfill 'variant' for old rows lacking it (assume vanilla).
                 if "variant" not in row:
                     row["variant"] = "vanilla"
-                # Require the rest of the fields; skip malformed rows.
-                if any(k not in row for k in _CSV_BASELINE_FIELDS):
+                # Skip rows missing the key (truly malformed). Other missing
+                # fields (e.g. newly-added columns like `chroma_var` from a
+                # schema bump) get auto-backfilled with "" via row.get below.
+                if "key" not in row:
                     continue
                 row = {k: row.get(k, "") for k in _CSV_BASELINE_FIELDS}
                 # Re-key old rows that may have used the legacy {scene}_x{spp} key.
@@ -3004,6 +3010,7 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
         "mape":    research.get("mape"),
         "ms_ssim": research.get("ms_ssim"),
         "flip":    research.get("flip"),
+        "chroma_var": research.get("chroma_var"),
     }
     append_baseline_csv(
         step_name, scene_name, spp,
