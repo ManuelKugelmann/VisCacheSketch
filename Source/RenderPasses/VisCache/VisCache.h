@@ -108,6 +108,7 @@ public:
                                           ///< SPP-adaptive: small-N → wide interval → no trust.
         float    wilsonEps;               ///< Margin for "definitely visible/occluded" decision.
                                           ///< 0.01 = trust when 95% CI within 1% of corner.
+        float    muShrinkZSquared;        ///< A-C shrinkage on cached μ: μ̃ = (X+z²/2)/(N+z²). 0 = off.
         uint32_t enableHierarchicalConsistency; ///< 1 = at each converged level, peek the next
                                                 ///< finer level's μ and require agreement within
                                                 ///< gHierarchicalMuTolerance before early-stop.
@@ -260,6 +261,10 @@ public:
                                                       ///< SPP-adaptive: small-N → wide interval → no trust.
         float    wilsonEps                   = 0.01f; ///< Margin for Wilson-gate "definitely visible/occluded"
                                                       ///< decision. 0.01 = trust within 1% of corner.
+        float    muShrinkZSquared            = 0.0f;  ///< A-C shrinkage on cached μ: μ̃ = (X + z²/2)/(N + z²).
+                                                      ///< 0 = off (raw μ); 4 = "add 2,4" Beta(2,2) prior.
+                                                      ///< Affects μ AND var = μ̃(1−μ̃) read at every cache
+                                                      ///< query. See .plans/agresti-coull-shrinkage.md.
         bool     enableHierarchicalConsistency = false; ///< Peek finer-level μ for agreement check.
         float    hierarchicalMuTolerance     = 0.20f; ///< |μ_next − μ_this| above which trust is refused.
         float    accelDecayDisagreeThresh    = 0.0f;  ///< |sample−μ| that triggers in-insert half-decay; 0 = off.

@@ -211,6 +211,14 @@ cbuffer VisCacheParams
                                       ///< → wide interval → no trust regardless of μ̂ point estimate.
     float  gWilsonEps;                ///< Margin for "definitely visible/occluded" Wilson trust
                                       ///< decision. 0.01 = trust when 95% CI is within 1% of corner.
+    float  gMuShrinkZSquared;         ///< Agresti-Coull shrinkage on the cached cell μ:
+                                      ///< μ̃ = (X + z²/2) / (N + z²). 0 = off (raw μ = X/N).
+                                      ///< 4 = "add 2,4" form (95% CI Beta(2,2) prior, pulls extreme
+                                      ///< μ values away from 0/1 at low N). Affects μ AND
+                                      ///< var = μ̃(1−μ̃) consumed by trust gates and CV+RRR.
+                                      ///< Orthogonal to the trust gate; changes WHAT the cache
+                                      ///< stores, not WHEN we trust it. See
+                                      ///< .plans/agresti-coull-shrinkage.md.
     // NOTE 2026-05-06: gCtSppScaleK / gVtSppScaleK were considered but
     // pulled — this codebase accumulates frames at PathTracer SPP=1, so
     // gSpp = mStaticParams.samplesPerPixel = 1 always and any SPP-scaling
@@ -981,8 +989,21 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         if (total == 0u) break;
 
         uint  vis = e.packed >> 16u;
-        float mu  = float(vis) / float(total);
-        float var = mu * (1.0f - mu);  // Bernoulli variance
+        // Agresti-Coull shrinkage on cached μ: μ̃ = (X + z²/2)/(N + z²).
+        // Default gMuShrinkZSquared = 0 → raw μ = X/N (legacy). When >0,
+        // pulls extreme values away from 0/1 at low N (Beta-prior shrinkage).
+        // var = μ̃(1−μ̃) propagates to all downstream gates and CV+RRR.
+        float mu;
+        if (gMuShrinkZSquared > 0.f)
+        {
+            float zsq = gMuShrinkZSquared;
+            mu = (float(vis) + 0.5f * zsq) / (float(total) + zsq);
+        }
+        else
+        {
+            mu = float(vis) / float(total);
+        }
+        float var = mu * (1.0f - mu);  // Bernoulli variance (using shrunk μ when active)
 
         // Per-level bootThreshold — linear interp from gBootThreshold (coarse,
         // level 0) to gBootThresholdFine (fine, level numLevels-1). When
