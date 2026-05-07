@@ -208,9 +208,20 @@ struct RestirPathTracerParams
     // via render_graph_ReSTIRPT(...) kwarg to engage.
     float   fireflyClampK = 1.e9f;
 
+    // Reservoir addressing mode (mirrors gWSPoolAddrMode pattern from
+    // VisCache WS-ReSTIR DI). 0 = pixel-keyed (2D, default — current
+    // behavior), 1 = world-cell-keyed (3D, via WSCellPool — wired in
+    // a later commit). Exposed here so the cbuffer ABI is stable.
+    uint    restirptAddrMode = 0u;
+    uint    _restirptAddrPad0 = 0u;       // 8-byte align
+    uint    _restirptAddrPad1 = 0u;
+    uint    _restirptAddrPad2 = 0u;
+
 #ifndef HOST_CODE
 
-    uint getReservoirOffset(const uint2 pixel)
+    // Pixel-keyed reservoir addressing (2D mode, restirptAddrMode=0).
+    // Tile-Morton offset within the per-pixel reservoir buffer.
+    uint getReservoirOffsetPixel(const uint2 pixel)
     {
         uint2 tileID = pixel >> kScreenTileBits;
 
@@ -221,6 +232,25 @@ struct RestirPathTracerParams
         uint tileBits = kScreenTileBits.x + kScreenTileBits.y;
         uint pixelIdx = interleave_16bit(pixel) & ((1 << tileBits) - 1); // TODO: Use interleave_8bit() if kScreenTileBits <= 4.
         return tileOffset + pixelIdx;
+    }
+
+    // Existing call sites (pre-3D) — preserved for binary-identical behavior.
+    uint getReservoirOffset(const uint2 pixel)
+    {
+        return getReservoirOffsetPixel(pixel);
+    }
+
+    // 3D-aware overload. When restirptAddrMode=1, reservoir addressing should
+    // dispatch via VisCache's wsResolveCellPoolAddr(posA, faceN). Plumbing for
+    // that lands in a follow-up commit; for now this overload always returns
+    // the pixel-keyed offset (mode 0 behavior) so adding the call doesn't
+    // change output. Callers that have posA/faceN in scope should adopt this
+    // overload now so the upgrade is local to Params.slang later.
+    uint getReservoirOffset(const uint2 pixel, const float3 posA, const float3 faceN)
+    {
+        // restirptAddrMode==1 path will route to WSCellPoolIO::wsResolveCellPoolAddr
+        // once the VisCache cross-plugin import lands. Until then: pixel-keyed.
+        return getReservoirOffsetPixel(pixel);
     }
 
 #endif
