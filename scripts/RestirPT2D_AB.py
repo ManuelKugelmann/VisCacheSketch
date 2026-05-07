@@ -27,12 +27,20 @@ OUT_DIR = os.path.join("captures", "restirpt2d_ab", SCENE_NAME)
 
 
 def make_graph(variant: str, name: str):
-    """variant: 'vanilla' | 'rpt2d' | 'dqlin'"""
+    """variant:
+    'vanilla'      — Falcor PathTracer
+    'restirpt_ref' — RestirPTReferencePass (verbatim copy of dqlin reference)
+    'restirpt'     — RestirPTPass (our active port; will diverge from ref as we
+                     replace dqlin pathtracing with Falcor 8 native PathTracer)
+    """
     g = RenderGraph(name)
 
-    if variant == "dqlin":
-        # Mirror the canonical ReSTIRPT_Graph config: GBufferRT → RTXDIPass
-        # (direct) → ReSTIRPTPass (indirect, fed by RTXDI direct).
+    pass_class_map = {
+        "restirpt_ref": "ReSTIRPTReferencePass",   # frozen verbatim copy
+        "restirpt":     "ReSTIRPTPass",            # our active port (Falcor 8 native PT)
+    }
+    if variant in pass_class_map:
+        pass_class = pass_class_map[variant]
         gbuf = createPass("GBufferRT", {"samplePattern": "Stratified", "sampleCount": 1})
         g.addPass(gbuf, "GBufferRT")
         rtxdi = createPass("RTXDIPass", {
@@ -43,7 +51,7 @@ def make_graph(variant: str, name: str):
             },
         })
         g.addPass(rtxdi, "RTXDIPass")
-        restirpt = createPass("ReSTIRPTPass", {
+        restirpt = createPass(pass_class, {
             "samplesPerPixel":             1,
             "maxSurfaceBounces":           3,
             "useDirectLighting":           True,
@@ -51,30 +59,29 @@ def make_graph(variant: str, name: str):
             "pathSamplingMode":            "ReSTIR",
             "fireflyClampK":               100.0,    # bound the RIS estimator
         })
-        g.addPass(restirpt, "ReSTIRPTPass")
+        g.addPass(restirpt, pass_class)
         accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
         g.addPass(accum, "AccumulatePass")
         tone = createPass("ToneMapper", {"autoExposure": False, "exposureValue": 0.0, "operator": "Aces"})
         g.addPass(tone, "ToneMapper")
         g.addEdge("GBufferRT.vbuffer",      "RTXDIPass.vbuffer")
         g.addEdge("GBufferRT.mvec",         "RTXDIPass.mvec")
-        g.addEdge("RTXDIPass.color",        "ReSTIRPTPass.directLighting")
-        g.addEdge("GBufferRT.vbuffer",      "ReSTIRPTPass.vbuffer")
-        g.addEdge("GBufferRT.mvec",         "ReSTIRPTPass.motionVectors")
-        g.addEdge("ReSTIRPTPass.color",     "AccumulatePass.input")
+        g.addEdge(f"RTXDIPass.color",       f"{pass_class}.directLighting")
+        g.addEdge("GBufferRT.vbuffer",      f"{pass_class}.vbuffer")
+        g.addEdge("GBufferRT.mvec",         f"{pass_class}.motionVectors")
+        g.addEdge(f"{pass_class}.color",    "AccumulatePass.input")
         g.addEdge("AccumulatePass.output",  "ToneMapper.src")
         g.markOutput("ToneMapper.dst")
         g.markOutput("AccumulatePass.output")
         return g
 
-    # vanilla / rpt2d — both use Falcor's PathTracer plugin.
+    # vanilla — Falcor's PathTracer plugin.
     vbuf = createPass("VBufferRT", {"samplePattern": "Stratified", "sampleCount": 16})
     g.addPass(vbuf, "VBufferRT")
     pt = createPass("PathTracer", {
         "samplesPerPixel":   1,
         "maxSurfaceBounces": 3,
         "colorFormat":       "LogLuvHDR",
-        "useRestirPT":       (variant == "rpt2d"),
     })
     g.addPass(pt, "PathTracer")
     accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
@@ -123,8 +130,7 @@ def render_and_capture(variant: str, tag: str):
     m.removeGraph(g)
 
 
-render_and_capture(variant="vanilla", tag="vanilla")
-render_and_capture(variant="rpt2d",   tag="restirpt_2d")
-if os.environ.get("AB_DQLIN", "0") == "1":
-    render_and_capture(variant="dqlin", tag="restirpt_dqlin")
+render_and_capture(variant="vanilla",      tag="vanilla")
+render_and_capture(variant="restirpt_ref", tag="restirpt_ref")    # verbatim dqlin copy
+render_and_capture(variant="restirpt",     tag="restirpt")        # our active port
 print("[ab] DONE")

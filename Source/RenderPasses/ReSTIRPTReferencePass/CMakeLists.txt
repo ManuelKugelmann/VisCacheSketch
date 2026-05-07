@@ -1,8 +1,8 @@
-add_plugin(ReSTIRPTPass)
+add_plugin(ReSTIRPTReferencePass)
 
-target_sources(ReSTIRPTPass PRIVATE
-    ReSTIRPTPass.h
-    ReSTIRPTPass.cpp
+target_sources(ReSTIRPTReferencePass PRIVATE
+    ReSTIRPTReferencePass.h
+    ReSTIRPTReferencePass.cpp
     # Slang shaders (verbatim copy from Source/RenderPasses/ReSTIRPTPass/;
     # see project_restirpt2d_status memory + Falcor/LOCAL_FIXES.md for why
     # we maintain this as a separate near-byte-identical sibling plugin).
@@ -26,8 +26,8 @@ target_sources(ReSTIRPTPass PRIVATE
     ReflectTypes.cs.slang
 )
 
-target_copy_shaders(ReSTIRPTPass RenderPasses/ReSTIRPTPass)
+target_copy_shaders(ReSTIRPTReferencePass RenderPasses/ReSTIRPTReferencePass)
 
-target_copy_data(ReSTIRPTPass ReSTIRPTPass)
+target_copy_data(ReSTIRPTReferencePass ReSTIRPTReferencePass)
 
-target_source_group(ReSTIRPTPass "RenderPasses")
+target_source_group(ReSTIRPTReferencePass "RenderPasses")
