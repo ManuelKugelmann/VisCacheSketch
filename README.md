@@ -51,13 +51,7 @@ The thesis was never properly finished and remained unpublished. Its artifacts (
 
 **Spatial hashing.** The spatial grids were visible in the thesis screenshots, but the use of *spatial hashing* to map grid cells to memory went unmentioned — it was treated as an implementation detail, not a contribution. The practical inspiration came from [ODE][r-ode] (Open Dynamics Engine, Russell Smith, 2001–2004), which uses spatial hashing for broad-phase collision detection. Kugelmann encountered ODE through a Universität Ulm course project ([Animal Race](http://animalrace.bitcraft.org/)).
 
-<table><tr>
-<td><img src="docs/references/MK2006.jpg" width="380" alt="Kugelmann 2006 — spatial hash grid visibility cache. Left: rendered image. Right: shadow test count revealing the spatial grid cells."></td>
-<td><img src="docs/devlog/step02/plates/CornellBox_1AreaLight_s_1_1_x16_512x512_pos_norm__dir_dist1_plate.png" width="380" alt="VisCache 2026 — pos_norm__dir_dist1 x16 SPP diagnostic plate (~79% ray savings)"></td>
-</tr><tr>
-<td align="center"><em>Kugelmann 2006 — spatial hash grid, shadow test count</em></td>
-<td align="center"><em>VisCache 2026 — pos_norm__dir_dist1, x16 SPP (~79% ray savings)</em></td>
-</tr></table>
+<img src="docs/references/MK2006.jpg" width="380" alt="Kugelmann 2006 — spatial hash grid visibility cache. Left: rendered image. Right: shadow test count revealing the spatial grid cells.">
 
 **What was not in 2006.** The Bernoulli optimization (var = μ(1−μ), requiring no separate variance accumulator for binary visibility) was not realized — the thesis used generalized variance estimation across all cached quantities. Narrowing to binary visibility allows exploiting the Bernoulli structure. GPU implementation, modern hash functions, LOD-in-key, and ReSTIR integration are all new (see [Key additions](#key-additions-beyond-kugelmann-2006) below).
 
