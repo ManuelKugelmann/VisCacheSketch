@@ -130,9 +130,12 @@ Quantizes the visibility function domain with locally adapted resolution, reduci
 - PDF: [KIT](https://cg.ivd.kit.edu/publications/p2013/AQVC_Popov_2013/AQVC_Popov_2013.pdf) | **Auto**
 - Scenes: San Miguel, Conference Room
 
+### Guo 2016 — VisCache (Utrecht student project) — name collision precursor to Guo 2020
+**J. J. Guo, "VisCache — Unidirectional Path Tracer with Visibility Caching," Utrecht University Advanced Graphics course project, October 2016.** Unpublished student project on GitHub: [Jerry-Jinfeng-Guo/VisCache](https://github.com/Jerry-Jinfeng-Guo/VisCache). Same name as our project — independently coined, encountered after our project was already named. Reports "regular shadow ray queries down by 78%" via a visibility-caching scheme; technical details in the (now offline) Utrecht student-page report (`http://www.students.science.uu.nl/~5610443/`). The data structure and key are not documented in the README, so we cannot directly compare designs against our hash cache. **Plausibly the conceptual seed of [Guo 2020 NEE++]** (same author, same problem framing, similar headline number 78% → 80%) — the academic continuation extends visibility caching to a voxel-to-voxel structure with explicit unbiasedness via Russian roulette. Both arrived at the visibility-cache idea independently from the [Kugelmann 2006] thesis, in the [Ward 1991] / [Popov 2013] / [Ulbrich 2013] line. *Independent prior art for the name and the headline result; not the data structure or cascade or ReSTIR composition that this work contributes.*
+
 ### Guo 2020 — NEE++
-**J. Guo, M. Eisemann, E. Eisemann, "Next Event Estimation++: Visibility Mapping for Efficient Light Transport Simulation," CGF/PG 2020.**
-Voxel-to-voxel visibility caching for informed shadow ray Russian roulette and importance sampling. Discards up to 80% of visibility tests. Related approach — voxelized visibility rather than hash-based.
+**J. J. Guo, M. Eisemann, E. Eisemann, "Next Event Estimation++: Visibility Mapping for Efficient Light Transport Simulation," CGF / Pacific Graphics 2020.**
+Voxel-to-voxel visibility caching for informed shadow ray Russian roulette and importance sampling. Discards up to 80% of visibility tests. Cached visibility used both for trust-gate decisions on whether to trace the shadow ray and for biasing light selection (cf. our §9.1 cache-informed selection). Likely descended from the author's 2016 *VisCache* student project (above). Related approach — voxelised visibility rather than multi-level hashed; orthogonal contribution: their work informs NEE specifically, ours informs cache structure + ReSTIR composition.
 - PDF: [Wiley](https://onlinelibrary.wiley.com/doi/abs/10.1111/cgf.14138) / [TU Braunschweig](https://graphics.tu-bs.de/publications/guo2020next) | **Manual**
 
 ### Ulbrich 2013 — Progressive Visibility Caching
