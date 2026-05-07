@@ -1554,6 +1554,49 @@ struct PathTracer
     /** Handle the case when a scatter ray misses the scene.
         \param[in,out] path The path state.
     */
+    /** Pure helper: evaluate the env-map radiance contribution at a path miss.
+
+        Mirrors Falcor 8 PathTracer's `evalEnvAtMiss`: pure (no path/output side
+        effects), so the env-eval logic isn't duplicated inline in handleMiss.
+        Output `lightPdf` is a dqlin extension used by the path-reuse escape-
+        vertex bookkeeping below.
+
+        Maintenance contract: this mirrors
+        `Falcor/Source/RenderPasses/PathTracer/PathTracer.slang::evalEnvAtMiss`.
+        When that helper changes upstream, port the diff here. dqlin-specific
+        deviations are deliberate and called out:
+          - `kDisableDirectIllumination && path.length == 0` gate (instead of
+            Falcor 8's `kUseRTXDI && getVertexIndex() == 2 && !transmission &&
+            !delta`).
+          - `lightPdf` exposed as out-param for `pathBuilder.addEscapeVertex()`.
+
+        @return true if the env contribution should be added.
+    */
+    bool evalEnvAtMiss(in const PathState path, out float3 Le, out float misWeight, out float lightPdf)
+    {
+        Le = float3(0.f);
+        misWeight = 1.f;
+        lightPdf  = 0.f;
+
+        const bool isLightSamplable = path.isLightSamplable();
+        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
+
+        // Disable all contributions to direct illumination if requested
+        // (dqlin: RTXDI feeds primary direct, ReSTIRPT handles indirect only).
+        if (kDisableDirectIllumination && path.length == 0 && isLightSamplable) computeEnv = false;
+
+        if (!computeEnv) return false;
+
+        if (kUseNEE && kUseMIS && path.isLightSampled() && isLightSamplable)
+        {
+            lightPdf = getEnvMapSelectionProbability() * envMapSampler.evalPdf(path.dir);
+            misWeight = evalMIS(1, path.pdf, 1, lightPdf);
+        }
+
+        Le = envMapSampler.eval(path.dir);
+        return true;
+    }
+
     void handleMiss(inout PathState path)
     {
         // Upon miss:
@@ -1565,32 +1608,14 @@ struct PathTracer
         // Check if the scatter event is samplable by the light sampling technique.
         const bool isLightSamplable = path.isLightSamplable();
 
-        // Add env radiance.
-        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
-
-        // Disable all constributions to direct illumination if requested.
-        if (kDisableDirectIllumination && path.length == 0 && isLightSamplable) computeEnv = false;
+        float3 Le;
+        float  misWeight;
+        float  lightPdf;
+        const bool computeEnv = evalEnvAtMiss(path, Le, misWeight, lightPdf);
 
         if (computeEnv)
         {
             logPathVertex();
-
-            float misWeight = 1.f;
-            float lightPdf = 0.f;
-            if (kUseNEE && kUseMIS && path.isLightSampled() && isLightSamplable)
-            {
-                // If NEE and MIS are enabled, and we've already sampled the env map,
-                // then we need to evaluate the MIS weight here to account for the remaining contribution.
-
-                // Evaluate PDF, had it been generated with light sampling.
-                lightPdf = getEnvMapSelectionProbability() * envMapSampler.evalPdf(path.dir);
-
-                // Compute MIS weight by combining this with BRDF sampling.
-                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-                misWeight = evalMIS(1, path.pdf, 1, lightPdf);
-            }
-
-            float3 Le = envMapSampler.eval(path.dir);
             float3 Lr = path.getCurrentThp() * Le * misWeight;
 
             // daqi: when doing random number replay, we will terminate the path when the length reaches the base path length and 
