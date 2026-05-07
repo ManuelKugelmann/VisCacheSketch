@@ -26,15 +26,42 @@ SCENE_NAME = os.path.splitext(os.path.basename(SCENE_FILE))[0]
 OUT_DIR = os.path.join("captures", "restirpt2d_ab", SCENE_NAME)
 
 
-def make_graph(restirpt: bool, name: str):
+def make_graph(variant: str, name: str):
+    """variant: 'vanilla' | 'rpt2d' | 'dqlin'"""
     g = RenderGraph(name)
+
+    if variant == "dqlin":
+        # GBufferRT (motionVectors needed by ReSTIRPTPass)
+        gbuf = createPass("GBufferRT", {"samplePattern": "Stratified", "sampleCount": 1})
+        g.addPass(gbuf, "GBufferRT")
+        restirpt = createPass("ReSTIRPTPass", {
+            "samplesPerPixel":            1,
+            "maxSurfaceBounces":          3,
+            "useDirectLighting":          True,
+            "disableDirectIllumination":  False,   # standalone — no RTXDI feed
+            "pathSamplingMode":           "ReSTIR",
+        })
+        g.addPass(restirpt, "ReSTIRPTPass")
+        accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
+        g.addPass(accum, "AccumulatePass")
+        tone = createPass("ToneMapper", {"autoExposure": False, "exposureValue": 0.0, "operator": "Aces"})
+        g.addPass(tone, "ToneMapper")
+        g.addEdge("GBufferRT.vbuffer",     "ReSTIRPTPass.vbuffer")
+        g.addEdge("GBufferRT.mvec",        "ReSTIRPTPass.motionVectors")
+        g.addEdge("ReSTIRPTPass.color",    "AccumulatePass.input")
+        g.addEdge("AccumulatePass.output", "ToneMapper.src")
+        g.markOutput("ToneMapper.dst")
+        g.markOutput("AccumulatePass.output")
+        return g
+
+    # vanilla / rpt2d — both use Falcor's PathTracer plugin.
     vbuf = createPass("VBufferRT", {"samplePattern": "Stratified", "sampleCount": 16})
     g.addPass(vbuf, "VBufferRT")
     pt = createPass("PathTracer", {
         "samplesPerPixel":   1,
         "maxSurfaceBounces": 3,
         "colorFormat":       "LogLuvHDR",
-        "useRestirPT":       restirpt,
+        "useRestirPT":       (variant == "rpt2d"),
     })
     g.addPass(pt, "PathTracer")
     accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
@@ -46,14 +73,14 @@ def make_graph(restirpt: bool, name: str):
     g.addEdge("PathTracer.color",      "AccumulatePass.input")
     g.addEdge("AccumulatePass.output", "ToneMapper.src")
     g.markOutput("ToneMapper.dst")
-    g.markOutput("AccumulatePass.output")   # pre-tonemapper HDR for diff
+    g.markOutput("AccumulatePass.output")
     return g
 
 
-def render_and_capture(restirpt: bool, tag: str):
+def render_and_capture(variant: str, tag: str):
     print(f"[ab] === {tag} ===")
     # Build + activate this graph
-    g = make_graph(restirpt, tag)
+    g = make_graph(variant, tag)
     m.addGraph(g)
 
     # Scene path resolution (mirror RunGraphHeadless logic)
@@ -83,6 +110,8 @@ def render_and_capture(restirpt: bool, tag: str):
     m.removeGraph(g)
 
 
-render_and_capture(restirpt=False, tag="vanilla")
-render_and_capture(restirpt=True,  tag="restirpt_2d")
+render_and_capture(variant="vanilla", tag="vanilla")
+render_and_capture(variant="rpt2d",   tag="restirpt_2d")
+if os.environ.get("AB_DQLIN", "0") == "1":
+    render_and_capture(variant="dqlin", tag="restirpt_dqlin")
 print("[ab] DONE")

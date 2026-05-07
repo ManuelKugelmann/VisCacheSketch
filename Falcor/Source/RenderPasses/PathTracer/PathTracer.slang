@@ -2250,8 +2250,13 @@ struct PathTracer
             res.M = 1.f;
             res.weight = 1.f;   // post-finalize form: 1/(p̂·M)·w_sum = 1 for single sample.
             // Soft-clamp F at write to bound fireflies entering the reservoir.
-            const float kFireflyClamp = 1e3f;
-            res.F = clamp(path.L, float3(0.f), float3(kFireflyClamp));
+            // Strip NaN/Inf only — no magnitude clamp here (Sponza emissives
+            // hit ~1e4-1e5 and a hard 1e3 cap was lopping off luminance,
+            // 3× biased pure-self output vs vanilla path.L). Output side
+            // already has its own bounded clamp post-finalize.
+            res.F = any(isnan(path.L)) || any(isinf(path.L))
+                  ? float3(0.f)
+                  : max(path.L, float3(0.f));
             // Use the locked rcVertex hit (first rough secondary vertex)
             // when available; fall back to terminal hit otherwise.
             HitInfo rcHit = path.rcVertexCapLocked ? path.rcVertexCapHit : path.hit;
@@ -2455,6 +2460,11 @@ struct PathTracer
                         float Jcalc = computeReconnectionJacobian(donor.rcVertexPosW, donor.rcVertexFaceN,
                                                                   centerPosW, neighborPosW,
                                                                   pdfD, pdfS);
+                        // Reverted to [0.1, 10] — widening to [0.01, 100] does
+                        // not change the acceptance breakdown on Sponza (probed
+                        // 5%/11%/73% accept/geom/jac unchanged), so 73% jac-rej
+                        // is intrinsic to Sponza's secondary-vertex spread.
+                        // Phase 4 Hybrid/RandomReplay needed to recover those.
                         const float kJacobianRejectThreshold = 10.f;
                         if (Jcalc <= 0.f || Jcalc > kJacobianRejectThreshold || Jcalc < 1.f / kJacobianRejectThreshold)
                         {
@@ -2510,8 +2520,6 @@ struct PathTracer
             PathReservoir history = gRestirPTReservoirsHistory[prevOffset];
             const float kMaxHistoryM = 5.f;
             if (history.M > kMaxHistoryM) history.M = kMaxHistoryM;
-            // Disocclusion guard — drop temporal if history's primary is far
-            // from current pixel's primary (camera moved or different surface).
             float3 dPrim = history.primaryHitPosW - centerPosW;
             float primOk = (dot(dPrim, dPrim) < (0.1f * centerCamDist) * (0.1f * centerCamDist))
                         && (dot(history.primaryHitFaceN, centerFaceN) > 0.5f);
