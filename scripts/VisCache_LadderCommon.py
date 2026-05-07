@@ -572,7 +572,8 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                         artifact_3_pct=None, artifact_5_pct=None, artifact_11_pct=None,
                         mse=None, rmse=None, psnr_db=None, relmse=None,
                         smape=None, mape=None, ms_ssim=None, flip=None,
-                        chroma_var=None):
+                        chroma_var=None,
+                        gpu_tracepass_ms=None, gpu_total_ms=None):
     """Upsert one baseline row keyed by (scene, variant, spp).
     Metrics:
       Custom perceptual: mean_err_pct (OkLab × 2L), mean_noise_pct (bilateral CoV).
@@ -603,6 +604,8 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
         "ms_ssim":          fmt(ms_ssim),
         "flip":             fmt(flip),
         "chroma_var":       fmt(chroma_var),
+        "gpu_tracepass_ms": fmt(gpu_tracepass_ms),
+        "gpu_total_ms":     fmt(gpu_total_ms),
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
 

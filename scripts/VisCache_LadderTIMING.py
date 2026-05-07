@@ -80,10 +80,12 @@ STEP_OVERRIDES = {**RR_ADAPTIVE, **LEVELS_MULTI, "tableCapacity": 1 << 25}
 MF_CONFIGS = [(0, 0, 4, 1), (0, 0, 16, 1)]
 
 for scene_file in get_scenes(default=list(DEFAULT_SCENES)):
-    # Vanilla baseline FIRST (absorbs cold-start GPU warmup so the cache
-    # variant gets a clean reading). Vanilla path now also emits
-    # gpu_tracepass_ms via the run_baseline profiler hook.
-    run_baseline(step_name="00", frame_configs=[(0, 0, 1)],
+    # Vanilla baseline rendered into TIMING_VAN/ (separate step dir from
+    # the cache run). Otherwise the variant CSV writer in run_variants
+    # would overwrite the baseline rows because the two writers don't
+    # share a schema (existing _CSV_FIELDS vs _CSV_BASELINE_FIELDS
+    # collision). Two dirs = two CSVs, post-processed jointly.
+    run_baseline(step_name="TIMING_VAN", frame_configs=[(0, 0, 1)],
                   scene_file=scene_file, resX=res, resY=res,
                   extra_spp=[4, 16], mogwai_globals=globals())
     # Cache variant — gets the warm GPU.
