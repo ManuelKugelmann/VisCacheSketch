@@ -627,6 +627,13 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                 if row["key"] == f"{scene}_x{spp}" and row["variant"] == "vanilla":
                     row["key"] = key  # legacy → new
                 if row.get("key") == key:
+                    # Preserve gpu_tracepass_ms / gpu_total_ms from the
+                    # existing row when the new write has empty values
+                    # (typical when post-process re-runs over cached
+                    # renders and didn't see fresh profiler data).
+                    for k in ("gpu_tracepass_ms", "gpu_total_ms"):
+                        if not new_row.get(k) and row.get(k):
+                            new_row[k] = row[k]
                     rows.append(new_row)
                     replaced = True
                 else:
@@ -3790,6 +3797,9 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
         frames = fc_entry[2] if len(fc_entry) >= 3 else fc_entry[-1]
         captureDir = f"captures/ladder/{step_name}/{scene_name}"
         os.makedirs(captureDir, exist_ok=True)
+        # Per-SPP GPU profiler timings collected in the render loop, used in
+        # the postprocess loop below.
+        gpu_times_by_spp = {}
 
         for spp in capture_spps:
             tag = f"s_x{spp}_{res_tag}"
@@ -3835,6 +3845,18 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                             _gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
             except Exception:
                 pass
+
+            spp_gpu_csv = {}
+            pt = _gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
+              or _gpu_times.get("/PathTracer/tracePass")
+            if pt is not None:
+                spp_gpu_csv["gpu_tracepass_ms"] = pt
+            tot = _gpu_times.get("/onFrameRender/RenderGraphExe::execute()") \
+               or _gpu_times.get("/onFrameRender")
+            if tot is not None:
+                spp_gpu_csv["gpu_total_ms"] = tot
+            if spp_gpu_csv:
+                gpu_times_by_spp[spp] = spp_gpu_csv
 
             fc.capture()
             m.renderFrame()
@@ -3903,6 +3925,7 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                     step_name, captureDir, scene_name,
                     spp, res_tag, gt_hdr_for_post, noise_floor_for_post,
                     variant_tag=tag_suffix,
+                    gpu_times=gpu_times_by_spp.get(spp),
                 )
 
 

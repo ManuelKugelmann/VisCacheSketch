@@ -104,10 +104,15 @@ for scene_file in get_scenes(default=["Sponza"]):
             )
 
         tag = f"viscache_canonical_b{mb}"
+        # force_actual_spp=1 + frames=4 → 4 frame-accumulation renders per
+        # variant. Profiler needs multiple frames for a stable average;
+        # single-frame renders return invalid -1 averages and the gpu_ms
+        # column comes out empty (observed previously on b=0).
         _run_baseline_variant(
-            STEP, [(0, 0, 1)], scene_file, tag,
+            STEP, [(0, 0, 4)], scene_file, tag,
             _build, "AccumulatePass.output",
             capture_spps=(4,), maxBounces=mb,
+            force_actual_spp=1,
             resX=res, resY=res, mogwai_globals=globals(),
             gt_hdr_for_post=gt_hdr, noise_floor_for_post=floor,
         )
