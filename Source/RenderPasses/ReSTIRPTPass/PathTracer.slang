@@ -1978,7 +1978,27 @@ struct PathTracer
 
         const uint2 pixel = path.getPixel();
 
-        const uint reservoirIdx = params.getReservoirOffset(pixel);
+        // Reservoir-offset dispatch: 2D pixel-keyed (default) or 3D worldcell-keyed.
+        // The 3D branch loads primary-hit shading data to provide posA/faceN.
+        uint reservoirIdx;
+        if (params.restirptAddrMode == 0u)
+        {
+            reservoirIdx = params.getReservoirOffset(pixel);
+        }
+        else
+        {
+            const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
+            if (!primaryHit.isValid())
+            {
+                reservoirIdx = params.getReservoirOffset(pixel);
+            }
+            else
+            {
+                const Ray cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
+                const ShadingData primarySd = loadShadingData(primaryHit, cameraRay.dir, /*isPrimary=*/true);
+                reservoirIdx = params.getReservoirOffset(pixel, primarySd.posW, primarySd.faceN);
+            }
+        }
 
         static const uint itersPerShaderPass = PathSamplingMode(kPathSamplingMode) == PathSamplingMode::PathTracing ? kSamplesPerPixel : kCandidateSamples;
 
