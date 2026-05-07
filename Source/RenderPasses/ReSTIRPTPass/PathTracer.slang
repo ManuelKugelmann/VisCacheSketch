@@ -990,6 +990,40 @@ struct PathTracer
         }
     }
 
+    /** Pure helper: evaluate the MIS weight + lightPdf for an emissive surface hit.
+
+        Mirrors `Falcor/Source/RenderPasses/PathTracer/PathTracer.slang::evalEmissiveMIS`,
+        with a dqlin-specific extension: also returns `lightPdf` as out-param
+        (used by `pathBuilder.markEscapeVertexAsRcVertex` in handleHit).
+
+        Maintenance contract: when the upstream Falcor 8 helper changes, port
+        the diff here. Note: dqlin uses `sd.frontFacing ? sd.faceN : -sd.faceN`
+        which is equivalent to Falcor 8's `sd.getOrientedFaceNormal()`.
+
+        @return    misWeight (1.f when no emissive-NEE-MIS combination applies).
+    */
+    float evalEmissiveMIS(in const PathState path, in const ShadingData sd, bool isPrimaryHit, bool isLightSamplable, bool isTriangleHit, out float lightPdf)
+    {
+        lightPdf = 0.f;
+        if (!(kUseEmissiveLights && kUseNEE && kUseMIS && !isPrimaryHit && path.isLightSampled() && isLightSamplable))
+            return 1.f;
+
+        // Prepare hit point struct with data needed for emissive light PDF evaluation.
+        TriangleHit triangleHit = path.hit.getTriangleHit();
+        TriangleLightHit hit;
+        hit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
+        hit.posW = sd.posW;
+        hit.normalW = sd.frontFacing ? sd.faceN : -sd.faceN;
+
+        // Evaluate PDF at the hit, had it been generated with light sampling.
+        bool upperHemisphere = path.isLightSampledUpper() && !path.isLightSampledLower();
+        lightPdf = getEmissiveSelectionProbability() * emissiveSampler.evalPdf(path.origin, path.normal, upperHemisphere, hit);
+
+        // Compute MIS weight by combining this with BRDF sampling.
+        // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+        return evalMIS(1, path.pdf, 1, lightPdf);
+    }
+
     /** Handle the case when a scatter ray hits the scene.
         After handling the hit, a new scatter ray is generated or the path is terminated.
         \param[in,out] path The path state.
@@ -1080,31 +1114,8 @@ struct PathTracer
         if (computeEmissive && any(emission > 0.f))
         {
             float lightPdf = 0.f;
-
-            float misWeight = 1.f;
+            float misWeight = evalEmissiveMIS(path, sd, isPrimaryHit, isLightSamplable, /*isTriangleHit=*/true, lightPdf);
             float3 Lr = 0.f;
-
-            if (kUseEmissiveLights && kUseNEE && kUseMIS && !isPrimaryHit && path.isLightSampled() && isLightSamplable)
-            {
-                // If NEE and MIS are enabled, and we've already sampled emissive lights,
-                // then we need to evaluate the MIS weight here to account for the remaining contribution.
-
-                // Prepare hit point struct with data needed for emissive light PDF evaluation.
-                TriangleHit triangleHit = path.hit.getTriangleHit();
-                TriangleLightHit hit;
-                hit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
-                hit.posW = sd.posW;
-                hit.normalW = sd.frontFacing ? sd.faceN : -sd.faceN;
-
-                // Evaluate PDF at the hit, had it been generated with light sampling.
-                // Emissive light samplers have an option to exclusively sample the upper hemisphere.
-                bool upperHemisphere = path.isLightSampledUpper() && !path.isLightSampledLower();
-                lightPdf = getEmissiveSelectionProbability() * emissiveSampler.evalPdf(path.origin, path.normal, upperHemisphere, hit);
-
-                // Compute MIS weight by combining this with BRDF sampling.
-                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-                misWeight = evalMIS(1, path.pdf, 1, lightPdf);
-            }
 
             // Accumulate emitted radiance weighted by path throughput and MIS weight.
             if (!kDisableDirectIllumination || !isPrimaryHit || !isLightSamplable)

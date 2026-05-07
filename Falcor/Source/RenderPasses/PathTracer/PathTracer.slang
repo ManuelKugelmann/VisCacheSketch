@@ -1008,6 +1008,42 @@ struct PathTracer
         }
     }
 
+    /** Pure helper: evaluate the MIS weight for an emissive surface hit.
+
+        Mirrors `evalEnvAtMiss`'s pattern (Step 1 of the ReSTIRPTPass delegation
+        plan): pure logic extraction so external callers can reuse the same
+        emissive-MIS computation without duplicating it. No path/output side
+        effects.
+
+        @param[in] path             PathState at the emissive surface hit.
+        @param[in] sd               Shading data at the hit.
+        @param[in] isPrimaryHit     Hit is on the primary (camera) ray.
+        @param[in] isLightSamplable Hit is on a surface that NEE can sample.
+        @param[in] isTriangleHit    Hit is on a triangle (only triangles are emissive-sampled).
+        @return    misWeight (1.f when no emissive-NEE-MIS combination applies).
+    */
+    float evalEmissiveMIS(in const PathState path, in const ShadingData sd, bool isPrimaryHit, bool isLightSamplable, bool isTriangleHit)
+    {
+        if (!(kUseEmissiveLights && kUseNEE && kUseMIS && isTriangleHit && !isPrimaryHit && path.isLightSampled() && isLightSamplable))
+            return 1.f;
+
+        // Prepare hit point struct with data needed for emissive light PDF evaluation.
+        TriangleLightHit hit;
+        TriangleHit triangleHit = path.hit.getTriangleHit();
+        hit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
+        hit.posW = sd.posW;
+        hit.normalW = sd.getOrientedFaceNormal();
+
+        // Evaluate PDF at the hit, had it been generated with light sampling.
+        // Emissive light samplers have an option to exclusively sample the upper hemisphere.
+        bool upperHemisphere = path.isLightSampledUpper() && !path.isLightSampledLower();
+        float lightPdf = getEmissiveSelectionProbability() * emissiveSampler.evalPdf(path.origin, path.normal, upperHemisphere, hit);
+
+        // Compute MIS weight by combining this with BSDF sampling.
+        // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+        return evalMIS(1, path.pdf, 1, lightPdf);
+    }
+
     /** Handle the case when a scatter ray hits a surface.
         After handling the hit, a new scatter ray is generated or the path is terminated.
         \param[in,out] path The path state.
@@ -1085,29 +1121,7 @@ struct PathTracer
 
         if (computeEmissive && any(bsdfProperties.emission > 0.f))
         {
-            float misWeight = 1.f;
-            if (kUseEmissiveLights && kUseNEE && kUseMIS && isTriangleHit && !isPrimaryHit && path.isLightSampled() && isLightSamplable)
-            {
-                // If NEE and MIS are enabled, and we've already sampled emissive lights,
-                // then we need to evaluate the MIS weight here to account for the remaining contribution.
-                // Note that MIS is only applied for hits on emissive triangles (other emissive geometry is not supported).
-
-                // Prepare hit point struct with data needed for emissive light PDF evaluation.
-                TriangleLightHit hit;
-                TriangleHit triangleHit = path.hit.getTriangleHit();
-                hit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
-                hit.posW = sd.posW;
-                hit.normalW = sd.getOrientedFaceNormal();
-
-                // Evaluate PDF at the hit, had it been generated with light sampling.
-                // Emissive light samplers have an option to exclusively sample the upper hemisphere.
-                bool upperHemisphere = path.isLightSampledUpper() && !path.isLightSampledLower();
-                float lightPdf = getEmissiveSelectionProbability() * emissiveSampler.evalPdf(path.origin, path.normal, upperHemisphere, hit);
-
-                // Compute MIS weight by combining this with BSDF sampling.
-                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-                misWeight = evalMIS(1, path.pdf, 1, lightPdf);
-            }
+            float misWeight = evalEmissiveMIS(path, sd, isPrimaryHit, isLightSamplable, isTriangleHit);
 
             // Accumulate emitted radiance weighted by path throughput and MIS weight.
             addToPathContribution(path, misWeight * bsdfProperties.emission);
