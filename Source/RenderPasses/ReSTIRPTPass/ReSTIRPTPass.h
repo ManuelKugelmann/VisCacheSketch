@@ -219,6 +219,11 @@ private:
     ref<Buffer>                     mReconnectionDataBuffer;
     ref<Buffer>                     mPathReuseMISWeightBuffer;
 
+    /// World-cell-keyed reservoir pool for restirpt_3d (Task #15).
+    /// One PathReservoirCellSlot per cell (fingerprint + reservoir).
+    /// Allocated when restirptAddrMode == 1, otherwise nullptr.
+    ref<Buffer>                     mpPathReservoirCellPool;
+
     ref<Texture>                    mpTemporalVBuffer;
 
     ref<Texture>                    mpNeighborOffsets;

@@ -26,6 +26,7 @@ import LoadShadingData;
 import Falcor8Compat;
 import PathBuilder;
 import PathReservoir;
+import PathReservoirCellPool;
 
 #include "Utils/Math/MathConstants.slangh"
 
@@ -67,6 +68,11 @@ struct PathTracer
     Texture2D<float4> directLighting;                   ///< Output offset into per-sample buffers. Only valid when kSamplesPerPixel == 0.
 
     RWStructuredBuffer<PathReservoir> outputReservoirs;            ///< Output paths from the path tracing pass.
+
+    /// Optional world-cell-keyed reservoir pool (restirpt_3d, Task #15).
+    /// Bound only when params.restirptAddrMode == 1; null otherwise.
+    /// One PathReservoirCellSlot per cell (fingerprint + reservoir).
+    RWStructuredBuffer<PathReservoirCellSlot> pathReservoirCellPool;
     bool isLastRound;
     bool useDirectLighting;
     int  gSppId;

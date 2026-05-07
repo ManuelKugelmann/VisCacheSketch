@@ -15,10 +15,12 @@
 #include "Scene/SceneDefines.slangh"
 
 import RenderPasses.ReSTIRPTPass.PathReservoir;
+import RenderPasses.ReSTIRPTPass.PathReservoirCellPool;
 
 StructuredBuffer<PathReservoir> outputReservoirs;
 StructuredBuffer<PixelReconnectionData> reconnectionDataBuffer;
 StructuredBuffer<PathReuseMISWeight> misWeightBuffer;
+StructuredBuffer<PathReservoirCellSlot> pathReservoirCellPool;
 
 void main() {}
 

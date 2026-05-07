@@ -1206,6 +1206,25 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         }
         else mPathReuseMISWeightBuffer = nullptr;
 
+        // World-cell pool buffer (restirpt_3d). Sized same as the pixel-keyed
+        // reservoir buffer; mode=0 doesn't bind it. Each slot is one
+        // PathReservoirCellSlot (fingerprint + reservoir).
+        if (mParams.restirptAddrMode == 1u)
+        {
+            if (!mpPathReservoirCellPool || mpPathReservoirCellPool->getElementCount() != reservoirCount)
+            {
+                mpPathReservoirCellPool = mpDevice->createStructuredBuffer(
+                    var["pathReservoirCellPool"], reservoirCount,
+                    ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                    MemoryType::DeviceLocal, nullptr, false);
+                mVarsChanged = true;
+            }
+        }
+        else if (mpPathReservoirCellPool)
+        {
+            mpPathReservoirCellPool = nullptr;   // free when mode=0
+        }
+
         // Allocate path buffers.
         if (!mpOutputReservoirs || reservoirCount != mpOutputReservoirs->getElementCount())
         {
@@ -1257,6 +1276,7 @@ void ReSTIRPTPass::preparePathTracer(const RenderData& renderData)
     auto var = mpPathTracerBlock->getRootVar();
     setShaderData(var, renderData, true, false);
     var["outputReservoirs"] = mpOutputReservoirs;
+    if (mpPathReservoirCellPool) var["pathReservoirCellPool"] = mpPathReservoirCellPool;
     var["directLighting"] = renderData[kInputDirectLighting]->asTexture();
 }
 
