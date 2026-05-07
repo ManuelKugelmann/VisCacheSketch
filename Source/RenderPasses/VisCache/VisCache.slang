@@ -211,6 +211,10 @@ cbuffer VisCacheParams
                                       ///< → wide interval → no trust regardless of μ̂ point estimate.
     float  gWilsonEps;                ///< Margin for "definitely visible/occluded" Wilson trust
                                       ///< decision. 0.01 = trust when 95% CI is within 1% of corner.
+    uint   gEnableWarpCoalescedLookup; ///< 1 = use SM 6.5 WaveMatch to coalesce vhfFindSlot reads
+                                       ///< across matching lanes (one probe per (addr, fp) group,
+                                       ///< broadcast via WaveReadLaneAt). 0 = per-lane (legacy).
+                                       ///< Safe: fp mismatches fall back to per-lane lookup.
     float  gMuShrinkZSquared;         ///< Agresti-Coull shrinkage on the cached cell μ:
                                       ///< μ̃ = (X + z²/2) / (N + z²). 0 = off (raw μ = X/N).
                                       ///< 4 = "add 2,4" form (95% CI Beta(2,2) prior, pulls extreme
@@ -979,12 +983,60 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
         uint fp   = vhfFingerprint(qa, qb, uint(lvl), uint(lvl), uint(lvl));
         uint addr = vhfAddr(qa, qb, uint(lvl), uint(lvl), uint(lvl));
         uint lvlProbe;
-        int  slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, lvlProbe);
+        int  slot;
+        VHFEntry e;
+        if (gEnableWarpCoalescedLookup != 0u)
+        {
+            // Warp-coalesced read: lanes targeting the same (addr, fp) cell
+            // share one vhfFindSlot probe and one gVHFTable[slot] load. The
+            // leader (lowest-indexed lane with this addr) does the work;
+            // followers receive the result via WaveReadLaneAt. Fingerprint
+            // mismatches (rare hash collisions: same addr, different fp)
+            // fall back to per-lane lookup so correctness is preserved.
+            uint4 match = WaveMatch(addr);
+            uint leaderLane = firstbitlow(match.x);
+            bool isLeader = (WaveGetLaneIndex() == leaderLane);
+            uint leaderFp = WaveReadLaneAt(fp, leaderLane);
+            bool fpMatches = (fp == leaderFp);
+
+            uint leaderProbe = 0u;
+            int  leaderSlot  = -1;
+            uint leaderPacked = 0u;
+            uint leaderFprint = 0u;
+            if (isLeader)
+            {
+                leaderSlot = vhfFindSlot(addr, fp, /*allowInsert=*/false, leaderProbe);
+                if (leaderSlot >= 0)
+                {
+                    VHFEntry le = gVHFTable[leaderSlot];
+                    leaderPacked = le.packed;
+                    leaderFprint = le.fingerprint;
+                }
+            }
+
+            if (fpMatches)
+            {
+                slot      = (int)WaveReadLaneAt((uint)leaderSlot, leaderLane);
+                lvlProbe  = WaveReadLaneAt(leaderProbe, leaderLane);
+                e.packed      = WaveReadLaneAt(leaderPacked, leaderLane);
+                e.fingerprint = WaveReadLaneAt(leaderFprint, leaderLane);
+            }
+            else
+            {
+                // Hash collision — re-do the lookup for this lane's actual fp.
+                slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, lvlProbe);
+                if (slot >= 0) e = gVHFTable[slot];
+            }
+        }
+        else
+        {
+            slot = vhfFindSlot(addr, fp, /*allowInsert=*/false, lvlProbe);
+            if (slot >= 0) e = gVHFTable[slot];
+        }
         best.probeSteps += lvlProbe;
 
         if (slot < 0) break;  // No entry at this level — stop cascade
 
-        VHFEntry e  = gVHFTable[slot];
         uint total  = e.packed & 0xFFFFu;
         if (total == 0u) break;
 

@@ -108,6 +108,7 @@ public:
                                           ///< SPP-adaptive: small-N → wide interval → no trust.
         float    wilsonEps;               ///< Margin for "definitely visible/occluded" decision.
                                           ///< 0.01 = trust when 95% CI within 1% of corner.
+        uint32_t enableWarpCoalescedLookup; ///< 1 = warp-coalesced (addr, fp) reads in vhfLookup.
         float    muShrinkZSquared;        ///< A-C shrinkage on cached μ: μ̃ = (X+z²/2)/(N+z²). 0 = off.
         uint32_t enableHierarchicalConsistency; ///< 1 = at each converged level, peek the next
                                                 ///< finer level's μ and require agreement within
@@ -261,6 +262,10 @@ public:
                                                       ///< SPP-adaptive: small-N → wide interval → no trust.
         float    wilsonEps                   = 0.01f; ///< Margin for Wilson-gate "definitely visible/occluded"
                                                       ///< decision. 0.01 = trust within 1% of corner.
+        bool     enableWarpCoalescedLookup   = false; ///< SM 6.5 WaveMatch coalescing in vhfLookup —
+                                                      ///< share one (addr, fp) probe + table read across
+                                                      ///< matching lanes via WaveReadLaneAt. fp-mismatch
+                                                      ///< falls back to per-lane (correctness preserved).
         float    muShrinkZSquared            = 0.0f;  ///< A-C shrinkage on cached μ: μ̃ = (X + z²/2)/(N + z²).
                                                       ///< 0 = off (raw μ); 4 = "add 2,4" Beta(2,2) prior.
                                                       ///< Affects μ AND var = μ̃(1−μ̃) read at every cache

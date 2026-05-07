@@ -232,6 +232,7 @@ private:
              float wilsonZSquared=0;
              float wilsonEps=0.01f;
              float muShrinkZSquared=0;
+             uint32_t enableWarpCoalescedLookup=0;
              uint32_t enableHierarchicalConsistency=0;
              float hierarchicalMuTolerance=0.2f;
              float accelDecayDisagreeThresh=0;
