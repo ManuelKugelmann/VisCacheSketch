@@ -37,7 +37,8 @@ def make_graph(variant: str, name: str):
 
     pass_class_map = {
         "restirpt_ref": "ReSTIRPTReferencePass",   # frozen verbatim copy
-        "restirpt":     "ReSTIRPTPass",            # our active port (Falcor 8 native PT)
+        "restirpt":     "ReSTIRPTPass",            # our active port, 2D pixel-keyed
+        "restirpt_3d":  "ReSTIRPTPass",            # our active port, 3D worldcell-keyed
     }
     if variant in pass_class_map:
         pass_class = pass_class_map[variant]
@@ -58,6 +59,7 @@ def make_graph(variant: str, name: str):
             "disableDirectIllumination":   True,    # RTXDI feeds direct
             "pathSamplingMode":            "ReSTIR",
             "fireflyClampK":               100.0,    # bound the RIS estimator
+            "restirptAddrMode":            (1 if variant == "restirpt_3d" else 0),
         })
         g.addPass(restirpt, pass_class)
         accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
@@ -132,5 +134,6 @@ def render_and_capture(variant: str, tag: str):
 
 render_and_capture(variant="vanilla",      tag="vanilla")
 render_and_capture(variant="restirpt_ref", tag="restirpt_ref")    # verbatim dqlin copy
-render_and_capture(variant="restirpt",     tag="restirpt")        # our active port
+render_and_capture(variant="restirpt",     tag="restirpt_2d")     # our active port, 2D pixel-keyed
+render_and_capture(variant="restirpt_3d",  tag="restirpt_3d")     # our active port, 3D worldcell-keyed
 print("[ab] DONE")

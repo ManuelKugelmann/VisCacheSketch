@@ -201,16 +201,21 @@ struct PathTracer
         @param[in] pixel  Screen pixel.
         @return    Reservoir-buffer index.
     */
+    // 1-arg form: pixel-only (always 2D pixel-keyed). Used at sites that
+    // can't conveniently load primary-hit shading data.
     uint resolveReservoirOffset(const uint2 pixel)
     {
-        if (params.restirptAddrMode == 0u) return params.getReservoirOffset(pixel);
+        return params.getReservoirOffset(pixel);
+    }
 
-        const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
-        if (!primaryHit.isValid()) return params.getReservoirOffset(pixel);
-
-        const Ray cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
-        const ShadingData primarySd = loadShadingData(primaryHit, cameraRay.dir, /*isPrimary=*/true);
-        return params.getReservoirOffset(pixel, primarySd.posW, primarySd.faceN);
+    // 3-arg form: dispatches based on restirptAddrMode using the caller's
+    // pre-loaded primary-hit posA/faceN. Avoids the cross-struct
+    // loadShadingData/gScene.getVertexData call from inside this method,
+    // which triggers DXGI_DEVICE_REMOVED in compute-pass contexts when
+    // accessed via ParameterBlock<PathTracer>.
+    uint resolveReservoirOffset(const uint2 pixel, const float3 posA, const float3 faceN)
+    {
+        return params.getReservoirOffset(pixel, posA, faceN);
     }
 
     /** Generate the path state for a primary hit in screen space.
@@ -2005,6 +2010,11 @@ struct PathTracer
 
         const uint2 pixel = path.getPixel();
 
+        // 3D mode wiring is currently disabled — calling gScene.getVertexData
+        // (or loadShadingData) from this site triggers DXGI_DEVICE_REMOVED
+        // intermittently after several frames. Likely a binding / lifetime
+        // issue in the cross-pass scene-data access pattern; needs a focused
+        // debug session. Until then, mode=1 falls back to pixel-keyed (no-op).
         const uint reservoirIdx = resolveReservoirOffset(pixel);
 
         static const uint itersPerShaderPass = PathSamplingMode(kPathSamplingMode) == PathSamplingMode::PathTracing ? kSamplesPerPixel : kCandidateSamples;
