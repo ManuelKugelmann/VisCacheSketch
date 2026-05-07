@@ -13,6 +13,30 @@
 
 ---
 
+### Headline results
+
+**Shadow rays saved across the matrix at vanilla-quality match** (cache `rays_traced_pct`; lower = more rays saved; 100% = vanilla). Static-scene frame-accumulation, x4 SPP, canonical config (`stderrThreshold=0.10`).
+
+<p align="center">
+  <img src="docs/rays_saved_matrix.png" alt="Rays saved across scenes × bounce depths — 3-94% saved at vanilla-quality match" width="900">
+</p>
+
+**Quality at x4 SPP vs RTXDI** (mean OkLab perceptual error vs x4096 GT, lower = better). Cache integrates into ReSTIR DI as `restir_2d` (per-pixel reservoir + screen-tile pool, RTXDI's exact data structure) and `restir_3d` (3D-cell pool with footprint-derived entry level — world-space analog). **Net 6 wins / 1 trail / cumulative −4.81pp ahead of production RTXDI.** `|restir_2d − restir_3d| ≤ 0.03pp` on every scene (structural-equivalence claim from §3.0 made operational).
+
+<p align="center">
+  <img src="docs/rtxdi_parity.png" alt="RTXDI parity at x4 SPP — 6/7 scene wins" width="900">
+</p>
+
+**Algorithm in action — Sponza canonical, x16 SPP, stderr=0.10.** 4×3 diagnostic grid: row 1 = render | rays-traced heatmap | error vs GT | noise; row 2 = LOD level | maturity | cached μ | variance; row 3 = cold-miss | qA hash | qB hash | probe steps. The cache trusts most of the wall and floor (purple = low rays_traced; cells are mature with low variance) and refines only at the penumbra boundaries (yellow rays, high variance). **Mean error 2.0% vs vanilla x4096 GT, art5 15%, 26.5% rays traced — 73.5% saved.**
+
+<p align="center">
+  <img src="docs/plates/sponza_canonical_x16_diagnostic.png" alt="Sponza canonical diagnostic 4×3 grid" width="900">
+</p>
+
+Full numbers in [paper §13](viscachepaper/sections/13-results.md); methodology and per-step ladder narrative in [LADDERLOG.md](docs/LADDERLOG.md).
+
+---
+
 ### History
 
 The core ideas behind this project — control variates, Russian roulette, spatial hashing, variance-driven sampling — are not new. They are textbook Monte Carlo techniques ([Knuth 1973][r-knuth]; [Hammersley and Handscomb 1964][r-hammersley]) and well-known data structures. The contribution of the [2006 thesis][r-kugelmann] was combining them in a specific way for visibility estimation in rendering. Much of the same ground has since been covered independently by others, often with better engineering, better framing, or both. We all stand on the shoulders of giants.
