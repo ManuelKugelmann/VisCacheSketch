@@ -2920,25 +2920,31 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
             fc.outputDir = captureDir
             fc.baseFilename = variant_name
 
-            # Enable Falcor's GPU profiler so per-pass GPU ms gets logged into
-            # the CSV alongside rays_traced_pct. Reset stats before the render
-            # loop so the average reflects only this variant's frames.
-            # NOTE: the FIRST variant per scene-load shows 1.5–2× higher
-            # gpu_tracepass_ms than steady-state due to GPU warmup / state-
-            # cache effects (PSO compilation already happens at graph-add
-            # time, but L2 / shader-cache warming amortizes across the first
-            # variant's render_frames). Treat first-variant gpu_time numbers
-            # as warmup-noisy. For clean cross-variant ms comparison render
-            # the same variant twice and use the second timing.
+            # Enable Falcor's GPU profiler. Render N_WARMUP frames BEFORE
+            # reset_stats so the steady-state average isn't confounded by
+            # first-frame JIT/PSO compilation + L2/shader-cache warming.
+            # COALESCE A/B (2026-05-07) showed warmup is ~5× per-frame cost
+            # for the first variant — without warmup-before-reset the
+            # gpu_tracepass_ms column reads first-variant cold-state, not
+            # steady-state.
+            #
+            # The 2 warmup frames slightly increase the captured diagnostic's
+            # accumulated frame count (from `render_frames` to
+            # `render_frames + 2`), but the metric ratios between cache
+            # variants stay self-consistent.
+            N_WARMUP = 2
             try:
                 m.profiler.enabled = True
+            except Exception as _e:
+                pass
+
+            for _ in range(N_WARMUP):
+                m.renderFrame()
+            try:
                 m.profiler.reset_stats()
             except Exception as _e:
                 pass
 
-            # Render `render_frames` = `frames * N²`. Write-only Bayer slots are
-            # defined per-frame by warmupSlotsFirst (frame 0) and warmupSlotsRun
-            # (frames 1..N-1). No separate warmup phase, no accum reset.
             for _ in range(render_frames):
                 m.renderFrame()
 
@@ -3183,8 +3189,15 @@ def run_baseline(step_name, frame_configs, scene_file,
             fc.outputDir = captureDir
             fc.baseFilename = f"{variant_tag}_x{spp}"
 
+            # Warmup-before-reset (see run_variants for rationale).
             try:
                 m.profiler.enabled = True
+            except Exception:
+                pass
+            N_WARMUP = 2
+            for _ in range(N_WARMUP):
+                m.renderFrame()
+            try:
                 m.profiler.reset_stats()
             except Exception:
                 pass
@@ -3825,8 +3838,15 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
             fc.outputDir = captureDir
             fc.baseFilename = f"{tag_suffix}_x{spp}"
 
+            # Warmup-before-reset (see run_variants for rationale).
             try:
                 m.profiler.enabled = True
+            except Exception:
+                pass
+            N_WARMUP = 2
+            for _ in range(N_WARMUP):
+                m.renderFrame()
+            try:
                 m.profiler.reset_stats()
             except Exception:
                 pass
