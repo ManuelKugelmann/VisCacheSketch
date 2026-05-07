@@ -36,9 +36,13 @@ except ImportError:
 
 STEP = "TIMING_HONEST"
 res = int(os.environ.get("RES", "512"))
-SPP = 4
-RENDER_FRAMES = 8
-N_WARMUP = 4
+SPP = 1                  # cache is designed for 1-SPP-per-frame + multi-frame accumulation
+                          # (the actual real-time use case). Every frame's a 1-SPP draw;
+                          # cache state warms across consecutive frames.
+RENDER_FRAMES = 16        # measure 16 steady-state frames after warmup
+N_WARMUP = 64             # 64 frames warmup so the cache reaches steady-state cell maturity
+                          # before measurement begins. Earlier 4-8 warmup was too short —
+                          # cache was still cold when we measured.
 
 CANONICAL_VC = {
     "bootThreshold":                  8,
