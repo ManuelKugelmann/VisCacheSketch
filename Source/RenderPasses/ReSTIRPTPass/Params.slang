@@ -240,16 +240,46 @@ struct RestirPathTracerParams
         return getReservoirOffsetPixel(pixel);
     }
 
-    // 3D-aware overload. When restirptAddrMode=1, reservoir addressing should
-    // dispatch via VisCache's wsResolveCellPoolAddr(posA, faceN). Plumbing for
-    // that lands in a follow-up commit; for now this overload always returns
-    // the pixel-keyed offset (mode 0 behavior) so adding the call doesn't
-    // change output. Callers that have posA/faceN in scope should adopt this
-    // overload now so the upgrade is local to Params.slang later.
+    // 3D-aware reservoir addressing. When restirptAddrMode==1, the reservoir
+    // is keyed by a hashed world cell of (posA, faceN) — mirrors restir_3d
+    // (DI) which uses the same approach. World-cell hashing enables reuse
+    // across non-spatially-coherent regions (e.g. mirrors of one another).
+    //
+    // The world-cell hash here is a self-contained simple variant: uniform
+    // grid quantize + xor-mul scramble + capacity-mod. A future iteration can
+    // route through VisCache's `wsResolveCellPoolAddr` for the same multilevel
+    // / footprint-adaptive / jittered hash that restir_3d uses, but that
+    // requires a VisCache cross-plugin import + cbuffer plumbing. The simple
+    // variant here is enough to test the 2D/3D dispatch flow.
+    //
+    // The reservoir buffer's capacity is the same `screenTiles*tileStride`
+    // as the 2D-mode buffer (we reuse it). Address space collisions are
+    // expected — that's fine for a real-time hash table; later collisions
+    // overwrite earlier (most-recent-wins, mirrors WSCellPool's slot rule).
+    uint getReservoirOffsetWorldCell(const float3 posA, const float3 faceN)
+    {
+        // Cell size: ~1% of the scene radius — coarse enough for reuse but
+        // fine enough to preserve spatial coherence. sceneRadius is set by
+        // setScene().
+        const float kCellSize = max(sceneRadius * 0.01f, 1e-3f);
+        int3 q = int3(floor(posA / kCellSize));
+        // Normal bin: 6 axis-aligned hemicubes; matches WS-ReSTIR's
+        // wsNormalBin coarse scheme.
+        uint nb = 0u;
+        float3 an = abs(faceN);
+        if (an.x >= an.y && an.x >= an.z) nb = (faceN.x >= 0.f) ? 0u : 1u;
+        else if (an.y >= an.z)            nb = (faceN.y >= 0.f) ? 2u : 3u;
+        else                              nb = (faceN.z >= 0.f) ? 4u : 5u;
+        // xor-mul hash, mod by reservoir-buffer capacity (= screenTiles * tileStride).
+        uint h = (uint(q.x) * 73856093u) ^ (uint(q.y) * 19349663u) ^ (uint(q.z) * 83492791u) ^ (nb * 2654435761u);
+        uint stride = kScreenTileDim.x * kScreenTileDim.y;
+        uint capacity = max(screenTiles.x * screenTiles.y * stride, 1u);
+        return h % capacity;
+    }
+
     uint getReservoirOffset(const uint2 pixel, const float3 posA, const float3 faceN)
     {
-        // restirptAddrMode==1 path will route to WSCellPoolIO::wsResolveCellPoolAddr
-        // once the VisCache cross-plugin import lands. Until then: pixel-keyed.
+        if (restirptAddrMode == 1u) return getReservoirOffsetWorldCell(posA, faceN);
         return getReservoirOffsetPixel(pixel);
     }
 
