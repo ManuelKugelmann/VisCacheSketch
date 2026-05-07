@@ -272,6 +272,42 @@ A secondary position × position mode is available for GI revalidation queries. 
 
 The visibility cache plugs into two points of the ReSTIR pipeline. During **light selection**, the cached mean µ replaces the usual visibility assumption in the RIS target function, yielding µ-weighted candidate selection that steers samples toward actually visible lights. During **visibility revalidation**, the correction estimator replaces unconditional occlusion rays with variance-driven Russian Roulette, reducing shadow rays while maintaining equal quality. This offers a middle way between skipping revalidation completely (biased) and full revalidation (expensive). Note: Instead of our visibility cache any other prediction of visibility, e.g. from ReSTIR reservoir data, can be used.
 
+### Current results
+
+Canonical config: flat multilevel hash, `forceDescendFootprintPx=16`, 8-level cascade, Bayer 2×2, `bootThreshold=8`, `stderrThreshold=0.10`, `pMin=0.02`. Static-scene frame-accumulation, 1-spp-per-frame, x4 SPP unless noted. Full numbers in [paper §13](viscachepaper/sections/13-results.md).
+
+**Shadow-ray reduction (algorithmic).** Cache `rays_traced_pct` — lower is better; 100% = vanilla equivalent.
+
+| Scene | b=0 | b=1 | b=4 | b=8 | b=16 |
+|---|---:|---:|---:|---:|---:|
+| Cornell_1PL  | 9.7%  | 7.7%  | **6.1%** | — | — |
+| Cornell_1AL  | 53.0% | 47.9% | 37.8% | — | — |
+| Cornell_3AL  | 65.7% | 57.4% | 44.8% | — | — |
+| Cornell_32PL | 75.8% | 71.5% | 60.1% | — | — |
+| Sponza | 31.9% | 28.2% | **25.7%** | 24.4% | **23.8%** |
+| BistroInterior | 49.8% | 48.2% | 47.0% | — | — |
+| BistroExterior | 60.3% | 59.6% | 58.9% | — | — |
+
+**3–94% rays saved across the matrix at vanilla-quality match.** Rays-saved increases monotonically with bounce depth on every scene; Sponza b=8/16 establishes the asymptote at ~76% rays saved (24% traced).
+
+**Quality at matched SPP (b=4 multibounce, x4):** OkLab perceptual error matches vanilla within 0.05pp on every scene; art5 differs by ≤1pp. Multibounce relmse improves dramatically on indoor multi-light (BistroInterior 2.4× better than vanilla, Cornell_1PL 9% better) — the cache averages out per-bounce firefly variance via cell-level means.
+
+**RTXDI parity (single-bounce DI, x4 OkLab vs x4096 GT):**
+
+| Scene | vanilla | RTXDI | restir_2d (ours) | Δ vs RTXDI |
+|---|---:|---:|---:|---:|
+| Cornell_1AL | 1.39 | 2.18 | **2.15** | **−0.03 win** |
+| Cornell_1PL | 0.21 | 1.39 | **0.21** | **−1.18 win** |
+| Cornell_3AL | 2.97 | **2.60** | 3.55 | +0.95 trail |
+| Cornell_32PL | 5.36 | 3.73 | **3.31** | **−0.42 win** |
+| Sponza | 6.23 | 7.08 | **6.49** | **−0.59 win** |
+| BistroInterior | 16.96 | 10.73 | **9.54** | **−1.19 win** |
+| BistroExterior | 18.12 | 13.23 | **10.88** | **−2.35 win** |
+
+**Net: 6 wins / 1 trail; cumulative −4.81pp ahead** of the production RTXDI baseline. The 3D-cell pool with footprint-derived entry level recovers RTXDI's screen-tile pool at matched parameters: `|restir_2d − restir_3d| ≤ 0.03pp` on every scene (structural-equivalence claim from §3.0 made operational).
+
+*Wall-clock numbers are deferred from this README — measurement methodology is being tightened (see [LADDERLOG.md](docs/LADDERLOG.md) `TIMING_HONEST` row). Initial steady-state results indicate positive savings on Sponza single-bounce DI even with no GPU optimization; multibounce wall-clock and dynamic-scene measurements are open implementation milestones.*
+
 ### Independent parallel work
 
 The individual ideas in the 2006 thesis — control variates, Russian roulette, spatial hashing, variance-driven sampling — are well-established techniques. Many researchers independently arrived at similar combinations. This is a non-exhaustive selection; there is likely more work we are not yet aware of.
