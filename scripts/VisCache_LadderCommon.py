@@ -559,6 +559,11 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
                         "flip",               # Andersson 2020 HDR-FLIP perceptual error
                         # Chroma noise (Lin 2026 §6.3 backport — intra-image, no GT):
                         "chroma_var",         # mean local chromaticity variance (RGB/Y) — lower = less chroma noise
+                        # Falcor GPU profiler timing — average ms across this variant's render frames.
+                        # gpu_tracepass_ms is the PathTracer trace dispatch; gpu_total_ms is the
+                        # full /onFrameRender (graph + Mogwai per-frame). First-variant warmup
+                        # confound applies (see run_variants comment).
+                        "gpu_tracepass_ms", "gpu_total_ms",
                         "timestamp"]
 
 def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
@@ -3000,7 +3005,7 @@ def _baseline_noise_floor(captureDir, gt_spp, res_tag, gt_variant_tag="vanilla")
 
 def postprocess_baseline_spp(step_name, captureDir, scene_name,
                               spp, res_tag, gt_hdr, noise_floor,
-                              variant_tag="vanilla"):
+                              variant_tag="vanilla", gpu_times=None):
     """Per-SPP per-variant baseline postprocess: error PNG, noise PNG, plate, CSV row.
 
     Silent no-op if the SPP's HDR / render PNG are missing. Returns
@@ -3073,6 +3078,11 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
         "flip":    research.get("flip"),
         "chroma_var": research.get("chroma_var"),
     }
+    if gpu_times:
+        if "gpu_tracepass_ms" in gpu_times:
+            extra["gpu_tracepass_ms"] = gpu_times["gpu_tracepass_ms"]
+        if "gpu_total_ms" in gpu_times:
+            extra["gpu_total_ms"] = gpu_times["gpu_total_ms"]
     append_baseline_csv(
         step_name, scene_name, spp,
         mean_err_pct   = err_stats.get("mean_err_pct")     if err_stats   else None,
@@ -3120,6 +3130,7 @@ def run_baseline(step_name, frame_configs, scene_file,
         # error. Per-variant GT keys the comparison correctly. Disk cost: one
         # x4096 EXR per variant (≈1MB each).
         spp_list = sorted(set([1, gt_spp] + (extra_spp or [])))
+        gpu_times_by_spp = {}  # populated per-SPP from m.profiler.events
         for spp in spp_list:
             # Vanilla tag depends only on virtual SPP (total samples/pixel) — the
             # outer `frames` loop multiplies the sample count but isn't exposed in
@@ -3162,8 +3173,37 @@ def run_baseline(step_name, frame_configs, scene_file,
             fc.outputDir = captureDir
             fc.baseFilename = f"{variant_tag}_x{spp}"
 
+            try:
+                m.profiler.enabled = True
+                m.profiler.reset_stats()
+            except Exception:
+                pass
+
             for _ in range(num_frames * frames):
                 m.renderFrame()
+
+            spp_gpu_times = {}
+            try:
+                events = m.profiler.events
+                for k, v in events.items():
+                    if "/gpu_time" in k and isinstance(v, dict):
+                        avg = v.get("average", -1.0)
+                        if avg is not None and avg > 0:
+                            spp_gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
+            except Exception:
+                pass
+
+            gpu_csv = {}
+            pt = spp_gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
+              or spp_gpu_times.get("/PathTracer/tracePass")
+            if pt is not None:
+                gpu_csv["gpu_tracepass_ms"] = pt
+            tot = spp_gpu_times.get("/onFrameRender/RenderGraphExe::execute()") \
+               or spp_gpu_times.get("/onFrameRender")
+            if tot is not None:
+                gpu_csv["gpu_total_ms"] = tot
+            if gpu_csv:
+                gpu_times_by_spp[spp] = gpu_csv
 
             fc.capture()
             m.renderFrame()
@@ -3228,7 +3268,8 @@ def run_baseline(step_name, frame_configs, scene_file,
             for spp in spp_list:
                 postprocess_baseline_spp(step_name, captureDir, scene_name,
                                           spp, res_tag, gt_hdr, noise_floor,
-                                          variant_tag=variant_tag)
+                                          variant_tag=variant_tag,
+                                          gpu_times=gpu_times_by_spp.get(spp))
 
     print(f"\n[{step_name}] All done.")
 
@@ -3771,8 +3812,26 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
             fc.outputDir = captureDir
             fc.baseFilename = f"{tag_suffix}_x{spp}"
 
+            try:
+                m.profiler.enabled = True
+                m.profiler.reset_stats()
+            except Exception:
+                pass
+
             for _ in range(num_frames * frames * frames_mul):
                 m.renderFrame()
+
+            # Read GPU times before fc.capture() runs the postprocess passes.
+            _gpu_times = {}
+            try:
+                events = m.profiler.events
+                for k, v in events.items():
+                    if "/gpu_time" in k and isinstance(v, dict):
+                        avg = v.get("average", -1.0)
+                        if avg is not None and avg > 0:
+                            _gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
+            except Exception:
+                pass
 
             fc.capture()
             m.renderFrame()
