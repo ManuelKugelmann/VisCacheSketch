@@ -2382,6 +2382,13 @@ struct PathTracer
         // -------------------------------------------------------------------
         // Pass 2 — shift + merge active neighbors with the balanced misWeight.
         // -------------------------------------------------------------------
+        uint nShiftRejHit  = 0u;   // donor.rcVertexHit invalid
+        uint nShiftRejGeom = 0u;   // distSq / cos / direction degenerate
+        uint nShiftRejPdf  = 0u;   // pdfD or pdfS == 0
+        uint nShiftRejJac  = 0u;   // J out of [0.1, 10]
+        uint nShiftRejVis  = 0u;   // visibility ray miss
+        uint nShiftAccept  = 0u;   // BSDF shift fired
+        uint nSpecSkip     = 0u;   // specular fallback
         for (uint i = 0; i < kNeighborCount; ++i)
         {
             if (!neighborActive[i]) continue;
@@ -2401,66 +2408,95 @@ struct PathTracer
             const float  neighborRoughness = neighborBsdfProps.roughness;
 
             // Skip Reconnection-shift on specular surfaces (shift is invalid).
+            // Don't merge with identity fallback either (biased — see comment
+            // below) — let Phase 4's RandomReplay shift handle these.
             const bool donorIsSpecular = neighborRoughness <= kSpecularRoughnessThreshold;
             if (centerIsSpecular || donorIsSpecular)
             {
-                central.merge(donor.F, /*J=*/1.f, donor, sg, kMisWeight);
+                ++nSpecSkip;
                 continue;
             }
 
             // Compute shifted F + Jacobian via Reconnection shift.
             float3 shiftedF = donor.F;
             float J = 1.f;
-            if (donor.rcVertexHit.isValid())
+            bool shiftAccepted = false;
+            if (!donor.rcVertexHit.isValid())
+            {
+                ++nShiftRejHit;
+            }
+            else
             {
                 float3 dDst = donor.rcVertexPosW - centerPosW;
                 float3 dSrc = donor.rcVertexPosW - neighborPosW;
                 float distSqDst = dot(dDst, dDst);
                 float distSqSrc = dot(dSrc, dSrc);
-                if (distSqDst > 1e-6f && distSqSrc > 1e-6f)
+                float3 dirDst = dDst * rsqrt(max(distSqDst, 1e-12f));
+                float3 dirSrc = dSrc * rsqrt(max(distSqSrc, 1e-12f));
+                float cosD = max(0.f, dot(centerFaceN, dirDst));
+                float cosS = max(0.f, dot(neighborFaceN, dirSrc));
+                if (distSqDst <= 1e-6f || distSqSrc <= 1e-6f || cosD <= 0.f || cosS <= 0.f)
                 {
-                    float3 dirDst = dDst * rsqrt(distSqDst);
-                    float3 dirSrc = dSrc * rsqrt(distSqSrc);
-                    float cosD = max(0.f, dot(centerFaceN, dirDst));
-                    float cosS = max(0.f, dot(neighborFaceN, dirSrc));
-                    if (cosD > 0.f && cosS > 0.f)
+                    ++nShiftRejGeom;
+                }
+                else
+                {
+                    SampleGenerator dummySg = SampleGenerator(uint2(0u), 0u);
+                    float pdfD_all = 0.f, pdfD = 0.f;
+                    float3 bsdfDst = centerMI.evalBsdfAndPdf(centerSd, dirDst, dummySg, 0xffu, pdfD, pdfD_all);
+                    float pdfS_all = 0.f, pdfS = 0.f;
+                    float3 bsdfSrc = neighborMI.evalBsdfAndPdf(neighborSd, dirSrc, dummySg, 0xffu, pdfS, pdfS_all);
+                    if (pdfD <= 0.f || pdfS <= 0.f)
                     {
-                        // PROPER per-vertex pdfs from material BSDF (NVlabs §2:
-                        // un-normalized partial PDFs, required for shift Jacobians).
-                        SampleGenerator dummySg = SampleGenerator(uint2(0u), 0u);
-                        float pdfD_all = 0.f, pdfD = 0.f;
-                        float3 bsdfDst = centerMI.evalBsdfAndPdf(centerSd, dirDst, dummySg, /*lobeMask=*/0xffu, pdfD, pdfD_all);
-                        float pdfS_all = 0.f, pdfS = 0.f;
-                        float3 bsdfSrc = neighborMI.evalBsdfAndPdf(neighborSd, dirSrc, dummySg, /*lobeMask=*/0xffu, pdfS, pdfS_all);
-                        if (pdfD > 0.f && pdfS > 0.f)
+                        ++nShiftRejPdf;
+                    }
+                    else
+                    {
+                        float Jcalc = computeReconnectionJacobian(donor.rcVertexPosW, donor.rcVertexFaceN,
+                                                                  centerPosW, neighborPosW,
+                                                                  pdfD, pdfS);
+                        const float kJacobianRejectThreshold = 10.f;
+                        if (Jcalc <= 0.f || Jcalc > kJacobianRejectThreshold || Jcalc < 1.f / kJacobianRejectThreshold)
                         {
-                            float Jcalc = computeReconnectionJacobian(donor.rcVertexPosW, donor.rcVertexFaceN,
-                                                                      centerPosW, neighborPosW,
-                                                                      pdfD, pdfS);
-                            const float kJacobianRejectThreshold = 10.f;
-                            if (Jcalc > 0.f && Jcalc <= kJacobianRejectThreshold && Jcalc >= 1.f / kJacobianRejectThreshold)
+                            ++nShiftRejJac;
+                        }
+                        else
+                        {
+                            float tMax = sqrt(distSqDst) * 0.999f;
+                            Ray visRay = Ray(centerPosW, dirDst, 0.f, tMax);
+                            SceneRayQuery<0> sceneRayQuery;
+                            bool isVisible = sceneRayQuery.traceVisibilityRay(visRay, RAY_FLAG_NONE, 0xffu);
+                            if (!isVisible)
                             {
-                                // Visibility ray dst → rcVertex.
-                                float tMax = sqrt(distSqDst) * 0.999f;
-                                Ray visRay = Ray(centerPosW, dirDst, 0.f, tMax);
-                                SceneRayQuery<0> sceneRayQuery;
-                                bool isVisible = sceneRayQuery.traceVisibilityRay(visRay, RAY_FLAG_NONE, 0xffu);
-                                if (isVisible)
-                                {
-                                    // shifted_F = BSDF×cos at center × donor's
-                                    // cached irradiance at rc. PROPER BSDF
-                                    // (no Lambertian approximation).
-                                    shiftedF = bsdfDst * donor.rcVertexIrradiance[0];
-                                    J = Jcalc;
-                                }
+                                ++nShiftRejVis;
+                            }
+                            else
+                            {
+                                // Ratio-based shift (Lin 2022): swap donor's
+                                // primary throughput for center's. This avoids
+                                // needing a separate rcVertexIrradiance — the
+                                // suffix radiance is implicit in donor.F.
+                                //   shifted_F = donor.F · (bsdf_dst/pdf_dst) / (bsdf_src/pdf_src)
+                                // bsdfDst/Src already include cos at their respective primaries.
+                                float lumSrc = max(1e-12f, dot(bsdfSrc, float3(0.299f, 0.587f, 0.114f)) / pdfS);
+                                float3 dstThpRatio = (bsdfDst / pdfD) / lumSrc;   // chromatic at center, scalar denom
+                                shiftedF = donor.F * dstThpRatio;
+                                J = Jcalc;
+                                shiftAccepted = true;
+                                ++nShiftAccept;
                             }
                         }
                     }
                 }
             }
-            // Uniform-balance MIS — sum-to-1 unbiased weighting. Pairwise/Talbot
-            // refinement can land in Phase 4 once parity is reached.
-            central.merge(shiftedF, J, donor, sg, kMisWeight);
+            // Skip the merge if no shift was accepted — the identity fallback
+            // (shiftedF = donor.F) treats a neighbor's path-radiance estimate
+            // as correct at the center, which is biased and dominates the
+            // result when 95% of attempted shifts fail (Cornell probe).
+            // Hybrid / RandomReplay shift modes (Phase 4) will let those
+            // pixels contribute properly.
+            if (shiftAccepted)
+                central.merge(shiftedF, J, donor, sg, kMisWeight);
         }
 
         // Temporal merge — reuses prevPixel + activity probe from pass 1.
@@ -2478,6 +2514,23 @@ struct PathTracer
         // and feedback-amplify exponentially through the temporal-history M-cap.
         central.finalizeRIS();
         gRestirPTReservoirsTemporal[centerOffset] = central;
+
+        // DIAG: rejection breakdown — flip to true to inspect.
+        // Active-neighbor probe (Cornell_1AreaLight, x4, gatherR=30):
+        //   geom-rej=64%  pdf-rej=2%  jac-rej=34%  vis-rej=2%  accept=2%
+        // 64% geom-rej = rcVertex below center primary (BSDF undefined) —
+        // physical limit of plain Reconnection shift; needs Hybrid /
+        // RandomReplay fallback for those cases (Phase 4).
+        if (false && activeNeighbors > 0u)
+        {
+            float invN = 1.f / float(activeNeighbors);
+            outputColor[pixel] = float4(
+                float(nShiftRejGeom) * invN,
+                float(nShiftRejPdf)  * invN,
+                float(nShiftRejJac)  * invN,
+                1.f);
+            return;
+        }
 
         float3 outRgb = central.F * central.weight;
         if (any(isnan(outRgb)) || any(isinf(outRgb))) outRgb = float3(0.f);
