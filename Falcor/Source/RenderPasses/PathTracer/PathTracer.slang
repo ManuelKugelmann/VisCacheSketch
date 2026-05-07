@@ -2038,6 +2038,51 @@ struct PathTracer
     /** Handle the case when a scatter ray misses the scene.
         \param[in,out] path The path state.
     */
+    /** Pure helper: evaluate the env-map radiance contribution at a path miss.
+
+        Computes `Le` and the MIS weight for the missed env-map contribution.
+        Does NOT modify path state or write outputs — purely computational so
+        external callers (e.g. ReSTIRPTPass plugin's handleMiss) can reuse the
+        same env-eval logic without duplicating it. Refactor-only on Falcor 8's
+        vanilla path: vanilla output remains byte-identical.
+
+        @param[in]  path       PathState at miss.
+        @param[out] Le         Env radiance along `path.dir` (zero if no contribution).
+        @param[out] misWeight  MIS weight (1 if no NEE/MIS combination applies).
+        @return    true if the env contribution should be added (computeEnv == true), false otherwise.
+    */
+    bool evalEnvAtMiss(in const PathState path, out float3 Le, out float misWeight)
+    {
+        Le = float3(0.f);
+        misWeight = 1.f;
+
+        const bool isLightSamplable = path.isLightSamplable();
+        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
+
+        // With RTXDI enabled, we sample the full direct illumination contribution on the primary hit.
+        // Skip any additional contribution on the secondary hit unless it comes from a scatter event
+        // that RTXDI cannot handle, such as transmission, delta or volume scattering events.
+        if (kUseRTXDI && path.getVertexIndex() == 2 && !path.isTransmission() && !path.isDelta()) computeEnv = false;
+
+        if (!computeEnv) return false;
+
+        if (kUseNEE && kUseMIS && path.isLightSampled() && isLightSamplable)
+        {
+            // If NEE and MIS are enabled, and we've already sampled the env map,
+            // then we need to evaluate the MIS weight here to account for the remaining contribution.
+
+            // Evaluate PDF, had it been generated with light sampling.
+            float lightPdf = getEnvMapSelectionProbability() * envMapSampler.evalPdf(path.dir);
+
+            // Compute MIS weight by combining this with BSDF sampling.
+            // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+            misWeight = evalMIS(1, path.pdf, 1, lightPdf);
+        }
+
+        Le = envMapSampler.eval(path.dir);
+        return true;
+    }
+
     void handleMiss(inout PathState path)
     {
         // Upon miss:
@@ -2046,16 +2091,10 @@ struct PathTracer
         // - Write guiding data
         // - Terminate the path
 
-        // Check if the scatter event is samplable by the light sampling technique.
-        const bool isLightSamplable = path.isLightSamplable();
-
-        // Add env radiance.
-        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
-
-        // With RTXDI enabled, we sample the full direct illumination contribution on the primary hit.
-        // Skip any additional contribution on the secondary hit unless it comes from a scatter event
-        // that RTXDI cannot handle, such as transmission, delta or volume scattering events.
-        if (kUseRTXDI && path.getVertexIndex() == 2 && !path.isTransmission() && !path.isDelta()) computeEnv = false;
+        float3 Le;
+        float misWeight;
+        const bool computeEnv = evalEnvAtMiss(path, Le, misWeight);
+        const bool isLightSamplable = path.isLightSamplable();   // kept for guide-data branch below
 
         float3 emitterRadiance = 0.f;
 
@@ -2063,21 +2102,6 @@ struct PathTracer
         {
             logPathVertex();
 
-            float misWeight = 1.f;
-            if (kUseNEE && kUseMIS && path.isLightSampled() && isLightSamplable)
-            {
-                // If NEE and MIS are enabled, and we've already sampled the env map,
-                // then we need to evaluate the MIS weight here to account for the remaining contribution.
-
-                // Evaluate PDF, had it been generated with light sampling.
-                float lightPdf = getEnvMapSelectionProbability() * envMapSampler.evalPdf(path.dir);
-
-                // Compute MIS weight by combining this with BSDF sampling.
-                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-                misWeight = evalMIS(1, path.pdf, 1, lightPdf);
-            }
-
-            float3 Le = envMapSampler.eval(path.dir);
             emitterRadiance = misWeight * Le;
             addToPathContribution(path, emitterRadiance);
 
