@@ -186,6 +186,33 @@ struct PathTracer
         return surfaceBounces;
     }
 
+    /** Resolve the reservoir-buffer offset for a given screen pixel.
+
+        Dispatches based on `restirptAddrMode` (Task #12, mirrors VisCache's
+        `gWSPoolAddrMode` from WS-ReSTIR DI):
+          mode=0 (default): pixel-keyed Morton-tile offset (current behavior).
+          mode=1 (3D):      world-cell hash of (primary-hit posA, faceN).
+
+        At mode=0 the load short-circuits and the cost is one branch + the
+        existing pixel-keyed offset compute (no perf regression vs the
+        previous 1-arg call). At mode=1 a vbuffer fetch + ShadingData decode
+        is required; falls back to pixel-keyed if the primary ray missed.
+
+        @param[in] pixel  Screen pixel.
+        @return    Reservoir-buffer index.
+    */
+    uint resolveReservoirOffset(const uint2 pixel)
+    {
+        if (params.restirptAddrMode == 0u) return params.getReservoirOffset(pixel);
+
+        const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
+        if (!primaryHit.isValid()) return params.getReservoirOffset(pixel);
+
+        const Ray cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
+        const ShadingData primarySd = loadShadingData(primaryHit, cameraRay.dir, /*isPrimary=*/true);
+        return params.getReservoirOffset(pixel, primarySd.posW, primarySd.faceN);
+    }
+
     /** Generate the path state for a primary hit in screen space.
         This is treated equivalent to subsequent path vertices to reduce code divergence.
         \param[in] pathID Path ID which encodes pixel and sample index.
@@ -1978,27 +2005,7 @@ struct PathTracer
 
         const uint2 pixel = path.getPixel();
 
-        // Reservoir-offset dispatch: 2D pixel-keyed (default) or 3D worldcell-keyed.
-        // The 3D branch loads primary-hit shading data to provide posA/faceN.
-        uint reservoirIdx;
-        if (params.restirptAddrMode == 0u)
-        {
-            reservoirIdx = params.getReservoirOffset(pixel);
-        }
-        else
-        {
-            const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
-            if (!primaryHit.isValid())
-            {
-                reservoirIdx = params.getReservoirOffset(pixel);
-            }
-            else
-            {
-                const Ray cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
-                const ShadingData primarySd = loadShadingData(primaryHit, cameraRay.dir, /*isPrimary=*/true);
-                reservoirIdx = params.getReservoirOffset(pixel, primarySd.posW, primarySd.faceN);
-            }
-        }
+        const uint reservoirIdx = resolveReservoirOffset(pixel);
 
         static const uint itersPerShaderPass = PathSamplingMode(kPathSamplingMode) == PathSamplingMode::PathTracing ? kSamplesPerPixel : kCandidateSamples;
 

@@ -113,7 +113,7 @@ struct PathReusePass
         if (PathReusePattern(gSpatialReusePattern) == PathReusePattern::Block) pixelInBlock.x = 4 * (pixel.y % 4) + (pixel.x % 4);
 
         // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = params.getReservoirOffset(pixel);
+        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
         PathReservoir centralReservoir = outputReservoirs[centralOffset];
         PackedHitInfo centralPrimaryHitPacked;
         ShadingData centralPrimarySd = getPixelShadingData(pixel, centralPrimaryHitPacked);

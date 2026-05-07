@@ -88,7 +88,7 @@ struct PathReusePass
         var sg = TinyUniformSampleGenerator(pixel, (kCandidateSamples + 1 + gNumSpatialRounds) * params.seed + kCandidateSamples);
 
         // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = params.getReservoirOffset(pixel);
+        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
         PathReservoir dstReservoir = outputReservoirs[centralOffset];
         PathReservoir centralReservoir = dstReservoir;
         float currentM = dstReservoir.M;
@@ -135,7 +135,7 @@ struct PathReusePass
 
             bool doTemporalUpdateForDynamicScene = kTemporalUpdateForDynamicScene;
 
-            PathReservoir temporalReservoir = temporalReservoirs[params.getReservoirOffset(prevPixel)];
+            PathReservoir temporalReservoir = temporalReservoirs[gPathTracer.resolveReservoirOffset(prevPixel)];
 
             temporalReservoir.M = min(gTemporalHistoryLength * currentM, temporalReservoir.M);
 

@@ -86,7 +86,7 @@ struct PathRetracePass
         var sg = TinyUniformSampleGenerator(pixel, (kCandidateSamples + 1 + gNumSpatialRounds) * params.seed + kCandidateSamples);
 
         // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = params.getReservoirOffset(pixel);
+        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
         PathReservoir centralReservoir = outputReservoirs[centralOffset];
 
         PackedHitInfo centralPrimaryHitPacked;
@@ -112,7 +112,7 @@ struct PathRetracePass
         ShadingData temporalPrimarySd = getPixelTemporalShadingData(prevPixel, temporalPrimaryHitPacked);
         if (!isValidPackedHitInfo(temporalPrimaryHitPacked)) return;
 
-        PathReservoir temporalReservoir = temporalReservoirs[params.getReservoirOffset(prevPixel)];
+        PathReservoir temporalReservoir = temporalReservoirs[gPathTracer.resolveReservoirOffset(prevPixel)];
 
         // talbot MIS
         // compute mis weight for current pixel

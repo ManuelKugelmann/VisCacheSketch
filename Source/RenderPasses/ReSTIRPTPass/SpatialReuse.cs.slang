@@ -155,7 +155,7 @@ struct PathReusePass
         var sg = TinyUniformSampleGenerator(pixel, (kCandidateSamples + 1 + gNumSpatialRounds) * params.seed + kCandidateSamples + 1 + gSpatialRoundId);
 
         // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = params.getReservoirOffset(pixel);
+        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
         PathReservoir dstReservoir = outputReservoirs[centralOffset];
         PathReservoir centralReservoir = dstReservoir;
 
@@ -217,7 +217,7 @@ struct PathReusePass
                 int2 neighborPixel = getPathReuseNextNeighborPixel(NRookQuery, pixel, i);
 
                 if (!isValidScreenRegion(neighborPixel)) continue;
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(neighborPixel)];
 
                 PackedHitInfo neighborPrimaryHitPacked;
                 ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
@@ -244,11 +244,11 @@ struct PathReusePass
                 }
 
                 {
-                    float misWeight = misWeightBuffer[params.getReservoirOffset(neighborPixel)].rcBSDFMISWeight;
+                    float misWeight = misWeightBuffer[gPathTracer.resolveReservoirOffset(neighborPixel)].rcBSDFMISWeight;
                     float jacobian = tempDstReservoir.cachedJacobian[0];
                     float jacobianNEE = tempDstReservoir.cachedJacobian[1];
                     dstReservoir.F += tempDstReservoir.rcVertexIrradiance[0] * jacobian * misWeight;
-                    float misWeightNEE = misWeightBuffer[params.getReservoirOffset(neighborPixel)].rcNEEMISWeight;
+                    float misWeightNEE = misWeightBuffer[gPathTracer.resolveReservoirOffset(neighborPixel)].rcNEEMISWeight;
                     dstReservoir.F += tempDstReservoir.rcVertexIrradiance[1] * jacobianNEE * misWeightNEE;
                 }
             }
@@ -265,7 +265,7 @@ struct PathReusePass
             {
                 int2 neighborPixel = i == -1 ? pixel : getNextNeighborPixel(startIndex, pixel, i);
                 if (!isValidScreenRegion(neighborPixel)) continue;
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(neighborPixel)];
 
                 PackedHitInfo neighborPrimaryHitPacked;
                 ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
@@ -312,7 +312,7 @@ struct PathReusePass
 
                             int2 tneighborPixel = j == -1 ? pixel : getNextNeighborPixel(startIndex, pixel, j);
                             if (!isValidScreenRegion(tneighborPixel)) continue;
-                            PathReservoir tneighborReservoir = outputReservoirs[params.getReservoirOffset(tneighborPixel)];
+                            PathReservoir tneighborReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(tneighborPixel)];
                             PackedHitInfo tneighborPrimaryHitPacked;
                             ShadingData tneighborPrimarySd = getPixelShadingData(tneighborPixel, tneighborPrimaryHitPacked);
                             if (!isValidPackedHitInfo(tneighborPrimaryHitPacked)) continue;
@@ -355,7 +355,7 @@ struct PathReusePass
                 if (!isValidPackedHitInfo(neighborPrimaryHitPacked)) continue;
                 if (!isValidGeometry(centralPrimarySd, neighborPrimarySd)) continue;
 
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(neighborPixel)];
 
                 float dstJacobian;
 
@@ -426,7 +426,7 @@ struct PathReusePass
                 int2 neighborPixel = getNextNeighborPixel(startIndex, pixel, i);
                 if (!isValidScreenRegion(neighborPixel)) continue;
 
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(neighborPixel)];
                 PackedHitInfo neighborPrimaryHitPacked;
                 ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
                 if (!isValidPackedHitInfo(neighborPrimaryHitPacked)) continue;
@@ -453,7 +453,7 @@ struct PathReusePass
 
                 PackedHitInfo chosenPrimaryHitPacked;
                 ShadingData chosenPrimarySd = getPixelShadingData(chosenPixel, chosenPrimaryHitPacked);
-                PathReservoir chosenReservoir = outputReservoirs[params.getReservoirOffset(chosenPixel)];
+                PathReservoir chosenReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(chosenPixel)];
 
                 float chosen_approxPdf = 0.f;
                 float sum_approxPdf = 0.f;
@@ -489,7 +489,7 @@ struct PathReusePass
                         float prefixJacobian;
                         if (!isValidScreenRegion(prefixPixel)) continue;
 
-                        PathReservoir prefixReservoir = outputReservoirs[params.getReservoirOffset(prefixPixel)];
+                        PathReservoir prefixReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(prefixPixel)];
                         PackedHitInfo prefixPrimaryHitPacked;
                         ShadingData prefixPrimarySd = getPixelShadingData(prefixPixel, prefixPrimaryHitPacked);
                         if (!isValidPackedHitInfo(prefixPrimaryHitPacked)) continue;

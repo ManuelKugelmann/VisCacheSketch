@@ -115,7 +115,7 @@ struct PathRetracePass
         var sg = TinyUniformSampleGenerator(pixel, (kCandidateSamples + 1 + gNumSpatialRounds) * params.seed + kCandidateSamples + 1 + gSpatialRoundId);
 
         // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = params.getReservoirOffset(pixel);
+        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
         PathReservoir centralReservoir = outputReservoirs[centralOffset];
         PackedHitInfo centralPrimaryHitPacked;
         ShadingData centralPrimarySd = getPixelShadingData(pixel, centralPrimaryHitPacked);
@@ -134,7 +134,7 @@ struct PathRetracePass
 
             if (!isValidScreenRegion(neighborPixel)) continue;
 
-            PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+            PathReservoir neighborReservoir = outputReservoirs[gPathTracer.resolveReservoirOffset(neighborPixel)];
 
             PackedHitInfo neighborPrimaryHitPacked;
             ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
