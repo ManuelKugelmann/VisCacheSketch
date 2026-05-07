@@ -22,22 +22,26 @@ A failed sweep is a finding, not a step.
 
 ## Roadmap (2026-05-06 consolidated)
 
-### Where we are
-- **Stages A, B, C.1, C.2 done.** Live ladder pruned to 11 keep-rows + archived dead ends. Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
-- **Stage D plumbing landed**: `wsRetraceOnReuseMode` toggle (Off / FullTrace / CacheCV) + `rays_traced_pct` schema + `vcDiagCountRay`. SMOKE3 confirmed all three modes give correct unbiased results within stochastic noise.
-- **Stage E green-lit on the full Sponza/Bistro/Cornell matrix.** Sponza (−74pp rays b=4, perceptual win + linear loss), BistroInt (b=4 wins every metric, relmse 2.4× better), Cornell × 4 lighting regimes (rays savings monotonic in bounce depth, OkLab matches vanilla within 0.05pp at b=4). BistroExt b=4 wins perceptual + loses linear (RMSE +58%), refining the light-count gradient: cache-amortization scales with **light count**, not just firefly density.
-- **Trust-gate canonical: `stderrThreshold = 0.10`.** SPONZA_STDERR (2026-05-06) resolved the SPP-dependent vt finding from SPONZA_VT cleanly. stderr=0.10 covers both SPPs with one config: at x4 (cold cells) it refuses trust safely (matches strict-vt baseline); at x16 (mature cells) it trusts aggressively, achieving the loose-vt regime (relmse 2.5× better than vt=0.001, art5 +0.04pp negligible). Wilson-interval and Python-side SPP-scaling also tested — both archived: Wilson is stderr-equivalent (no leverage), SPP-scaling is architecturally meaningless (gSpp=1 always due to frame-accumulation mode; param tuning belongs in the harness, not the algorithm).
+### Where we are (2026-05-07)
+- **Stages A, B, C.1, C.2 done.** Live ladder pruned to ~12 keep-rows + archived dead ends. Trust-gate axes mapped; scene-class taxonomy validated; canonical per-(class, bounce-regime) config established.
+- **Stage D plumbing landed**: `wsRetraceOnReuseMode` toggle + `rays_traced_pct` schema + `vcDiagCountRay`. SMOKE3 confirmed all three modes give correct unbiased results within stochastic noise.
+- **Stage E green-lit on the full Sponza/Bistro/Cornell matrix.** Sponza (−74pp rays b=4, perceptual win + linear loss), BistroInt (b=4 wins every metric, relmse 2.4× better), Cornell × 4 lighting regimes, BistroExt (light-count gradient resolves Sponza-vs-Bistro dichotomy).
+- **Trust-gate canonical: `stderrThreshold = 0.10`.** SPONZA_STDERR + ALL_STDERR (Pareto over vt=0.001 across all 7 scenes). Wilson-interval, A-C shrinkage, and Python-side SPP-scaling all tested and archived (each addressed a real finding but didn't beat stderr).
+- **GPU profiler telemetry landed** (`gpu_tracepass_ms` in CSV). First real wall-clock numbers reveal a substantive caveat: **the cache implementation has a measurable per-pixel hash-lookup overhead (~15–20 ms/frame on Sponza × 512²) that currently caps wall-clock wins to scenes/regimes where rays-saved × ray-cost > overhead.**
+  - ✅ **Sponza single-bounce x4: 23% wall-clock saved** (cleanest demonstrated win).
+  - ❌ **Saturated-light single-bounce** (BistroInt, Cornell_32PL): cache 100–300% **slower** — gate barely fires; overhead is pure cost.
+  - ❌ **Sponza multibounce b=4**: cache 86% slower despite 67% rays saved — hash overhead doesn't amortize across multibounce in the current implementation.
+  - **Algorithmic story (rays_traced_pct: 13–94% saved across matrix) holds; GPU implementation needs hash-lookup overhead reduction to convert that to broader wall-clock wins.**
 
-### Knowledge gaps (priority order)
+### Knowledge gaps (priority order, 2026-05-07)
 
 | # | gap | cost | informational gain | status |
 |---|-----|-----|---:|---|
-| ~~1~~ | ~~Cornell scenes multibounce + cache~~ | ~~~15-20 min~~ | ~~Cornell-class generalization~~ | ✅ DONE 2026-05-06 — confirmed (light-count gradient resolves Sponza-vs-Bistro dichotomy) |
-| 1 | BistroExt multibounce | ~30 min (needs vanilla_b{1,4} GTs) | extends BistroInt's "wins everywhere" within firefly-class | running (job baoghcdph) |
-| 2 | All-scenes canonical at x{4, 16} | ~15-20 min | validates SPONZA-derived per-SPP carry across full scene matrix; surfaces per-class divergence | script ready (`ALL_X16`) |
-| 3 | Sponza b=8 / b=16 | ~10 min + 2× GT renders | does rays-savings trend continue past b=4 or saturate? | not started |
-| 4 | Stage D step 21 formal opening | ~30 min | open WS-ReSTIR DI ladder with `wsRetraceOnReuseMode=2` carry as numbered ladder step | not started |
-| 5 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False | **partially diagnosed 2026-05-06** — two write paths overlap on `gVCAccumRaysNoiseErrorCold[pixel].r`: `vcWriteDiag` (only fires under USE_VISCACHE_VISIBILITYCHECK) and `vcDiagCountRay` (added 2026-05-06 for WS-ReSTIR sites). For `restir_2d_vblind` (visibilityCheck=False, mode=0): only the K-RIS-winner V-test at PathTracer.slang:1529 fires, always with traced=true. The 13% "saved" is therefore not from this run — most likely **stale accumulator state from an earlier config sharing the same EXR**, or a not-yet-found additional vcWriteDiag site. Needs print-instrumentation + Mogwai run to confirm |
+| **1** | **GPU hash-lookup overhead investigation** | code-reading + Falcor PROFILER drill-down on Sponza b=0 cache canonical | locate the ~15–20 ms/frame fixed cost so we can target it for reduction (warp-coalesced reads, conditional lookup based on cell footprint, denser texture-baked μ each frame). **Highest-leverage open item — converts the algorithmic story into a wall-clock story for the funding pitch.** | not started |
+| 2 | Harness-honest cache-vs-vanilla wall-clock | extend `run_variants` to handle `viscache=False` so both paths use identical render-frame mechanics | TIMING used run_variants for cache + run_baseline for vanilla; the harness-mechanics gap (4-frame bayerN-loop vs 4-or-16-frame raw) introduces a confound that ratios within-harness avoid but absolute cross-harness comparisons can't. | not started |
+| 3 | Stage D step 21 formal opening | ~30 min | open WS-ReSTIR DI ladder with `wsRetraceOnReuseMode=2` + stderr=0.10 carry as numbered ladder step | not started |
+| 4 | c1+c2 patch (μ in pHat_reader) | ~30 min slang + sweep | visibility-aware presampling at reservoir + pool merges; user's framework tier 3, prereqs (a)+(b) ✅ | not started |
+| 5 | 86.92% rays-counter mystery | code-reading only | minor; investigate where saved counts originate with visibilityCheck=False | partially diagnosed (LADDERLOG row); needs print-instrumentation + Mogwai run to confirm |
 
 ### Proposed improvements (design ideas, not yet implemented)
 
@@ -51,18 +55,17 @@ A failed sweep is a finding, not a step.
 | F | **Lean compute pre-pass for cell-pool fill** (Task #29) | RTXDI eval-cost parity (3-4× reduction). | ~2h slang + integration | useful for Stage D step 27 | not started |
 | G | **Per-pass VisCacheParams** (Task #32) | Different `bayerN` / `wsVisInPHat` for pre-pass vs main pass. | ~1h cpp/cbuffer wiring | useful for Stage D step 27 | not started |
 | H | **Bayer-aligned cell-pool slot indexing** (Task #33) | Eliminate random-replace contention in cell-pool. | ~1h slang | useful for Stage D step 22+ | not started |
-| I | **A-C shrinkage on cached μ** | Bayesian shrinkage of cached μ via `μ̃ = (X+2)/(N+4)` Beta-prior style. Stabilises CV+RRR at cold cells; orthogonal to the trust gate. See `.plans/agresti-coull-shrinkage.md`. | ~2h | none; build only if CV+RRR cold-cell variance becomes a measurable pain point | filed only |
+| I | ~~A-C shrinkage on cached μ~~ | ~~Beta-prior shrinkage to stabilise CV+RRR at cold cells~~ | ~~~2h~~ | ~~none~~ | ✅ DONE 2026-05-06 — implemented + tested on Sponza; archived as incompatible with the trust gate (any z² > 0 zeros rays_traced). |
+| **J** | **GPU hash-lookup overhead reduction** | Address the ~15–20 ms/frame fixed cost surfaced by TIMING. Candidates: (1) warp-coalesced cache reads (instant-NGP-style multi-res lookup uses one shared probe per warp); (2) conditional lookup based on cell-footprint heuristic (skip the hash query for cells smaller than the GPU L2 cacheline); (3) pre-bake current-frame μ into a 1024² R8 texture during the cache-decay pass and read THAT instead of the hash table during the trace pass. **Direct route to converting the algorithmic story into a wall-clock story.** | ~4–8 h | none | not started — highest-leverage open improvement |
 
-### Next experiments (compute-side, prioritised)
+### Next experiments (compute-side, prioritised, 2026-05-07)
 
-1. ✅ **Cornell multibounce** — DONE. Light-count gradient resolves Sponza/Bistro dichotomy.
-2. ✅ **BistroExt multibounce** — DONE. Refines: cache scales with light-count (single-sun loses linear-space).
-3. ✅ **Wilson-interval prototype** — DONE. Equivalent to stderr; archived.
-4. ✅ **SPONZA_STDERR** — DONE. **stderr=0.10 is the canonical** SPP-adaptive trust gate.
-5. ⏳ **ALL_STDERR** — running (Cornell first, then queue Sponza+Bistro+BistroExt with `-c`). Cross-scene validation of stderr=0.10 carry.
-6. **Sponza b=8 / b=16** — extend bounce-depth axis to confirm asymptote behaviour. Quick smoke (~10 min). Worth doing after ALL_STDERR confirms stderr=0.10 generalizes.
-7. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder at stderr=0.10 + `wsRetraceOnReuseMode=2` carry. Sweep K_pre / K_pool / MCap.
-8. **c1+c2 patch** — slang change to inject μ in `pHat_reader` at reservoir + pool reads; sweep on Sponza+BistroInt at the WS-ReSTIR canonical.
+1. ✅ Cornell, BistroExt, Sponza b=8/16 multibounce — done. Light-count gradient + bounce-depth asymptote mapped.
+2. ✅ Wilson-interval, A-C shrinkage, SPP-scaling, SPONZA_STDERR, ALL_STDERR, TIMING (3 scenes), TIMING_MB — done.
+3. **GPU hash-lookup overhead investigation** (improvement J above) — Falcor PROFILER drill-down into VisCache pass + slang trace pass to locate the per-pixel cost. Once located, implementation work to reduce.
+4. **Harness-honest cache-vs-vanilla wall-clock** — extend `run_variants` to handle `viscache=False` so the TIMING comparison uses one harness on both sides.
+5. **Stage D step 21 — formal WS-ReSTIR DI canonical sweep** — open the WS-ReSTIR ladder at stderr=0.10 + `wsRetraceOnReuseMode=2` carry.
+6. **c1+c2 patch** — slang change to inject μ in `pHat_reader` at reservoir + pool reads; sweep on Sponza+BistroInt.
 
 ### Documentation hygiene (no compute)
 
