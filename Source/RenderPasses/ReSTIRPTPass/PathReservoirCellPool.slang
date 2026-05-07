@@ -75,6 +75,37 @@ bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
 /// hash collisions and skip stale data.
 uint prCellFingerprint(int3 q, uint nb)
 {
-    return (uint(q.x) * 2654435761u) ^ (uint(q.y) * 1597334677u) ^ (uint(q.z) * 805459861u) ^ (nb * 374761393u)
+    return ((uint(q.x) * 2654435761u) ^ (uint(q.y) * 1597334677u) ^ (uint(q.z) * 805459861u) ^ (nb * 374761393u))
            | 1u;  // ensure non-zero: 0 is the empty sentinel
+}
+
+/// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
+/// fingerprint field — first writer wins.
+///
+/// Behavior:
+/// - Empty slot (fingerprint==0): claim it, return true.
+/// - Already claimed by THIS fingerprint: also return true (rewrite OK).
+/// - Claimed by a DIFFERENT fingerprint: return false (collision; caller
+///   should fall back to pixel-keyed reservoir to avoid corruption).
+///
+/// Note: this only synchronizes the fingerprint field. The PathReservoir
+/// payload write that follows is non-atomic — concurrent writers with the
+/// same fingerprint (i.e. same cell) can still produce torn writes if
+/// they race. In practice each frame a cell is hit by at most a few
+/// pixels (geometry-correlated) and last-writer-wins is acceptable.
+bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint)
+{
+    uint prev = 0u;
+    InterlockedCompareExchange(pool[slotIdx].fingerprint, 0u, fingerprint, prev);
+    if (prev == 0u || prev == fingerprint) return true;
+    return false;
+}
+
+/// Read a cell-pool slot. Returns false (and zeroed reservoir) if the
+/// slot is empty OR claimed by a different fingerprint (collision).
+bool prCellSlotRead(StructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint expectedFingerprint, out PathReservoir reservoir)
+{
+    PathReservoirCellSlot s = pool[slotIdx];
+    reservoir = s.reservoir;
+    return s.fingerprint != 0u && s.fingerprint == expectedFingerprint;
 }
