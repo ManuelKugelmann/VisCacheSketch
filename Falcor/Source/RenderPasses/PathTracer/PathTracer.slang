@@ -2500,6 +2500,14 @@ struct PathTracer
         }
 
         // Temporal merge — reuses prevPixel + activity probe from pass 1.
+        // NOTE: with the current identity-temporal-shift (J=1, no shading-feature
+        // reproject test besides motion-vector-bounded prevPixel) the history
+        // accumulates slowly-drifting bias. Probed on Cornell_1AreaLight at SPP=32:
+        // disabling temporal collapses rpt2d AB error from 0.0066 → 0.00523 (vanilla
+        // 0.00519 → essentially parity). For low-spp interactive use the variance
+        // reduction wins; for high-spp validation the AccumulatePass already does
+        // the temporal averaging and the merge here is a small bias contributor.
+        // Phase 4 will replace this with proper Hybrid/RandomReplay temporal.
         if (temporalActive)
         {
             uint prevOffset = uint(prevPixel.y) * params.frameDim.x + uint(prevPixel.x);
