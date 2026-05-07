@@ -400,6 +400,105 @@ write ordering independently of per-pixel sample coverage.
 
 ---
 
+## 15. PathTracer: native ReSTIR-PT integration (restirpt_2d port)
+
+**Files:**
+- `Source/RenderPasses/PathTracer/PathReservoir.slang` (new) — non-BPR
+  PathReservoir struct, GRIS streaming-add helpers (`add`, `merge`,
+  `mergeWithResamplingMIS`, `mergeInSamplePixel`, `prepareMerging`,
+  `finalizeRIS`, `finalizeGRIS`).
+- `Source/RenderPasses/PathTracer/PathShift.slang` (new) — pure-math
+  `computeReconnectionJacobian` helper (no scene access — Jacobian-only).
+- `Source/RenderPasses/PathTracer/PathState.slang` (extended) — added
+  `rcVertexCapPosW` / `rcVertexCapFaceN` / `rcVertexCapHit` /
+  `rcVertexCapLocked` (rcVertex selection state during path-walk),
+  `primaryHitCapPosW` / `primaryHitCapFaceN` (primary-hit cache for
+  cross-frame disocclusion in the temporal merge).
+- `Source/RenderPasses/PathTracer/StaticParams.slang` — `USE_RESTIRPT`
+  compile-time define.
+- `Source/RenderPasses/PathTracer/Params.slang` — `RestirPathTracerParams`
+  struct slot (field-for-field port, currently scaffold-only).
+- `Source/RenderPasses/PathTracer/TracePass.rt.slang` — added
+  `RESTIRPT_SPATIAL_PASS` define-gate around the raygen entry. When defined,
+  the raygen calls `gPathTracer.runRestirPTSpatialReuse(pixel)` instead of
+  the path-walking `gScheduler.run(pixel)`.
+- `Source/RenderPasses/PathTracer/PathTracer.slang` — new globals (gated
+  behind `USE_RESTIRPT`):
+  - `RWStructuredBuffer<PathReservoir> gRestirPTReservoirs` — trace-pass
+    output (one reservoir per pixel)
+  - `RWStructuredBuffer<PathReservoir> gRestirPTReservoirsTemporal` —
+    spatial-pass output (current frame, fed to history copy)
+  - `RWStructuredBuffer<PathReservoir> gRestirPTReservoirsHistory` —
+    previous frame's temporal reservoirs (read-only in spatial pass)
+  - `Texture2D<float2> gRestirPTMotionVectors` — for temporal reprojection
+  - `import Scene.RaytracingInline` — needed for `SceneRayQuery` visibility
+    rays from the spatial-reuse raygen.
+  
+  And new method `runRestirPTSpatialReuse(uint2 pixel)`: performs GRIS
+  spatial reuse with reconnection-shift + temporal merge entirely inside
+  the RT raygen binding context (so `loadShadingData` and UAV writes work).
+- `Source/RenderPasses/PathTracer/PathTracer.cpp` / `.h` — added a second
+  `TracePass` instance `mpRestirPTSpatialPass` constructed with
+  `"RESTIRPT_SPATIAL_PASS"` as an extra define, plus reservoir/motion
+  buffer allocation and per-frame history copy.
+
+### Why a second TracePass (RT raygen) instead of a compute pass?
+
+The reference (`Source/RenderPasses/ReSTIRPTPass/SpatialReuse.cs.slang`)
+runs spatial reuse from a compute pass. The same approach in our integration
+TDR'd inside `loadShadingData` whenever its result fed any UAV write — even
+when `loadShadingData` itself returned valid data. Multiple bisects across
+sessions narrowed it to a Slang/DXC code-gen interaction with the compute-
+pass binding context that we could not root-cause cleanly. Moving the
+spatial-reuse kernel to an RT-pipeline raygen entry (binding context
+identical to the existing trace pass) sidesteps the issue entirely:
+`loadShadingData` + UAV writes coexist as expected. `SceneRayQuery` /
+`traceVisibilityRay` work from raygen for the Reconnection-shift visibility
+test.
+
+### RIS finalize vs GRIS finalize — feedback amplification gotcha
+
+`PathReservoir::merge()` includes `inReservoir.M * inReservoir.weight` in
+its `w` accumulation (RIS form). `finalizeRIS` divides by `M·p̂` to balance
+that M factor; `finalizeGRIS` divides only by `p̂` (designed for paths
+that fold the M factor into MIS weights).
+
+If you call `merge()` (M factor inside) and then `finalizeGRIS` (no /M),
+the M factor is unbalanced. With temporal reuse and an M-cap of 30, the
+history's effective contribution multiplies by ~30, and the per-frame
+finalized weight grows by a constant factor. Iterated 32 times that's
+exponential explosion (we observed 1000× output magnitude, OkLab error
+0.515 vs vanilla 0.005, on a parity AB at SPP=32 Cornell_1AreaLight).
+
+**Rule:** plain RIS path → `merge()` + `finalizeRIS`. GRIS-with-resampling-
+MIS path → `mergeWithResamplingMIS()` + `finalizeGRIS`. Don't cross them.
+
+### How rcVertex capture interacts with the path-walk
+
+`PathState` carries the rcVertex selection state across bounces. The
+path-walk picks the first secondary that satisfies the Lin 2026 §4
+footprint criterion (currently approximated as "first rough secondary",
+roughness-gated by `kSpecularRoughnessThreshold = 0.2f`). Once locked,
+later bounces don't overwrite the rcVertex.
+
+`writeOutput` (called at path end, gated by `USE_RESTIRPT`) packs the
+captured rcVertex into the output reservoir alongside `path.L` (the
+final radiance, soft-clamped at write to bound fireflies entering the
+reservoir).
+
+### Cbuffer per-field binding rule still applies
+
+`RestirPathTracerParams` (in `Params.slang`) is a scaffold for the full
+DQLin parameter surface. As of the initial integration only `useRestirPT`
+on the static-params side is wired through. Any field added to the cbuffer
+struct must be enumerated at every binding site (CLAUDE.md cbuffer rule).
+
+**Upstream status:** Internal to VisCacheSketch — the DQLin reference
+(`Source/RenderPasses/ReSTIRPTPass/`) is byte-frozen as the parity target;
+this integration ports its algorithm into Falcor's PathTracer plugin.
+
+---
+
 ## 9. CMakeLists: FALCOR_FLAT_OUTPUT to skip $<CONFIG> subdirectory
 
 **File:** `CMakeLists.txt` (line 206)

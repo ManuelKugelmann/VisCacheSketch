@@ -47,6 +47,26 @@ __exported import PathState;
 __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
+#if USE_RESTIRPT
+import PathReservoir;
+import PathShift;
+import Utils.Sampling.TinyUniformSampleGenerator;
+import Utils.Math.Ray;
+import Scene.RaytracingInline;     // for SceneRayQuery (visibility ray)
+// Trace-pass-only global. Declared here (not in PathReservoir.slang) so it's
+// only visible to passes that explicitly opt in via USE_RESTIRPT — keeps
+// other compute passes (PathReuseSpatial) from inheriting an unbound UAV
+// slot via transitive import.
+RWStructuredBuffer<PathReservoir> gRestirPTReservoirs;
+// Spatial-reuse pass output (next-frame history). Bound during the
+// RT spatial-pass dispatch only.
+RWStructuredBuffer<PathReservoir> gRestirPTReservoirsTemporal;
+// Previous frame's spatial output for temporal reprojection.
+StructuredBuffer<PathReservoir>   gRestirPTReservoirsHistory;
+// Motion vectors for temporal reprojection (NDC space).
+Texture2D<float2>                 gRestirPTMotionVectors;
+#endif
+
 #if USE_WS_RESERVOIRS
 import RenderPasses.VisCache.WSReservoir;
 import RenderPasses.VisCache.WSReservoirIO;
@@ -316,6 +336,14 @@ struct PathTracer
         path.setActive();
         path.id = pathID;
         path.thp = float3(1.f);
+
+#if USE_RESTIRPT
+        // ReSTIRPT (restirpt_2d): explicit init for the multiplicative state.
+        // path = {} zeroed everything else (rcPrevVertexHit invalid, footprint
+        // zero, etc.) which is the desired initial state.
+        path.prefixThp           = float3(1.f);
+        path.russianRoulettePdf  = 1.f;
+#endif
 
         const uint2 pixel = path.getPixel();
 
@@ -1030,6 +1058,25 @@ struct PathTracer
         // Load shading data. This is a long latency operation.
         ShadingData sd = loadShadingData(path.hit, path.origin, path.dir);
 
+#if USE_RESTIRPT
+        // ReSTIRPT (restirpt_2d): rcVertex selection — pick the FIRST rough
+        // secondary vertex (Lin 2026 §4 spirit, simplified). Once locked, no
+        // overwrite. Primary hit captures geometry separately.
+        if (isPrimaryHit)
+        {
+            path.primaryHitCapPosW  = sd.posW;
+            path.primaryHitCapFaceN = sd.faceN;
+            // Initialize rcVertex lock state at start of path.
+            path.rcVertexCapLocked = false;
+        }
+        else if (!path.rcVertexCapLocked)
+        {
+            // First secondary hit (vertex >= 2). Lock if surface is rough
+            // enough; otherwise keep searching (delta/specular paths skip).
+            // Roughness will be re-checked below after bsdfProperties is loaded.
+        }
+#endif
+
         const bool isHairMaterial = kUseHairMaterial && (sd.mtl.getMaterialType() == MaterialType::Hair);
         // TODO: Decouple geometry from the material.
         const bool isCurvePolyTubeHit = isTriangleHit && isHairMaterial;
@@ -1055,6 +1102,19 @@ struct PathTracer
         let hints = getMaterialInstanceHints(path.hit, isPrimaryHit);
         const IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod, hints);
         BSDFProperties bsdfProperties = mi.getProperties(sd);
+
+#if USE_RESTIRPT
+        // ReSTIRPT (restirpt_2d): rcVertex selection (Lin 2026 §4 spirit) —
+        // first rough secondary hit. Material properties at primary hit are
+        // re-evaluated via loadShadingData in the RT spatial-reuse raygen.
+        if (!isPrimaryHit && !path.rcVertexCapLocked && bsdfProperties.roughness > 0.2f)
+        {
+            path.rcVertexCapPosW   = sd.posW;
+            path.rcVertexCapFaceN  = sd.faceN;
+            path.rcVertexCapHit    = path.hit;
+            path.rcVertexCapLocked = true;
+        }
+#endif
 
         // Disable specular lobes if caustics are disabled and path already contains a diffuse vertex.
         bool isSpecular = bsdfProperties.roughness <= params.specularRoughnessThreshold;
@@ -2169,5 +2229,261 @@ struct PathTracer
 
             outputNRD.sampleRadiance[outIdx] = data;
         }
+
+#if USE_RESTIRPT
+        // Phase 2 (restirpt_2d): write a partially-populated PathReservoir.
+        //   - F = terminated radiance (cached integrand for RIS resampling)
+        //   - rcVertexHit = path.hit (= terminal hit; Phase 4 replaces with
+        //     proper Lin 2026 §4 rcVertex selection during the walk)
+        //   - pathFlags: encode path length + stub rcVertex length = 2
+        //   - M = weight = 1: single sample, unit weight (no RIS yet)
+        //
+        // Linear pixel offset matches PathReuseSpatial's addressing.
+        // SpatialReuse currently uses mergeInSamplePixel (no shift) so
+        // rcVertex info is unused; populating now positions for the
+        // Reconnection-shift kernel that lands in Phase 3.
+        {
+            uint resOffset = pixel.y * params.frameDim.x + pixel.x;
+
+            PathReservoir res;
+            res.init();
+            res.M = 1.f;
+            res.weight = 1.f;   // post-finalize form: 1/(p̂·M)·w_sum = 1 for single sample.
+            // Soft-clamp F at write to bound fireflies entering the reservoir.
+            const float kFireflyClamp = 1e3f;
+            res.F = clamp(path.L, float3(0.f), float3(kFireflyClamp));
+            // Use the locked rcVertex hit (first rough secondary vertex)
+            // when available; fall back to terminal hit otherwise.
+            HitInfo rcHit = path.rcVertexCapLocked ? path.rcVertexCapHit : path.hit;
+            res.rcVertexHit.initFromHitInfo(rcHit);
+            // Pre-stored geometry from the path-walk capture — avoids needing
+            // gScene.getVertexData per neighbor in the spatial-reuse pass.
+            res.rcVertexPosW    = path.rcVertexCapPosW;
+            res.rcVertexFaceN   = path.rcVertexCapFaceN;
+            res.primaryHitPosW   = path.primaryHitCapPosW;
+            res.primaryHitFaceN  = path.primaryHitCapFaceN;
+            // rcVertexIrradiance: cumulative radiance from rcVertex onward.
+            // v1 stub (rcVertex == terminal hit): all of path.L counts as
+            // "from rc". Path-walk capture in Phase 4 refines this.
+            res.rcVertexIrradiance[0] = path.L;
+            // Path topology metadata (stub — refined in Phase 4 with proper §4 selection).
+            int pathLen = (int)path.getVertexIndex();
+            if (pathLen > 15) pathLen = 15;
+            res.pathFlags.insertPathLength(pathLen);
+            res.pathFlags.insertRcVertexLength(min(2, pathLen));
+            res.pathFlags.insertLastVertexNEE(path.isLightSampled());
+            gRestirPTReservoirs[resOffset] = res;
+        }
+#endif
     }
+
+#if USE_RESTIRPT
+    // ReSTIRPT (restirpt_2d) RT-pipeline spatial reuse — full GRIS algorithm
+    // with proper IMaterialInstance.evalBsdfAndPdf BSDF (no Lambertian
+    // approximation), real visibility ray, motion-vector temporal merge.
+    void runRestirPTSpatialReuse(uint2 pixel)
+    {
+        const uint centerOffset = pixel.y * params.frameDim.x + pixel.x;
+        PathReservoir central = gRestirPTReservoirs[centerOffset];
+
+        if (central.M <= 0.f)
+        {
+            gRestirPTReservoirsTemporal[centerOffset] = central;
+            outputColor[pixel] = float4(central.F * central.weight, 1.f);
+            return;
+        }
+
+        // Center primary-hit ShadingData via the RT raygen binding context
+        // — this works here whereas in compute pass it TDRs.
+        HitInfo centerHit = unpackHitInfo(vbuffer[pixel]);
+        if (!centerHit.isValid())
+        {
+            gRestirPTReservoirsTemporal[centerOffset] = central;
+            outputColor[pixel] = float4(central.F * central.weight, 1.f);
+            return;
+        }
+        Ray centerRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
+        ShadingData centerSd = loadShadingData(centerHit, centerRay.origin, centerRay.dir);
+        const IMaterialInstance centerMI = gScene.materials.getMaterialInstance(centerSd, ExplicitLodTextureSampler(0.f));
+        const BSDFProperties centerBsdfProps = centerMI.getProperties(centerSd);
+
+        const float3 centerPosW    = centerSd.posW;
+        const float3 centerFaceN   = centerSd.faceN;
+        const float  centerCamDist = length(centerPosW - gScene.camera.data.posW);
+        const float  centerRoughness = centerBsdfProps.roughness;
+
+        const float kInvPi = 1.f / 3.14159265f;
+        const float kSpecularRoughnessThreshold = 0.2f;
+        const bool centerIsSpecular = centerRoughness <= kSpecularRoughnessThreshold;
+
+        TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, params.seed);
+        const uint kNeighborCount = 4u;
+        const float kGatherRadius = 30.f;
+
+        // -------------------------------------------------------------------
+        // Pass 1 — pre-roll RNG to fix neighbor offsets, count active sources.
+        // Active = (in-frame, valid hit, donor.M>0, geometry-feature OK). The
+        // shift Jacobian / visibility test is left to pass 2 — sources whose
+        // shift fails just contribute donor.F at unit Jacobian (specular skip
+        // path), so they still count as MIS sources.
+        // -------------------------------------------------------------------
+        int2 neighborOffsets[4];
+        bool neighborActive[4];
+        uint activeNeighbors = 0u;
+        for (uint i = 0; i < kNeighborCount; ++i)
+        {
+            float r2 = sampleNext1D(sg);
+            float r  = sqrt(r2) * kGatherRadius;
+            float th = 6.2831853f * sampleNext1D(sg);
+            neighborOffsets[i] = int2(int(r * cos(th)), int(r * sin(th)));
+            neighborActive[i]  = false;
+            int2 np = int2(pixel) + neighborOffsets[i];
+            if (any(np < 0) || any(uint2(np) >= params.frameDim)) continue;
+            uint nOffset = uint(np.y) * params.frameDim.x + uint(np.x);
+            PathReservoir donor = gRestirPTReservoirs[nOffset];
+            if (donor.M <= 0.f) continue;
+            HitInfo nHit = unpackHitInfo(vbuffer[uint2(np)]);
+            if (!nHit.isValid()) continue;
+            // Cheap geometry-feature check — vbuffer normal/depth proxies via
+            // a fresh ShadingData load. This duplicates a load in pass 2 but
+            // keeps the active-source budget honest.
+            Ray nRay = gScene.camera.computeRayPinhole(uint2(np), params.frameDim);
+            ShadingData neighborSd = loadShadingData(nHit, nRay.origin, nRay.dir);
+            if (dot(centerFaceN, neighborSd.faceN) < 0.5f) continue;
+            float nCamDist = length(neighborSd.posW - gScene.camera.data.posW);
+            if (abs(centerCamDist - nCamDist) > 0.1f * centerCamDist) continue;
+            neighborActive[i] = true;
+            ++activeNeighbors;
+        }
+
+        // Detect whether temporal will contribute (motion vector + valid hist).
+        bool temporalActive = false;
+        int2 prevPixel = int2(0);
+        if (params.frameCount > 0u)
+        {
+            float2 mv = gRestirPTMotionVectors[pixel];
+            prevPixel = int2(pixel) + int2(mv * float2(params.frameDim));
+            if (all(prevPixel >= 0) && all(uint2(prevPixel) < params.frameDim))
+            {
+                uint prevOffset = uint(prevPixel.y) * params.frameDim.x + uint(prevPixel.x);
+                PathReservoir tHist = gRestirPTReservoirsHistory[prevOffset];
+                if (tHist.M > 0.f) temporalActive = true;
+            }
+        }
+
+        // Convert central from post-finalize → w_sum form so subsequent merge()
+        // additions accumulate in the same units.
+        // Use plain RIS (misWeight=1, finalizeRIS divides by M·p̂) — simpler
+        // than constant-MIS GRIS and avoids the M-factor mismatch that caused
+        // exponential temporal feedback amplification.
+        central.prepareMerging();
+        const float kMisWeight = 1.f;
+
+        // -------------------------------------------------------------------
+        // Pass 2 — shift + merge active neighbors with the balanced misWeight.
+        // -------------------------------------------------------------------
+        for (uint i = 0; i < kNeighborCount; ++i)
+        {
+            if (!neighborActive[i]) continue;
+            int2 np = int2(pixel) + neighborOffsets[i];
+            uint nOffset = uint(np.y) * params.frameDim.x + uint(np.x);
+            PathReservoir donor = gRestirPTReservoirs[nOffset];
+
+            // Re-load neighbor ShadingData (geometry-validity already checked in pass 1).
+            HitInfo nHit = unpackHitInfo(vbuffer[uint2(np)]);
+            Ray nRay = gScene.camera.computeRayPinhole(uint2(np), params.frameDim);
+            ShadingData neighborSd = loadShadingData(nHit, nRay.origin, nRay.dir);
+            const IMaterialInstance neighborMI = gScene.materials.getMaterialInstance(neighborSd, ExplicitLodTextureSampler(0.f));
+            const BSDFProperties neighborBsdfProps = neighborMI.getProperties(neighborSd);
+
+            const float3 neighborPosW    = neighborSd.posW;
+            const float3 neighborFaceN   = neighborSd.faceN;
+            const float  neighborRoughness = neighborBsdfProps.roughness;
+
+            // Skip Reconnection-shift on specular surfaces (shift is invalid).
+            const bool donorIsSpecular = neighborRoughness <= kSpecularRoughnessThreshold;
+            if (centerIsSpecular || donorIsSpecular)
+            {
+                central.merge(donor.F, /*J=*/1.f, donor, sg, kMisWeight);
+                continue;
+            }
+
+            // Compute shifted F + Jacobian via Reconnection shift.
+            float3 shiftedF = donor.F;
+            float J = 1.f;
+            if (donor.rcVertexHit.isValid())
+            {
+                float3 dDst = donor.rcVertexPosW - centerPosW;
+                float3 dSrc = donor.rcVertexPosW - neighborPosW;
+                float distSqDst = dot(dDst, dDst);
+                float distSqSrc = dot(dSrc, dSrc);
+                if (distSqDst > 1e-6f && distSqSrc > 1e-6f)
+                {
+                    float3 dirDst = dDst * rsqrt(distSqDst);
+                    float3 dirSrc = dSrc * rsqrt(distSqSrc);
+                    float cosD = max(0.f, dot(centerFaceN, dirDst));
+                    float cosS = max(0.f, dot(neighborFaceN, dirSrc));
+                    if (cosD > 0.f && cosS > 0.f)
+                    {
+                        // PROPER per-vertex pdfs from material BSDF (NVlabs §2:
+                        // un-normalized partial PDFs, required for shift Jacobians).
+                        SampleGenerator dummySg = SampleGenerator(uint2(0u), 0u);
+                        float pdfD_all = 0.f, pdfD = 0.f;
+                        float3 bsdfDst = centerMI.evalBsdfAndPdf(centerSd, dirDst, dummySg, /*lobeMask=*/0xffu, pdfD, pdfD_all);
+                        float pdfS_all = 0.f, pdfS = 0.f;
+                        float3 bsdfSrc = neighborMI.evalBsdfAndPdf(neighborSd, dirSrc, dummySg, /*lobeMask=*/0xffu, pdfS, pdfS_all);
+                        if (pdfD > 0.f && pdfS > 0.f)
+                        {
+                            float Jcalc = computeReconnectionJacobian(donor.rcVertexPosW, donor.rcVertexFaceN,
+                                                                      centerPosW, neighborPosW,
+                                                                      pdfD, pdfS);
+                            const float kJacobianRejectThreshold = 10.f;
+                            if (Jcalc > 0.f && Jcalc <= kJacobianRejectThreshold && Jcalc >= 1.f / kJacobianRejectThreshold)
+                            {
+                                // Visibility ray dst → rcVertex.
+                                float tMax = sqrt(distSqDst) * 0.999f;
+                                Ray visRay = Ray(centerPosW, dirDst, 0.f, tMax);
+                                SceneRayQuery<0> sceneRayQuery;
+                                bool isVisible = sceneRayQuery.traceVisibilityRay(visRay, RAY_FLAG_NONE, 0xffu);
+                                if (isVisible)
+                                {
+                                    // shifted_F = BSDF×cos at center × donor's
+                                    // cached irradiance at rc. PROPER BSDF
+                                    // (no Lambertian approximation).
+                                    shiftedF = bsdfDst * donor.rcVertexIrradiance[0];
+                                    J = Jcalc;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Uniform-balance MIS — sum-to-1 unbiased weighting. Pairwise/Talbot
+            // refinement can land in Phase 4 once parity is reached.
+            central.merge(shiftedF, J, donor, sg, kMisWeight);
+        }
+
+        // Temporal merge — reuses prevPixel + activity probe from pass 1.
+        if (temporalActive)
+        {
+            uint prevOffset = uint(prevPixel.y) * params.frameDim.x + uint(prevPixel.x);
+            PathReservoir history = gRestirPTReservoirsHistory[prevOffset];
+            const float kMaxHistoryM = 30.f;
+            if (history.M > kMaxHistoryM) history.M = kMaxHistoryM;
+            central.merge(history.F, /*J=*/1.f, history, sg, kMisWeight);
+        }
+
+        // Use finalizeRIS — divides by p̂·M, matching merge()'s M factor in
+        // its w accumulation. finalizeGRIS would leave the M factor unbalanced
+        // and feedback-amplify exponentially through the temporal-history M-cap.
+        central.finalizeRIS();
+        gRestirPTReservoirsTemporal[centerOffset] = central;
+
+        float3 outRgb = central.F * central.weight;
+        if (any(isnan(outRgb)) || any(isinf(outRgb))) outRgb = float3(0.f);
+        const float kOutClamp = 1e3f;
+        outRgb = clamp(outRgb, float3(0.f), float3(kOutClamp));
+        outputColor[pixel] = float4(outRgb, 1.f);
+    }
+#endif
 };
