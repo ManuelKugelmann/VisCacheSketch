@@ -1,22 +1,61 @@
 # ReSTIRPTPass — finish the GRIS port
 
 Three remaining algorithmic items from Lin 2022 GRIS / Lin 2026 Enhanced.
-Listed in execution order, ranked by EV-per-risk.
 
-| Phase | Item | Dependency | Expected impact | Risk |
-|---|---|---|---|---|
-| 1 | §6.2.3 Forced NEE reconnection | none | **performance** (~28% time savings per Lin 2026 supp); FLIP roughly flat | medium — path classification edit + reservoir ABI bump for `rcLightIndex` |
-| 2 | §6.3 Vector-valued resampling weights | independent of Phase 3 | chroma noise ↓ during spatial reuse | medium — math re-derive (UCW double-count was the prior bug) |
-| 3 | §6.1 Stage A unification (drop RTXDI feed) | needs `m_1 = p_1/(p_1+p_2)` MIS weight at d=2 boundary | algorithmic minimality | high — d=2 boundary stability |
+## Status (2026-05-07)
 
-**Phase 0 found** (see `.plans/restirpt-gris-finish.notes.md`):
-- §6.2.3 is PERFORMANCE optimization in the paper, not a quality fix as PORT_NOTES.md framed it.
-- §6.2.3 is path-classification at sample time (force NEE vertex AS rcVertex), not a `LightSample` hydration at replay time. Bigger surgery than PORT_NOTES.md sketched. May need new `rcLightIndex` field for analytic lights.
-- §6.3 prior attempt bug hypothesis: included UCW factor; paper's `w_i = m_i F(X_i) |J_i|` has no UCW. UCW already factors via m_i for resampling.
-- §6.3 and §6.1 are **independent** — Phase 2 is not a hard prerequisite for Phase 3.
-- NVlabs conditional-restir-prototype implements **none of the three**; no public reference code.
+| Phase | Status | Commit | Notes |
+|---|---|---|---|
+| 0 | ✅ research done | — | `.plans/restirpt-gris-finish.notes.md` |
+| 1 | ⏸ **PAUSED + DISABLED** | `c3b0ae5` | Scaffolding shipped; gated `force_nee_as_rcVertex = false`; needs Lin 2026 supp §5 + Lin 2022 supp MIS re-derivation |
+| 2 | ✅ **SHIPPED** | `a8dc2b7` | Cornell + Sponza luminance bit-exact, chroma marginalization wins; canonical default |
+| 3 | 🚫 **BLOCKED on Phase 1** | `fb4f8f9` | Probe variant `restirpt_unified` with UNSUPPORTED markers; bare flip = 4× canonical mean_err regression |
 
-Everything documented as **attempted+reverted** in `Source/RenderPasses/ReSTIRPTPass/PORT_NOTES.md` §12 stays reverted unless that phase's research updates the math.
+**Original framing was wrong on three points** (corrected by execution):
+- §6.2.3 was framed as performance optimization → in our codebase it's a structural correctness prerequisite for Stage A. Without it, Stage A regresses 4× on Cornell.
+- §6.3 was hypothesized to need ω₁ multi-sample MIS factor → the actual fix was the missing `× toScalar(F)` recovery factor at output stage. Bit-exact luminance achieved with corrected derivation.
+- §6.3 and §6.1 are **NOT independent** — Stage A's d=2 NEE-terminating paths trigger the §6.2.3 forced-NEE topology. Phase 1 is the bottleneck.
+
+## Next steps (priority order)
+
+**1. Multi-scene ladder verification for §6.3** (Task #5, ~30 min ladder run)
+   - Cornell_32PL + BistroInterior step 00 to confirm chroma_var ladder column populates and §6.3 holds across the canonical scene set.
+   - Already has all infrastructure; just needs wall-clock.
+
+**2. Phase 1 paper re-read + math derivation** (next major effort, ~half-day)
+   - Read order in `.plans/restirpt-forced-nee-reconnection.md` "Paper re-read priorities":
+     1. Lin 2026 supplemental §5 (RIS-based NEE in primary sample space — m_1 weight derivation)
+     2. Lin 2022 supplemental (original GRIS-MIS for NEE-terminated paths)
+     3. DQLin BPR derivation (paper + supplemental — distinguishes NEE-at-rcVertex vs NEE-at-light)
+     4. Veach 1997 thesis (ground-truth path-tree MIS for d=2 boundary cases)
+     5. Hedstrom 2025 ReSTIR BDPT (closest published work on "NEE light is part of GRIS reservoir" topology)
+   - Goal: derive correct MIS form for "rcVertex IS the light" topology. The current shift code's `dstRcVertexScatterPdfAll` evaluation at the light surface (returns 0) is the root cause of the 4× plateau.
+
+**3. Phase 1 reactivation** (after #2, ~half-day implementation)
+   - Reactivation checklist in `.plans/restirpt-forced-nee-reconnection.md`:
+     - Modify Shift.slang's MIS computation (likely separate branch gated on `pathFlags.isForcedNEE()`)
+     - Flip `force_nee_as_rcVertex = false` → original gate condition
+     - Uncomment `restirpt_unified` variant in `VisCache_Ladder00.py`
+     - Validate Cornell mean_err drops to within 1-2× of canonical (3.87%)
+     - Multi-scene check on Sponza (DirectionalLight + EnvMap → tests 1.B.2/1.B.3 prereqs)
+
+**4. Phase 1.B.2 EnvMap + 1.B.3 Analytic** (after Phase 1.B.1 lands, ~quarter-day each)
+   - 1.B.2: Shift.slang branch for `!rcVertexHitExists && lastVertexNEE && lightType == EnvMap` using `rcVertexWi[0]` direction.
+   - 1.B.3: pack `lightIndex` into `rcVertexHit.primitiveIndex` (uint reuse, sentinel `instanceID == 0xffffffff` discriminates Analytic from Emissive). Branch for analytic light look-up at destination.
+
+**5. Phase 3 reactivation** (after Phase 1 ships)
+   - Uncomment `restirpt_unified` variant in `VisCache_Ladder00.py`
+   - Promote to canonical opt-in if metrics match RTXDI-feed reference
+   - Update `.plans/restirpt-stage-a-unification.md` with reactivation results
+
+## Phase plan files (per-phase detail)
+
+- `.plans/restirpt-gris-finish.notes.md` — Phase 0 research
+- `.plans/restirpt-forced-nee-reconnection.md` — Phase 1 (paper re-read + reactivation checklist)
+- `C:\Users\publi\.claude\plans\resilient-stirring-biscuit.md` — Phase 2 (shipped)
+- `.plans/restirpt-stage-a-unification.md` — Phase 3 (blocked on Phase 1)
+
+Everything documented as **attempted+disabled** in `Source/RenderPasses/ReSTIRPTPass/PORT_NOTES.md` §12 stays disabled unless that phase's research updates the math.
 
 ---
 
