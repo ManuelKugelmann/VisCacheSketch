@@ -2504,8 +2504,12 @@ struct PathTracer
             // result when 95% of attempted shifts fail (Cornell probe).
             // Hybrid / RandomReplay shift modes (Phase 4) will let those
             // pixels contribute properly.
+            // J is implicit in shiftedF (the ratio-form shift converts donor's
+            // path-radiance to center's primary throughput). Passing J=1 to
+            // merge() avoids double-counting; merge multiplies by donor.M and
+            // donor.weight which is enough.
             if (shiftAccepted)
-                central.merge(shiftedF, J, donor, sg, kMisWeight);
+                central.merge(shiftedF, /*J=*/1.f, donor, sg, kMisWeight);
         }
 
         // Temporal merge — identity J=1 merge with disocclusion gating.
