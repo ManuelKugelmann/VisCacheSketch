@@ -31,25 +31,38 @@ def make_graph(variant: str, name: str):
     g = RenderGraph(name)
 
     if variant == "dqlin":
-        # GBufferRT (motionVectors needed by ReSTIRPTPass)
+        # Mirror the canonical ReSTIRPT_Graph config: GBufferRT → RTXDIPass
+        # (direct) → ReSTIRPTPass (indirect, fed by RTXDI direct).
         gbuf = createPass("GBufferRT", {"samplePattern": "Stratified", "sampleCount": 1})
         g.addPass(gbuf, "GBufferRT")
+        rtxdi = createPass("RTXDIPass", {
+            "options": {
+                "mode":                       "NoResampling",
+                "localLightCandidateCount":    8,
+                "infiniteLightCandidateCount": 1,
+            },
+        })
+        g.addPass(rtxdi, "RTXDIPass")
         restirpt = createPass("ReSTIRPTPass", {
-            "samplesPerPixel":            1,
-            "maxSurfaceBounces":          3,
-            "useDirectLighting":          True,
-            "disableDirectIllumination":  False,   # standalone — no RTXDI feed
-            "pathSamplingMode":           "ReSTIR",
+            "samplesPerPixel":             1,
+            "maxSurfaceBounces":           3,
+            "useDirectLighting":           True,
+            "disableDirectIllumination":   True,    # RTXDI feeds direct
+            "pathSamplingMode":            "ReSTIR",
+            "fireflyClampK":               100.0,    # bound the RIS estimator
         })
         g.addPass(restirpt, "ReSTIRPTPass")
         accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
         g.addPass(accum, "AccumulatePass")
         tone = createPass("ToneMapper", {"autoExposure": False, "exposureValue": 0.0, "operator": "Aces"})
         g.addPass(tone, "ToneMapper")
-        g.addEdge("GBufferRT.vbuffer",     "ReSTIRPTPass.vbuffer")
-        g.addEdge("GBufferRT.mvec",        "ReSTIRPTPass.motionVectors")
-        g.addEdge("ReSTIRPTPass.color",    "AccumulatePass.input")
-        g.addEdge("AccumulatePass.output", "ToneMapper.src")
+        g.addEdge("GBufferRT.vbuffer",      "RTXDIPass.vbuffer")
+        g.addEdge("GBufferRT.mvec",         "RTXDIPass.mvec")
+        g.addEdge("RTXDIPass.color",        "ReSTIRPTPass.directLighting")
+        g.addEdge("GBufferRT.vbuffer",      "ReSTIRPTPass.vbuffer")
+        g.addEdge("GBufferRT.mvec",         "ReSTIRPTPass.motionVectors")
+        g.addEdge("ReSTIRPTPass.color",     "AccumulatePass.input")
+        g.addEdge("AccumulatePass.output",  "ToneMapper.src")
         g.markOutput("ToneMapper.dst")
         g.markOutput("AccumulatePass.output")
         return g
