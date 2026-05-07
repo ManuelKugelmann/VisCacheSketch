@@ -2499,22 +2499,24 @@ struct PathTracer
                 central.merge(shiftedF, J, donor, sg, kMisWeight);
         }
 
-        // Temporal merge — reuses prevPixel + activity probe from pass 1.
-        // NOTE: with the current identity-temporal-shift (J=1, no shading-feature
-        // reproject test besides motion-vector-bounded prevPixel) the history
-        // accumulates slowly-drifting bias. Probed on Cornell_1AreaLight at SPP=32:
-        // disabling temporal collapses rpt2d AB error from 0.0066 → 0.00523 (vanilla
-        // 0.00519 → essentially parity). For low-spp interactive use the variance
-        // reduction wins; for high-spp validation the AccumulatePass already does
-        // the temporal averaging and the merge here is a small bias contributor.
-        // Phase 4 will replace this with proper Hybrid/RandomReplay temporal.
+        // Temporal merge — identity J=1 merge with disocclusion gating.
+        // Lower M-cap (5) than the typical DQLin 30 to reduce history-saturation
+        // bias on static-scene high-SPP validation. For dynamic scenes / low-spp
+        // a Hybrid temporal shift (Phase 4) will replace this with a proper
+        // shift that lets us safely raise M-cap.
         if (temporalActive)
         {
             uint prevOffset = uint(prevPixel.y) * params.frameDim.x + uint(prevPixel.x);
             PathReservoir history = gRestirPTReservoirsHistory[prevOffset];
-            const float kMaxHistoryM = 30.f;
+            const float kMaxHistoryM = 5.f;
             if (history.M > kMaxHistoryM) history.M = kMaxHistoryM;
-            central.merge(history.F, /*J=*/1.f, history, sg, kMisWeight);
+            // Disocclusion guard — drop temporal if history's primary is far
+            // from current pixel's primary (camera moved or different surface).
+            float3 dPrim = history.primaryHitPosW - centerPosW;
+            float primOk = (dot(dPrim, dPrim) < (0.1f * centerCamDist) * (0.1f * centerCamDist))
+                        && (dot(history.primaryHitFaceN, centerFaceN) > 0.5f);
+            if (primOk)
+                central.merge(history.F, /*J=*/1.f, history, sg, kMisWeight);
         }
 
         // Use finalizeRIS — divides by p̂·M, matching merge()'s M factor in
@@ -2533,8 +2535,8 @@ struct PathTracer
         {
             float invN = 1.f / float(activeNeighbors);
             outputColor[pixel] = float4(
+                float(nShiftAccept) * invN,
                 float(nShiftRejGeom) * invN,
-                float(nShiftRejPdf)  * invN,
                 float(nShiftRejJac)  * invN,
                 1.f);
             return;
