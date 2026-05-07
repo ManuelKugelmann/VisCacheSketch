@@ -59,15 +59,20 @@ a few frames.
 
 **Fix**: real 3D mode requires a proper **cell-pool data structure**
 (fingerprints + slot-claim atomics) like VisCache's `WSCellPool` for DI.
-Approaches:
-1. Template/copy `Source/RenderPasses/VisCache/WSCellPool*.slang` to a
-   PathReservoir variant (`PRPathPool*.slang`).
-2. Add a separate cell-pool buffer + auxiliary metadata buffer
-   (fingerprint per slot) to ReSTIRPTPass's runtime resources.
-3. Update spatial/temporal reuse passes to dispatch via the cell-pool
-   read/write helpers (with collision handling) when mode=1.
 
-Substantial work — multiple iterations.
+**Progress (commits 4650730, b861f4f, b9339be):**
+- ✅ `PathReservoirCellPool.slang` — `PathReservoirCellSlot` struct
+  (`fingerprint + reservoir`), `prCellFingerprint(q, nb)` hash,
+  `prCellSlotClaim(pool, slotIdx, fp)` atomic-CAS claim,
+  `prCellSlotRead(pool, slotIdx, fp, out reservoir)` collision-checked read.
+- ✅ Host-side `mpPathReservoirCellPool` allocated when `restirptAddrMode==1`,
+  freed when 0. Bound via `pathReservoirCellPool` slot on PathTracer struct.
+- ✅ Reflected via `ReflectTypes.cs.slang` so layout is queryable.
+- ⏳ Wire writes: `writeOutput` should `prCellSlotClaim` and write to cell
+  pool when mode=1 (in addition to the pixel buffer for fallback?).
+- ⏳ Wire reads: spatial/temporal reuse should `prCellSlotRead` when
+  mode=1, fall back to pixel buffer on collision-miss.
+- ⏳ Validate non-trivial 3D output (Task #14).
 
 ## Future steps (Task #11 continued)
 
