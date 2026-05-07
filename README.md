@@ -74,7 +74,7 @@ Two largely-independent threads developed structurally-equivalent multilevel spa
 | 2021 | Müller, Rousselle, Novák, Keller — NRC ; Gautron — practical hash-map updates | Ouyang — ReSTIR GI ; Boksanský/Jukarainen/Wyman — **ReGIR** ; Boissé — **WS-ReSTIR** | |
 | 2022 | Müller — instant-NGP (multi-resolution hashing) | Lin — GRIS ; Boissé — **GI-1.0** (two-level cache with promotion/decay) | |
 | 2023 | Dittebrandt — MCMM (screen-space MCMC) | Zhang & Wang — World-Space Spatiotemporal Path Resampling (normal-aware grid) | |
-| 2024 | Benyoub, Marteaux, Boudier — **SHaRC** (NVIDIA RTXGI 2.0) | Zhang — Area ReSTIR ; Zheng — ReSTIR PG ; Bokšanský & Meister — Neural Visibility Cache | |
+| 2024 | Benyoub, Marteaux, Boudier — **SHaRC** (NVIDIA RTXGI 2.0) | | Zhang — Area ReSTIR ; Zheng — ReSTIR PG ; Bokšanský & Meister — Neural Visibility Cache |
 | 2025 | Alber, Hanika, Dachsbacher — **MCPG** (multi-level adaptive + static, MLE α-floor) ; Stotko — MrHash | Liu — Reservoir Splatting ; Lin — ReSTIR BDPT | |
 | **2026** | | | **VisCache (this work)** — 2006 framework brought to GPU + multi-level cascade + ReSTIR-family composition |
 
