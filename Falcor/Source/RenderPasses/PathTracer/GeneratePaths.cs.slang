@@ -36,6 +36,13 @@ import PathTracer;
 import PathState;
 import ColorType;
 import Params;
+#if USE_RESTIRPT
+import PathReservoir;
+// Background-write target for the restirpt_2d spatial-reuse pass. Declared
+// at module scope so PathGenerator can reach it from writeBackground without
+// adding a field to the cbuffer-bound PathGenerator struct.
+RWStructuredBuffer<PathReservoir> gGenPathsRestirReservoirs;
+#endif
 
 // Shared memory variables.
 // TODO: Can we declare these inside PathGenerator?
@@ -254,6 +261,23 @@ struct PathGenerator
         {
             outputColor[pixel] = float4(color, 1.f);
         }
+
+#if USE_RESTIRPT
+        // ReSTIRPT (restirpt_2d) — populate the reservoir for background pixels
+        // so the spatial-reuse pass can pass-through correctly. Without this,
+        // gGenPathsRestirReservoirs[bgPixel] is uninitialized → spatial pass
+        // sees M=0, hits the early-out, writes 0 to outputColor — black sky/
+        // window pixels (Sponza AB diagnosed +188% error from this).
+        {
+            uint resOffset = pixel.y * params.frameDim.x + pixel.x;
+            PathReservoir res;
+            res.init();
+            res.M = 1.f;
+            res.weight = 1.f;
+            res.F = color;
+            gGenPathsRestirReservoirs[resOffset] = res;
+        }
+#endif
 
         for (uint i = 0; i < spp; i++)
         {

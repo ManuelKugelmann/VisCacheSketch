@@ -2237,41 +2237,22 @@ struct PathTracer
         //     proper Lin 2026 §4 rcVertex selection during the walk)
         //   - pathFlags: encode path length + stub rcVertex length = 2
         //   - M = weight = 1: single sample, unit weight (no RIS yet)
-        //
-        // Linear pixel offset matches PathReuseSpatial's addressing.
-        // SpatialReuse currently uses mergeInSamplePixel (no shift) so
-        // rcVertex info is unused; populating now positions for the
-        // Reconnection-shift kernel that lands in Phase 3.
         {
             uint resOffset = pixel.y * params.frameDim.x + pixel.x;
-
             PathReservoir res;
             res.init();
             res.M = 1.f;
-            res.weight = 1.f;   // post-finalize form: 1/(p̂·M)·w_sum = 1 for single sample.
-            // Soft-clamp F at write to bound fireflies entering the reservoir.
-            // Strip NaN/Inf only — no magnitude clamp here (Sponza emissives
-            // hit ~1e4-1e5 and a hard 1e3 cap was lopping off luminance,
-            // 3× biased pure-self output vs vanilla path.L). Output side
-            // already has its own bounded clamp post-finalize.
+            res.weight = 1.f;
             res.F = any(isnan(path.L)) || any(isinf(path.L))
                   ? float3(0.f)
                   : max(path.L, float3(0.f));
-            // Use the locked rcVertex hit (first rough secondary vertex)
-            // when available; fall back to terminal hit otherwise.
             HitInfo rcHit = path.rcVertexCapLocked ? path.rcVertexCapHit : path.hit;
             res.rcVertexHit.initFromHitInfo(rcHit);
-            // Pre-stored geometry from the path-walk capture — avoids needing
-            // gScene.getVertexData per neighbor in the spatial-reuse pass.
             res.rcVertexPosW    = path.rcVertexCapPosW;
             res.rcVertexFaceN   = path.rcVertexCapFaceN;
             res.primaryHitPosW   = path.primaryHitCapPosW;
             res.primaryHitFaceN  = path.primaryHitCapFaceN;
-            // rcVertexIrradiance: cumulative radiance from rcVertex onward.
-            // v1 stub (rcVertex == terminal hit): all of path.L counts as
-            // "from rc". Path-walk capture in Phase 4 refines this.
             res.rcVertexIrradiance[0] = path.L;
-            // Path topology metadata (stub — refined in Phase 4 with proper §4 selection).
             int pathLen = (int)path.getVertexIndex();
             if (pathLen > 15) pathLen = 15;
             res.pathFlags.insertPathLength(pathLen);

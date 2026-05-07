@@ -195,6 +195,9 @@ PathTracer::PathTracer(ref<Device> pDevice, const Properties& props)
     // Create resolve pass. This doesn't depend on the scene so can be created here.
     auto defines = mStaticParams.getDefines(*this);
     mpResolvePass = ComputePass::create(mpDevice, ProgramDesc().addShaderLibrary(kResolvePassFilename).csEntry("main"), defines, false);
+    // ReSTIRPT spatial-reuse pass deferred to updatePrograms() — it imports
+    // Scene.HitInfo via PathReservoir and so needs scene shader modules
+    // attached, which aren't available in the constructor.
 
     // Note: The other programs are lazily created in updatePrograms() because a scene needs to be present when creating them.
 
@@ -502,6 +505,20 @@ void PathTracer::execute(RenderContext* pRenderContext, const RenderData& render
             FALCOR_ASSERT(mpTraceDeltaReflectionPass && mpTraceDeltaTransmissionPass);
             tracePass(pRenderContext, renderData, *mpTraceDeltaReflectionPass);
             tracePass(pRenderContext, renderData, *mpTraceDeltaTransmissionPass);
+        }
+    }
+
+    // ReSTIRPT spatial reuse — RT pipeline raygen, runs after main trace pass
+    // (which populates mpRestirPTReservoirs). RT binding context is the only
+    // one where loadShadingData + IMaterialInstance work alongside UAV writes
+    // — compute-pass equivalent triggers a Slang/DXC code-gen TDR.
+    if (mStaticParams.useRestirPT && mpRestirPTSpatialPass)
+    {
+        FALCOR_PROFILE(pRenderContext, "restirptSpatialPassRT");
+        tracePass(pRenderContext, renderData, *mpRestirPTSpatialPass);
+        if (mpRestirPTReservoirsHistory && mpRestirPTReservoirsTemporal)
+        {
+            pRenderContext->copyResource(mpRestirPTReservoirsHistory.get(), mpRestirPTReservoirsTemporal.get());
         }
     }
 
@@ -843,6 +860,15 @@ void PathTracer::updatePrograms()
         mpTraceDeltaTransmissionPass->prepareProgram(mpDevice, defines);
     }
 
+    // ReSTIRPT spatial reuse RT raygen — proper loadShadingData + IMaterialInstance
+    // work in this binding context. Created when useRestirPT is enabled.
+    if (mStaticParams.useRestirPT)
+    {
+        if (!mpRestirPTSpatialPass)
+            mpRestirPTSpatialPass = TracePass::create(mpDevice, "restirptSpatialPass", "RESTIRPT_SPATIAL_PASS", mpScene, defines, globalTypeConformances);
+        mpRestirPTSpatialPass->prepareProgram(mpDevice, defines);
+    }
+
     // Create compute passes.
     ProgramDesc baseDesc;
     mpScene->getShaderModules(baseDesc.shaderModules);
@@ -860,6 +886,8 @@ void PathTracer::updatePrograms()
         desc.addShaderLibrary(kReflectTypesFile).csEntry("main");
         mpReflectTypes = ComputePass::create(mpDevice, desc, defines, false);
     }
+    // (Compute-pass spatial reuse removed — replaced by RT raygen
+    // mpRestirPTSpatialPass which uses the proper RT binding context.)
 
     auto preparePass = [&](ref<ComputePass> pass)
     {
@@ -929,6 +957,38 @@ void PathTracer::prepareResources(RenderContext* pRenderContext, const RenderDat
         mpSampleNRDEmission = mpDevice->createStructuredBuffer(var["sampleNRDEmission"], sampleCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
         mpSampleNRDReflectance = mpDevice->createStructuredBuffer(var["sampleNRDReflectance"], sampleCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
         mVarsChanged = true;
+    }
+
+    // ReSTIRPT (restirpt_2d) — per-pixel reservoir buffers. Sized in tile-Morton
+    // units (`tileCount × kScreenTileDim²`) for binary parity with DQLin's
+    // `RestirPathTracerParams::getReservoirOffset`. Phase 2 will add the
+    // PixelReconnectionData buffer; Phase 3 the temporal-history copies.
+    if (mStaticParams.useRestirPT)
+    {
+        const uint32_t reservoirCount = tileCount * kScreenTileDim.x * kScreenTileDim.y;
+        if (!mpRestirPTReservoirs || mpRestirPTReservoirs->getElementCount() < reservoirCount || mVarsChanged)
+        {
+            mpRestirPTReservoirs = mpDevice->createStructuredBuffer(
+                var["restirptReservoirs"], reservoirCount,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, false);
+            mpRestirPTReservoirsTemporal = mpDevice->createStructuredBuffer(
+                var["restirptReservoirs"], reservoirCount,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, false);
+            mpRestirPTReservoirsHistory = mpDevice->createStructuredBuffer(
+                var["restirptReservoirs"], reservoirCount,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, false);
+            mVarsChanged = true;
+        }
+    }
+    else if (mpRestirPTReservoirs)
+    {
+        mpRestirPTReservoirs = nullptr;          // free when disabled
+        mpRestirPTReservoirsTemporal = nullptr;
+        mpRestirPTReservoirsHistory = nullptr;
+        mpRestirPTReconnectionData = nullptr;
     }
 }
 
@@ -1493,6 +1553,14 @@ void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& 
 
     if (mpRTXDI) mpRTXDI->bindShaderData(mpGeneratePaths->getRootVar());
 
+    // ReSTIRPT (restirpt_2d) — bind the reservoir buffer at root scope so
+    // writeBackground can populate background pixels' reservoirs (otherwise
+    // spatial-reuse pass sees M=0 and outputs 0 for sky/envmap visible pixels).
+    if (mStaticParams.useRestirPT && mpRestirPTReservoirs)
+    {
+        mpGeneratePaths->getRootVar()["gGenPathsRestirReservoirs"] = mpRestirPTReservoirs;
+    }
+
     // Launch one thread per reduced-resolution pixel when subframe gate active.
     // At N=1 the reduced tiles equal full screenTiles; at N>1 the shader remaps
     // its threadID via subframeRemap() to cover 1/N² of pixels per dispatch.
@@ -1624,6 +1692,19 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         if (mpVHFWSCellPools)     var["gWSCellPools"]       = mpVHFWSCellPools;
         var["VisCacheParams"]["gWSFrameDimX"] = mVHFPixelDimX;
         var["VisCacheParams"]["gWSFrameDimY"] = mVHFPixelDimY;
+    }
+    // ReSTIRPT (restirpt_2d) — bind reservoir buffers + spatial-pass extras
+    // when feature enabled. Bound for ALL trace passes; the main pass only
+    // touches gRestirPTReservoirs (write at writeOutput), the spatial pass
+    // (gated by RESTIRPT_SPATIAL_PASS define) reads all of them.
+    if (mStaticParams.useRestirPT && mpRestirPTReservoirs)
+    {
+        var["gRestirPTReservoirs"]         = mpRestirPTReservoirs;
+        if (mpRestirPTReservoirsTemporal)
+            var["gRestirPTReservoirsTemporal"] = mpRestirPTReservoirsTemporal;
+        if (mpRestirPTReservoirsHistory)
+            var["gRestirPTReservoirsHistory"]  = mpRestirPTReservoirsHistory;
+        var["gRestirPTMotionVectors"]      = renderData.getTexture(kInputMotionVectors);
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
