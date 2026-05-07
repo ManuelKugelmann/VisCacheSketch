@@ -63,18 +63,46 @@ native `PathTracer` plugin. The reuse machinery (`PathReservoir.slang`,
   `GeneratePaths.cs.slang` already handles this; can either delegate or copy
   the relevant pieces.
 
-### Strategy
+### Strategy (per user direction 2026-05-07)
 
-1. **Preserve reuse-pass interfaces.** The existing
-   `outputReservoirs[params.getReservoirOffset(pixel)]` interface stays —
-   what changes is who fills it.
-2. **Make `TracePass.cs.slang` a thin shim.** Instead of `gPathTracer.handleHit/...`,
-   it dispatches Falcor 8's PathTracer raygen (or copies its logic) and adds
-   the rcVertex selection + reservoir-write at the right path-walk hook.
-3. **Iterative**: do this in stages, validating against `ReSTIRPTReferencePass`
-   after each step. The test is `ReSTIRPTPass` produces output that's *close*
-   to `ReSTIRPTReferencePass` (not bit-identical — different RNG sequences from
-   different path-walk implementations), within accumulated-frame noise.
+**Redirect dqlin tracing functions to Falcor 8 without changing their
+signatures or names.** Extending Falcor 8's PathTracer base is permitted
+when needed for hooks, but only additively — vanilla PathTracer must
+remain bit-identical for `useRestirPT=false`-equivalent code paths.
+
+Concrete sub-steps (each validated against `ReSTIRPTReferencePass`):
+
+1. **Make `TracePass.cs.slang` a thin shim** around Falcor 8's PathTracer
+   raygen, with a hook for the reservoir population.
+2. **Reduce `PathTracer.slang` to a thin adapter** exposing the same struct
+   surface (handleHit, nextVertex, generatePath, handleMiss, finalize,
+   writeOutput) but delegating internals to Falcor 8.
+3. **Adapt `PathBuilder.slang`** to operate on Falcor 8's `PathState` instead
+   of dqlin's. The math (rcVertex selection, prefix throughput, postfix
+   weight) is unchanged.
+4. **Drop `Falcor8Compat.slang`** once everything is Falcor 8 native.
+
+### Practical first step (next iteration)
+
+The simplest delegation target is `handleMiss`. dqlin's body (~70 lines)
+includes a chunk of generic env-radiance eval logic that's identical to
+Falcor 8's. To delegate:
+
+a. Add an additive helper to Falcor's `PathTracer.slang`:
+   `bool evalEnvAtMiss(in PathState path, out float3 Le, out float misWeight)`
+   — pure function, no side effects, just computes the env contribution.
+   Vanilla PathTracer.slang can be refactored to call it (no behavior change),
+   AND ReSTIRPTPass can call it. Additive — vanilla output unchanged.
+
+b. Replace dqlin's handleMiss body's env-eval block with a call to that
+   helper. The dqlin-specific side effects (path.L update,
+   path.LDeltaDirect, pathBuilder.addEscapeVertex) stay.
+
+c. Validate: `ReSTIRPTPass` AB output must remain bit-identical to
+   `ReSTIRPTReferencePass`.
+
+Then iterate same pattern for `handleHit` (more complex — many side
+effects on `path.pathBuilder` etc.), `nextVertex`, etc.
 
 ## Future extension (Task #12): 2D/3D addressing modes
 
