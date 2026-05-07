@@ -1,26 +1,88 @@
 # ReSTIRPTPass — active port toward Falcor 8 native PathTracer
 
-## Status (2026-05-07)
+## Status (2026-05-08)
 
-This plugin is the **active port** toward Falcor 8 native PathTracer
-integration. It currently contains a **byte-identical copy** of the dqlin
-reference (mirrored separately in `Source/RenderPasses/ReSTIRPTReferencePass/`,
-which stays frozen).
+This plugin is the **active port** of dqlin-style ReSTIR-PT, paired with
+`Source/RenderPasses/ReSTIRPTReferencePass/` (byte-frozen verbatim mirror
+of the upstream dqlin reference).
 
 **Maintenance contract**: when the upstream dqlin reference changes, apply the
 same diff to `ReSTIRPTReferencePass/` first, then port the same delta to this
-plugin.
+plugin. Deliberate divergences are called out inline (e.g. dqlin RTXDI gating
+in `evalEnvAtMiss`).
 
 ## Validation (current)
 
 AB harness `scripts/RestirPT2D_AB.py`, SPP=32, 512×512, vs ladder x4096 GT:
 
-| scene             | vanilla | `restirpt_ref` | `restirpt` (this plugin) |
-|-------------------|---------|----------------|--------------------------|
-| Cornell_1AreaLight| 0.00519 | 0.02133220     | 0.02133220 (== ref ✓)    |
-| Sponza            | 0.00821 | 0.150901       | 0.150901 (== ref ✓)      |
+| scene             | vanilla | `restirpt_ref` | `restirpt_2d` | `restirpt_3d` |
+|-------------------|---------|----------------|---------------|---------------|
+| Cornell_1AreaLight| 0.00519 | 0.02133220     | 0.02133220    | 0.02133220    |
+| Sponza            | 0.00821 | 0.150901       | 0.150901      | 0.150901      |
 
-Bit-identical to reference, as expected for a verbatim copy.
+All variants bit-identical at mode=0 default. **restirpt_3d (mode=1) currently
+falls back to mode=0** due to the cell-pool blocker described below.
+
+## v2 progress so far
+
+- ✅ Two plugins live side-by-side: ReSTIRPTReferencePass (frozen) +
+  ReSTIRPTPass (active port).
+- ✅ Plugin name distinct (FALCOR_PLUGIN_CLASS), both registered in
+  `build.bat` PLUGIN_DIRS.
+- ✅ Vanilla PathTracer plugin entirely untouched.
+- ✅ AB harness validates vanilla / ref / 2d / 3d on Cornell + Sponza.
+- ✅ Task #12: 2D/3D addressing-mode dispatch infrastructure
+  (`restirptAddrMode` cbuffer field + host-side property,
+  `getReservoirOffset(pixel, posA, faceN)` 3-arg overload,
+  `gPathTracer.resolveReservoirOffset(pixel)` 1-arg helper, all 16
+  call sites routed through it).
+- ✅ Task #13: posA/faceN wiring scaffold (currently 1-arg helper used
+  everywhere; 3-arg form reachable but mode=1 stubbed).
+- 🔨 Task #11 (paired-helper extractions toward Falcor 8 native PT):
+  - `evalEnvAtMiss(path, out Le, out misWeight)` extracted in both
+    Falcor 8 PathTracer + ReSTIRPTPass (mirrored helper pair).
+  - `evalEmissiveMIS(path, sd, isPrimaryHit, isLightSamplable,
+    isTriangleHit, [out lightPdf]) -> misWeight` extracted in both.
+  - Remaining handleHit body is increasingly plugin-specific
+    (path.L update, pathBuilder.addEscapeVertex, NRD writes) —
+    diminishing returns on further extraction.
+
+## Open blockers
+
+### Task #15 — restirpt_3d concurrent-write corruption
+
+Hash-keyed flat reservoir buffer cannot safely handle concurrent writes
+from multiple pixels mapping to the same slot. Symptoms: torn writes →
+corrupt `rcVertex.hit` data → downstream
+`gScene.getVertexData(invalid_hit)` triggers DXGI_DEVICE_REMOVED after
+a few frames.
+
+**Fix**: real 3D mode requires a proper **cell-pool data structure**
+(fingerprints + slot-claim atomics) like VisCache's `WSCellPool` for DI.
+Approaches:
+1. Template/copy `Source/RenderPasses/VisCache/WSCellPool*.slang` to a
+   PathReservoir variant (`PRPathPool*.slang`).
+2. Add a separate cell-pool buffer + auxiliary metadata buffer
+   (fingerprint per slot) to ReSTIRPTPass's runtime resources.
+3. Update spatial/temporal reuse passes to dispatch via the cell-pool
+   read/write helpers (with collision handling) when mode=1.
+
+Substantial work — multiple iterations.
+
+## Future steps (Task #11 continued)
+
+1. **Make TracePass.cs.slang a thin shim** around Falcor 8's PathTracer
+   raygen, with a hook for reservoir population.
+2. **Reduce PathTracer.slang** to a thin adapter exposing the same
+   struct surface (handleHit/nextVertex/generatePath/handleMiss/
+   finalize/writeOutput) but delegating internals to Falcor 8.
+3. **Adapt PathBuilder.slang** to operate on Falcor 8's `PathState`.
+4. **Drop Falcor8Compat.slang** once everything is Falcor 8 native.
+
+Each step validated against `ReSTIRPTReferencePass` to ensure quality
+is preserved (within frame noise — different RNG sequences from
+different path-walk implementations expected once Falcor 8 PT is the
+backbone, but accumulated-frame results should converge).
 
 (Note: AB harness uses a simpler graph than the canonical RPT00 ladder — no
 NRD denoiser, no RTXDI direct-light feed — so the absolute err numbers are
