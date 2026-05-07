@@ -2462,15 +2462,12 @@ struct PathTracer
                             }
                             else
                             {
-                                // Ratio-based shift (Lin 2022): swap donor's
-                                // primary throughput for center's. This avoids
-                                // needing a separate rcVertexIrradiance — the
-                                // suffix radiance is implicit in donor.F.
-                                //   shifted_F = donor.F · (bsdf_dst/pdf_dst) / (bsdf_src/pdf_src)
-                                // bsdfDst/Src already include cos at their respective primaries.
-                                float lumSrc = max(1e-12f, dot(bsdfSrc, float3(0.299f, 0.587f, 0.114f)) / pdfS);
-                                float3 dstThpRatio = (bsdfDst / pdfD) / lumSrc;   // chromatic at center, scalar denom
-                                shiftedF = donor.F * dstThpRatio;
+                                // Geometric-Jacobian-only shift. Pass donor.F
+                                // unchanged with J=Jcalc to merge() — the J
+                                // factor inside merge does the conversion.
+                                // Avoids the chromatic instability from ratio-
+                                // form (bsdfDst/pdfD)/lum(bsdfSrc/pdfS).
+                                shiftedF = donor.F;
                                 J = Jcalc;
                                 shiftAccepted = true;
                                 ++nShiftAccept;
@@ -2480,17 +2477,12 @@ struct PathTracer
                 }
             }
             // Skip the merge if no shift was accepted — the identity fallback
-            // (shiftedF = donor.F) treats a neighbor's path-radiance estimate
-            // as correct at the center, which is biased and dominates the
-            // result when 95% of attempted shifts fail (Cornell probe).
-            // Hybrid / RandomReplay shift modes (Phase 4) will let those
-            // pixels contribute properly.
-            // J is implicit in shiftedF (the ratio-form shift converts donor's
-            // path-radiance to center's primary throughput). Passing J=1 to
-            // merge() avoids double-counting; merge multiplies by donor.M and
-            // donor.weight which is enough.
+            // would treat the neighbor's path-radiance estimate as correct at
+            // the center, which is biased.
+            // J=Jcalc converts donor's pdf at neighbor's primary into
+            // equivalent center-pdf via the Jacobian inside merge().
             if (shiftAccepted)
-                central.merge(shiftedF, /*J=*/1.f, donor, sg, kMisWeight);
+                central.merge(shiftedF, J, donor, sg, kMisWeight);
         }
 
         // Temporal merge — identity J=1 merge with disocclusion gating.
