@@ -2376,11 +2376,10 @@ struct PathTracer
             }
         }
 
-        // Convert central from post-finalize → w_sum form so subsequent merge()
-        // additions accumulate in the same units.
-        // Use plain RIS (misWeight=1, finalizeRIS divides by M·p̂) — simpler
-        // than constant-MIS GRIS and avoids the M-factor mismatch that caused
-        // exponential temporal feedback amplification.
+        // RIS path: merge (M·weight in w) + finalizeRIS (/M·p̂). Plain
+        // RIS with misWeight=1; central retains its full lum(F) post-prep.
+        // J-factor introduces a small magnitude scale on accepted shifts
+        // but is bounded by the [0.1,10] Jacobian threshold.
         central.prepareMerging();
         const float kMisWeight = 1.f;
 
@@ -2413,8 +2412,8 @@ struct PathTracer
             const float  neighborRoughness = neighborBsdfProps.roughness;
 
             // Skip Reconnection-shift on specular surfaces (shift is invalid).
-            // Don't merge with identity fallback either (biased — see comment
-            // below) — let Phase 4's RandomReplay shift handle these.
+            // Don't merge with identity fallback (biased) — Phase 4's
+            // RandomReplay shift will handle specular pixels properly.
             const bool donorIsSpecular = neighborRoughness <= kSpecularRoughnessThreshold;
             if (centerIsSpecular || donorIsSpecular)
             {
@@ -2527,9 +2526,7 @@ struct PathTracer
                 central.merge(history.F, /*J=*/1.f, history, sg, kMisWeight);
         }
 
-        // Use finalizeRIS — divides by p̂·M, matching merge()'s M factor in
-        // its w accumulation. finalizeGRIS would leave the M factor unbalanced
-        // and feedback-amplify exponentially through the temporal-history M-cap.
+        // merge pairs with finalizeRIS — both include the M factor.
         central.finalizeRIS();
         gRestirPTReservoirsTemporal[centerOffset] = central;
 
