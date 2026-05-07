@@ -300,7 +300,7 @@ The visibility cache plugs into two points of the ReSTIR pipeline. During **ligh
 
 Canonical config: flat multilevel hash, `forceDescendFootprintPx=16`, 8-level cascade, Bayer 2×2, `bootThreshold=8`, `stderrThreshold=0.10`, `pMin=0.02`. Static-scene frame-accumulation, 1-spp-per-frame, x4 SPP unless noted. Full numbers in [paper §13](viscachepaper/sections/13-results.md).
 
-**Shadow-ray reduction (algorithmic).** Cache `rays_traced_pct` — lower is better; 100% = vanilla equivalent.
+**Shadow rays % traced (algorithmic).** Cache `rays_traced_pct` — lower is better; 100% = vanilla equivalent.
 
 | Scene | b=0 | b=1 | b=4 | b=8 | b=16 |
 |---|---:|---:|---:|---:|---:|
