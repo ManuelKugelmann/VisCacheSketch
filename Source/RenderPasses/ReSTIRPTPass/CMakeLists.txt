@@ -10,6 +10,7 @@ target_sources(ReSTIRPTPass PRIVATE
     StaticParams.slang
     PathState.slang
     PathReservoir.slang
+    PathReservoirCellPool.slang
     PathBuilder.slang
     PathTracer.slang
     Falcor8Compat.slang
