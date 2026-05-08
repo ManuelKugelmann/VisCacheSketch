@@ -1028,40 +1028,6 @@ struct PathTracer
         }
     }
 
-    /** Pure helper: evaluate the MIS weight + lightPdf for an emissive surface hit.
-
-        Mirrors `Falcor/Source/RenderPasses/PathTracer/PathTracer.slang::evalEmissiveMIS`,
-        with a dqlin-specific extension: also returns `lightPdf` as out-param
-        (used by `pathBuilder.markEscapeVertexAsRcVertex` in handleHit).
-
-        Maintenance contract: when the upstream Falcor 8 helper changes, port
-        the diff here. Note: dqlin uses `sd.frontFacing ? sd.faceN : -sd.faceN`
-        which is equivalent to Falcor 8's `sd.getOrientedFaceNormal()`.
-
-        @return    misWeight (1.f when no emissive-NEE-MIS combination applies).
-    */
-    float evalEmissiveMIS(in const PathState path, in const ShadingData sd, bool isPrimaryHit, bool isLightSamplable, bool isTriangleHit, out float lightPdf)
-    {
-        lightPdf = 0.f;
-        if (!(kUseEmissiveLights && kUseNEE && kUseMIS && !isPrimaryHit && path.isLightSampled() && isLightSamplable))
-            return 1.f;
-
-        // Prepare hit point struct with data needed for emissive light PDF evaluation.
-        TriangleHit triangleHit = path.hit.getTriangleHit();
-        TriangleLightHit hit;
-        hit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
-        hit.posW = sd.posW;
-        hit.normalW = sd.frontFacing ? sd.faceN : -sd.faceN;
-
-        // Evaluate PDF at the hit, had it been generated with light sampling.
-        bool upperHemisphere = path.isLightSampledUpper() && !path.isLightSampledLower();
-        lightPdf = getEmissiveSelectionProbability() * emissiveSampler.evalPdf(path.origin, path.normal, upperHemisphere, hit);
-
-        // Compute MIS weight by combining this with BRDF sampling.
-        // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-        return evalMIS(1, path.pdf, 1, lightPdf);
-    }
-
     /** Handle the case when a scatter ray hits the scene.
         After handling the hit, a new scatter ray is generated or the path is terminated.
         \param[in,out] path The path state.
@@ -1152,8 +1118,32 @@ struct PathTracer
         if (computeEmissive && any(emission > 0.f))
         {
             float lightPdf = 0.f;
-            float misWeight = evalEmissiveMIS(path, sd, isPrimaryHit, isLightSamplable, /*isTriangleHit=*/true, lightPdf);
+
+            float misWeight = 1.f;
             float3 Lr = 0.f;
+
+            if (kUseEmissiveLights && kUseNEE && kUseMIS && !isPrimaryHit && path.isLightSampled() && isLightSamplable)
+            {
+                // If NEE and MIS are enabled, and we've already sampled emissive lights,
+                // then we need to evaluate the MIS weight here to account for the remaining contribution.
+
+                // Prepare hit point struct with data needed for emissive light PDF evaluation.
+                TriangleHit triangleHit = path.hit.getTriangleHit();
+                TriangleLightHit hit;
+                hit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
+                hit.posW = sd.posW;
+                hit.normalW = sd.frontFacing ? sd.faceN : -sd.faceN;
+
+                // Evaluate PDF at the hit, had it been generated with light sampling.
+                // Emissive light samplers have an option to exclusively sample the upper hemisphere.
+                bool upperHemisphere = path.isLightSampledUpper() && !path.isLightSampledLower();
+                lightPdf = getEmissiveSelectionProbability() * emissiveSampler.evalPdf(path.origin, path.normal, upperHemisphere, hit);
+
+                // Compute MIS weight by combining this with BRDF sampling.
+                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+                misWeight = evalMIS(1, path.pdf, 1, lightPdf);
+            }
+
 
             // Accumulate emitted radiance weighted by path throughput and MIS weight.
             if (!kDisableDirectIllumination || !isPrimaryHit || !isLightSamplable)
@@ -1603,49 +1593,6 @@ struct PathTracer
     /** Handle the case when a scatter ray misses the scene.
         \param[in,out] path The path state.
     */
-    /** Pure helper: evaluate the env-map radiance contribution at a path miss.
-
-        Mirrors Falcor 8 PathTracer's `evalEnvAtMiss`: pure (no path/output side
-        effects), so the env-eval logic isn't duplicated inline in handleMiss.
-        Output `lightPdf` is a dqlin extension used by the path-reuse escape-
-        vertex bookkeeping below.
-
-        Maintenance contract: this mirrors
-        `Falcor/Source/RenderPasses/PathTracer/PathTracer.slang::evalEnvAtMiss`.
-        When that helper changes upstream, port the diff here. dqlin-specific
-        deviations are deliberate and called out:
-          - `kDisableDirectIllumination && path.length == 0` gate (instead of
-            Falcor 8's `kUseRTXDI && getVertexIndex() == 2 && !transmission &&
-            !delta`).
-          - `lightPdf` exposed as out-param for `pathBuilder.addEscapeVertex()`.
-
-        @return true if the env contribution should be added.
-    */
-    bool evalEnvAtMiss(in const PathState path, out float3 Le, out float misWeight, out float lightPdf)
-    {
-        Le = float3(0.f);
-        misWeight = 1.f;
-        lightPdf  = 0.f;
-
-        const bool isLightSamplable = path.isLightSamplable();
-        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
-
-        // Disable all contributions to direct illumination if requested
-        // (dqlin: RTXDI feeds primary direct, ReSTIRPT handles indirect only).
-        if (kDisableDirectIllumination && path.length == 0 && isLightSamplable) computeEnv = false;
-
-        if (!computeEnv) return false;
-
-        if (kUseNEE && kUseMIS && path.isLightSampled() && isLightSamplable)
-        {
-            lightPdf = getEnvMapSelectionProbability() * envMapSampler.evalPdf(path.dir);
-            misWeight = evalMIS(1, path.pdf, 1, lightPdf);
-        }
-
-        Le = envMapSampler.eval(path.dir);
-        return true;
-    }
-
     void handleMiss(inout PathState path)
     {
         // Upon miss:
@@ -1657,14 +1604,32 @@ struct PathTracer
         // Check if the scatter event is samplable by the light sampling technique.
         const bool isLightSamplable = path.isLightSamplable();
 
-        float3 Le;
-        float  misWeight;
-        float  lightPdf;
-        const bool computeEnv = evalEnvAtMiss(path, Le, misWeight, lightPdf);
+        // Add env radiance.
+        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !path.isLightSampled() || !isLightSamplable);
+
+        // Disable all constributions to direct illumination if requested.
+        if (kDisableDirectIllumination && path.length == 0 && isLightSamplable) computeEnv = false;
 
         if (computeEnv)
         {
             logPathVertex();
+
+            float misWeight = 1.f;
+            float lightPdf = 0.f;
+            if (kUseNEE && kUseMIS && path.isLightSampled() && isLightSamplable)
+            {
+                // If NEE and MIS are enabled, and we've already sampled the env map,
+                // then we need to evaluate the MIS weight here to account for the remaining contribution.
+
+                // Evaluate PDF, had it been generated with light sampling.
+                lightPdf = getEnvMapSelectionProbability() * envMapSampler.evalPdf(path.dir);
+
+                // Compute MIS weight by combining this with BRDF sampling.
+                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+                misWeight = evalMIS(1, path.pdf, 1, lightPdf);
+            }
+
+            float3 Le = envMapSampler.eval(path.dir);
             float3 Lr = path.getCurrentThp() * Le * misWeight;
 
             // daqi: when doing random number replay, we will terminate the path when the length reaches the base path length and 
