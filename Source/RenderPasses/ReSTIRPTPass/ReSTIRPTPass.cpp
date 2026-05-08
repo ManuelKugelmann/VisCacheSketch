@@ -632,7 +632,10 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 // claimed (strict first-writer-wins semantics never lets the
                 // claim refresh) — works for static scenes via x32 averaging
                 // but blocks per-frame refresh needed for dynamic scenes.
-                if (mParams.restirptAddrMode == 1u && mpPathReservoirCellPool)
+                // Any 3D-aware mode needs the cell-pool cleared per frame.
+                // mode 0 (R2d): no cell pool. mode 1 (R2dR3d): cell pool used.
+                // mode 2 (R3d): cell pool is the ONLY store.
+                if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool)
                 {
                     pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
                 }
@@ -1217,10 +1220,10 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
         }
         else mPathReuseMISWeightBuffer = nullptr;
 
-        // World-cell pool buffer (restirpt_3d). Sized same as the pixel-keyed
-        // reservoir buffer; mode=0 doesn't bind it. Each slot is one
-        // PathReservoirCellSlot (fingerprint + reservoir).
-        if (mParams.restirptAddrMode == 1u)
+        // World-cell pool buffer (any 3D-aware mode: R2dR3d or R3d). Sized
+        // same as the pixel-keyed reservoir buffer; mode 0 (R2d) doesn't bind
+        // it. Each slot is one PathReservoirCellSlot (fingerprint + reservoir).
+        if (mParams.restirptAddrMode != 0u)
         {
             if (!mpPathReservoirCellPool || mpPathReservoirCellPool->getElementCount() != reservoirCount)
             {

@@ -223,7 +223,7 @@ struct PathReusePass
                 int2 neighborPixel = getPathReuseNextNeighborPixel(NRookQuery, pixel, i);
 
                 if (!isValidScreenRegion(neighborPixel)) continue;
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = gPathTracer.lookupNeighborReservoir(neighborPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(neighborPixel)]);
 
                 PackedHitInfo neighborPrimaryHitPacked;
                 ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
@@ -271,7 +271,7 @@ struct PathReusePass
             {
                 int2 neighborPixel = i == -1 ? pixel : getNextNeighborPixel(startIndex, pixel, i);
                 if (!isValidScreenRegion(neighborPixel)) continue;
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = gPathTracer.lookupNeighborReservoir(neighborPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(neighborPixel)]);
 
                 PackedHitInfo neighborPrimaryHitPacked;
                 ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
@@ -318,7 +318,7 @@ struct PathReusePass
 
                             int2 tneighborPixel = j == -1 ? pixel : getNextNeighborPixel(startIndex, pixel, j);
                             if (!isValidScreenRegion(tneighborPixel)) continue;
-                            PathReservoir tneighborReservoir = outputReservoirs[params.getReservoirOffset(tneighborPixel)];
+                            PathReservoir tneighborReservoir = gPathTracer.lookupNeighborReservoir(tneighborPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(tneighborPixel)]);
                             PackedHitInfo tneighborPrimaryHitPacked;
                             ShadingData tneighborPrimarySd = getPixelShadingData(tneighborPixel, tneighborPrimaryHitPacked);
                             if (!isValidPackedHitInfo(tneighborPrimaryHitPacked)) continue;
@@ -361,7 +361,7 @@ struct PathReusePass
                 if (!isValidPackedHitInfo(neighborPrimaryHitPacked)) continue;
                 if (!isValidGeometry(centralPrimarySd, neighborPrimarySd)) continue;
 
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = gPathTracer.lookupNeighborReservoir(neighborPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(neighborPixel)]);
 
                 float dstJacobian;
 
@@ -432,7 +432,7 @@ struct PathReusePass
                 int2 neighborPixel = getNextNeighborPixel(startIndex, pixel, i);
                 if (!isValidScreenRegion(neighborPixel)) continue;
 
-                PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+                PathReservoir neighborReservoir = gPathTracer.lookupNeighborReservoir(neighborPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(neighborPixel)]);
                 PackedHitInfo neighborPrimaryHitPacked;
                 ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);
                 if (!isValidPackedHitInfo(neighborPrimaryHitPacked)) continue;
@@ -459,7 +459,7 @@ struct PathReusePass
 
                 PackedHitInfo chosenPrimaryHitPacked;
                 ShadingData chosenPrimarySd = getPixelShadingData(chosenPixel, chosenPrimaryHitPacked);
-                PathReservoir chosenReservoir = outputReservoirs[params.getReservoirOffset(chosenPixel)];
+                PathReservoir chosenReservoir = gPathTracer.lookupNeighborReservoir(chosenPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(chosenPixel)]);
 
                 float chosen_approxPdf = 0.f;
                 float sum_approxPdf = 0.f;
@@ -495,7 +495,7 @@ struct PathReusePass
                         float prefixJacobian;
                         if (!isValidScreenRegion(prefixPixel)) continue;
 
-                        PathReservoir prefixReservoir = outputReservoirs[params.getReservoirOffset(prefixPixel)];
+                        PathReservoir prefixReservoir = gPathTracer.lookupNeighborReservoir(prefixPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(prefixPixel)]);
                         PackedHitInfo prefixPrimaryHitPacked;
                         ShadingData prefixPrimarySd = getPixelShadingData(prefixPixel, prefixPrimaryHitPacked);
                         if (!isValidPackedHitInfo(prefixPrimaryHitPacked)) continue;

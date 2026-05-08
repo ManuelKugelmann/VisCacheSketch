@@ -139,7 +139,7 @@ struct PathRetracePass
 
             if (!isValidScreenRegion(neighborPixel)) continue;
 
-            PathReservoir neighborReservoir = outputReservoirs[params.getReservoirOffset(neighborPixel)];
+            PathReservoir neighborReservoir = gPathTracer.lookupNeighborReservoir(neighborPixel, centralPrimarySd.posW, centralPrimarySd.faceN, outputReservoirs[params.getReservoirOffset(neighborPixel)]);
 
             PackedHitInfo neighborPrimaryHitPacked;
             ShadingData neighborPrimarySd = getPixelShadingData(neighborPixel, neighborPrimaryHitPacked);

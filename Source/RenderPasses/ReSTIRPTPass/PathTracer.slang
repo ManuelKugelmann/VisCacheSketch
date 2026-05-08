@@ -225,24 +225,27 @@ struct PathTracer
     }
 
     /** Central-reservoir lookup with mode dispatch.
-        Mirrors restir_3d's `wsResolvePoolAddr` pattern: callers don't see the
-        2D/3D mode dispatch; it's hidden inside this method. The structural
-        diff between restirpt_2d and restirpt_3d collapses to "use this lookup"
-        at every reuse-pass site.
 
-        mode=0: pixel-keyed reservoir from outputReservoirs[centralOffset].
-        mode=1: cell-pool with cascade + pos-jitter + footprint entry level;
-                pixel-keyed fall-back on collision-miss (so we never lose data).
+        restirptAddrMode taxonomy (per user 2026-05-08, mirrors restir_DI's
+        Rxd/Pyd matrix):
+          0 = R2d    — DQLIN baseline; pixel-keyed reservoir only.
+          1 = R2dR3d — pixel-keyed reservoir + 3D cell-pool override on match.
+                       Pixel buffer is always written; cell-pool acts as a
+                       neighbourhood-spatial-reuse layer.
+          2 = R3d    — pure 3D reservoir; pixel buffer is unused. Cell-pool
+                       is the only store. On cell-pool miss returns an empty
+                       reservoir (no pixel-buffer fallback).
 
         @param[in] pixel  Screen pixel.
         @param[in] posW   Primary hit world position.
         @param[in] faceN  Primary hit face normal.
-        @param[in] base   Pre-fetched pixel-keyed reservoir (caller already has it).
-        @return    Either `base` or a cell-pool reservoir at fingerprint match.
+        @param[in] base   Pre-fetched pixel-keyed reservoir (used at mode 0 and as
+                          fallback at mode 1; ignored at mode 2).
+        @return    Mode-dispatched reservoir.
     */
     PathReservoir lookupCentralReservoir(uint2 pixel, float3 posW, float3 faceN, PathReservoir base)
     {
-        if (params.restirptAddrMode != 1u) return base;
+        if (params.restirptAddrMode == 0u) return base;
         const uint stride   = kScreenTileDim.x * kScreenTileDim.y;
         const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
         const uint entryLvl = prFootprintLevel(posW, gScene.camera.data.posW, params.sceneRadius,
@@ -254,6 +257,13 @@ struct PathTracer
                                   params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
                                   jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
             return cellRes;
+        // mode 1 (R2dR3d): fall back to pixel-keyed; mode 2 (R3d): empty (no pixel buffer).
+        if (params.restirptAddrMode == 2u)
+        {
+            PathReservoir empty;
+            empty.init();
+            return empty;
+        }
         return base;
     }
 
@@ -268,7 +278,8 @@ struct PathTracer
     */
     void writeCentralReservoir(uint2 pixel, PathReservoir reservoir)
     {
-        if (params.restirptAddrMode != 1u) return;
+        // Cell-pool write fires for any 3D-aware mode (R2dR3d or R3d).
+        if (params.restirptAddrMode == 0u) return;
         const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
         if (!primaryHit.isValid() || primaryHit.getType() != HitType::Triangle) return;
         const TriangleHit th = primaryHit.getTriangleHit();
@@ -308,6 +319,28 @@ struct PathTracer
         const uint pixelOffset = params.getReservoirOffset(pixel);
         PathReservoir base = reservoirs[pixelOffset];
         return lookupCentralReservoir(pixel, posW, faceN, base);
+    }
+
+    /** Mode-dispatched neighbour reservoir lookup. Caller pre-loads the
+        pixel-keyed `base` (used at mode 0 and as fallback at mode 1).
+        At any 3D-aware mode (1 or 2) the neighbour pixel is projected back
+        to world via eye-ray at central depth, then the cell pool is queried
+        at that posW. mode 2 returns empty on cell-miss (no pixel fallback).
+
+        @param[in] neighborPixel   Screen pixel of the neighbour.
+        @param[in] centralPosW     Central pixel's world-space hit position.
+        @param[in] centralFaceN    Central pixel's face normal (assumed similar
+                                   for the neighbour — typical spatial-reuse approximation).
+        @param[in] base            Pre-loaded outputReservoirs[neighborOffset].
+        @return    Mode-dispatched reservoir.
+    */
+    PathReservoir lookupNeighborReservoir(uint2 neighborPixel, float3 centralPosW, float3 centralFaceN, PathReservoir base)
+    {
+        if (params.restirptAddrMode == 0u) return base;
+        // 3D mode: project neighbour eye ray to central depth, look up that world cell.
+        const float depth = distance(gScene.camera.data.posW, centralPosW);
+        const float3 nbPosW = worldPosForPixelAtDepth(neighborPixel, depth);
+        return lookupCentralReservoir(neighborPixel, nbPosW, centralFaceN, base);
     }
 
     /** Generate the path state for a primary hit in screen space.
@@ -2134,8 +2167,11 @@ struct PathTracer
                 // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
                 if (any(isnan(path.pathReservoir.F) || isinf(path.pathReservoir.F) || path.pathReservoir.F > 1e10f)) path.pathReservoir.F = 0.f;
                 if (isnan(path.pathReservoir.weight) || isinf(path.pathReservoir.weight) || path.pathReservoir.weight < 0.f || path.pathReservoir.weight > 1e10f) path.pathReservoir.weight = 0.f;
-                outputReservoirs[reservoirIdx] = path.pathReservoir;
-                // Mode-dispatched 3D cell-pool write (no-op at mode=0).
+                // mode 0 (R2d) + mode 1 (R2dR3d): pixel-buffer write (always).
+                // mode 2 (R3d): skip pixel-buffer write — cell-pool is the only store.
+                if (params.restirptAddrMode != 2u)
+                    outputReservoirs[reservoirIdx] = path.pathReservoir;
+                // Cell-pool write fires for any 3D-aware mode (no-op at mode 0).
                 writeCentralReservoir(pixel, path.pathReservoir);
             }
         }

@@ -208,10 +208,12 @@ struct RestirPathTracerParams
     // via render_graph_ReSTIRPT(...) kwarg to engage.
     float   fireflyClampK = 1.e9f;
 
-    // Reservoir addressing mode (mirrors gWSPoolAddrMode pattern from
-    // VisCache WS-ReSTIR DI). 0 = pixel-keyed (2D, default — current
-    // behavior), 1 = world-cell-keyed (3D, via WSCellPool — wired in
-    // a later commit). Exposed here so the cbuffer ABI is stable.
+    // ReSTIRPT variant taxonomy (per user 2026-05-08, mirrors restir_DI's
+    // Rxd/Pyd matrix; will be A/B-scored against each other):
+    //   0 = R2d    — DQLIN baseline, 2D pixel reservoir only.
+    //   1 = R2dR3d — 2D pixel reservoir + 3D cell-pool override at 8×8 neighbourhood.
+    //   2 = R3d    — pure 3D reservoir at pixel footprint, no pixel buffer at all.
+    //   3 = H2dR3d — 2D = history only (slim per-pixel state), 3D = main reservoir.
     uint    restirptAddrMode = 0u;
     uint    _restirptAddrPad0 = 0u;       // 8-byte align
     uint    _restirptAddrPad1 = 0u;
