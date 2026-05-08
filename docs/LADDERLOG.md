@@ -483,11 +483,37 @@ prevent.
 H2dR3dP3d = R2dR3dP3d bit-equivalent (Cornell_1AL 2.145 vs 2.146;
 Cornell_3AL 3.226 vs 3.226). Doesn't break out of the per-pixel
 reservoir architecture — both reservoirs run in the canonical
-read path, no fallback semantics. Need real shader-level implementation
-of "pixel reads cell-pool, on miss falls back to per-pixel slot" — small
-plumbing (~1 sample slot per pixel ≈ 16 B; 5-line shading read gate).
-RDI00 now captures x1 alongside x4 to measure the cold-cell stress
-that distinguishes the variants.
+read path, no fallback semantics.
+
+**Cold-cell stress test (RDI00 x1 sweep, 13fc09c+):** measured whether
+R3dP3d shows a +34%-style cold-cell regression at x1 SPP that would
+justify implementing the proper H2d fallback. **Hypothesis falsified
+on the DI side.**
+
+| Variant | Cornell_1AL x1→x4 | Sponza x1→x4 |
+|---|---:|---:|
+| R2dP2d    | 1.78 → 1.42 (+25%) | 6.64 → 6.10 (+9%)  |
+| R2dR3dP3d | 2.20 → 2.15 (+2%)  | 6.79 → 6.13 (+11%) |
+| R3dP3d    | 2.26 → 2.19 (+3%)  | 6.78 → 5.94 (+14%) |
+
+R3dP3d isn't uniquely worse at x1 — its x1→x4 convergence ratio is
+similar to other variants. The +34%-style regression the parallel
+agent reported on the PT-side R3d analog (Cornell SPP=1) doesn't
+reproduce on our DI side because our canonical config includes a
+cell-pool pre-pass (`PathTracerPrePass` with `wsCellPoolFillOnly=true`)
+that populates cells *before* the main pass reads them. Bayer-staged
+writes during pre-pass mean every pixel contributes; cells aren't
+empty at main-pass read time → no fallback path is exercised.
+
+**Conclusion:** H2d's architectural value (empty-cell fallback) doesn't
+emerge in our static-scene canonical because the pre-pass already
+eliminates the empty-cell failure mode. H2d would matter in the
+*dynamic-scene next stage*: animated camera with pre-pass that can't
+keep up with new region appearance, transient geometry disocclusion,
+or any scenario where cell-pool coverage is sparse. Implementing H2d
+proper is therefore deferred to whenever dynamic scenes enter the
+ladder. The current matrix variant slot remains a no-op intermediate
+between R2dR3dP3d and R3dP3d for completeness.
 
 ---
 
