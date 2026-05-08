@@ -99,8 +99,10 @@ static const uint kPRCellFpSalt   = 0xB3F19DC7u;
 // claim level 0 immediately (early-exit), so amortized cost is small.
 //
 // Set high enough to cover the practical depth of a posA cascade across
-// scene scales; 16 covers ~16-octave range (cell sizes 1× to 65536×).
-static const uint kPRCellPoolLevels = 16u;
+// scene scales. Most writes succeed at level 0-2 (sparse pool), so deeper
+// levels rarely fire. 4 covers the typical scene-scale range (cell sizes
+// 1× to 8×) — balance between compute cost and cascade flexibility.
+static const uint kPRCellPoolLevels = 4u;
 
 // Local 3D PCG hash for jitter (mirrors VisCache's pcg3d; copied here to
 // avoid pulling pcg3d out of USE_VISCACHE-guarded section). Pure.
