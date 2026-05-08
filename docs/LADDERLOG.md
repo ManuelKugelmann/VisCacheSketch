@@ -611,6 +611,43 @@ refresh needed.
    cautionary tale about not trusting summed numbers without
    re-checking.
 
+**R3d at canonical K=48 is approximately a no-op (audited 2026-05-09).**
+Comparing R2dP3d (R3d off) vs R2dR3dP3d (R3d on) at the canonical:
+
+| Scene | R2dP3d | R2dR3dP3d | Δ (R3d effect) |
+|---|---:|---:|---:|
+| Cornell_1PL  | 0.139 | 0.139 | 0.000 |
+| Cornell_1AL  | 2.147 | 2.146 | -0.001 |
+| Cornell_3AL  | 3.226 | 3.226 | 0.000 |
+| Cornell_32PL | 2.903 | 2.903 | 0.000 |
+| Sponza       | 6.092 | 6.126 | +0.034 (worse) |
+| BistroInt    | 7.645 | 7.631 | -0.014 |
+| BistroExt    | 9.297 | 9.179 | -0.118 |
+| **SUM**      | **31.449** | **31.350** | **-0.099** |
+
+R3d helps cumulatively by 0.10pp, almost entirely from a single
+BistroExterior delta of -0.118. Sponza is *worse* with R3d. Cornell
+scenes are bit-equivalent (within 0.001pp).
+
+**Read:** at canonical with `wsUseCellInRIS=False`, the cell-level
+reservoir is in the write-only-orphaned regime — written each frame
+but rarely read. The single non-zero scene (BistroExt) suggests one
+load-bearing path through R3d that feeds spatial reuse or temporal
+merge, but it's not architecturally substantial. The "R3d helps"
+claim in the original RDI00 framing was not really substantiated;
+R3d adds ~marginal-noise quality at canonical for ongoing memory +
+write cost.
+
+**This doesn't kill R3d** — it's still doing real work in the
+`enableWSCellReservoir` framework: cell-keyed temporal accumulator,
+camera-invariance for the cell layer, and the architectural lever
+H2d would later need (since H2d is R3d's read-side fallback). But
+for *static-scene canonical quality* alone, R3d's contribution is
+near-noise. Its real value emerges in: (a) dynamic-scene work where
+camera-invariance prevents the per-pixel layer's mCap collapse, and
+(b) potential cross-pass / cross-frame state reuse beyond the per-
+pixel layer's screen-space lifetime.
+
 Quality-only here — gpu_ms cost numbers run-to-run noise dominates the
 signal at this scale (TIMING work showed ~18× cross-run variance).
 
