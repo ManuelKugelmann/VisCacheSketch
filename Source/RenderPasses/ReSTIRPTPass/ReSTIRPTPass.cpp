@@ -556,10 +556,6 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
 {
     mpScene = pScene;
     mParams.frameCount = 0;
-    // frameCount reset to 0: arm the rewind detector with sentinel UINT32_MAX
-    // so the very next execute() sees `frameCount(0) < UINT32_MAX` and
-    // clearUAVs the cell-pool, flushing stale frame-stamps from prior scenes.
-    mLastCellPoolFrameCount = 0xFFFFFFFFu;
 
     resetLighting();
 
@@ -636,29 +632,16 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 assert(mpCounters);
                 pRenderContext->clearUAV(mpCounters->getUAV().get(), uint4(0));
 
-                // restirpt_3d (mode=1): clear the cell-pool buffer so each
-                // frame starts with empty fingerprints and writers can claim
-                // fresh slots. Without this clear, slots remain "sticky" once
-                // claimed (strict first-writer-wins semantics never lets the
-                // claim refresh) — works for static scenes via x32 averaging
-                // but blocks per-frame refresh needed for dynamic scenes.
-                // Cell-pool slots use atomic-CAS-with-frame-stamp
-                // (InterlockedMax on frameStamp). First writer in each frame
-                // stamps the slot for that frame; readers gate on
-                // stamp==currentFrame so stale data is implicitly invalidated.
-                //
-                // Rewind detection: if params.frameCount went BACKWARD or
-                // hit wraparound (~2 years at 60 fps), stale stamps in slots
-                // would be HIGHER than the new currentFrame, locking out
-                // every writer's InterlockedMax. ClearUAV once on rewind to
-                // recover. Otherwise the cell-pool refreshes naturally.
+                // restirpt_3d (any 3D-aware mode): clear the cell-pool buffer
+                // so each frame starts with empty fingerprints and writers
+                // can claim fresh slots. Without this clear, slots remain
+                // "sticky" once claimed (strict first-writer-wins semantics
+                // never lets the claim refresh).
+                // mode 0 (R2d): no cell pool. mode 1 (R2dR3d): cell pool used.
+                // mode 2 (R3d): cell pool is the ONLY store.
                 if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool)
                 {
-                    if (mParams.frameCount < mLastCellPoolFrameCount)
-                    {
-                        pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
-                    }
-                    mLastCellPoolFrameCount = mParams.frameCount;
+                    pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
                 }
 
                 mpPathTracerBlock->getRootVar()["gSppId"] = restir_i;

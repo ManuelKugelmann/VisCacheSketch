@@ -223,11 +223,6 @@ private:
     /// One PathReservoirCellSlot per cell (fingerprint + reservoir).
     /// Allocated when restirptAddrMode != 0, otherwise nullptr.
     ref<Buffer>                     mpPathReservoirCellPool;
-    /// Last params.frameCount we observed in execute(). Detects counter
-    /// rewind (scene reload) and wraparound (~2 years at 60 fps); on rewind
-    /// we clearUAV the cell-pool to flush stale frame stamps that would
-    /// otherwise prevent writers from re-claiming via InterlockedMax.
-    uint32_t                        mLastCellPoolFrameCount = 0;
 
     ref<Texture>                    mpTemporalVBuffer;
 
