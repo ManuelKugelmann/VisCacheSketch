@@ -37,6 +37,7 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_R2dR3dP2d,
     run_baseline_ReSTIRDI_R2dR3dP3d,
     run_baseline_ReSTIRDI_R3dP3d,
+    run_baseline_ReSTIRDI_H2dR3dP3d,
     finalize_step, kResX, kResY,
 )
 
@@ -64,11 +65,12 @@ for scene_file in get_scenes(default=["Sponza"]):
     # === Architectural matrix (5 variants) ===
     # Move-by-move:
     # base R2dP2d → switch pool to 3D (R2dP3d) → add R3d (R2dR3dP2d / R2dR3dP3d) → drop per-pixel (R3dP3d)
-    run_baseline_ReSTIRDI_R2dP2d   (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R2dP3d   (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R2dR3dP2d(STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R2dR3dP3d(STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R3dP3d   (STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_R2dP2d    (STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_R2dP3d    (STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_R2dR3dP2d (STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_R2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_H2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_R3dP3d    (STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===
 # carried_winners=[] because RDI00 is not setting up a hand-off to RDI01

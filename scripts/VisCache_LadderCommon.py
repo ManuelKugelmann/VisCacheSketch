@@ -4156,21 +4156,41 @@ def run_baseline_ReSTIRDI_R3dP3d(step_name, frame_configs, scene_file,
 
 
 def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
-                                    **kwargs):
-    """**SCAFFOLD ONLY** — slim per-pixel layer to a 4-byte history record
-    (mCap counter + disocclusion age), keep R3d as the temporal accumulator,
-    P3d pool at 16-px footprint. Real implementation requires a new
-    `PixelHistory` struct, replacing the per-pixel reservoir read at
-    PathTracer.slang:1679, and migrating shading reads to wsLoadCell. Not
-    yet implemented — this stub raises a clear error so the variant tag
-    can reserve a place in the harness namespace.
+                                    wsCellPoolFootprintPx=16,
+                                    wsCellReservoirFootprintPx=8, **kwargs):
+    """**Minimum-viable H2d** — per-pixel layer carries pick diversity but
+    NOT temporal accumulation; cell-level reservoir does the cross-frame
+    temporal merge. Composes `enableWSPixelReservoir=True` (per-pixel pick
+    storage) with `wsCellReservoirMerge=1` (Bitterli cell-temporal merge).
+    Each pixel does its own K-RIS each frame from cell-pool → pick stored
+    in per-pixel reservoir as the "latest history record" → pick stream
+    feeds cell reservoir which accumulates temporally across frames.
+
+    Sits architecturally between R2dR3dP3d (per-pixel handles temporal)
+    and R3dP3d (cell handles temporal, no per-pixel). The hypothesis: by
+    routing temporal accumulation through the cell while keeping per-pixel
+    pick diversity, the variant should match R3dP3d on complex scenes
+    (Sponza/Bistro) and recover R2dR3dP3d-style behaviour on simple
+    Cornell scenes where per-pixel pick diversity matters for penumbra
+    resolution.
+
+    Note: this MVP version still uses the full ~32 B per-pixel reservoir
+    struct on disk; the byte-level compression to a true 4-byte
+    PixelHistory record is a memory optimization not blocking the
+    architectural test. The architectural distinction (cell-handles-
+    temporal AND per-pixel-handles-pick-diversity) is what we measure.
     """
-    raise NotImplementedError(
-        "ReSTIRDI_H2dR3dP3d is a scaffold-only variant. The H2d "
-        "(per-pixel-history-only) layer is not yet implemented; see the "
-        "variant matrix in docs/ReSTIRDI_VARIANTS.md (TBD) and §11 of "
-        "the paper for the design. Use ReSTIRDI_R2dR3dP3d for the closest "
-        "current configuration."
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["enableWSPixelReservoir"] = True   # per-pixel layer keeps pick diversity
+    extra["wsCellReservoirMerge"]   = 1      # cell layer does temporal Bitterli merge
+    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_H2dR3dP3d",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs2,
     )
 
 

@@ -460,10 +460,23 @@ been deferred since Task #41 — that's the most plausible mechanism by
 which the cell-level reservoir could become the dominant variance-reduction
 layer across all regimes.
 
-H2dR3dP3d (slim per-pixel history) is the obvious next implementation
-target — it sits between R2dR3dP3d and R3dP3d in the matrix. If it
-captures the per-pixel-temporal benefit at near-zero memory cost, it could
-be the unifying canonical.
+**H2dR3dP3d MVP — falsified shortcut, useful negative.** Tried the simplest
+possible H2dR3dP3d implementation: set `enableWSPixelReservoir=True` AND
+`wsCellReservoirMerge=1` simultaneously (the previously-untested third row
+of the temporal-flag matrix), no shader changes. Result: H2dR3dP3d lands
+bit-equivalent to R2dR3dP3d on Cornell_1AL (2.145 vs 2.146) and
+Cornell_3AL (3.226 vs 3.226). No fix to the simple-Cornell loss.
+
+Reason: `wsUseCellInRIS=False` (canonical) gates *all reads* of the
+cell-level reservoir off; flipping the cell to Bitterli-merge writes
+without enabling reads just pays extra cycles to write a buffer no one
+reads. R3d is write-only-orphaned in canonical config regardless of
+which write convention it uses (identity-hint vs Bitterli-merge).
+
+Implication: real H2dR3dP3d needs new shader code — either pixel-reads-
+cell + per-pixel layer as pick-history-sidekick, or both-reservoirs-
+merged-at-read. Either is a multi-day refactor of `PathTracer.slang`'s
+shading read path. Tracked as the natural RDI01+ implementation target.
 
 ---
 
