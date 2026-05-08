@@ -34,6 +34,10 @@
  **************************************************************************/
 #pragma once
 import PathReservoir;
+// pcgHashEndpoint — pure int hash, shared with VisCache + WSCellPool to align
+// restirpt_3d's cell-keyed pool with the same hash family used elsewhere in the
+// world-space caching machinery.
+import RenderPasses.VisCache.VisCache;
 
 /// Per-cell slot: PathReservoir + fingerprint for collision detection.
 ///
@@ -78,18 +82,24 @@ bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
 /// once claimed (strict first-writer-wins). The host-side `clearUAV` of
 /// the pool's fingerprint field at frame start refreshes claims; see
 /// ReSTIRPTPass.cpp::execute().
+// Salts: unique per role (slot vs fingerprint) and disjoint from VisCache's
+// kSaltA/B/Dist (visibility cache) and WSReservoir's kWSFpSalt (DI reservoir
+// fingerprint). Keeps the global pcgHash hash space partitioned.
+static const uint kPRCellSlotSalt = 0x7E5C2A11u;
+static const uint kPRCellFpSalt   = 0xB3F19DC7u;
+
 uint prCellFingerprint(int3 q, uint nb)
 {
-    uint h = (uint(q.x) * 2654435761u) ^ (uint(q.y) * 1597334677u) ^ (uint(q.z) * 805459861u) ^ (nb * 374761393u);
-    return h | 1u;  // ensure non-zero: 0 is the empty sentinel
+    uint h = pcgHashEndpoint(q, nb, kPRCellFpSalt);
+    return (h == 0u) ? 1u : h;  // 0 reserved as empty sentinel
 }
 
 /// Hash a quantized cell coordinate + normal-bin into a slot index.
-/// Independent salts from prCellFingerprint so address and fingerprint
+/// Independent salt from prCellFingerprint so address and fingerprint
 /// hashes are uncorrelated (lower false-match rate on collisions).
 uint prCellSlotHash(int3 q, uint nb)
 {
-    return (uint(q.x) * 73856093u) ^ (uint(q.y) * 19349663u) ^ (uint(q.z) * 83492791u) ^ (nb * 2654435761u);
+    return pcgHashEndpoint(q, nb, kPRCellSlotSalt);
 }
 
 /// Compute (q, nb) from world-space primary-hit pos + face normal.

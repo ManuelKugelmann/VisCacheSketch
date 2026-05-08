@@ -413,6 +413,13 @@ uint3 pcg3d(uint3 v)
 // 9 is odd, which breaks perfect circular symmetry — acceptable since the
 // inputs ARE asymmetric (positions vs levels vs salt).
 // ---------------------------------------------------------------------------
+// pcgHashEndpoint and friends are exported regardless of USE_VISCACHE — they
+// are pure int functions used by other consumers of the world-space cache
+// machinery (e.g. ReSTIRPTPass's PathReservoirCellPool). Keeping them outside
+// the guard avoids forcing those consumers to bind VisCache's parameter
+// block just to call a hash function.
+#endif // USE_VISCACHE — temporarily close to expose pure helpers below
+
 /// Hash one endpoint: int3 coords + level + salt → uint.
 /// PCG-style: LCG init, 2 rounds of circular cross-mix, XOR-fold.
 uint pcgHashEndpoint(int3 q, uint lvl, uint salt)
@@ -434,6 +441,8 @@ uint pcgHashEndpoint(int3 q, uint lvl, uint salt)
 static const uint kSaltA    = 0x12345678u;
 static const uint kSaltB    = 0x9E3779B9u;
 static const uint kSaltDist = 0x6C62272Eu;
+
+#if USE_VISCACHE   // re-open the VisCache-only block
 
 /// Hash one dimension. posB modes reuse pcgHashEndpoint with kSaltDist for distance
 /// (distance is qb.z in dirdist mode, or a constant in pos×pos mode).
