@@ -113,6 +113,25 @@ uint3 prPcg3d(uint3 v)
     return v;
 }
 
+/// Footprint-derived entry level: pixels far from the camera use coarser
+/// cells. Mirror of VisCache's vhfLevelForFootprint but distance-based so
+/// it doesn't need the gPosACoarse/gPosAFine ladder bound.
+///
+/// Heuristic: at distance ~= sceneRadius * 0.01 (base cell size), level 0
+/// is the right footprint match. Each octave of distance bumps level by 1
+/// — matches the geometric `kBase * 2^level` ladder used by prCellSize.
+///
+/// Result is the level whose cell projects to roughly one screen pixel at
+/// the primary hit's depth (qualitatively — exact projection would need
+/// camera FOV and screen resolution).
+uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint maxLevels)
+{
+    float dist = distance(posW, cameraPosW);
+    float baseCell = max(sceneRadius * 0.01f, 1e-3f);
+    float lvlF = log2(max(dist / baseCell, 1.f));
+    return uint(clamp(lvlF, 0.f, float(int(maxLevels) - 1)));
+}
+
 /// Fingerprint hash. The `level` parameter participates so different
 /// cascade levels at the same (q, nb) get distinct fingerprints — key for
 /// future multilevel cascade reads (try level L, descend on miss).
@@ -247,15 +266,24 @@ bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx
 bool prCellPoolReadCascade(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint maxLevels, out PathReservoir reservoir)
+    uint startLevel, uint maxLevels, out PathReservoir reservoir)
 {
-    for (uint lvl = 0u; lvl < maxLevels; ++lvl)
+    for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
     {
         PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
     }
     reservoir = pool[0].reservoir;   // dummy init for unselected branch (never used by caller)
     return false;
+}
+
+// Back-compat wrapper: startLevel=0.
+bool prCellPoolReadCascade(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint maxLevels, out PathReservoir reservoir)
+{
+    return prCellPoolReadCascade(pool, posW, faceN, sceneRadius, capacity, 0u, maxLevels, reservoir);
 }
 
 /// Cascading write. Try-claim at level 0 first; on claim failure (slot
@@ -265,9 +293,9 @@ bool prCellPoolReadCascade(
 uint prCellPoolWriteCascade(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint maxLevels, PathReservoir reservoir)
+    uint startLevel, uint maxLevels, PathReservoir reservoir)
 {
-    for (uint lvl = 0u; lvl < maxLevels; ++lvl)
+    for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
     {
         PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotClaim(pool, a.slot, a.fingerprint))
@@ -277,6 +305,15 @@ uint prCellPoolWriteCascade(
         }
     }
     return maxLevels;
+}
+
+// Back-compat wrapper: startLevel=0.
+uint prCellPoolWriteCascade(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint maxLevels, PathReservoir reservoir)
+{
+    return prCellPoolWriteCascade(pool, posW, faceN, sceneRadius, capacity, 0u, maxLevels, reservoir);
 }
 
 // ---------------------------------------------------------------------------
