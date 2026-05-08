@@ -2064,11 +2064,13 @@ struct PathTracer
                         const VertexData v = gScene.getVertexData(th);
                         const uint stride = kScreenTileDim.x * kScreenTileDim.y;
                         const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
+                        // Footprint-derived entry level: distant pixels start cascade at coarser cells.
+                        const uint entryLvl = prFootprintLevel(v.posW, gScene.camera.data.posW, params.sceneRadius, kPRCellPoolLevels);
                         // Per-frame pos jitter: same offset for all writers in a frame, varies cross-frame.
                         // AccumulatePass averages across frames → smooths cell-boundary artifacts.
                         prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
                                                params.sceneRadius, capacity,
-                                               /*startLevel*/0u, kPRCellPoolLevels,
+                                               entryLvl, kPRCellPoolLevels,
                                                /*jitterSeed*/params.frameCount,
                                                /*jitterPos*/1.0f, /*jitterLevel*/0u,
                                                path.pathReservoir);

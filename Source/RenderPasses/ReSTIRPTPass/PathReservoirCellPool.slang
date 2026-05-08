@@ -113,22 +113,23 @@ uint3 prPcg3d(uint3 v)
     return v;
 }
 
-/// Footprint-derived entry level: pixels far from the camera use coarser
-/// cells. Mirror of VisCache's vhfLevelForFootprint but distance-based so
-/// it doesn't need the gPosACoarse/gPosAFine ladder bound.
+/// Footprint-derived entry level: pixels far from the camera (relative to
+/// scene radius) use coarser cells. Distance-based proxy for VisCache's
+/// vhfLevelForFootprint that doesn't need the gPosACoarse/gPosAFine ladder.
 ///
-/// Heuristic: at distance ~= sceneRadius * 0.01 (base cell size), level 0
-/// is the right footprint match. Each octave of distance bumps level by 1
-/// — matches the geometric `kBase * 2^level` ladder used by prCellSize.
+/// Heuristic: distance == sceneRadius → level 0 (base cell). Each octave
+/// of distance beyond sceneRadius bumps level by 1. Pixels closer than
+/// sceneRadius all stay at level 0 (the cascade descends naturally on
+/// claim-collision so close-pixel cluster sharing still works).
 ///
-/// Result is the level whose cell projects to roughly one screen pixel at
-/// the primary hit's depth (qualitatively — exact projection would need
-/// camera FOV and screen resolution).
+/// Compared to a pixel-perfect FOV+screenH-aware computation: simpler,
+/// no extra binding required, and the cascade walk fills any gap when
+/// the heuristic's level differs from the geometrically-right one.
 uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint maxLevels)
 {
     float dist = distance(posW, cameraPosW);
-    float baseCell = max(sceneRadius * 0.01f, 1e-3f);
-    float lvlF = log2(max(dist / baseCell, 1.f));
+    float baseScale = max(sceneRadius, 1e-3f);
+    float lvlF = log2(max(dist / baseScale, 1.f));
     return uint(clamp(lvlF, 0.f, float(int(maxLevels) - 1)));
 }
 
