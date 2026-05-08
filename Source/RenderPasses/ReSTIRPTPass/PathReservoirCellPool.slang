@@ -46,20 +46,20 @@ import RenderPasses.VisCache.VisCache;
 struct PathReservoirCellSlot
 {
     uint           fingerprint;     ///< 0 = empty; non-zero = claimed by a pixel hash
+    uint           frameStamp;      ///< current-frame counter (for atomic-CAS-with-frame refresh)
     uint           _pad0;
     uint           _pad1;
-    uint           _pad2;
     PathReservoir  reservoir;
 };
 
-/// Initialize an empty slot (zero fingerprint).
+/// Initialize an empty slot (zero fingerprint, zero frame stamp).
 PathReservoirCellSlot prCellSlotInit()
 {
     PathReservoirCellSlot s;
     s.fingerprint = 0u;
+    s.frameStamp = 0u;
     s._pad0 = 0u;
     s._pad1 = 0u;
-    s._pad2 = 0u;
     s.reservoir.init();
     return s;
 }
@@ -264,32 +264,49 @@ PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRa
     return prCellResolveAddr(posW, faceN, sceneRadius, capacity, 0u);
 }
 
-/// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
-/// fingerprint field — strict first-writer-wins, no rewrites.
+/// Try to claim a cell-pool slot for `fingerprint` for the current frame.
+/// Atomic Max on the frameStamp field; only the first writer this frame wins
+/// (subsequent writers' max returns currentFrame, no change).
 ///
-/// Behavior:
-/// - Empty slot (fingerprint==0): claim it, return true. ONLY the thread
-///   that successfully transitioned the slot from empty wins; subsequent
-///   threads with the same fingerprint see prev==fingerprint and return
-///   false — important to prevent concurrent non-atomic reservoir writes
-///   from tearing the PathReservoir payload (it's ~256 B, no atomic
-///   support).
-/// - Slot already claimed: return false. Caller must NOT write the
-///   reservoir — fall back to pixel-keyed buffer.
-///
-/// On the read side, prCellSlotRead handles the across-frame stale-data
-/// case by validating the fingerprint matches the reader's cell.
-bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint)
+/// Frame-stamp design (per user 2026-05-08, replaces clearUAV+CAS-empty):
+/// - Slot's frameStamp tracks the most recent claiming frame.
+/// - Writer InterlockedMax(stamp, currentFrame). If returned prev<current,
+///   THIS writer just stamped — claim succeeds. Else slot was already
+///   claimed by another writer this frame.
+/// - Across frames: a slot from frame F-1 has stamp=F-1; the first writer
+///   in frame F succeeds (F-1 < F), refreshing the slot.
+/// - Within a frame: all writers race, exactly one wins atomically.
+/// - No torn writes possible (single writer per slot per frame after CAS).
+/// - clearUAV-per-frame is no longer needed; cells naturally refresh.
+bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint, uint currentFrame)
 {
     uint prev = 0u;
-    InterlockedCompareExchange(pool[slotIdx].fingerprint, 0u, fingerprint, prev);
-    return prev == 0u;   // strict first-writer-wins
+    InterlockedMax(pool[slotIdx].frameStamp, currentFrame, prev);
+    return prev < currentFrame;  // We're the first writer this frame.
 }
 
-/// Read a cell-pool slot. Returns false (and zeroed reservoir) if the
-/// slot is empty OR claimed by a different fingerprint (collision).
-/// Takes RWStructuredBuffer because that's what callers have (the buffer
-/// is bound as a UAV); reads from RW work fine.
+// Back-compat: legacy single-arg form (uses frame stamp 1; equivalent to old
+// "non-zero == claimed" semantics for first-frame use).
+bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint)
+{
+    return prCellSlotClaim(pool, slotIdx, fingerprint, 1u);
+}
+
+/// Read a cell-pool slot. Returns false if slot is empty, has stale
+/// frameStamp (older than currentFrame), or has a fingerprint mismatch.
+/// Frame-stamp gate ensures readers only consume same-frame data
+/// (stale-frame data has had its writer overwritten or it's invalid).
+bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint expectedFingerprint, uint currentFrame, out PathReservoir reservoir)
+{
+    PathReservoirCellSlot s = pool[slotIdx];
+    reservoir = s.reservoir;
+    return s.fingerprint != 0u
+        && s.fingerprint == expectedFingerprint
+        && s.frameStamp == currentFrame;
+}
+
+// Back-compat: legacy form (assumes frameStamp doesn't gate — used by
+// post-clearUAV codepaths where every claim is fresh).
 bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint expectedFingerprint, out PathReservoir reservoir)
 {
     PathReservoirCellSlot s = pool[slotIdx];
