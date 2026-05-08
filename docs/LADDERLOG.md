@@ -556,6 +556,40 @@ parallel-agent PT side can also use (0) directly to retire its
 cold-cell regression — single Bayer-stage gate vs porting an
 RTXDI-style pre-pass plugin.
 
+**Pre-pass cost asymmetry vs RTXDI (architectural debt).** RTXDI's
+presampling pass is a *cheap compute shader* — pure light-sampling
+into the screen-tile pool, no geometry / BSDF / shading work at all.
+Our current pre-pass is `PathTracerPrePass + wsCellPoolFillOnly=true`,
+i.e. the full Falcor PathTracer pipeline running with shading writes
+suppressed. We kept it that way for **convenience** (one shader code
+path, one less plugin to author, easier diff vs the main pass) — not
+because the work is necessary. Strictly the cell-pool fill needs:
+
+- V-buffer read for primary-hit `posA + faceN` (cell addressing is
+  geometry-dependent — `wsResolveCellPoolAddr` keys on quantized
+  posA + normal-bin, unlike RTXDI's `pixel / tileSize`)
+- analytical cell-level + cascade lookup (already shared)
+- K-RIS over emissive sampler (PdfMipmap)
+- write to cell pool
+
+Everything else (BSDF eval scaffolding, indirect-bounce machinery,
+output writes that are discarded) is wasted work. A lean dedicated
+compute shader (Task #29 — *pending*) would close the gap to
+RTXDI's actually-cheap presampling — estimated 5–10× cheaper
+pre-pass dispatch.
+
+The cleaner architectural picture for RDI01+:
+
+| Mechanism | Cost | Status |
+|---|---|---|
+| (0) Implicit Bayer-subframe-0 warmup | nil; built into Bayer staging | active in canonical |
+| (2a) Lean compute pre-pass | ~10× cheaper than (2b) | Task #29 pending |
+| (2b) Full PathTracer pre-pass | extra full PT pipeline dispatch | active in canonical — convenience |
+
+(2b) was kept for engineering convenience, not cost-optimization.
+RTXDI parity at the *architectural-equivalence* level requires
+(2a), not (2b).
+
 ---
 
 ## Steps 19–25 — recorded null result
