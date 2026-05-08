@@ -73,10 +73,18 @@ bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
 /// Uses the same xor-mul construction as the worldcell-offset hash; the
 /// fingerprint is what the SLOT stores so subsequent readers can detect
 /// hash collisions and skip stale data.
+///
+/// Note: fingerprint is NOT frame-keyed — cell-pool slots are sticky
+/// once claimed (strict first-writer-wins). This means later frames'
+/// writes are mostly rejected (slot already claimed), so the cell pool
+/// is effectively populated by the first few frames and held stable
+/// thereafter. Cross-frame refresh (when needed for dynamic scenes)
+/// requires a host-side `clearUAV` of the pool's fingerprint field at
+/// frame start — separate from this hash.
 uint prCellFingerprint(int3 q, uint nb)
 {
-    return ((uint(q.x) * 2654435761u) ^ (uint(q.y) * 1597334677u) ^ (uint(q.z) * 805459861u) ^ (nb * 374761393u))
-           | 1u;  // ensure non-zero: 0 is the empty sentinel
+    uint h = (uint(q.x) * 2654435761u) ^ (uint(q.y) * 1597334677u) ^ (uint(q.z) * 805459861u) ^ (nb * 374761393u);
+    return h | 1u;  // ensure non-zero: 0 is the empty sentinel
 }
 
 /// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
