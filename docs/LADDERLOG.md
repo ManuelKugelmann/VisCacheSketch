@@ -683,39 +683,39 @@ Findings:
    is the best variant on both scenes** — Cornell 1.40 (only 0.34 pp
    from vanilla x4), Sponza 5.68 (0.36 pp from vanilla x4).
 
-**Pre-pass redundancy ablation — pre-pass actively hurts quality (RDI00 ablation 2026-05-08).**
-Validated by running `R2dR3dP3d_noPre` and `R3dP3d_noPre` (same canonicals
-with `wsCellPoolPrePass=False`):
+**Pre-pass redundancy ablation — initial finding overstated (corrected 2026-05-09).**
+Earlier pass (commits `b5b6496` / `13fc09c`) tested `R2dR3dP3d_noPre` /
+`R3dP3d_noPre` on Cornell_1AL + Sponza only and concluded "pre-pass
+actively hurts quality on every variant tested." Cumulative re-audit
+across the full matrix shows the picture is *light-count-dependent*,
+not universal:
 
-| Variant | Cornell_1AL x4 | Sponza x4 |
-|---|---:|---:|
-| R2dR3dP3d (with pre-pass)    | 2.146 | 6.126 |
-| **R2dR3dP3d_noPre**          | **1.422** (−34 %) | **6.098** (−0.5 %) |
-| R3dP3d (with pre-pass)       | 2.189 | 5.937 |
-| **R3dP3d_noPre**             | **1.404** (−36 %) | **5.725** (−3.6 %) |
+| Scene | canonical (with pre-pass) | R2dR3dP3d_noPre | Δ |
+|---|---:|---:|---:|
+| Cornell_1AL | 2.146 | 1.422 | **−0.724** (noPre wins) |
+| Cornell_3AL | 3.226 | 3.130 | −0.096 |
+| Cornell_32PL | 2.903 | 2.903 | 0 |
+| Sponza | 6.126 | 6.098 | −0.028 |
+| BistroInt | 7.631 | 8.281 | **+0.650** (canonical wins) |
+| BistroExt (R3dP3d_noPreK24 ≈ proxy) | 9.179 | ~9.46 | ~+0.28 |
 
-Removing the pre-pass IMPROVES quality on every variant tested. **R3dP3d_noPre
-at 1.404 BEATS R2dP2d's 1.422** on Cornell_1AL — the simple-Cornell loss
-that was the entire RDI01 narrowing target *disappears entirely* once the
-pre-pass is removed.
+**Pre-pass hurts on simple Cornell, helps on Bistro.** Net cumulative
+across the available scenes is approximately neutral to slightly
+worse-without-pre-pass (Bistro losses outweigh Cornell wins).
 
-**Why the pre-pass hurts.** It uses `PdfMipmap` (shading-agnostic
-hierarchical-pdf emissive sampling) while the main pass uses `LightBVH`
-(shading-conditional). Pre-pass-filled cell-pool entries dilute the main
-pass's better shading-conditional K-RIS picks. The existing comment in
-`_run_baseline_restir` already documented this risk
-(*"over-weighting pool's shading-agnostic distribution dilutes 8 fresh
-shading-conditional samples regardless of read convention"*) — but the
-ablation shows it's a *net loss*, not just suboptimal.
+The mechanism (PdfMipmap shading-agnostic dilution of LightBVH
+shading-conditional fresh) is real and explains the Cornell behaviour;
+on many-emissive scenes the pool's diversification benefit
+*outweighs* the dilution cost.
 
-**Implicit Bayer-subframe-0 warmup is strictly superior** to the explicit
-pre-pass because subframe 0 populates the cell-pool using the main pass's
-shading-conditional `LightBVH` sampler. Cost: zero extra dispatch.
-
-**Implication for Task #29 (lean compute pre-pass).** RETIRED — there's
-no architectural-parity target to chase. The convenience-built
-PathTracerPrePass we ship today should be removed from the canonical
-config, not optimized.
+**Implication for Task #29 (lean compute pre-pass).** RETIRED — but
+for a softer reason than originally stated. RTXDI's presampling
+pattern is empirically *useful* (pre-pass + main-pass-fresh hybrid
+beats pure-fresh on Bistro-class scenes); the lean-compute version
+would just optimize cost without changing the architecture. With the
+quality justification weaker than the recanted claim suggested, the
+~5–10× cost savings vs current full-PT pre-pass is the only motivation
+left. Worth doing if/when the cost story matters; not a quality fix.
 
 **Pre-pass cost asymmetry vs RTXDI (now moot, kept for the record).**
 RTXDI's presampling pass is a *cheap compute shader* — pure light-sampling
