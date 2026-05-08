@@ -39,12 +39,18 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
                           candidateSamples=1, useRTXDIDirect=True,
                           useDirectLighting=True, pathSamplingMode="ReSTIR",
                           disableDirectIllumination=True, fireflyClampK=1e9,
-                          restirptAddrMode=0):
-    # restirptAddrMode (variant taxonomy, mirror of restir_DI's Rxd/Pyd matrix):
-    #   0 = R2d    — DQLIN baseline, 2D pixel reservoir only
+                          restirptAddrMode=0, restirptPoolAddrMode=0,
+                          restirptPoolFootprintPx=16):
+    # restirptAddrMode (R-axis: reservoir storage):
+    #   0 = R2d    — DQLIN baseline (2D pixel reservoir only)
     #   1 = R2dR3d — 2D + 3D-cell-pool override (8×8 neighbourhood)
-    #   2 = R3d    — pure 3D reservoir at pixel footprint, no pixel buffer
-    #   3 = H2dR3d — slim 2D=history, 3D=main reservoir (TODO)
+    #   2 = R3d    — pure 3D reservoir at pixel footprint
+    #   3 = H2dR3d — 2D=current pick, 3D=temporal merge (TODO)
+    # restirptPoolAddrMode (P-axis: NEE light-sample pool):
+    #   0 = Pno    — no presample pool
+    #   1 = P2d    — 2D screen-tile pool (RTXDI-tile semantics) (TODO)
+    #   2 = P3d    — 3D world-cell pool at footprint (TODO)
+    # restirptPoolFootprintPx: tile / cell side length in pixels (default 16).
     # pathSamplingMode (string): "ReSTIR" (default), "PathReuse" (Bekaert),
     # or "PathTracing" — use "PathTracing" to bypass ReSTIR resampling and
     # validate the basic PT setup independently.
@@ -128,6 +134,8 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         "disableDirectIllumination": disableDirectIllumination,
         "fireflyClampK":           fireflyClampK,
         "restirptAddrMode":        restirptAddrMode,
+        "restirptPoolAddrMode":    restirptPoolAddrMode,
+        "restirptPoolFootprintPx": restirptPoolFootprintPx,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 

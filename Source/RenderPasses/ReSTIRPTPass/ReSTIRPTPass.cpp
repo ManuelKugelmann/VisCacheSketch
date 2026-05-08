@@ -187,6 +187,8 @@ namespace
     const std::string kLocalStrategyType = "localStrategyType";
     const std::string kFireflyClampK = "fireflyClampK";
     const std::string kRestirptAddrMode = "restirptAddrMode";
+    const std::string kRestirptPoolAddrMode = "restirptPoolAddrMode";
+    const std::string kRestirptPoolFootprintPx = "restirptPoolFootprintPx";
 
     const std::string kTemporalHistoryLength = "temporalHistoryLength";
     const std::string kUseMaxHistory = "useMaxHistory";
@@ -337,6 +339,8 @@ bool ReSTIRPTPass::parseDictionary(const Properties& props)
         else if (key == kNearFieldDistance) mParams.nearFieldDistance = value;
         else if (key == kFireflyClampK) mParams.fireflyClampK = value;
         else if (key == kRestirptAddrMode) mParams.restirptAddrMode = value;
+        else if (key == kRestirptPoolAddrMode) mParams.restirptPoolAddrMode = value;
+        else if (key == kRestirptPoolFootprintPx) mParams.restirptPoolFootprintPx = value;
         else if (key == kTemporalHistoryLength) mTemporalHistoryLength = value;
         else if (key == kUseMaxHistory) mUseMaxHistory = value;
         else if (key == kSeedOffset) mSeedOffset = value;
@@ -495,6 +499,8 @@ Properties ReSTIRPTPass::getProperties() const
     d[kNearFieldDistance] = mParams.nearFieldDistance;
     d[kFireflyClampK] = mParams.fireflyClampK;
     d[kRestirptAddrMode] = mParams.restirptAddrMode;
+    d[kRestirptPoolAddrMode] = mParams.restirptPoolAddrMode;
+    d[kRestirptPoolFootprintPx] = mParams.restirptPoolFootprintPx;
     d[kTemporalHistoryLength] = mTemporalHistoryLength;
     d[kUseMaxHistory] = mUseMaxHistory;
     d[kSeedOffset] = mSeedOffset;

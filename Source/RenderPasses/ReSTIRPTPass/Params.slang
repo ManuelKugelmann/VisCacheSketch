@@ -209,15 +209,27 @@ struct RestirPathTracerParams
     float   fireflyClampK = 1.e9f;
 
     // ReSTIRPT variant taxonomy (per user 2026-05-08, mirrors restir_DI's
-    // Rxd/Pyd matrix; will be A/B-scored against each other):
+    // Rxd/Pyd matrix). A/B-scored against each other:
+    //
+    // R-axis (reservoir storage; restirptAddrMode):
     //   0 = R2d    — DQLIN baseline, 2D pixel reservoir only.
     //   1 = R2dR3d — 2D pixel reservoir + 3D cell-pool override at 8×8 neighbourhood.
-    //   2 = R3d    — pure 3D reservoir at pixel footprint, no pixel buffer at all.
-    //   3 = H2dR3d — 2D = history only (slim per-pixel state), 3D = main reservoir.
+    //   2 = R3d    — pure 3D reservoir at pixel footprint, no pixel buffer.
+    //   3 = H2dR3d — 2D = current-pick storage, 3D = cross-frame Bitterli temporal merge.
+    //
+    // P-axis (NEE light-sample pool; restirptPoolAddrMode — RTXDI-style
+    // presampling tied at the per-vertex NEE step in the path walk):
+    //   0 = Pno    — no presample pool, full light-tree sample at each NEE.
+    //   1 = P2d    — 2D screen-tile pool (RTXDI-tile semantics).
+    //   2 = P3d    — 3D world-cell pool at gWSCellPoolFootprintPx.
+    //
+    // restirptPoolFootprintPx interprets:
+    //   for P2d: tile side-length in pixels (default 16).
+    //   for P3d: cell side-length in pixels (default 16, footprint sqrt-area).
     uint    restirptAddrMode = 0u;
-    uint    _restirptAddrPad0 = 0u;       // 8-byte align
-    uint    _restirptAddrPad1 = 0u;
-    uint    _restirptAddrPad2 = 0u;
+    uint    restirptPoolAddrMode = 0u;
+    uint    restirptPoolFootprintPx = 16u;
+    uint    _restirptVariantPad = 0u;       // 16-byte align (4 uints = 16 B)
 
 #ifndef HOST_CODE
 
