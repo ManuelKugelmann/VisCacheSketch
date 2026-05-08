@@ -3999,6 +3999,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             wsSpatialPixelsK=wsSpatialPixelsK,
             wsSpatialPixelsRadius=wsSpatialPixelsRadius,
             wsCellPool=True, wsCellPoolDrawK=16,    # 8 fresh + 16 pool = 24 total = RTXDI's localLightCandidateCount. K_pool=24 retested with Conv B 2026-05-05: still uniformly +0.15-0.22pp worse — over-weighting pool's shading-agnostic distribution dilutes 8 fresh shading-conditional samples regardless of read convention.
+            wsCellReservoirFootprintPx=8,           # R3d cell-reservoir at ~64 px screen footprint (analytical entry, mirrors P3d's mechanism). Pool footprint stays at 16 px (~256 px) so each pool cell aggregates candidates over ~4 reservoir cells worth of pixels.
             wsCellPoolPrePass=True,
             wsVisInPHat=wsVisInPHat,
             wsRetraceOnReuseMode=wsRetraceOnReuseMode,
@@ -4062,29 +4063,121 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
     )
 
 
-def run_baseline_restir_2d(step_name, frame_configs, scene_file,
-                           wsPoolTileSize=16, **kwargs):
-    """**RTXDI's recipe**: pool addressed by 2D screen tile + per-pixel
-    reservoir. Direct apples-to-apples comparator for `rtxdi`."""
+def run_baseline_ReSTIRDI_R2dR3dP2d(step_name, frame_configs, scene_file,
+                                    wsPoolTileSize=16, **kwargs):
+    """**Per-pixel R2d reservoir + cell-level R3d reservoir + screen-tile P2d pool**.
+    Was `restir_2d`. Pool addressing matches RTXDI's 16-px screen tiles.
+    R3d cell-level reservoir at analytical entry level (default footprint=8).
+    """
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="restir_2d",
+        tag_prefix="ReSTIRDI_R2dR3dP2d",
         addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
         **kwargs,
     )
 
 
-def run_baseline_restir_3d(step_name, frame_configs, scene_file,
-                           wsCellPoolFootprintPx=16, **kwargs):
-    """**3D analog**: pool addressed by 3D world cell at footprint-derived
-    entry level (matches restir_2d's tile size in screen-space). Strict
-    mirror of `restir_2d` — only `wsPoolAddrMode` differs."""
+def run_baseline_ReSTIRDI_R2dR3dP3d(step_name, frame_configs, scene_file,
+                                    wsCellPoolFootprintPx=16, **kwargs):
+    """**Per-pixel R2d reservoir + cell-level R3d reservoir + 3D-cell P3d pool**.
+    Was `restir_3d`. Pool addressed by 3D world cell at footprint-derived
+    entry level (default 16 px → matches RTXDI's tile-pool footprint).
+    R3d cell-level reservoir at finer footprint (default 8 px).
+    """
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="restir_3d",
+        tag_prefix="ReSTIRDI_R2dR3dP3d",
         addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
         **kwargs,
     )
+
+
+def run_baseline_ReSTIRDI_R2dP2d(step_name, frame_configs, scene_file,
+                                 wsPoolTileSize=16, **kwargs):
+    """**Strict RTXDI baseline**: per-pixel R2d reservoir + screen-tile P2d
+    pool, NO cell-level reservoir. wsCellReservoirFootprintPx=0 disables
+    R3d entirely. Compares directly to stock RTXDI; isolates the win/loss
+    coming from the cell-level reservoir layer.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d",
+        addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
+        **kwargs2,
+    )
+
+
+def run_baseline_ReSTIRDI_R2dP3d(step_name, frame_configs, scene_file,
+                                 wsCellPoolFootprintPx=16, **kwargs):
+    """**R2d + 3D pool, no R3d**: per-pixel R2d reservoir + 3D-cell P3d pool,
+    cell-level reservoir disabled (wsCellReservoirFootprintPx=0). Isolates
+    the pool-addressing change (2D tile → 3D cell) without R3d.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP3d",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs2,
+    )
+
+
+def run_baseline_ReSTIRDI_R3dP3d(step_name, frame_configs, scene_file,
+                                 wsCellPoolFootprintPx=16,
+                                 wsCellReservoirFootprintPx=1, **kwargs):
+    """**Pure 3D**: drop per-pixel layer entirely; R3d at sub-pixel footprint
+    (default 1 = each pixel ≈ one cell, structurally per-pixel-equivalent).
+    P3d pool at 16-px footprint as in R2dR3dP3d. Requires
+    enableWSPixelReservoir=False + wsCellReservoirMerge=1 (Bitterli weighted
+    merge instead of identity-hint) so the cell reservoir does the
+    final-shading temporal accumulator role.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["enableWSPixelReservoir"] = False         # drop per-pixel layer
+    extra["wsCellReservoirMerge"]   = 1             # full Bitterli merge
+    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R3dP3d",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs2,
+    )
+
+
+def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
+                                    **kwargs):
+    """**SCAFFOLD ONLY** — slim per-pixel layer to a 4-byte history record
+    (mCap counter + disocclusion age), keep R3d as the temporal accumulator,
+    P3d pool at 16-px footprint. Real implementation requires a new
+    `PixelHistory` struct, replacing the per-pixel reservoir read at
+    PathTracer.slang:1679, and migrating shading reads to wsLoadCell. Not
+    yet implemented — this stub raises a clear error so the variant tag
+    can reserve a place in the harness namespace.
+    """
+    raise NotImplementedError(
+        "ReSTIRDI_H2dR3dP3d is a scaffold-only variant. The H2d "
+        "(per-pixel-history-only) layer is not yet implemented; see the "
+        "variant matrix in docs/ReSTIRDI_VARIANTS.md (TBD) and §11 of "
+        "the paper for the design. Use ReSTIRDI_R2dR3dP3d for the closest "
+        "current configuration."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat aliases for the old restir_2d / restir_3d names.
+# Old ladder steps that import these continue to work.
+# ---------------------------------------------------------------------------
+run_baseline_restir_2d = run_baseline_ReSTIRDI_R2dR3dP2d
+run_baseline_restir_3d = run_baseline_ReSTIRDI_R2dR3dP3d
 
 
 
