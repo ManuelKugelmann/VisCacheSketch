@@ -90,12 +90,17 @@ static const uint kPRCellFpSalt   = 0xB3F19DC7u;
 
 // Compile-time cascade depth used by all 6 call sites (TracePass writeOutput
 // + 5 reuse passes). Single source of truth so flipping cascade on/off is
-// a one-line change. Values:
-//   1  — single-level (current — bit-identical to pre-cascade behavior)
-//   2  — fine + 1 coarser fallback
-//   3  — fine + 2 coarser fallbacks (typical)
-//   4  — max (helpers cap at 4 internally)
-static const uint kPRCellPoolLevels = 3u;
+// a one-line change.
+//
+// Storage cost is constant (one cell-pool buffer of fixed capacity, shared
+// across levels via per-level salted hash → disjoint slot sub-spaces).
+// Compute cost scales with maxLevels: each writer does up to N atomic-CAS,
+// each reader does up to N fingerprint checks. In practice most writers
+// claim level 0 immediately (early-exit), so amortized cost is small.
+//
+// Set high enough to cover the practical depth of a posA cascade across
+// scene scales; 16 covers ~16-octave range (cell sizes 1× to 65536×).
+static const uint kPRCellPoolLevels = 16u;
 
 // Local 3D PCG hash for jitter (mirrors VisCache's pcg3d; copied here to
 // avoid pulling pcg3d out of USE_VISCACHE-guarded section). Pure.
@@ -244,10 +249,8 @@ bool prCellPoolReadCascade(
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
     uint maxLevels, out PathReservoir reservoir)
 {
-    [unroll]
-    for (uint lvl = 0u; lvl < 4u; ++lvl)   // hard cap of 4 levels (covers all sane configs)
+    for (uint lvl = 0u; lvl < maxLevels; ++lvl)
     {
-        if (lvl >= maxLevels) break;
         PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
     }
@@ -264,10 +267,8 @@ uint prCellPoolWriteCascade(
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
     uint maxLevels, PathReservoir reservoir)
 {
-    [unroll]
-    for (uint lvl = 0u; lvl < 4u; ++lvl)
+    for (uint lvl = 0u; lvl < maxLevels; ++lvl)
     {
-        if (lvl >= maxLevels) return lvl;
         PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotClaim(pool, a.slot, a.fingerprint))
         {
@@ -293,10 +294,8 @@ bool prCellPoolReadCascadeDescending(
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
     uint maxLevels, out PathReservoir reservoir)
 {
-    [unroll]
-    for (uint i = 0u; i < 4u; ++i)
+    for (uint i = 0u; i < maxLevels; ++i)
     {
-        if (i >= maxLevels) break;
         uint lvl = (maxLevels - 1u) - i;     // N-1, N-2, ..., 0
         PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
