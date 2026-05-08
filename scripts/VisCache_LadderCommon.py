@@ -3978,6 +3978,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          wsVisInPHat=0,
                          wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
                          wsRetraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
+                         extraVCProps=None,                              # additional VisCache props merged on top of the canonical recipe (used by R2dP2d/R2dP3d/R3dP3d to override defaults like wsCellReservoirFootprintPx=0).
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -4039,6 +4040,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                 # longer requests it. See WSReservoirBoilingFilter.cs.slang
                 # header for the full diagnosis + the separable-include fix
                 # path. Defaults in VisCache.h have enableBoilingFilter=false.
+                **(extraVCProps or {}),              # caller-supplied VC overrides (e.g. wsCellReservoirFootprintPx=0 for R3d-disabled variants)
             },
             **addr_mode_kwargs,                      # only difference: 2D-tile vs 3D-cell addressing
         )
