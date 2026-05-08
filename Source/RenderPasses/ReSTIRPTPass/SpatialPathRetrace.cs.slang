@@ -5,6 +5,7 @@ import Params;
 import Shift;
 import Scene.HitInfo;
 import PathReservoir;
+import PathReservoirCellPool;
 import PathTracer;
 import Scene.Scene;
 import Utils.Debug.PixelDebug;
@@ -114,12 +115,37 @@ struct PathRetracePass
         // TODO: How to seed efficiently?
         var sg = TinyUniformSampleGenerator(pixel, (kCandidateSamples + 1 + gNumSpatialRounds) * params.seed + kCandidateSamples + 1 + gSpatialRoundId);
 
-        // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
-        PathReservoir centralReservoir = outputReservoirs[centralOffset];
+        // Load primary-hit shading data first (needed for 3D cell-pool override).
         PackedHitInfo centralPrimaryHitPacked;
         ShadingData centralPrimarySd = getPixelShadingData(pixel, centralPrimaryHitPacked);
         if (!isValidPackedHitInfo(centralPrimaryHitPacked)) return;
+
+        // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
+        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
+        PathReservoir centralReservoir = outputReservoirs[centralOffset];
+
+        // Mode=1 (3D): override pixel-keyed reservoir with cell-pool reservoir
+        // on fingerprint match (same pattern as SpatialReuse / TemporalReuse).
+        if (params.restirptAddrMode == 1u)
+        {
+            const float kCellSize = max(params.sceneRadius * 0.01f, 1e-3f);
+            int3 q = int3(floor(centralPrimarySd.posW / kCellSize));
+            uint nb = 0u;
+            float3 an = abs(centralPrimarySd.faceN);
+            if (an.x >= an.y && an.x >= an.z) nb = (centralPrimarySd.faceN.x >= 0.f) ? 0u : 1u;
+            else if (an.y >= an.z)            nb = (centralPrimarySd.faceN.y >= 0.f) ? 2u : 3u;
+            else                              nb = (centralPrimarySd.faceN.z >= 0.f) ? 4u : 5u;
+            uint h = (uint(q.x) * 73856093u) ^ (uint(q.y) * 19349663u) ^ (uint(q.z) * 83492791u) ^ (nb * 2654435761u);
+            uint stride = kScreenTileDim.x * kScreenTileDim.y;
+            uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
+            uint cellSlot = h % capacity;
+            uint cellFp   = prCellFingerprint(q, nb);
+            PathReservoir cellRes;
+            if (prCellSlotRead(gPathTracer.pathReservoirCellPool, cellSlot, cellFp, cellRes))
+            {
+                centralReservoir = cellRes;
+            }
+        }
 
         uint2 chosenPixel = pixel;
         int chosen_i = -1;
