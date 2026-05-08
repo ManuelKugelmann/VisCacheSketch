@@ -3974,13 +3974,13 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          tag_prefix, addr_mode_kwargs,
                          maxBounces=0, resX=kResX, resY=kResY,
                          mogwai_globals=None, capture_spps=(1, 4),
-                         wsInitialCandidates=16, wsMCap=5.0,    # New canonical 2026-05-08: K=16 main-pass-fresh-LightBVH (was 32). Combined with wsCellPoolDrawK=8 below, gives K_total=24 = RTXDI localLightCandidateCount parity. The K=48 prior default (32+16) was empirically over-spec — see RDI00 fresh-vs-pool sweep (commit 6659d0e): half the K, uniformly equal-or-better quality on every scene in the matrix.
+                         wsInitialCandidates=32, wsMCap=5.0,    # K=32 main-pass-fresh-LightBVH. K=48 (32+16 with wsCellPoolDrawK=16 below) is the empirical canonical — RDI00 sweep at K=24 (commit 6659d0e + correction 2026-05-08) showed K=48 has the LOWEST cumulative err across the 7-scene matrix (31.35 vs F16P08=31.68 vs F24P00=32.47). K=48 wins on production-scale scenes (Cornell_32PL, Sponza, Bistro Int+Ext); K=24 variants win only on simple Cornell. Prior recommendation to switch to F16P08 retracted (arithmetic error in cumulative sum).
                          wsVisInPHat=0,
                          wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
                          wsRetraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
                          extraVCProps=None,                              # additional VisCache props merged on top of the canonical recipe (used by R2dP2d/R2dP3d/R3dP3d to override defaults like wsCellReservoirFootprintPx=0).
                          wsCellPoolPrePass=True,                         # default ON: pre-pass before main pass populates the cell-pool. Set False to ablation-test reliance on implicit Bayer-subframe-0 warmup.
-                         wsCellPoolDrawK=8,                              # New canonical 2026-05-08: K=8 pool-draws (was 16). 2:1 fresh:pool ratio preserved at K_total=24 = RTXDI parity. Sweep shows F16P08 wins production scenes (Bistro: 7.70 / 9.41 vs F24P00 8.35 / 10.33), tied on simple scenes.
+                         wsCellPoolDrawK=16,                             # K=16 pool-draws. Combined with wsInitialCandidates=32 above, gives K_total=48 (2:1 fresh:pool ratio). RDI00 sweep at K=24 alternatives (F16P08, F24P00) showed K=48 still wins cumulatively across the 7-scene matrix despite over-spec vs RTXDI's K=24 localLightCandidateCount.
                          prePassEmissiveSampler="PdfMipmap",             # pre-pass emissive sampler. PdfMipmap = RTXDI-style hierarchical 2D pdf (shading-agnostic). LightBVH = shading-conditional via per-pixel BSDF guidance.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe

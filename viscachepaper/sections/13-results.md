@@ -34,14 +34,16 @@ auto-tuned per scene; Bayer 2×2 stratification, bootThreshold=8,
 matureThreshold=32, pMin=0.02. No Wilson, no A-C shrinkage, no warp-coalesced
 lookup (all explored, none beat the canonical — see [LADDERLOG](../../docs/LADDERLOG.md)).
 
-> **Note on K_total (refresh pending).** The §13.4 / §13.5 quality
-> tables below were measured at `wsInitialCandidates=32, wsCellPoolDrawK=16`
-> (K_total = 48). Per the [RDI00 fresh-vs-pool sweep](../../docs/LADDERLOG.md#step-rdi00),
-> the new canonical is `wsInitialCandidates=16, wsCellPoolDrawK=8`
-> (K_total = 24 = RTXDI's `localLightCandidateCount`). Tables will be
-> re-measured at the new canonical before publication; expected
-> direction is uniformly equal-or-better quality (cumulative err
-> 35.18 → 31.68 across the 7-scene matrix).
+> **Note on K_total.** The §13 tables are measured at
+> `wsInitialCandidates=32, wsCellPoolDrawK=16` (K_total=48). RTXDI's
+> `localLightCandidateCount` default is 24 — our K=48 is technically
+> over-spec by a factor of 2. The RDI00 fresh-vs-pool sweep
+> (see [LADDERLOG](../../docs/LADDERLOG.md#step-rdi00) "Cumulative err
+> across 7 scenes") explicitly tested K=24 alternatives and found
+> K=48 still has the lowest cumulative err on the 7-scene matrix
+> (31.35 vs F16P08=31.68 vs F24P00=32.47). K=48's per-scene wins
+> on Cornell_32PL + Sponza + Bistro Int+Ext outweigh K=24 variants'
+> wins on simple Cornell. K=48 stands as the empirical canonical.
 
 ## 13.1 Test Scenes
 

@@ -574,29 +574,42 @@ F16 wins. Crossover roughly at log(emissive count): few-lights have no
 diversity for shading-agnostic pool fill; many-lights amortize the pool
 diversification benefit.
 
-Cumulative err across 7 scenes: F16 = 31.68 / F24 = 32.47 / current
-default K=48 = 35.18 (K=48 wastes samples).
+**Cumulative err across 7 scenes (corrected 2026-05-08 — prior had
+arithmetic error):**
 
-**Recommended new canonical: F16P08 + R3d** (16 fresh main-pass LightBVH
-+ 8 pool PdfMipmap-presampled, R3d cell-level reservoir + R2d per-pixel
-reservoir, K_total = 24 = RTXDI parity). Tied or best on every scene
-class; small-scene tie with F24P00 is within noise. Half the sample
-count of current K=48 default at uniformly equal-or-better quality.
+| Variant | Cumulative err | Per-scene wins |
+|---|---:|---|
+| **K=48** (current default, 32+16) | **31.350** | Cornell_32PL, Sponza, BistroInt, BistroExt |
+| F16P08 (K=24, 16+8)             | 31.680 (+0.33) | Cornell_3AL |
+| F24P00 (K=24, 24+0)             | 32.473 (+1.12) | Cornell_1AL |
 
-**Promoted to harness default 2026-05-08 (commit 376f566).** New
-defaults: `wsInitialCandidates = 16` (was 32), `wsCellPoolDrawK = 8`
-(was 16). The 2:1 fresh:pool ratio of the prior K=48 default is
-preserved; only K_total halves (48 → 24 = RTXDI parity). Existing
-CSV rows tagged `ReSTIRDI_R2dR3dP3d_vblind` (no `F<NN>P<NN>` suffix)
-captured before this commit are K=48-era data; the cache-key upsert
-will overwrite them at next ladder run with K=24 numbers.
+**K=48 has the lowest cumulative err.** Wins on the 4 production-scale
+scenes (Cornell_32PL + Sponza + Bistros). F16P08's wins on simple
+Cornell don't outweigh its losses on Bistro Int+Ext (+0.07 to
++0.23pp). F24P00 wins Cornell_1AL by 0.73pp but pays the most on
+Bistros (+0.72 to +1.15pp).
 
-**Paper §13 numbers (RTXDI-parity table, README headline) need
-re-measurement at the new canonical** before publication. The §13.5
-table currently shows K=48 quality; expect numbers to shift toward
-the F16P08 sweep values from the cross-scene matrix above. Earlier
-RTXDI-vs-ours wins of 0.49–2.45pp should grow modestly (since K=24
-canonical is uniformly equal-or-better than K=48 across the matrix).
+**RECANTED: previous recommendation to switch the canonical default
+to F16P08 was based on an arithmetic error** (35.18 vs the actual
+31.35 for K=48). Harness default reverted to K=48 (commit following
+this correction). Per-scene preferences remain: F24 best on Cornell_1AL
+specifically, but no K=24 variant dominates the matrix cumulatively.
+K=48 is the empirical Pareto winner for the multi-scene production
+canonical. The §13 paper's existing K=48 numbers stand — no §13
+refresh needed.
+
+**What the sweep teaches that survives the recant:**
+1. Pool-only (preOnly, F00P24) is the WORST lane on every non-trivial
+   scene — RTXDI-faithful is empirically suboptimal; mixing fresh
+   with pool dominates pure-pool everywhere.
+2. Per-scene optimum varies with light count: F24 for sparse-light,
+   F16 for dense. K=48 (which is 32:16 = 2:1 fresh:pool) happens to
+   ride near the dense-light optimum, which dominates the production
+   matrix where Bistros + Sponza dominate the cumulative err sum.
+3. The K=48 default was empirically vindicated even though it
+   predates the sweep — its arithmetic-incorrect-revert was a
+   cautionary tale about not trusting summed numbers without
+   re-checking.
 
 Quality-only here — gpu_ms cost numbers run-to-run noise dominates the
 signal at this scale (TIMING work showed ~18× cross-run variance).
