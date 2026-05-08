@@ -583,6 +583,21 @@ reservoir, K_total = 24 = RTXDI parity). Tied or best on every scene
 class; small-scene tie with F24P00 is within noise. Half the sample
 count of current K=48 default at uniformly equal-or-better quality.
 
+**Promoted to harness default 2026-05-08 (commit 376f566).** New
+defaults: `wsInitialCandidates = 16` (was 32), `wsCellPoolDrawK = 8`
+(was 16). The 2:1 fresh:pool ratio of the prior K=48 default is
+preserved; only K_total halves (48 → 24 = RTXDI parity). Existing
+CSV rows tagged `ReSTIRDI_R2dR3dP3d_vblind` (no `F<NN>P<NN>` suffix)
+captured before this commit are K=48-era data; the cache-key upsert
+will overwrite them at next ladder run with K=24 numbers.
+
+**Paper §13 numbers (RTXDI-parity table, README headline) need
+re-measurement at the new canonical** before publication. The §13.5
+table currently shows K=48 quality; expect numbers to shift toward
+the F16P08 sweep values from the cross-scene matrix above. Earlier
+RTXDI-vs-ours wins of 0.49–2.45pp should grow modestly (since K=24
+canonical is uniformly equal-or-better than K=48 across the matrix).
+
 Quality-only here — gpu_ms cost numbers run-to-run noise dominates the
 signal at this scale (TIMING work showed ~18× cross-run variance).
 

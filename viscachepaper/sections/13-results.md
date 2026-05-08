@@ -34,6 +34,15 @@ auto-tuned per scene; Bayer 2×2 stratification, bootThreshold=8,
 matureThreshold=32, pMin=0.02. No Wilson, no A-C shrinkage, no warp-coalesced
 lookup (all explored, none beat the canonical — see [LADDERLOG](../../docs/LADDERLOG.md)).
 
+> **Note on K_total (refresh pending).** The §13.4 / §13.5 quality
+> tables below were measured at `wsInitialCandidates=32, wsCellPoolDrawK=16`
+> (K_total = 48). Per the [RDI00 fresh-vs-pool sweep](../../docs/LADDERLOG.md#step-rdi00),
+> the new canonical is `wsInitialCandidates=16, wsCellPoolDrawK=8`
+> (K_total = 24 = RTXDI's `localLightCandidateCount`). Tables will be
+> re-measured at the new canonical before publication; expected
+> direction is uniformly equal-or-better quality (cumulative err
+> 35.18 → 31.68 across the 7-scene matrix).
+
 ## 13.1 Test Scenes
 
 | Scene | Triangles | Lights | Character |
