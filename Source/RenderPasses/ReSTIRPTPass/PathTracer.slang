@@ -255,7 +255,8 @@ struct PathTracer
         PathReservoir cellRes;
         if (prCellPoolReadCascade(pathReservoirCellPool, posW, faceN,
                                   params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                  jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
+                                  jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                  /*currentFrame*/params.frameCount + 1u, cellRes))
             return cellRes;
         // mode 1 (R2dR3d): fall back to pixel-keyed; mode 2 (R3d): empty (no pixel buffer).
         if (params.restirptAddrMode == 2u)
@@ -292,7 +293,8 @@ struct PathTracer
         const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
         prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
                                params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                               jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, reservoir);
+                               jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                               /*currentFrame*/params.frameCount + 1u, reservoir);
     }
 
     /** Compute world-space position by projecting a screen pixel's eye ray

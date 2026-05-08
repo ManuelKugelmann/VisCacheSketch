@@ -638,20 +638,15 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 // claimed (strict first-writer-wins semantics never lets the
                 // claim refresh) — works for static scenes via x32 averaging
                 // but blocks per-frame refresh needed for dynamic scenes.
-                // Any 3D-aware mode needs the cell-pool cleared per frame.
-                // Tested no-clearUAV: regressed quality across SPPs because
-                // first-writer-wins atomic-CAS makes frame-1's cell claims
-                // stick forever; later frames' writes are dropped, so cell
-                // data is frozen at frame-1's state with no fresh samples.
-                // Real fix is Bayer-staged subframes (not yet implemented):
-                // each subframe writes to a DIFFERENT subset, so cells refresh
-                // over the Bayer cycle without atomic-CAS contention.
-                // Until Bayer wiring lands, per-frame clearUAV is the right
-                // default (frame 1 cold-miss accepted; subsequent frames refresh).
-                if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool)
-                {
-                    pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
-                }
+                // Per-frame clearUAV no longer needed — cell-pool slots use
+                // atomic-CAS-with-frame-stamp (InterlockedMax on frameStamp).
+                // First writer in each frame stamps the slot for that frame;
+                // readers gate on stamp==currentFrame so stale data from
+                // prior frames is implicitly invalidated. See
+                // PathReservoirCellPool.slang::prCellSlotClaim/Read.
+                // (Initial clearUAV at allocation time is enough — slots
+                // start with stamp=0, currentFrame is params.frameCount+1
+                // so frame-0 writers see stamp=0 < 1 and claim cleanly.)
 
                 mpPathTracerBlock->getRootVar()["gSppId"] = restir_i;
                 mpPathTracerBlock->getRootVar()["gNumSpatialRounds"] = mNumSpatialRounds;
