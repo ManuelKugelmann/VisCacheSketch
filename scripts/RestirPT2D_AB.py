@@ -132,9 +132,16 @@ def render_and_capture(variant: str, tag: str):
     m.removeGraph(g)
 
 
-render_and_capture(variant="vanilla",      tag="vanilla")
-render_and_capture(variant="restirpt_ref", tag="restirpt_ref")    # verbatim dqlin copy
-render_and_capture(variant="restirpt_ref", tag="restirpt_ref2")   # determinism check — same plugin, second run
-render_and_capture(variant="restirpt",     tag="restirpt_2d")     # our active port, 2D pixel-keyed
-render_and_capture(variant="restirpt_3d",  tag="restirpt_3d")     # our active port, 3D worldcell-keyed
+# AB_VARIANT env var: when set, render only that variant (isolated-process mode
+# for parity testing on scenes with state-pollution issues like BistroExterior).
+_only = os.environ.get("AB_VARIANT", "")
+def _do(variant, tag):
+    if not _only or _only == tag:
+        render_and_capture(variant=variant, tag=tag)
+
+_do("vanilla",      "vanilla")
+_do("restirpt_ref", "restirpt_ref")    # verbatim dqlin copy
+_do("restirpt_ref", "restirpt_ref2")   # determinism check — same plugin, second run
+_do("restirpt",     "restirpt_2d")     # our active port, 2D pixel-keyed
+_do("restirpt_3d",  "restirpt_3d")     # our active port, 3D worldcell-keyed
 print("[ab] DONE")
