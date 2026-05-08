@@ -386,6 +386,87 @@ Foundation: step-10 multilevel cascade with `qa012__ct4`. Ladder builds on it wi
 
 **Artifact rule:** any `error_delta_blob_pct > 10` indicates visible cache artifacts (concentrated localized error — wrong-color cells, banding, light/shadow leakage). The picker rule's hard-reject at 25% is too lenient — treating 10 as the practical ceiling re-frames every result.
 
+---
+
+# Stage RDI — ReSTIRDI architectural ablation
+
+The cell-data-structure design of §9 / §11 lives along three orthogonal axes:
+per-pixel reservoir layer (R2d / H2d / drop), cell-level reservoir layer
+(R3d on/off, footprint), and pool addressing (P2d screen-tile / P3d 3D-cell).
+RDI00 measures the full factorial of the implemented architectures on every
+canonical scene to surface where each architectural decision pays off.
+
+## Step RDI00 — Cross-scene ReSTIRDI architectural matrix
+
+**Variants** (5 implemented + 1 stub):
+- `R2dP2d` — strict RTXDI baseline (per-pixel reservoir + screen-tile pool, no R3d)
+- `R2dP3d` — strict + 3D pool (R3d still off; isolates pool addressing)
+- `R2dR3dP2d` — adds cell-level reservoir to RTXDI architecture
+- `R2dR3dP3d` — full 3D both layers (current canonical)
+- `R3dP3d` — pure 3D, no per-pixel layer (R3d at sub-pixel cells absorbs its role)
+- `H2dR3dP3d` — scaffold-only stub (slim per-pixel history; not yet implemented)
+
+References: `vanilla` (no cache, x4 SPP) + production `rtxdi` (NVIDIA RTXDIPass).
+
+**Cross-scene matrix at x4 SPP (OkLab err vs x4096 GT):**
+
+| Scene | vanilla | rtxdi | R2dP2d | R2dP3d | R2dR3dP2d | R2dR3dP3d | R3dP3d | best ReSTIRDI |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Cornell_1PL  |  0.14 |  1.46 | **0.14** | 0.14 | 0.14 | 0.14 | 0.14 | tied (Dirac, all variants ≡ vanilla) |
+| Cornell_1AL  |  1.06 |  2.18 | **1.42** |  2.15 |  1.42 |  2.15 |  2.19 | R2dP2d   (-0.76 vs rtxdi) |
+| Cornell_3AL  |  2.15 |  2.56 |  3.13 |  3.23 |  3.13 |  3.23 |  3.26 | **rtxdi wins** (+0.57 trail; §13.5 structural) |
+| Cornell_32PL |  4.38 |  3.65 |  2.90 |  2.90 |  2.90 |  2.90 | **2.85** | R3dP3d   (-0.80) |
+| Sponza       |  5.32 |  6.62 |  6.10 |  6.09 |  6.10 |  6.13 | **5.94** | R3dP3d   (-0.68) |
+| BistroInt    | 13.05 | 10.04 |  8.28 |  7.65 |  8.28 | **7.63** |  7.66 | R2dR3dP3d (-2.41) |
+| BistroExt    | 15.00 | 11.46 | 10.23 |  9.30 | 10.23 |  9.18 | **9.13** | R3dP3d   (-2.33) |
+
+Plates + per-step overview at `runtime/captures/ladder/RDI00/`. Cross-step
+overlay: `ladder_progress_combined.png`.
+
+**Key reads:**
+
+1. **ReSTIRDI variants beat production RTXDI on 6 of 7 scenes.** Margins
+   range from 0.68pp (Sponza) to 2.45pp (BistroInt). The Cornell_3AL trail
+   reproduces the structural §13.5 finding — RTXDI's screen-tile pool's
+   global-light-distribution presampling beats our shading-conditional fresh
+   K-RIS on the 3-area-light Cornell scene, and no within-architecture
+   variant in this matrix closes it. Cornell_1PL is trivially tied (Dirac
+   light → cache has no work to do).
+
+2. **R3dP3d (pure 3D) wins 3 of 7 scenes** (Cornell_32PL, Sponza, BistroExt).
+   The pure-3D variant **only loses on simple/sparse Cornell scenes**
+   (1AL, 3AL). On the multi-light Cornell_32PL it already wins by 0.05pp
+   over R2dR3dP3d/P2d — the more lights, the more value the world-cell
+   sub-pixel reservoir extracts. Implies R3dP3d is the right default for
+   anything beyond toy scenes.
+
+3. **Pool 3D wins 5 of 6 cache-relevant scenes** (everywhere except Cornell_1AL).
+   On Cornell_3AL we trail rtxdi regardless of pool addressing.
+   World-cell pool addressing dominates as soon as light count > 1 area light.
+
+4. **Cell-level R3d is write-only-orphaned at P2d.** On every scene,
+   `R2dP2d ≡ R2dR3dP2d` to within sampling noise (≤0.0005pp on Cornell
+   variants, 0.01pp on Sponza). Confirms that with the canonical p̂-blind
+   setup (`wsUseCellInRIS=False`), the cell-level reservoir gets written
+   but never read — pure overhead in 2D-pool mode. R3d only does useful
+   work at P3d, where it provides small wins on BistroInt (7.65 → 7.63)
+   and a small cost on Sponza (6.09 → 6.13).
+
+**Open question for RDI01:** the architectural-decision winner per regime
+is now well-characterised but no single variant dominates the full matrix.
+Options: keep multiple canonicals (one per scene class), or push toward a
+single canonical via the visibility-aware p̂ folding (§11 c1/c2/c3) that's
+been deferred since Task #41 — that's the most plausible mechanism by
+which the cell-level reservoir could become the dominant variance-reduction
+layer across all regimes.
+
+H2dR3dP3d (slim per-pixel history) is the obvious next implementation
+target — it sits between R2dR3dP3d and R3dP3d in the matrix. If it
+captures the per-pixel-temporal benefit at near-zero memory cost, it could
+be the unifying canonical.
+
+---
+
 ## Steps 19–25 — recorded null result
 
 Post-step-18 sweep piled on pm020, hc005, qa006, ct256, accelDecay. Under the corrected absolute-vs-GT metric these knobs turn out to mostly tie — the signed-delta-vs-vanilla blob metric inherits vanilla's per-SPP sampling noise, so they were chasing comparison noise, not cache degradation. The real cumulative wins come from step 18 ct=128, not from anything in 19–25. Useful negatives that still hold:
