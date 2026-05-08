@@ -88,35 +88,57 @@ bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
 static const uint kPRCellSlotSalt = 0x7E5C2A11u;
 static const uint kPRCellFpSalt   = 0xB3F19DC7u;
 
-uint prCellFingerprint(int3 q, uint nb)
+/// Fingerprint hash. The `level` parameter participates so different
+/// cascade levels at the same (q, nb) get distinct fingerprints — key for
+/// future multilevel cascade reads (try level L, descend on miss).
+uint prCellFingerprint(int3 q, uint nb, uint level)
 {
-    uint h = pcgHashEndpoint(q, nb, kPRCellFpSalt);
+    // Mix nb and level into one uint for the lvl slot of pcgHashEndpoint.
+    // Reserve 4 bits for level (0..15) and the rest for nb (only 6 values
+    // used). This packs both into pcgHashEndpoint's existing API without
+    // adding a 4th hash input.
+    uint mixed = (level << 8u) | (nb & 0xFFu);
+    uint h = pcgHashEndpoint(q, mixed, kPRCellFpSalt);
     return (h == 0u) ? 1u : h;  // 0 reserved as empty sentinel
 }
 
-/// Hash a quantized cell coordinate + normal-bin into a slot index.
-/// Independent salt from prCellFingerprint so address and fingerprint
-/// hashes are uncorrelated (lower false-match rate on collisions).
-uint prCellSlotHash(int3 q, uint nb)
+/// Slot hash. Independent salt from prCellFingerprint so address and
+/// fingerprint hashes are uncorrelated (lower false-match rate on
+/// collisions). Level participates so different levels map to disjoint
+/// slot regions of the same buffer.
+uint prCellSlotHash(int3 q, uint nb, uint level)
 {
-    return pcgHashEndpoint(q, nb, kPRCellSlotSalt);
+    uint mixed = (level << 8u) | (nb & 0xFFu);
+    return pcgHashEndpoint(q, mixed, kPRCellSlotSalt);
 }
 
-/// Compute (q, nb) from world-space primary-hit pos + face normal.
-/// Cell size is `sceneRadius * 0.01` (~1% of scene radius). Normal bin
-/// is the 6-axis hemicube (matches WS-ReSTIR's wsNormalBin scheme).
-///
-/// This is duplicated as a structural pattern across the writer
-/// (PathTracer.slang::writeOutput) and 5 reader sites (Spatial/Temporal
-/// Reuse, Spatial/Temporal PathRetrace, ComputePathReuseMISWeights);
-/// factoring here ensures all 6 sites compute the same (q, nb) for the
-/// same input. Future: replace with VisCache's wsResolveCellPoolAddr to
-/// pick up the multilevel cascade (Task #16).
+// Level-0 wrappers preserve the current single-level call sites without
+// touching every caller.
+uint prCellFingerprint(int3 q, uint nb) { return prCellFingerprint(q, nb, 0u); }
+uint prCellSlotHash(int3 q, uint nb)    { return prCellSlotHash(q, nb, 0u); }
+
+/// Cell size for a given level. Level 0 is the finest (~1% of scene
+/// radius); each step coarsens by 2× (geometric ladder). Matches the
+/// VisCache cascade convention (vhfPosASize) but uses a self-contained
+/// formula so we don't need to bind VisCache's posACoarse/posAFine.
+float prCellSize(float sceneRadius, uint level)
+{
+    const float kBase = max(sceneRadius * 0.01f, 1e-3f);
+    return kBase * float(1u << level);     // 2^level scaling
+}
+
+/// Compute (q, nb) from world-space primary-hit pos + face normal at a
+/// given cascade level. nb is the 6-axis hemicube (shared wsNormalBin).
+void prCellQuantize(float3 posW, float3 faceN, float sceneRadius, uint level, out int3 q, out uint nb)
+{
+    q = int3(floor(posW / prCellSize(sceneRadius, level)));
+    nb = wsNormalBin(faceN);
+}
+
+// Level-0 wrapper for back-compat.
 void prCellQuantize(float3 posW, float3 faceN, float sceneRadius, out int3 q, out uint nb)
 {
-    const float kCellSize = max(sceneRadius * 0.01f, 1e-3f);
-    q = int3(floor(posW / kCellSize));
-    nb = wsNormalBin(faceN);  // shared with VisCache + WSCellPool (Task #16)
+    prCellQuantize(posW, faceN, sceneRadius, 0u, q, nb);
 }
 
 /// Single-call address resolver: posW + faceN → (slot, fingerprint).
@@ -128,15 +150,21 @@ struct PathReservoirCellAddr
     uint slot;
     uint fingerprint;
 };
-PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRadius, uint capacity)
+PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRadius, uint capacity, uint level)
 {
     int3 q;
     uint nb;
-    prCellQuantize(posW, faceN, sceneRadius, q, nb);
+    prCellQuantize(posW, faceN, sceneRadius, level, q, nb);
     PathReservoirCellAddr a;
-    a.slot        = prCellSlotHash(q, nb) % max(capacity, 1u);
-    a.fingerprint = prCellFingerprint(q, nb);
+    a.slot        = prCellSlotHash(q, nb, level) % max(capacity, 1u);
+    a.fingerprint = prCellFingerprint(q, nb, level);
     return a;
+}
+
+// Level-0 wrapper preserves existing call sites.
+PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRadius, uint capacity)
+{
+    return prCellResolveAddr(posW, faceN, sceneRadius, capacity, 0u);
 }
 
 /// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
