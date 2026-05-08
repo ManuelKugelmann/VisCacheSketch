@@ -556,6 +556,10 @@ void ReSTIRPTPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pSc
 {
     mpScene = pScene;
     mParams.frameCount = 0;
+    // frameCount reset to 0: arm the rewind detector with sentinel UINT32_MAX
+    // so the very next execute() sees `frameCount(0) < UINT32_MAX` and
+    // clearUAVs the cell-pool, flushing stale frame-stamps from prior scenes.
+    mLastCellPoolFrameCount = 0xFFFFFFFFu;
 
     resetLighting();
 
@@ -638,15 +642,24 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 // claimed (strict first-writer-wins semantics never lets the
                 // claim refresh) — works for static scenes via x32 averaging
                 // but blocks per-frame refresh needed for dynamic scenes.
-                // Per-frame clearUAV no longer needed — cell-pool slots use
-                // atomic-CAS-with-frame-stamp (InterlockedMax on frameStamp).
-                // First writer in each frame stamps the slot for that frame;
-                // readers gate on stamp==currentFrame so stale data from
-                // prior frames is implicitly invalidated. See
-                // PathReservoirCellPool.slang::prCellSlotClaim/Read.
-                // (Initial clearUAV at allocation time is enough — slots
-                // start with stamp=0, currentFrame is params.frameCount+1
-                // so frame-0 writers see stamp=0 < 1 and claim cleanly.)
+                // Cell-pool slots use atomic-CAS-with-frame-stamp
+                // (InterlockedMax on frameStamp). First writer in each frame
+                // stamps the slot for that frame; readers gate on
+                // stamp==currentFrame so stale data is implicitly invalidated.
+                //
+                // Rewind detection: if params.frameCount went BACKWARD or
+                // hit wraparound (~2 years at 60 fps), stale stamps in slots
+                // would be HIGHER than the new currentFrame, locking out
+                // every writer's InterlockedMax. ClearUAV once on rewind to
+                // recover. Otherwise the cell-pool refreshes naturally.
+                if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool)
+                {
+                    if (mParams.frameCount < mLastCellPoolFrameCount)
+                    {
+                        pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
+                    }
+                    mLastCellPoolFrameCount = mParams.frameCount;
+                }
 
                 mpPathTracerBlock->getRootVar()["gSppId"] = restir_i;
                 mpPathTracerBlock->getRootVar()["gNumSpatialRounds"] = mNumSpatialRounds;
