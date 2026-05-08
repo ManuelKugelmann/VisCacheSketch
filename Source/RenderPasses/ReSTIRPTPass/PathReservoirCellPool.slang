@@ -116,10 +116,7 @@ void prCellQuantize(float3 posW, float3 faceN, float sceneRadius, out int3 q, ou
 {
     const float kCellSize = max(sceneRadius * 0.01f, 1e-3f);
     q = int3(floor(posW / kCellSize));
-    float3 an = abs(faceN);
-    if (an.x >= an.y && an.x >= an.z) nb = (faceN.x >= 0.f) ? 0u : 1u;
-    else if (an.y >= an.z)            nb = (faceN.y >= 0.f) ? 2u : 3u;
-    else                              nb = (faceN.z >= 0.f) ? 4u : 5u;
+    nb = wsNormalBin(faceN);  // shared with VisCache + WSCellPool (Task #16)
 }
 
 /// Single-call address resolver: posW + faceN → (slot, fingerprint).

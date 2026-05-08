@@ -88,19 +88,8 @@ int3 wsQuantizePosA(float3 posA)
     return jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
 }
 
-// ---------------------------------------------------------------------------
-// 6-axis face-normal bin (±X, ±Y, ±Z = 6 distinct bins).
-// Used only when gWSNormalAddr != 0 — folded into both wsAddressHash and
-// wsFingerprintHash so different-orientation surfaces at the same posW
-// don't share a cell.
-// ---------------------------------------------------------------------------
-uint wsNormalBin(float3 n)
-{
-    float3 a = abs(n);
-    int axis = (a.x >= a.y && a.x >= a.z) ? 0 : (a.y >= a.z ? 1 : 2);
-    bool pos = n[axis] >= 0.f;
-    return uint(axis * 2 + (pos ? 0 : 1));     // 0..5
-}
+// wsNormalBin moved to VisCache.slang (unguarded section) so it can be shared
+// with ReSTIRPTPass's PathReservoirCellPool. Same definition, just one home.
 
 // ---------------------------------------------------------------------------
 // Two hashes from quantized cell coords. Uses VisCache's pcgHashA

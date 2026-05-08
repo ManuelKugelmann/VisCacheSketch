@@ -442,6 +442,17 @@ static const uint kSaltA    = 0x12345678u;
 static const uint kSaltB    = 0x9E3779B9u;
 static const uint kSaltDist = 0x6C62272Eu;
 
+// 6-axis face-normal bin (±X, ±Y, ±Z = 6 distinct bins). Pure; shared by
+// VisCache, WSCellPool/WSReservoirIO, and ReSTIRPTPass's PathReservoirCellPool
+// so all world-cell-keyed pools agree on which face a primary hit belongs to.
+uint wsNormalBin(float3 n)
+{
+    float3 a = abs(n);
+    int axis = (a.x >= a.y && a.x >= a.z) ? 0 : (a.y >= a.z ? 1 : 2);
+    bool pos = n[axis] >= 0.f;
+    return uint(axis * 2 + (pos ? 0 : 1));     // 0..5
+}
+
 #if USE_VISCACHE   // re-open the VisCache-only block
 
 /// Hash one dimension. posB modes reuse pcgHashEndpoint with kSaltDist for distance
