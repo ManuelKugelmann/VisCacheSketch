@@ -556,9 +556,35 @@ parallel-agent PT side can also use (0) directly to retire its
 cold-cell regression — single Bayer-stage gate vs porting an
 RTXDI-style pre-pass plugin.
 
-**Fresh-vs-pool Pareto sweep at K_total=24 (RDI00 ablation 2026-05-08).**
-Sweep `freshK` ∈ {0, 1, 2, 4, 8, 16, 24} on R2dR3dP3d base, Cornell_1AL +
-Sponza × x4. Quality-only (gpu_ms is too noisy for cost claims).
+**Fresh-vs-pool Pareto sweep at K_total=24 — full 7-scene matrix (RDI00 ablation 2026-05-08).**
+
+| Scene | F00 | F01 | F02 | F04 | F08 | F16 | F24 | best |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Cornell_1PL  | 0.139 | 0.139 | 0.139 | 0.139 | 0.139 | 0.139 | 0.139 | tied (Dirac) |
+| Cornell_1AL  | 4.43 | 4.38 | 4.31 | 4.07 | 3.38 | 2.06 | **1.42** | F24 |
+| Cornell_3AL  | 5.72 | 5.63 | 5.41 | 5.07 | 4.29 | **3.13** | 3.14 | F16 |
+| Cornell_32PL | 4.32 | 4.32 | 3.79 | 3.44 | 3.19 | 3.01 | **2.94** | F24 |
+| Sponza       | 7.03 | 6.96 | 7.17 | 7.12 | 6.87 | 6.24 | **6.14** | F24 |
+| BistroInt    | 13.13 | 12.95 | 12.24 | 10.75 | 8.99 | **7.70** | 8.35 | F16 |
+| BistroExt    | 15.54 | 16.04 | 14.45 | 12.36 | 10.72 | **9.41** | 10.33 | F16 |
+
+**Light-count-gradient at the architectural level.** Few/simple lights
+(1–32) → pure-fresh F24 wins; many emissives (Bistros) → middle hybrid
+F16 wins. Crossover roughly at log(emissive count): few-lights have no
+diversity for shading-agnostic pool fill; many-lights amortize the pool
+diversification benefit.
+
+Cumulative err across 7 scenes: F16 = 31.68 / F24 = 32.47 / current
+default K=48 = 35.18 (K=48 wastes samples).
+
+**Recommended new canonical: F16P08 + R3d** (16 fresh main-pass LightBVH
++ 8 pool PdfMipmap-presampled, R3d cell-level reservoir + R2d per-pixel
+reservoir, K_total = 24 = RTXDI parity). Tied or best on every scene
+class; small-scene tie with F24P00 is within noise. Half the sample
+count of current K=48 default at uniformly equal-or-better quality.
+
+Quality-only here — gpu_ms cost numbers run-to-run noise dominates the
+signal at this scale (TIMING work showed ~18× cross-run variance).
 
 | freshK | Cornell_1AL err | Sponza err |
 |---:|---:|---:|
