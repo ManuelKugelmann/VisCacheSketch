@@ -17,7 +17,7 @@ Two largely-independent threads developed structurally-equivalent multilevel spa
 | 2023 | Dittebrandt — MCMM (screen-space MCMC) | Zhang & Wang — World-Space Spatiotemporal Path Resampling (normal-aware grid) | |
 | 2024 | Benyoub, Marteaux, Boudier — **SHaRC** (NVIDIA RTXGI 2.0) | | Zhang — Area ReSTIR ; Zheng — ReSTIR PG ; Bokšanský & Meister — Neural Visibility Cache |
 | 2025 | Alber, Hanika, Dachsbacher — **MCPG** (multi-level adaptive + static, MLE α-floor) ; Stotko — MrHash | Liu — Reservoir Splatting ; Lin — ReSTIR BDPT | |
-| **2026** | | | **VisCache (this work)** — 2006 framework brought to GPU + multi-level cascade + ReSTIR-family composition |
+| **2026** | | | **VisCache (this work)** — 2006 framework brought to GPU + footprint-driven multilevel cascade (analytic entry level, sub-pixel→tile addressable, active-only occupancy) + ReSTIR-family composition |
 
 Reading top-to-bottom in the rightmost column is the shortest version of the timeline: 2006 already explores the cell-keying and CV+RRR machinery (in an unpublished thesis, invisible to the field); **2007–2025 is silent on the visibility-caching specifically**; the field develops elements of it independently in the two left columns; we pick up the rightmost column in 2026 and integrate with both threads.
 
@@ -68,7 +68,7 @@ flowchart TB
     MRH(["2025 Stotko et al.<br/>MrHash<br/>(TSDF, variance-adaptive)"]):::fringe
 
     %% ============ This work ============
-    US["<b>2026 VisCache (this work)</b><br/>GPU realization · multi-level cascade<br/>ReSTIR-family composition"]:::ours
+    US["<b>2026 VisCache (this work)</b><br/>GPU realization · footprint-driven cascade<br/>(sub-pixel→tile, active-only occupancy)<br/>ReSTIR-family composition"]:::ours
 
     %% ---- Inspiration into the visibility-cache lineage node ----
     %% (Teschner 2003 is NOT the inspiration: not in MK2006 bibliography, and

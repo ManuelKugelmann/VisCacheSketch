@@ -51,7 +51,7 @@ V=1 adds 0x00010001; V=0 adds 0x00000001. Single InterlockedAdd — both counter
 
 ## 3.2 LOD Configuration
 
-N levels (default N=3) with LOD index encoded in the hash key (Sec. 4.4). The primary addressing mode (position+normal × direction+distance, Sec. 4.1) has two LOD dimensions: spatial cell size and angular bin size, both following geometric progressions from coarse to fine. Distance bins are not an LOD dimension — they exploit a geometric monotonicity invariant (Sec. 4.1). Cell sizes in world units; no scene bounds needed.
+The cascade is an **envelope, not a working set**: an arbitrary number of LOD levels share one flat table via level-in-key (Sec. 4.4). The number of levels (`numLevels`) is the addressable envelope; the *populated* level set is whatever the trajectory of analytical entry-level selection (Sec. 3.2.1 below) actually visits. Levels never reached consume zero slots; transiently visited levels decay (Sec. 6) and release their slots under collision pressure (Sec. 4.4) so steady-state occupancy tracks the active level set, not the envelope width. The envelope can therefore be set generously (16, 32, even 64 levels for camera trajectories with extreme footprint range) at near-zero static cost — the only per-level costs are a few key bits and the hash mix needing to disambiguate cells across levels. The primary addressing mode (position+normal × direction+distance, Sec. 4.1) has two LOD dimensions: spatial cell size and angular bin size, both following geometric progressions from coarse to fine. Distance bins are not an LOD dimension — they exploit a geometric monotonicity invariant (Sec. 4.1). Cell sizes in world units; no scene bounds needed.
 
 Cell sizes follow a geometric progression from cell_coarse (L0) to cell_fine (L_{N-1}):
 
@@ -59,7 +59,7 @@ Cell sizes follow a geometric progression from cell_coarse (L0) to cell_fine (L_
 cell_size(l) = cell_coarse × exp(l/(N-1) × ln(cell_fine / cell_coarse))
 ```
 
-Three runtime cbuffer parameters control the LOD ramp: N (level count), cell_coarse, and cell_fine. Example configuration for mixed interior/exterior scenes (Bistro, Sponza) at primary viewing distances 2–20 m:
+The runtime knobs are the geometric-ladder bounds (`cell_coarse`, `cell_fine`) and the envelope depth `numLevels` (default N=8 in the canonical static-scene config; raised for dynamic-camera deep-zoom workloads). The entry level is computed analytically per query from the primary-hit pixel footprint (Sec. 3.2.1) — the cache can target anywhere from sub-pixel cells at grazing/corner cases up to multi-tile cells on smooth distant surfaces, and only the levels that the analytic entry-level + cascade window actually visit get populated. Example configuration for mixed interior/exterior scenes (Bistro, Sponza) at primary viewing distances 2–20 m:
 
 | Level | Cell size | ≈ px @ 5 m |
 |---|---|---|
@@ -67,7 +67,7 @@ Three runtime cbuffer parameters control the LOD ramp: N (level count), cell_coa
 | L1 | ~1.26 m | ~14 |
 | L2 | 16 cm | ~1.7 |
 
-> **Table 1.** Spatial cell sizes (N=3, cell_coarse=10 m, cell_fine=0.16 m). In the primary addressing mode (Sec. 4.1), these control the position quantization of the shading point. In the secondary position × position mode (Sec. 4.6), both endpoints use the same cell size. Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. L2 is near-pixel at typical viewing distances; it populates only where the variance-gated cascade (Sec. 5) propagates past L1. All parameters are scene-dependent tuning knobs — there are no universal correct values.
+> **Table 1.** Illustrative spatial cell sizes for a 3-level slice of the cascade (cell_coarse=10 m, cell_fine=0.16 m). In the primary addressing mode (Sec. 4.1), these control the position quantization of the shading point. In the secondary position × position mode (Sec. 4.6), both endpoints use the same cell size. Pixel column shows projected cell side length at 5 m distance, 90° HFoV, 1080p. The shown levels are a representative sub-set of the cascade — in practice the envelope is wider (canonical N=8) and the actively-visited subset is a function of analytical entry-level descent (Sec. 3.2.1). L2 is near-pixel at typical viewing distances; it populates only where the analytical entry level lands there, not on every query. All parameters are scene-dependent tuning knobs — there are no universal correct values.
 
 | Level | Angular bin | Distance threshold |
 |---|---|---|
@@ -79,7 +79,7 @@ Three runtime cbuffer parameters control the LOD ramp: N (level count), cell_coa
 
 Scenes at substantially different scales (tabletop close-ups, city-scale flyovers) would benefit from camera-adaptive cell sizing via FoV and circle of confusion — deferred to future work.
 
-**Two addressing modes.** The primary mode — position+normal × direction+distance (Sec. 4.1) — exploits surface normal, angular structure, and distance monotonicity. A secondary position × position mode (Sec. 4.6) is available for GI revalidation where both endpoints are surface points. Both coexist in the same flat table. In the current design, the variance-gated cascade (Sec. 5) determines which levels are written: coarse levels converge first, and propagation stops when variance drops below τ_var. A maturity gate (SE-based) skips entries with enough samples, and decay periodically revalidates.
+**Two addressing modes.** The primary mode — position+normal × direction+distance (Sec. 4.1) — exploits surface normal, angular structure, and distance monotonicity. A secondary position × position mode (Sec. 4.6) is available for GI revalidation where both endpoints are surface points. Both coexist in the same flat table. In the current design, **two mechanisms together determine which levels populate**: (a) the analytical entry-level selection from primary-hit pixel footprint (Sec. 3.2.1) sets the central level for each query; (b) the variance-gated cascade window (Sec. 5) controls how far descent / propagation reaches around that entry. Coarse levels around the entry converge first, and propagation stops when variance drops below τ_var. A maturity gate (SE-based) skips entries with enough samples, and decay periodically revalidates and reclaims slots from levels the trajectory has left.
 
 **Why a flat hash, not a hierarchy.** Prior multilevel approaches — separate tables per level, octree subdivision [Popov et al. 2013], hierarchical cascade grids — add structural complexity: pointer management, multi-table eviction coordination, variable-depth traversal. A single flat table with level-in-key (Sec. 4.3) is simpler, has uniform access cost, and allows entries at all levels to compete for capacity under one eviction policy. This design emerged after experimenting with alternatives; the flat table consistently performed better for our access pattern (many parallel inserts/lookups with variable level mix).
 

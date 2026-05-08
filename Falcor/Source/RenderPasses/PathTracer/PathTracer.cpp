@@ -1294,7 +1294,6 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
             // §9.4 WS-ReSTIR DI cbuffer fields
             mVCParams.wsEnable            = getU("vhfParam_wsEnable", 0u);
-            mVCParams.wsCellLevel         = getU("vhfParam_wsCellLevel", 4u);
             mVCParams.wsCellLevelJitter   = getU("vhfParam_wsCellLevelJitter", 0u);
             mVCParams.wsCapacity          = getU("vhfParam_wsCapacity", 0u);
             mVCParams.wsMCap              = getF("vhfParam_wsMCap", 30.f);
@@ -1318,6 +1317,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
             mVCParams.wsCellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
             mVCParams.wsCellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
+            mVCParams.wsCellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
             mVCParams.wsRetraceOnReuseMode  = getU("vhfParam_wsRetraceOnReuseMode", 0u);
         }
         bool wasWSReservoirs = mVisCacheWSReservoirs;
@@ -1582,7 +1582,6 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gWarmupRun"]                     = mVCParams.warmupRun;
         // §9.4 WS-ReSTIR DI cbuffer fields
         vc["gWSEnable"]                      = mVCParams.wsEnable;
-        vc["gWSCellLevel"]                   = mVCParams.wsCellLevel;
         vc["gWSCellLevelJitter"]             = mVCParams.wsCellLevelJitter;
         vc["gWSCapacity"]                    = mVCParams.wsCapacity;
         vc["gWSMCap"]                        = mVCParams.wsMCap;
@@ -1606,6 +1605,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
         vc["gWSCellReservoirMerge"]          = mVCParams.wsCellReservoirMerge;
         vc["gWSCellPoolFootprintPx"]         = mVCParams.wsCellPoolFootprintPx;
+        vc["gWSCellReservoirFootprintPx"]    = mVCParams.wsCellReservoirFootprintPx;
         vc["gWSRetraceOnReuseMode"]          = mVCParams.wsRetraceOnReuseMode;
     }
     // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).

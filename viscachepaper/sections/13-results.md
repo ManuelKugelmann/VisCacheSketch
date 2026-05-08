@@ -11,9 +11,26 @@ Bernoulli standard-error gate; trust if √(var/N) ≤ τ). This single value
 covers x4 and x16 SPP across the seven-scene matrix (Pareto improvement over
 the per-SPP-tuned varThreshold carry, see §7).
 
-**Cache config (canonical for §13):** flat multilevel hash, posA cell width
-auto-tuned per scene with `forceDescendFootprintPx=16` (16-pixel cells at
-primary hit), 8-level cascade, Bayer 2×2 stratification, bootThreshold=8,
+**Cache config (canonical for §13):** flat multilevel hash with the entry
+level selected analytically per query from the primary-hit pixel footprint.
+The `forceDescendFootprintPx` knob is a continuous parameter that subsumes
+the RTXDI / ReSTIR-DI screen-space data structures as specific operating
+points (§3.0): sub-pixel target footprint ≈ per-pixel reservoir (each pixel
+maps to a private world cell); $T^2$-pixel target footprint ≈ tile pool (all
+pixels in a $T \times T$ tile share one cell). The §13 canonical
+`forceDescendFootprintPx=16` lands at the tile-pool-equivalent operating
+point; ablations across the knob are reported below. **World cells are
+camera-invariant by construction**: cell IDs are functions of `(world
+position, normal, level)` only — no motion-vector reprojection, no `mCap`
+temporal clamp, and no depth/normal/material disocclusion gate is needed for
+samples to persist across camera motion. The fingerprint check on cell read
+serves as both the collision test and the implicit disocclusion gate. RTXDI's
+screen-space reservoirs require all three mechanisms; we get them for free
+from the world-space addressing. The cascade depth (`numLevels`) is an
+envelope, not a fixed working set — only actively-visited levels populate
+the hash, idle levels never get written, transiently-visited levels decay
+(Sec. 6) and release their slots under collision pressure. posA cell widths
+auto-tuned per scene; Bayer 2×2 stratification, bootThreshold=8,
 matureThreshold=32, pMin=0.02. No Wilson, no A-C shrinkage, no warp-coalesced
 lookup (all explored, none beat the canonical — see [LADDERLOG](../../docs/LADDERLOG.md)).
 

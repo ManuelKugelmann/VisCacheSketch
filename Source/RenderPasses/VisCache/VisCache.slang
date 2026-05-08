@@ -254,7 +254,6 @@ cbuffer VisCacheParams
     uint   gWarmupRun;        ///< # Bayer slots write-only in every subsequent frame
     // --- §9.4 World-space ReSTIR DI reservoirs ---
     uint   gWSEnable;             ///< 1 = WS reservoir buffer active.
-    uint   gWSCellLevel;          ///< WS-ReSTIR cell level into VisCache's posA cascade (0=coarse..N-1=fine).
     uint   gWSCapacity;           ///< Power-of-two reservoir slot count.
     float  gWSMCap;               ///< Temporal M-cap for reservoir merge.
     uint   gWSSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
@@ -272,7 +271,7 @@ cbuffer VisCacheParams
     uint   gWSCellPoolEnable;     ///< 1 = pool buffer active. Master gate for ReGIR step (a)+.
     uint   gWSCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
     uint   gWSCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).
-    uint   gWSCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* gWSCellLevel, MCPG 2025).
+    uint   gWSCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* analytical entry level, MCPG 2025).
     uint   gWSSpatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).
     uint   gWSSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
     uint   gWSPoolAddrMode;       ///< 0 = 3D cell (default), 1 = 2D screen-tile (RTXDI-style).
@@ -289,11 +288,14 @@ cbuffer VisCacheParams
                                   ///< cell.M like the per-pixel temporal read). World-space analog of
                                   ///< the per-pixel reservoir, NO reprojection needed (cell ID is
                                   ///< camera-invariant). Used by the `restir_3d` variant.
-    uint   gWSCellPoolFootprintPx;///< 0 = use gWSCellLevel for pool addressing (legacy fixed level).
-                                  ///< >0 = footprint-derived level: per-pixel, pick the cascade
-                                  ///< level whose cell projects to ~footprint² screen pixels at this
-                                  ///< primary hit (via shared vhfLevelForFootprint). e.g. 16 → 256
-                                  ///< px tile-equivalent footprint, matching restir_2d's tile size.
+    uint   gWSCellPoolFootprintPx;///< Pool cell footprint in pixels. 0 = P3d DISABLED;
+                                  ///< >0 = analytical entry level via shared
+                                  ///< vhfLevelForFootprint (e.g. 16 → ~256 px²,
+                                  ///< matching the RTXDI 16-px tile).
+    uint   gWSCellReservoirFootprintPx;///< Reservoir cell footprint analog. 0 = R3d DISABLED;
+                                       ///< >0 = analytical entry level. Selected independently
+                                       ///< from gWSCellPoolFootprintPx so the reservoir cell
+                                       ///< size can be finer than the pool's (e.g. 8 vs 16).
     uint   gWSRetraceOnReuseMode; ///< Retrace V on reservoir temporal/spatial reuse — RTXDI
                                   ///< BiasCorrection analog. 0 = Off (Basic-equiv: stored W carries
                                   ///< write-time V), 1 = FullTrace (≡ RTXDI RayTraced), 2 = CacheCV

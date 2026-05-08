@@ -242,7 +242,6 @@ private:
              uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
              // §9.4 WS-ReSTIR DI cbuffer fields
              uint32_t wsEnable=0;
-             uint32_t wsCellLevel=4u;
              uint32_t wsCellLevelJitter=0u;
              uint32_t wsCapacity=0;
              float    wsMCap=30.f;
@@ -266,6 +265,7 @@ private:
              float    distSolidAngleScale=1.0f;
              uint32_t wsCellReservoirMerge=0;
              uint32_t wsCellPoolFootprintPx=0;
+             uint32_t wsCellReservoirFootprintPx=0;
              uint32_t wsRetraceOnReuseMode=0; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).

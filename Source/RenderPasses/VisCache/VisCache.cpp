@@ -115,7 +115,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableWSPixelReservoir"))        mParams.enableWSPixelReservoir        = props["enableWSPixelReservoir"];
     if (props.has("enableBoilingFilter"))           mParams.enableBoilingFilter           = props["enableBoilingFilter"];
     if (props.has("boilingFilterStrength"))         mParams.boilingFilterStrength         = props["boilingFilterStrength"];
-    if (props.has("wsCellLevel"))                   mParams.wsCellLevel                   = props["wsCellLevel"];
     if (props.has("wsCellLevelJitter"))             mParams.wsCellLevelJitter             = props["wsCellLevelJitter"];
     if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
     if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
@@ -139,6 +138,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
     if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
     if (props.has("wsCellPoolFootprintPx"))         mParams.wsCellPoolFootprintPx         = props["wsCellPoolFootprintPx"];
+    if (props.has("wsCellReservoirFootprintPx"))    mParams.wsCellReservoirFootprintPx    = props["wsCellReservoirFootprintPx"];
     if (props.has("wsRetraceOnReuseMode"))          mParams.wsRetraceOnReuseMode          = props["wsRetraceOnReuseMode"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
@@ -210,7 +210,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableWSPixelReservoir"))        mParams.enableWSPixelReservoir        = props["enableWSPixelReservoir"];
     if (props.has("enableBoilingFilter"))           mParams.enableBoilingFilter           = props["enableBoilingFilter"];
     if (props.has("boilingFilterStrength"))         mParams.boilingFilterStrength         = props["boilingFilterStrength"];
-    if (props.has("wsCellLevel"))                   mParams.wsCellLevel                   = props["wsCellLevel"];
     if (props.has("wsCellLevelJitter"))             mParams.wsCellLevelJitter             = props["wsCellLevelJitter"];
     if (props.has("wsReservoirCapacity"))           mParams.wsReservoirCapacity           = props["wsReservoirCapacity"];
     if (props.has("wsMCap"))                        mParams.wsMCap                        = props["wsMCap"];
@@ -234,6 +233,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
     if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
     if (props.has("wsCellPoolFootprintPx"))         mParams.wsCellPoolFootprintPx         = props["wsCellPoolFootprintPx"];
+    if (props.has("wsCellReservoirFootprintPx"))    mParams.wsCellReservoirFootprintPx    = props["wsCellReservoirFootprintPx"];
     if (props.has("wsRetraceOnReuseMode"))          mParams.wsRetraceOnReuseMode          = props["wsRetraceOnReuseMode"];
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
@@ -296,7 +296,6 @@ Properties VisCache::getProperties() const
     p["enableWSPixelReservoir"]        = mParams.enableWSPixelReservoir;
     p["enableBoilingFilter"]           = mParams.enableBoilingFilter;
     p["boilingFilterStrength"]         = mParams.boilingFilterStrength;
-    p["wsCellLevel"]                   = mParams.wsCellLevel;
     p["wsCellLevelJitter"]             = mParams.wsCellLevelJitter;
     p["wsReservoirCapacity"]           = mParams.wsReservoirCapacity;
     p["wsMCap"]                        = mParams.wsMCap;
@@ -319,6 +318,7 @@ Properties VisCache::getProperties() const
     p["distSolidAngleScale"]           = mParams.distSolidAngleScale;
     p["wsCellReservoirMerge"]          = mParams.wsCellReservoirMerge;
     p["wsCellPoolFootprintPx"]         = mParams.wsCellPoolFootprintPx;
+    p["wsCellReservoirFootprintPx"]    = mParams.wsCellReservoirFootprintPx;
     p["wsRetraceOnReuseMode"]          = mParams.wsRetraceOnReuseMode;
     p["enableDiagnostics"]             = mEnableDiagnostics;
     p["diagMode"]                      = uint32_t(mDiagMode);
@@ -745,7 +745,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     while (wsCap < std::max(1u, mParams.wsReservoirCapacity)) wsCap <<= 1;
     mParams.wsReservoirCapacity = wsCap;
     gpu.wsEnable             = mParams.enableWSReservoirs ? 1u : 0u;
-    gpu.wsCellLevel          = std::min(mParams.wsCellLevel, mParams.numLevels - 1u);
     gpu.wsCellLevelJitter    = mParams.wsCellLevelJitter;
     gpu.wsCapacity           = wsCap;
     gpu.wsMCap               = mParams.wsMCap;
@@ -774,6 +773,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.distSolidAngleScale = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
     gpu.wsCellReservoirMerge = mParams.wsCellReservoirMerge;
     gpu.wsCellPoolFootprintPx = mParams.wsCellPoolFootprintPx;
+    gpu.wsCellReservoirFootprintPx = mParams.wsCellReservoirFootprintPx;
     gpu.wsRetraceOnReuseMode = std::min(2u, mParams.wsRetraceOnReuseMode);
 
     std::memcpy(mpParamsBuffer->map(), &gpu, sizeof(gpu));
@@ -800,9 +800,9 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] bayerN={} (Bayer N×N → N²={} subframes/cycle) warmupFirst={} warmupRun={}",
                 gpu.bayerN, gpu.bayerN * gpu.bayerN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
-        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} cellLevel={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f} normAddr={}",
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} R3dFootprintPx={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f} normAddr={}",
                 mParams.enableWSReservoirs, mParams.wsReservoirCapacity,
-                mParams.wsCellLevel, mParams.wsCellLevelJitter,
+                mParams.wsCellReservoirFootprintPx, mParams.wsCellLevelJitter,
                 mParams.wsMCap, std::min(4u, mParams.wsSpatialNeighbours),
                 std::max(1u, mParams.wsInitialCandidates),
                 mParams.wsLightMuMin, mParams.wsLightSoftness, mParams.wsNormalAddr);
@@ -898,7 +898,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsFrameDimY"]     = mParams.enableWSPixelReservoir ? mFrameDims.y : 0u;
     dict["vhfEnableWSReservoirs"]    = mParams.enableWSReservoirs;
     dict["vhfParam_wsEnable"]        = mParams.enableWSReservoirs ? 1u : 0u;
-    dict["vhfParam_wsCellLevel"]       = std::min(mParams.wsCellLevel, mParams.numLevels - 1u);
     dict["vhfParam_wsCellLevelJitter"] = mParams.wsCellLevelJitter;
     dict["vhfParam_wsCapacity"]      = mParams.wsReservoirCapacity;
     dict["vhfParam_wsMCap"]          = mParams.wsMCap;
@@ -926,6 +925,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_distSolidAngleScale"] = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
     dict["vhfParam_wsCellReservoirMerge"] = mParams.wsCellReservoirMerge;
     dict["vhfParam_wsCellPoolFootprintPx"] = mParams.wsCellPoolFootprintPx;
+    dict["vhfParam_wsCellReservoirFootprintPx"] = mParams.wsCellReservoirFootprintPx;
     dict["vhfParam_wsRetraceOnReuseMode"] = std::min(2u, mParams.wsRetraceOnReuseMode);
 
     // Stats (readback with ~4-frame delay, updated every 16 frames)
@@ -1271,7 +1271,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
     if (auto g = widget.group("§9.4 WS-ReSTIR DI", /*open=*/false))
     {
         g.checkbox("Enable WS reservoirs", mParams.enableWSReservoirs);
-        g.var("wsCellLevel (cascade level)", mParams.wsCellLevel, 0u, 15u);
+        g.var("wsCellReservoirFootprintPx (analytical entry)", mParams.wsCellReservoirFootprintPx, 1u, 64u);
         g.var("wsCellLevelJitter (stochastic LOD)", mParams.wsCellLevelJitter, 0u, 4u);
         g.var("wsReservoirCapacity (slots, pow2)", mParams.wsReservoirCapacity, 1u << 12, 1u << 24);
         g.var("wsMCap", mParams.wsMCap, 1.f, 200.f, 1.f);

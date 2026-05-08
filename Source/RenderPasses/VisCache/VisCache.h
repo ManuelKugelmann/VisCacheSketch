@@ -149,8 +149,6 @@ public:
 
         // --- §9.4 World-space ReSTIR DI reservoirs (rides VisCache posA cascade) ---
         uint32_t wsEnable;             ///< 1 = WS-reservoir buffer active. Master gate.
-        uint32_t wsCellLevel;          ///< WS-ReSTIR cell level into VisCache's posA cascade.
-                                       ///< Reuses vhfPosASize(lvl) and jitterQuantize machinery.
         uint32_t wsCapacity;           ///< Power-of-two reservoir slot count (table size).
         float    wsMCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
         uint32_t wsSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
@@ -180,9 +178,14 @@ public:
         float    dirSolidAngleScale;   ///< §4.2 posB angular axis multiplier (default 1.0).
         float    distSolidAngleScale;  ///< §4.2 posB distance axis multiplier (default 1.0).
         uint32_t wsCellReservoirMerge; ///< 0 = identity-hint cell (legacy), 1 = Bitterli merge (3D-eq variant).
-        uint32_t wsCellPoolFootprintPx;///< Target cell screen-space footprint in pixels. 0 = fixed-level
-                                       ///< (gWSCellLevel). >0 = analytical entry level via shared
-                                       ///< vhfLevelForFootprint helper.
+        uint32_t wsCellPoolFootprintPx;///< Target pool cell screen-space footprint in pixels.
+                                       ///< 0 = pool DISABLED (no P3d layer); >0 = analytical entry
+                                       ///< level via vhfLevelForFootprint at that pixel-footprint
+                                       ///< target. Single knob: feature toggle + size in one field.
+        uint32_t wsCellReservoirFootprintPx;///< Reservoir cell footprint analog. 0 = R3d DISABLED
+                                            ///< (cell-level reservoir reads/writes skipped); >0 =
+                                            ///< analytical entry level. Selected independently from
+                                            ///< the pool footprint so reservoir cells can be finer.
         uint32_t wsRetraceOnReuseMode; ///< Retrace V on temporal/spatial reservoir reuse (RTXDI BiasCorrection
                                        ///< analog). 0 = Off (Basic-equiv: stored W carries write-time V — what
                                        ///< we ship today), 1 = FullTrace (≡ RTXDI BiasCorrection::RayTraced —
@@ -296,14 +299,10 @@ public:
                                                         ///< reach gWSPixelReservoirs) and the recommended
                                                         ///< separable-include fix path.
         float    boilingFilterStrength         = 0.2f;  ///< Unused while enableBoilingFilter is hard-disabled.
-        uint32_t wsCellLevel                   = 4u;    ///< WS-ReSTIR cell level into VisCache's posA cascade.
-                                                        ///< Default 4 = mid-cascade (with default numLevels=8).
-                                                        ///< Reuses vhfPosASize(lvl) + jitterQuantize from VisCache;
-                                                        ///< the cascade is shared infrastructure even though the two
-                                                        ///< systems are functionally independent.
         uint32_t wsCellLevelJitter             = 0u;    ///< Stochastic LOD jitter (0 = off). When >0, the per-pixel
                                                         ///< level is perturbed by a one-sided truncated-exponential
-                                                        ///< offset in [0, jitter] *above* wsCellLevel. P(offset=k) ∝
+                                                        ///< offset in [0, jitter] *above* the analytical entry level
+                                                        ///< (computed from wsCellReservoirFootprintPx). P(offset=k) ∝
                                                         ///< 2^(-k); never queries levels finer than base. Form follows
                                                         ///< MCPG 2025 (merian-quake/mc.glsl: -log2(1-u)). Composes
                                                         ///< with gJitterFilter / gJitterCell (spatial jitter from
@@ -379,11 +378,16 @@ public:
                                                         ///< 1 = promote cell to full Bitterli weighted merge —
                                                         ///< world-space analog of per-pixel reservoir, no
                                                         ///< reprojection needed. Set to 1 for `restir_3d`.
-        uint32_t wsCellPoolFootprintPx         = 0u;    ///< 0 = fixed-level pool addressing (gWSCellLevel).
-                                                        ///< >0 = analytical footprint-derived per-pixel level
-                                                        ///< via shared vhfLevelForFootprint(targetPx²). e.g.
-                                                        ///< 16 → ~256 px² cell footprint, matching the 2D
-                                                        ///< tile-pool's 16-px tile.
+        uint32_t wsCellPoolFootprintPx         = 16u;   ///< Pool cell footprint in pixels (analytical entry
+                                                        ///< level via shared vhfLevelForFootprint). 16 →
+                                                        ///< ~256 px² cell, matching RTXDI's 16-px tile.
+                                                        ///< Required > 0 (legacy fixed-level fallback removed).
+        uint32_t wsCellReservoirFootprintPx    = 8u;    ///< Reservoir cell footprint in pixels (analytical
+                                                        ///< entry level via vhfLevelForFootprint). 8 = ~64-px
+                                                        ///< reservoir footprint — finer than the 16-px pool
+                                                        ///< footprint so each pool cell aggregates candidates
+                                                        ///< across ~4 reservoir cells worth of pixels.
+                                                        ///< Required > 0.
         uint32_t wsRetraceOnReuseMode          = 0u;    ///< 0 = Off (Basic-equiv, current default), 1 = FullTrace
                                                         ///< (≡ RTXDI RayTraced), 2 = CacheCV (cheap CV+RRR via
                                                         ///< evalRevalidationCV with PT-canonical knobs). Toggleable

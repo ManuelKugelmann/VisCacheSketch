@@ -46,15 +46,23 @@ uint wsRetraceOnReuseMode() { return gWSRetraceOnReuseMode; } ///< 0=Off, 1=Full
 
 // ---------------------------------------------------------------------------
 // Quantize primary-hit position to integer cell coords by REUSING VisCache's
-// posA cascade. The level is gWSCellLevel (0=coarse..numLevels-1=fine);
-// jitter (gJitterFilter, gJitterCell) is shared with VisCache rather than
-// duplicated. WS-ReSTIR is functionally independent of VisCache (the level
-// it picks is its own choice) but it shares the addressing building blocks.
+// posA cascade. The level is the analytic entry from primary-hit pixel
+// footprint via vhfLevelForFootprint(targetPx²) — same mechanism as the
+// pool side. Jitter (gJitterFilter, gJitterCell) is shared with VisCache
+// rather than duplicated.
+//
+// gWSCellReservoirFootprintPx == 0 means "R3d DISABLED" (cell-level
+// reservoir off). Callers must check `wsCellReservoirEnabled()` before
+// invoking the cell-reservoir read/write paths.
 // ---------------------------------------------------------------------------
-int wsLevel()
+bool wsCellReservoirEnabled() { return gWSCellReservoirFootprintPx > 0u; }
+
+int wsLevelForReservoir(float3 posA)
 {
     int N = int(gNumLevels);
-    return clamp(int(gWSCellLevel), 0, N - 1);
+    float sidePx = max(float(gWSCellReservoirFootprintPx), 1.f);
+    int lvl = vhfLevelForFootprint(posA, sidePx * sidePx);
+    return clamp(lvl, 0, N - 1);
 }
 
 // Per-pixel LOD jitter: pick a level at base+offset where offset is drawn
@@ -64,14 +72,21 @@ int wsLevel()
 // the ray footprint can't hold meaningful state, and the cold-cell
 // fallback we want is *coarser*, not finer.
 //
+// The base level is `wsLevelForReservoir(posA)` — i.e. the analytically-
+// derived entry from primary-hit pixel footprint when
+// gWSCellReservoirFootprintPx > 0, else the fixed gWSCellLevel. The jitter
+// always rides on top of whichever base the canonical reservoir-level
+// selection chose, so footprint-derived addressing and LOD jitter compose
+// correctly.
+//
 // Form follows MCPG 2025 (Alber/Hanika/Dachsbacher, merian-quake/mc.glsl):
 //     level = target + uint(-log2(1 - u))
 // which is the inverse-CDF of Exp(λ = ln 2). Clamping to [0, J] gives a
 // truncated exponential.
-int wsLevelJittered(uint2 pixel)
+int wsLevelJittered(uint2 pixel, float3 posA)
 {
     int N = int(gNumLevels);
-    int base = clamp(int(gWSCellLevel), 0, N - 1);
+    int base = wsLevelForReservoir(posA);
     if (gWSCellLevelJitter == 0u) return base;
     uint3 r = pcg3d(uint3(pixel.x, pixel.y, gFrameCount + 0xCAA5u));
     float u = float(r.x & 0xFFFFu) / 65535.f;            // [0, 1)
@@ -83,7 +98,7 @@ int wsLevelJittered(uint2 pixel)
 
 int3 wsQuantizePosA(float3 posA)
 {
-    int lvl = wsLevel();
+    int lvl = wsLevelForReservoir(posA);
     float cs = max(vhfPosASize(lvl), 1e-6f);
     return jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
 }
@@ -230,6 +245,7 @@ struct WSLocalReservoir
 // ---------------------------------------------------------------------------
 void wsMergeIntoCell<S : ISampleGenerator>(WSCellAddress addr, WSLocalReservoir local, inout S sg)
 {
+    if (!wsCellReservoirEnabled()) return;
     if (gWSCapacity == 0u || local.M <= 0.f) return;
 
     // Soft-lock the slot: only proceed if it's empty (fp=0) or already
@@ -298,6 +314,7 @@ void wsMergeIntoCell<S : ISampleGenerator>(WSCellAddress addr, WSLocalReservoir 
 bool wsLoadCell(WSCellAddress addr, out WSReservoir cell)
 {
     cell = wsReservoirInit(0u);
+    if (!wsCellReservoirEnabled()) return false;
     if (gWSCapacity == 0u) return false;
     WSReservoir r = gWSReservoirs[addr.slot];
     if (r.fingerprint != addr.fingerprint) return false;
@@ -341,7 +358,11 @@ void wsTangentBasis(float3 n, out float3 tA, out float3 tB)
 // ---------------------------------------------------------------------------
 WSCellAddress wsResolveJitteredCell(float3 posA, float3 faceN, uint i, uint nTotal, float2 jitter2D)
 {
-    float cellSize = max(vhfPosASize(wsLevel()), 1e-6f);
+    // Cell-size for the jitter magnitude is computed at the home position's
+    // level — the spatial-reuse neighbourhood scales with the local cell size,
+    // matching the analytical-entry behaviour when gWSCellReservoirFootprintPx
+    // is set.
+    float cellSize = max(vhfPosASize(wsLevelForReservoir(posA)), 1e-6f);
 
     // 2x2 stratification across [-1, 1] x [-1, 1], jittered within stratum.
     // For nTotal up to 4 we use a 2x2 stratum grid; for higher N we just

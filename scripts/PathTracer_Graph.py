@@ -20,7 +20,7 @@ except ImportError:
 
 
 def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True,
-                            wsReservoirs=False, wsCellLevel=4, wsCellLevelJitter=0,
+                            wsReservoirs=False, wsCellLevelJitter=0,
                             wsReservoirCapacity=1 << 18,
                             wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
                             wsInitialCandidates=8,
@@ -31,6 +31,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                             wsSpatialPixelsK=4, wsSpatialPixelsRadius=32,
                             wsPoolAddrMode=0, wsPoolTileSize=16,
                             wsCellPoolFootprintPx=0,
+                            wsCellReservoirFootprintPx=0,
                             emissiveSampler=None,    # main pass: None = Falcor default (LightBVH)
                             prePassEmissiveSampler=None,    # pre-pass override (defaults to emissiveSampler if None); "Power" = shading-agnostic pool fill (RTXDI-pdf-mipmap-equivalent for cell pool only)
                             prePassWsVisInPHat=None,        # pre-pass override for wsVisInPHat (defaults to wsVisInPHat). Set to 1 → pre-pass uses VisCache cache lookups for V-aware pool fill (§9.4 step (d) + §9.2 V amortization). Combined with Bayer N×N gate, this is the warmup-with-amortization design from §11.2.
@@ -44,11 +45,10 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         useJitter: If False, pin samples to pixel center (no subpixel jitter).
         wsReservoirs: If True, enable §9.4 world-space ReSTIR DI reservoirs
             (requires viscache=True since reservoirs ride VisCache's posA cascade).
-        wsCellLevel: WS-ReSTIR cell level into VisCache's shared posA cascade.
-            Reuses vhfPosASize(lvl) and the existing jitterQuantize() machinery
-            (gJitterFilter / gJitterCell apply). Default 4 = mid-cascade with
-            numLevels=8.
         wsCellLevelJitter: Per-pixel stochastic LOD jitter range (0 = off).
+            When >0, the per-pixel level is offset above the analytical entry
+            level (computed from wsCellReservoirFootprintPx) by a truncated-
+            exponential offset in [0, jitter].
         visibilityCheck: If not None, override enableVisCacheVisibilityCheck (§9.2).
         lightSelection: If not None, override enableVisCacheLightSelection (§9.1).
         extraVCProps: Optional dict merged into VisCache properties at create time
@@ -85,7 +85,6 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                 "wsInitialCandidates":  wsInitialCandidates,
                 "wsVisInPHat":          wsVisInPHat,
                 "wsRetraceOnReuseMode": wsRetraceOnReuseMode,
-                "wsCellLevel":          wsCellLevel,
                 "wsCellLevelJitter":    wsCellLevelJitter,
                 "wsReservoirCapacity":  wsReservoirCapacity,
                 "wsMCap":               wsMCap,
@@ -93,6 +92,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                 "wsLightMuMin":         wsLightMuMin,
                 "wsSpatialPixelsK":     wsSpatialPixelsK,
                 "wsSpatialPixelsRadius": wsSpatialPixelsRadius,
+                "wsCellReservoirFootprintPx": wsCellReservoirFootprintPx,
             })
         if wsReservoirs and wsCellPool:
             vc_props.update({

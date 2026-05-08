@@ -23,7 +23,7 @@ import Utils.Sampling.SampleGenerator;
 // Bound at root by PathTracer.cpp (var["gWSCellPools"]).
 RWStructuredBuffer<WSCellPool> gWSCellPools;
 
-bool wsCellPoolEnabled() { return gWSEnable != 0u && gWSCellPoolEnable != 0u && gWSCellPoolCapacity > 0u; }
+bool wsCellPoolEnabled() { return gWSEnable != 0u && gWSCellPoolEnable != 0u && gWSCellPoolCapacity > 0u && gWSCellPoolFootprintPx > 0u; }
 
 /// Pool addressing mode (gWSPoolAddrMode):
 ///   0 = 3D world cell (default — open-addressed hash; concentrates per-3D-
@@ -66,17 +66,13 @@ bool wsCellPoolEnabled() { return gWSEnable != 0u && gWSCellPoolEnable != 0u && 
 // soft boundary). Same call path as the single-slot reservoir's wsQuantizePosA.
 WSCellAddress wsResolveCellPoolAddr(float3 posA, float3 faceN)
 {
-    int lvl;
-    if (gWSCellPoolFootprintPx > 0u)
-    {
-        // Side length → area for vhfLevelForFootprint's area-input semantics.
-        float sidePx = float(gWSCellPoolFootprintPx);
-        lvl = vhfLevelForFootprint(posA, sidePx * sidePx);
-    }
-    else
-    {
-        lvl = clamp(int(gWSCellLevel), 0, int(gNumLevels) - 1);
-    }
+    // Pool always uses analytical entry-level from primary-hit pixel
+    // footprint. gWSCellPoolFootprintPx == 0 means "P3d disabled" — caller
+    // must check wsCellPoolEnabled() before calling this; here we guard
+    // against zero just to keep the math finite.
+    float sidePx = max(float(gWSCellPoolFootprintPx), 1.f);
+    int lvl = vhfLevelForFootprint(posA, sidePx * sidePx);
+    lvl = clamp(lvl, 0, int(gNumLevels) - 1);
     float cellSize = max(vhfPosASize(lvl), 1e-6f);
     int3 q = jitterQuantize(posA, cellSize, 0xC5u ^ uint(lvl));
     uint nb = (gWSNormalAddr != 0u) ? wsNormalBin(faceN) : 0u;
