@@ -284,6 +284,32 @@ struct PathTracer
                                jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, reservoir);
     }
 
+    /** Compute world-space position by projecting a screen pixel's eye ray
+        to a target depth. Used by reuse passes in 3D mode to look up
+        neighbour cells without re-decoding their primary-hit vbuffer entries.
+
+        @param[in] pixel       Screen pixel.
+        @param[in] depth       Target depth (typically distance(camera, central posW)).
+        @return    posW = camera + depth * rayDir (world-space).
+    */
+    float3 worldPosForPixelAtDepth(uint2 pixel, float depth)
+    {
+        Ray ray = gScene.camera.computeRayPinhole(pixel, params.frameDim);
+        return ray.origin + depth * ray.dir;
+    }
+
+    /** Mode-dispatched reservoir lookup at a pixel + posW.
+        mode=0: outputReservoirs[pixelOffset]
+        mode=1: cell-pool cascade lookup at posW (with pixel-keyed fallback for safety)
+        Used by both central reads and neighbour reads (caller computes posW).
+    */
+    PathReservoir lookupReservoirAtPixel(uint2 pixel, float3 posW, float3 faceN, RWStructuredBuffer<PathReservoir> reservoirs)
+    {
+        const uint pixelOffset = params.getReservoirOffset(pixel);
+        PathReservoir base = reservoirs[pixelOffset];
+        return lookupCentralReservoir(pixel, posW, faceN, base);
+    }
+
     /** Generate the path state for a primary hit in screen space.
         This is treated equivalent to subsequent path vertices to reduce code divergence.
         \param[in] pathID Path ID which encodes pixel and sample index.
