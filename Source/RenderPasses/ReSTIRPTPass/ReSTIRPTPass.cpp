@@ -626,6 +626,17 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 assert(mpCounters);
                 pRenderContext->clearUAV(mpCounters->getUAV().get(), uint4(0));
 
+                // restirpt_3d (mode=1): clear the cell-pool buffer so each
+                // frame starts with empty fingerprints and writers can claim
+                // fresh slots. Without this clear, slots remain "sticky" once
+                // claimed (strict first-writer-wins semantics never lets the
+                // claim refresh) — works for static scenes via x32 averaging
+                // but blocks per-frame refresh needed for dynamic scenes.
+                if (mParams.restirptAddrMode == 1u && mpPathReservoirCellPool)
+                {
+                    pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
+                }
+
                 mpPathTracerBlock->getRootVar()["gSppId"] = restir_i;
                 mpPathTracerBlock->getRootVar()["gNumSpatialRounds"] = mNumSpatialRounds;
 
