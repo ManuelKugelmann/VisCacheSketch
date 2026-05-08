@@ -321,26 +321,18 @@ struct PathTracer
         return lookupCentralReservoir(pixel, posW, faceN, base);
     }
 
-    /** Mode-dispatched neighbour reservoir lookup. Caller pre-loads the
-        pixel-keyed `base` (used at mode 0 and as fallback at mode 1).
-        At any 3D-aware mode (1 or 2) the neighbour pixel is projected back
-        to world via eye-ray at central depth, then the cell pool is queried
-        at that posW. mode 2 returns empty on cell-miss (no pixel fallback).
-
-        @param[in] neighborPixel   Screen pixel of the neighbour.
-        @param[in] centralPosW     Central pixel's world-space hit position.
-        @param[in] centralFaceN    Central pixel's face normal (assumed similar
-                                   for the neighbour — typical spatial-reuse approximation).
-        @param[in] base            Pre-loaded outputReservoirs[neighborOffset].
-        @return    Mode-dispatched reservoir.
+    /** Mode-dispatched neighbour reservoir lookup.
+        mode 0: returns `base` (caller pre-loaded outputReservoirs[neighborOffset])
+        mode 1: cell-pool lookup at neighbour posW with pixel-buffer fallback
+        mode 2: cell-pool only, empty on miss (no pixel-buffer fallback)
+        Caller must supply neighbour's ACTUAL primary-hit posW/faceN (typically
+        from getPixelShadingData(neighborPixel)) — earlier eye-ray-projection
+        at central depth was inaccurate for pixels at different depths.
     */
-    PathReservoir lookupNeighborReservoir(uint2 neighborPixel, float3 centralPosW, float3 centralFaceN, PathReservoir base)
+    PathReservoir lookupNeighborReservoir(uint2 neighborPixel, float3 neighborPosW, float3 neighborFaceN, PathReservoir base)
     {
         if (params.restirptAddrMode == 0u) return base;
-        // 3D mode: project neighbour eye ray to central depth, look up that world cell.
-        const float depth = distance(gScene.camera.data.posW, centralPosW);
-        const float3 nbPosW = worldPosForPixelAtDepth(neighborPixel, depth);
-        return lookupCentralReservoir(neighborPixel, nbPosW, centralFaceN, base);
+        return lookupCentralReservoir(neighborPixel, neighborPosW, neighborFaceN, base);
     }
 
     /** Generate the path state for a primary hit in screen space.

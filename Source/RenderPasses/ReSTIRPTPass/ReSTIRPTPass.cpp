@@ -633,8 +633,15 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 // claim refresh) — works for static scenes via x32 averaging
                 // but blocks per-frame refresh needed for dynamic scenes.
                 // Any 3D-aware mode needs the cell-pool cleared per frame.
-                // mode 0 (R2d): no cell pool. mode 1 (R2dR3d): cell pool used.
-                // mode 2 (R3d): cell pool is the ONLY store.
+                // Tested no-clearUAV: regressed quality across SPPs because
+                // first-writer-wins atomic-CAS makes frame-1's cell claims
+                // stick forever; later frames' writes are dropped, so cell
+                // data is frozen at frame-1's state with no fresh samples.
+                // Real fix is Bayer-staged subframes (not yet implemented):
+                // each subframe writes to a DIFFERENT subset, so cells refresh
+                // over the Bayer cycle without atomic-CAS contention.
+                // Until Bayer wiring lands, per-frame clearUAV is the right
+                // default (frame 1 cold-miss accepted; subsequent frames refresh).
                 if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool)
                 {
                     pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
