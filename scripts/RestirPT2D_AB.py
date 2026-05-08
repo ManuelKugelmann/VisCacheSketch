@@ -24,6 +24,7 @@ SCENE_FILE = os.environ.get("SCENE_FILE", "CornellBox_1AreaLight.pyscene")
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", "")
 SCENE_NAME = os.path.splitext(os.path.basename(SCENE_FILE))[0]
 OUT_DIR = os.path.join("captures", "restirpt2d_ab", SCENE_NAME)
+AB_BOUNCES = int(os.environ.get("AB_BOUNCES", "3"))   # max surface bounces, default 3 (matches ladder GT)
 
 
 def make_graph(variant: str, name: str):
@@ -54,7 +55,7 @@ def make_graph(variant: str, name: str):
         g.addPass(rtxdi, "RTXDIPass")
         restirpt = createPass(pass_class, {
             "samplesPerPixel":             1,
-            "maxSurfaceBounces":           3,
+            "maxSurfaceBounces":           AB_BOUNCES,
             "useDirectLighting":           True,
             "disableDirectIllumination":   True,    # RTXDI feeds direct
             "pathSamplingMode":            "ReSTIR",
@@ -82,7 +83,7 @@ def make_graph(variant: str, name: str):
     g.addPass(vbuf, "VBufferRT")
     pt = createPass("PathTracer", {
         "samplesPerPixel":   1,
-        "maxSurfaceBounces": 3,
+        "maxSurfaceBounces": AB_BOUNCES,
         "colorFormat":       "LogLuvHDR",
     })
     g.addPass(pt, "PathTracer")
@@ -124,7 +125,7 @@ def render_and_capture(variant: str, tag: str):
     out_path = os.path.join(PROJECT_ROOT or ".", OUT_DIR) if PROJECT_ROOT else OUT_DIR
     os.makedirs(out_path, exist_ok=True)
     m.frameCapture.outputDir    = out_path
-    m.frameCapture.baseFilename = f"{tag}_x{NUM_FRAMES}"
+    m.frameCapture.baseFilename = f"{tag}_b{AB_BOUNCES}_x{NUM_FRAMES}"
     m.frameCapture.capture()
     print(f"[ab] Captured to {out_path}")
 
