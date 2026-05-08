@@ -80,30 +80,32 @@ uint prCellFingerprint(int3 q, uint nb)
 }
 
 /// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
-/// fingerprint field — first writer wins.
+/// fingerprint field — strict first-writer-wins, no rewrites.
 ///
 /// Behavior:
-/// - Empty slot (fingerprint==0): claim it, return true.
-/// - Already claimed by THIS fingerprint: also return true (rewrite OK).
-/// - Claimed by a DIFFERENT fingerprint: return false (collision; caller
-///   should fall back to pixel-keyed reservoir to avoid corruption).
+/// - Empty slot (fingerprint==0): claim it, return true. ONLY the thread
+///   that successfully transitioned the slot from empty wins; subsequent
+///   threads with the same fingerprint see prev==fingerprint and return
+///   false — important to prevent concurrent non-atomic reservoir writes
+///   from tearing the PathReservoir payload (it's ~256 B, no atomic
+///   support).
+/// - Slot already claimed: return false. Caller must NOT write the
+///   reservoir — fall back to pixel-keyed buffer.
 ///
-/// Note: this only synchronizes the fingerprint field. The PathReservoir
-/// payload write that follows is non-atomic — concurrent writers with the
-/// same fingerprint (i.e. same cell) can still produce torn writes if
-/// they race. In practice each frame a cell is hit by at most a few
-/// pixels (geometry-correlated) and last-writer-wins is acceptable.
+/// On the read side, prCellSlotRead handles the across-frame stale-data
+/// case by validating the fingerprint matches the reader's cell.
 bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint)
 {
     uint prev = 0u;
     InterlockedCompareExchange(pool[slotIdx].fingerprint, 0u, fingerprint, prev);
-    if (prev == 0u || prev == fingerprint) return true;
-    return false;
+    return prev == 0u;   // strict first-writer-wins
 }
 
 /// Read a cell-pool slot. Returns false (and zeroed reservoir) if the
 /// slot is empty OR claimed by a different fingerprint (collision).
-bool prCellSlotRead(StructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint expectedFingerprint, out PathReservoir reservoir)
+/// Takes RWStructuredBuffer because that's what callers have (the buffer
+/// is bound as a UAV); reads from RW work fine.
+bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint expectedFingerprint, out PathReservoir reservoir)
 {
     PathReservoirCellSlot s = pool[slotIdx];
     reservoir = s.reservoir;
