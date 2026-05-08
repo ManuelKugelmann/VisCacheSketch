@@ -2064,11 +2064,8 @@ struct PathTracer
                         const VertexData v = gScene.getVertexData(th);
                         const uint stride = kScreenTileDim.x * kScreenTileDim.y;
                         const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
-                        const PathReservoirCellAddr addr = prCellResolveAddr(v.posW, v.faceNormalW, params.sceneRadius, capacity);
-                        if (prCellSlotClaim(pathReservoirCellPool, addr.slot, addr.fingerprint))
-                        {
-                            pathReservoirCellPool[addr.slot].reservoir = path.pathReservoir;
-                        }
+                        prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
+                                               params.sceneRadius, capacity, /*maxLevels=*/1u, path.pathReservoir);
                     }
                 }
             }

@@ -199,3 +199,61 @@ bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx
     reservoir = s.reservoir;
     return s.fingerprint != 0u && s.fingerprint == expectedFingerprint;
 }
+
+// ---------------------------------------------------------------------------
+// Cascade helpers: try level 0 first, descend (coarser cells) on miss.
+// Read side: returns first level whose slot fingerprint matches.
+// Write side: claim at the first level where the slot is empty.
+//
+// Mirrors VisCache's vhfLookup pattern (try level L, descend on cellGen
+// mismatch) but applied to PathReservoir storage. Level-0 writes are the
+// most precise; coarser levels capture pixels whose level-0 cell was
+// already claimed by another writer, giving a fall-back denser-sampling
+// substrate for sparse-cell scenes.
+//
+// maxLevels=1 preserves single-level (current) behavior: bit-identical to
+// the pre-cascade implementation.
+// ---------------------------------------------------------------------------
+
+/// Cascading read. Walks levels 0..maxLevels-1; returns the first level whose
+/// slot's fingerprint matches the reader's expected fingerprint at that level.
+/// Returns false (no level matched) if every level either had an empty slot
+/// or a hash collision.
+bool prCellPoolReadCascade(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint maxLevels, out PathReservoir reservoir)
+{
+    [unroll]
+    for (uint lvl = 0u; lvl < 4u; ++lvl)   // hard cap of 4 levels (covers all sane configs)
+    {
+        if (lvl >= maxLevels) break;
+        PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
+    }
+    reservoir = pool[0].reservoir;   // dummy init for unselected branch (never used by caller)
+    return false;
+}
+
+/// Cascading write. Try-claim at level 0 first; on claim failure (slot
+/// already taken), descend to the next coarser level. The reservoir is
+/// written at the first successful claim. Returns the level claimed
+/// (or maxLevels if all levels had collisions and nothing was written).
+uint prCellPoolWriteCascade(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint maxLevels, PathReservoir reservoir)
+{
+    [unroll]
+    for (uint lvl = 0u; lvl < 4u; ++lvl)
+    {
+        if (lvl >= maxLevels) return lvl;
+        PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        if (prCellSlotClaim(pool, a.slot, a.fingerprint))
+        {
+            pool[a.slot].reservoir = reservoir;
+            return lvl;
+        }
+    }
+    return maxLevels;
+}

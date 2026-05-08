@@ -104,9 +104,9 @@ struct PathReusePass
         {
             const uint stride = kScreenTileDim.x * kScreenTileDim.y;
             const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
-            const PathReservoirCellAddr addr = prCellResolveAddr(centralPrimarySd.posW, centralPrimarySd.faceN, params.sceneRadius, capacity);
             PathReservoir cellRes;
-            if (prCellSlotRead(gPathTracer.pathReservoirCellPool, addr.slot, addr.fingerprint, cellRes))
+            if (prCellPoolReadCascade(gPathTracer.pathReservoirCellPool, centralPrimarySd.posW, centralPrimarySd.faceN,
+                                      params.sceneRadius, capacity, /*maxLevels=*/1u, cellRes))
             {
                 dstReservoir = cellRes;
             }
