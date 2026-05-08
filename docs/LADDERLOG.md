@@ -460,23 +460,34 @@ been deferred since Task #41 — that's the most plausible mechanism by
 which the cell-level reservoir could become the dominant variance-reduction
 layer across all regimes.
 
-**H2dR3dP3d MVP — falsified shortcut, useful negative.** Tried the simplest
-possible H2dR3dP3d implementation: set `enableWSPixelReservoir=True` AND
-`wsCellReservoirMerge=1` simultaneously (the previously-untested third row
-of the temporal-flag matrix), no shader changes. Result: H2dR3dP3d lands
-bit-equivalent to R2dR3dP3d on Cornell_1AL (2.145 vs 2.146) and
-Cornell_3AL (3.226 vs 3.226). No fix to the simple-Cornell loss.
+**H2dR3dP3d's actual purpose (clarified 2026-05-08):** NOT a per-pixel-
+temporal-accumulator that fixes Cornell pick-diversity loss. The real
+role is **graceful fallback for sparse cell coverage**:
+- per-pixel buffer = "my last working shading sample," not a Bitterli
+  reservoir
+- read path: try cell-pool first; if empty / disoccluded / cold, fall
+  back to the per-pixel history slot
+- write path: every successful shade updates the per-pixel slot
 
-Reason: `wsUseCellInRIS=False` (canonical) gates *all reads* of the
-cell-level reservoir off; flipping the cell to Bitterli-merge writes
-without enabling reads just pays extra cycles to write a buffer no one
-reads. R3d is write-only-orphaned in canonical config regardless of
-which write convention it uses (identity-hint vs Bitterli-merge).
+Under-test in the canonical RDI00 config (frame-accumulation x4 with
+post-warmup steady-state) cells are well-covered everywhere, so H2d's
+fallback path is rarely exercised — R3dP3d and H2dR3dP3d look identical.
+The right tests are the cold/sparse regimes: x1 SPP (no warmup), fast
+camera motion, disocclusion edges, glancing-angle pixels. The parallel
+agent's PT-side R3d variant (analogous architecture, no pixel buffer)
+regressed Cornell SPP=1 by +34% — that's the failure H2d is designed to
+prevent.
 
-Implication: real H2dR3dP3d needs new shader code — either pixel-reads-
-cell + per-pixel layer as pick-history-sidekick, or both-reservoirs-
-merged-at-read. Either is a multi-day refactor of `PathTracer.slang`'s
-shading read path. Tracked as the natural RDI01+ implementation target.
+**MVP shortcut tried (eb25b05):** flag combination
+`enableWSPixelReservoir=True + wsCellReservoirMerge=1`. Result:
+H2dR3dP3d = R2dR3dP3d bit-equivalent (Cornell_1AL 2.145 vs 2.146;
+Cornell_3AL 3.226 vs 3.226). Doesn't break out of the per-pixel
+reservoir architecture — both reservoirs run in the canonical
+read path, no fallback semantics. Need real shader-level implementation
+of "pixel reads cell-pool, on miss falls back to per-pixel slot" — small
+plumbing (~1 sample slot per pixel ≈ 16 B; 5-line shading read gate).
+RDI00 now captures x1 alongside x4 to measure the cold-cell stress
+that distinguishes the variants.
 
 ---
 

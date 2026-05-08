@@ -51,7 +51,7 @@ for scene_file in get_scenes(default=["Sponza"]):
 
     common = dict(
         resX=res, resY=res,
-        capture_spps=(4,),
+        capture_spps=(1, 4),                     # x1 stresses cold-cell fallback path; x4 is the canonical
         mogwai_globals=globals(),
     )
 
