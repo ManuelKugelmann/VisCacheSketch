@@ -38,7 +38,13 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
                           spatialNeighborCount=5, spatialReuseRadius=30,
                           candidateSamples=1, useRTXDIDirect=True,
                           useDirectLighting=True, pathSamplingMode="ReSTIR",
-                          disableDirectIllumination=True, fireflyClampK=1e9):
+                          disableDirectIllumination=True, fireflyClampK=1e9,
+                          restirptAddrMode=0):
+    # restirptAddrMode (variant taxonomy, mirror of restir_DI's Rxd/Pyd matrix):
+    #   0 = R2d    — DQLIN baseline, 2D pixel reservoir only
+    #   1 = R2dR3d — 2D + 3D-cell-pool override (8×8 neighbourhood)
+    #   2 = R3d    — pure 3D reservoir at pixel footprint, no pixel buffer
+    #   3 = H2dR3d — slim 2D=history, 3D=main reservoir (TODO)
     # pathSamplingMode (string): "ReSTIR" (default), "PathReuse" (Bekaert),
     # or "PathTracing" — use "PathTracing" to bypass ReSTIR resampling and
     # validate the basic PT setup independently.
@@ -121,6 +127,7 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         "pathSamplingMode":        pathSamplingMode,
         "disableDirectIllumination": disableDirectIllumination,
         "fireflyClampK":           fireflyClampK,
+        "restirptAddrMode":        restirptAddrMode,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 

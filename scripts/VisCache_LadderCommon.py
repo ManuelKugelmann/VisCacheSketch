@@ -4183,6 +4183,68 @@ run_baseline_restir_3d = run_baseline_ReSTIRDI_R2dR3dP3d
 
 
 
+def run_baseline_ReSTIRPT_variant(step_name, frame_configs, scene_file,
+                                  restirptAddrMode, variant_label,
+                                  maxBounces=3, resX=kResX, resY=kResY,
+                                  mogwai_globals=None, capture_spps=(1, 4),
+                                  gt_spp=4096, variant_tag=None,
+                                  fireflyClampK=1e9,
+                                  pathSamplingMode="ReSTIR"):
+    """ReSTIRPT zoo variant baseline. restirptAddrMode dispatches:
+       0 = R2d    (DQLIN baseline)
+       1 = R2dR3d (2D + 3D-neighbourhood)
+       2 = R3d    (pure 3D, pixel footprint)
+       3 = H2dR3d (TODO; raises if invoked)
+    Tag in CSV: f'restirpt_{variant_label}_b{maxBounces}'."""
+    if render_graph_ReSTIRPT is None:
+        print(f"[{step_name}] ReSTIRPT graph not importable — skipping {variant_label}")
+        return
+    if restirptAddrMode == 3:
+        print(f"[{step_name}] H2dR3d (mode=3) not implemented — skipping")
+        return
+    def _build(actual_spp):
+        return render_graph_ReSTIRPT(
+            viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
+            useRTXDIDirect=True, useDirectLighting=True,
+            pathSamplingMode=pathSamplingMode,
+            disableDirectIllumination=True,
+            fireflyClampK=fireflyClampK,
+            restirptAddrMode=restirptAddrMode,
+        )
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(
+        captureDir, gt_spp, f"{resX}x{resY}",
+        gt_variant_tag=f"vanilla_b{maxBounces}",
+    )
+    tag = variant_tag or f"restirpt_{variant_label}_b{maxBounces}"
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, tag,
+        _build, "AccumulatePass.output",
+        capture_spps=capture_spps, maxBounces=maxBounces,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
+    )
+
+
+def run_baseline_ReSTIRPT_R2d(step_name, frame_configs, scene_file, **kwargs):
+    """ReSTIRPT R2d (DQLIN baseline, 2D pixel reservoir only)."""
+    return run_baseline_ReSTIRPT_variant(step_name, frame_configs, scene_file,
+                                         restirptAddrMode=0, variant_label="R2d", **kwargs)
+
+
+def run_baseline_ReSTIRPT_R2dR3d(step_name, frame_configs, scene_file, **kwargs):
+    """ReSTIRPT R2dR3d (2D + 3D-neighbourhood override)."""
+    return run_baseline_ReSTIRPT_variant(step_name, frame_configs, scene_file,
+                                         restirptAddrMode=1, variant_label="R2dR3d", **kwargs)
+
+
+def run_baseline_ReSTIRPT_R3d(step_name, frame_configs, scene_file, **kwargs):
+    """ReSTIRPT R3d (pure 3D, no pixel buffer)."""
+    return run_baseline_ReSTIRPT_variant(step_name, frame_configs, scene_file,
+                                         restirptAddrMode=2, variant_label="R3d", **kwargs)
+
+
 def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                     maxBounces=3, resX=kResX, resY=kResY,
                                     mogwai_globals=None, capture_spps=(1, 4),

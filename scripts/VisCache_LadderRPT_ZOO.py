@@ -1,0 +1,80 @@
+"""
+VisCache_LadderRPT_ZOO.py — ReSTIRPT variant zoo comparison.
+
+Per user 2026-05-08: 'all variants are Target ... will test them and score
+them against each other'. The ReSTIRPT variant taxonomy mirrors the
+restir_DI Rxd/Pyd matrix the parallel agent set up:
+
+  R2d    — DQLIN baseline (2D pixel reservoir only)
+  R2dR3d — 2D + 3D cell-pool override (8×8 neighbourhood)
+  R3d    — pure 3D reservoir at pixel footprint, no pixel buffer
+  H2dR3d — slim 2D = history (TODO; raises NotImplementedError)
+
+Runs each variant at b=3, SPP=1/4/16 against bounce-matched
+`vanilla_b3_x4096` GT (read from step 00). Plates + plots via standard
+ladder helpers (finalize_baseline + make_baseline_comparison_plate +
+make_baseline_bar_plot).
+
+GT lives in step 00 (`captures/ladder/00/<scene>/`); RPT_ZOO only renders
+the variant-sweep restirpt outputs. Run step 00 first.
+
+Usage:
+    runtime/pythondist/python.exe scripts/run_ladder.py -s 00         # GT first
+    runtime/pythondist/python.exe scripts/run_ladder.py -s RPT_ZOO    # variant zoo
+
+Env vars:
+    RES         : resolution (default 512)
+    RECLEAN=1   : wipe captures/ladder/RPT_ZOO/<scene> before running
+    SPPS        : space-separated SPP list (default "1 4 16")
+"""
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from VisCache_LadderCommon import (
+    run_baseline_ReSTIRPT_R2d,
+    run_baseline_ReSTIRPT_R2dR3d,
+    run_baseline_ReSTIRPT_R3d,
+    get_scenes, finalize_baseline,
+    make_baseline_comparison_plate, make_baseline_bar_plot,
+)
+
+res     = int(os.environ.get("RES", "512"))
+RECLEAN = os.environ.get("RECLEAN", "0") not in ("0", "", "false", "False")
+SPPS    = tuple(int(x) for x in os.environ.get("SPPS", "1 4 16").split())
+BOUNCE  = 3
+STEP    = "RPT_ZOO"
+
+VARIANTS = (
+    (run_baseline_ReSTIRPT_R2d,    "R2d"),
+    (run_baseline_ReSTIRPT_R2dR3d, "R2dR3d"),
+    (run_baseline_ReSTIRPT_R3d,    "R3d"),
+)
+
+for scene_file in get_scenes():
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    baseline_dir = f"captures/ladder/{STEP}/{scene_name}"
+    if RECLEAN and os.path.exists(baseline_dir):
+        import shutil
+        shutil.rmtree(baseline_dir, ignore_errors=True)
+
+    for runner, label in VARIANTS:
+        runner(
+            step_name=STEP,
+            frame_configs=[(0, 0, 1)],
+            scene_file=scene_file,
+            resX=res, resY=res,
+            maxBounces=BOUNCE,
+            capture_spps=SPPS,
+            mogwai_globals=globals(),
+        )
+
+    plate_variants = tuple(f"restirpt_{label}_b{BOUNCE}" for _, label in VARIANTS)
+    for spp in SPPS:
+        make_baseline_comparison_plate(
+            STEP, scene_file, resX=res, resY=res, spp=spp,
+            variants=plate_variants,
+        )
+
+finalize_baseline(STEP)
+make_baseline_bar_plot(STEP)
+
+_HEADLESS_SCRIPT_DONE = True
