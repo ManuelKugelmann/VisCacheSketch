@@ -134,20 +134,38 @@ uint3 prPcg3d(uint3 v)
 ///
 /// On scenes where camera params are zero/unset (degenerate), falls through
 /// to level 0 — the cascade walk fills any gap on collision.
-static const float kFootprintCellsPerPx = 16.f;
+/// K = kFootprintCellsPerPx — pixel² footprint area per cell.
+/// Per user 2026-05-08: 0.5 to 1 pixel² gives one cell per pixel reliably.
+static const float kFootprintCellsPerPx = 0.5f;
 
-uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint frameDimY, float frameHeight, float focalLength, uint maxLevels)
+/// Level rounding policy.
+///   0 = round nearest (default)
+///   1 = next coarser (ceil)   — preferred for tile-style pools
+///   2 = next finer   (floor)  — preferred for pixel-target cells
+static const uint kPRFootprintRound_Nearest = 0u;
+static const uint kPRFootprintRound_Coarser = 1u;
+static const uint kPRFootprintRound_Finer   = 2u;
+
+uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint frameDimY, float frameHeight, float focalLength, uint maxLevels, uint roundMode)
 {
     if (focalLength <= 0.f || frameHeight <= 0.f || frameDimY == 0u) return 0u;
     float dist = distance(posW, cameraPosW);
     float worldPxSize = dist * (frameHeight / focalLength) / float(frameDimY);
-    // sqrt(K) — K is footprint AREA in pixel² (matches VisCache vhfLevelForFootprint
-    // semantics); cell SIDE-length is sqrt(K) × pixel size. With K=16 that's a 4-px
-    // cell side. Using K instead of sqrt(K) gave 16-px cells = 4× too coarse.
+    // sqrt(K): K is area in pixel², cell SIDE is sqrt(K) × pixel-size.
     float target = sqrt(kFootprintCellsPerPx) * worldPxSize;
-    float baseCell = max(sceneRadius * 0.01f, 1e-3f);
+    float baseCell = prBaseCell(sceneRadius);
     float lvlF = log2(max(target / baseCell, 1.f));
-    return uint(clamp(lvlF, 0.f, float(int(maxLevels) - 1)));
+    int lvl;
+    if (roundMode == kPRFootprintRound_Coarser)    lvl = int(ceil(lvlF));
+    else if (roundMode == kPRFootprintRound_Finer) lvl = int(floor(lvlF));
+    else                                            lvl = int(round(lvlF));
+    return uint(clamp(lvl, 0, int(maxLevels) - 1));
+}
+
+// Back-compat: round to next-finer (pixel-target default for restirpt).
+uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint frameDimY, float frameHeight, float focalLength, uint maxLevels)
+{
+    return prFootprintLevel(posW, cameraPosW, sceneRadius, frameDimY, frameHeight, focalLength, maxLevels, kPRFootprintRound_Finer);
 }
 
 // Back-compat: distance-based proxy for callers that don't have camera FOV.
