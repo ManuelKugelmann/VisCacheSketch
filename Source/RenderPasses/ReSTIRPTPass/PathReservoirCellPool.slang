@@ -266,15 +266,29 @@ bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx
 bool prCellPoolReadCascade(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels, out PathReservoir reservoir)
+    uint startLevel, uint maxLevels,
+    uint jitterSeed, float jitterPos, uint jitterLevel,
+    out PathReservoir reservoir)
 {
     for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
     {
-        PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
+            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
+            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
     }
     reservoir = pool[0].reservoir;   // dummy init for unselected branch (never used by caller)
     return false;
+}
+
+// Back-compat: no jitter, startLevel=0.
+bool prCellPoolReadCascade(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint startLevel, uint maxLevels, out PathReservoir reservoir)
+{
+    return prCellPoolReadCascade(pool, posW, faceN, sceneRadius, capacity,
+        startLevel, maxLevels, 0u, 0.f, 0u, reservoir);
 }
 
 // Back-compat wrapper: startLevel=0.
@@ -293,11 +307,15 @@ bool prCellPoolReadCascade(
 uint prCellPoolWriteCascade(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels, PathReservoir reservoir)
+    uint startLevel, uint maxLevels,
+    uint jitterSeed, float jitterPos, uint jitterLevel,
+    PathReservoir reservoir)
 {
     for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
     {
-        PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
+            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
+            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotClaim(pool, a.slot, a.fingerprint))
         {
             pool[a.slot].reservoir = reservoir;
@@ -305,6 +323,16 @@ uint prCellPoolWriteCascade(
         }
     }
     return maxLevels;
+}
+
+// Back-compat: no jitter, startLevel=0.
+uint prCellPoolWriteCascade(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint startLevel, uint maxLevels, PathReservoir reservoir)
+{
+    return prCellPoolWriteCascade(pool, posW, faceN, sceneRadius, capacity,
+        startLevel, maxLevels, 0u, 0.f, 0u, reservoir);
 }
 
 // Back-compat wrapper: startLevel=0.

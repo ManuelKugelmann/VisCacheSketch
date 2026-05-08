@@ -2064,8 +2064,14 @@ struct PathTracer
                         const VertexData v = gScene.getVertexData(th);
                         const uint stride = kScreenTileDim.x * kScreenTileDim.y;
                         const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
+                        // Per-frame pos jitter: same offset for all writers in a frame, varies cross-frame.
+                        // AccumulatePass averages across frames → smooths cell-boundary artifacts.
                         prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
-                                               params.sceneRadius, capacity, kPRCellPoolLevels, path.pathReservoir);
+                                               params.sceneRadius, capacity,
+                                               /*startLevel*/0u, kPRCellPoolLevels,
+                                               /*jitterSeed*/params.frameCount,
+                                               /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                               path.pathReservoir);
                     }
                 }
             }
