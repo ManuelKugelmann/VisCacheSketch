@@ -2064,15 +2064,18 @@ struct PathTracer
                         const VertexData v = gScene.getVertexData(th);
                         const uint stride = kScreenTileDim.x * kScreenTileDim.y;
                         const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
-                        // Footprint-derived entry level: distant pixels start cascade at coarser cells.
-                        const uint entryLvl = prFootprintLevel(v.posW, gScene.camera.data.posW, params.sceneRadius, kPRCellPoolLevels);
-                        // Per-frame pos jitter: same offset for all writers in a frame, varies cross-frame.
-                        // AccumulatePass averages across frames → smooths cell-boundary artifacts.
+                        // Analytical FOV-aware footprint level (matches VisCache vhfLevelForFootprint pattern).
+                        const uint entryLvl = prFootprintLevel(v.posW, gScene.camera.data.posW, params.sceneRadius,
+                                                               params.frameDim.y, gScene.camera.data.frameHeight,
+                                                               gScene.camera.data.focalLength, kPRCellPoolLevels);
+                        // Per-pixel-per-frame pos jitter: writer/reader at SAME pixel agree (same seed)
+                        // so pools stay valid; different pixels disperse to nearby cells, resolving
+                        // cell-boundary quantization to noise that AccumulatePass averages out.
+                        const uint jSeed = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
                         prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
                                                params.sceneRadius, capacity,
                                                entryLvl, kPRCellPoolLevels,
-                                               /*jitterSeed*/params.frameCount,
-                                               /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                               jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
                                                path.pathReservoir);
                     }
                 }

@@ -115,18 +115,40 @@ uint3 prPcg3d(uint3 v)
     return v;
 }
 
-/// Footprint-derived entry level: pixels far from the camera (relative to
-/// scene radius) use coarser cells. Distance-based proxy for VisCache's
-/// vhfLevelForFootprint that doesn't need the gPosACoarse/gPosAFine ladder.
+/// Footprint-derived entry level: pick the cascade level whose cell projects
+/// to ~kFootprintCellsPerPx screen pixels at the primary hit's depth.
 ///
-/// Heuristic: distance == sceneRadius → level 0 (base cell). Each octave
-/// of distance beyond sceneRadius bumps level by 1. Pixels closer than
-/// sceneRadius all stay at level 0 (the cascade descends naturally on
-/// claim-collision so close-pixel cluster sharing still works).
+/// Analytical projection (matches VisCache's vhfLevelForFootprint pattern):
+///   worldPxSize_at_d = d * (frameHeight / focalLength) / screenH_pixels
+///   target_cell      = K * worldPxSize_at_d
+///   level            = ceil(log2(target_cell / baseCell))
 ///
-/// Compared to a pixel-perfect FOV+screenH-aware computation: simpler,
-/// no extra binding required, and the cascade walk fills any gap when
-/// the heuristic's level differs from the geometrically-right one.
+/// where K = kFootprintCellsPerPx (default 16, matches VisCache's typical
+/// gWSCellPoolFootprintPx). baseCell = sceneRadius * 0.01 (level-0 cell).
+///
+/// d = distance from camera to primary-hit posW.
+/// frameHeight / focalLength = vertical sensor extent / lens length, which
+/// equals 2·tan(FOV_v/2). gScene.camera.data exposes both.
+///
+/// On scenes where camera params are zero/unset (degenerate), falls through
+/// to level 0 — the cascade walk fills any gap on collision.
+static const float kFootprintCellsPerPx = 16.f;
+
+uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint frameDimY, float frameHeight, float focalLength, uint maxLevels)
+{
+    if (focalLength <= 0.f || frameHeight <= 0.f || frameDimY == 0u) return 0u;
+    float dist = distance(posW, cameraPosW);
+    float worldPxSize = dist * (frameHeight / focalLength) / float(frameDimY);
+    // sqrt(K) — K is footprint AREA in pixel² (matches VisCache vhfLevelForFootprint
+    // semantics); cell SIDE-length is sqrt(K) × pixel size. With K=16 that's a 4-px
+    // cell side. Using K instead of sqrt(K) gave 16-px cells = 4× too coarse.
+    float target = sqrt(kFootprintCellsPerPx) * worldPxSize;
+    float baseCell = max(sceneRadius * 0.01f, 1e-3f);
+    float lvlF = log2(max(target / baseCell, 1.f));
+    return uint(clamp(lvlF, 0.f, float(int(maxLevels) - 1)));
+}
+
+// Back-compat: distance-based proxy for callers that don't have camera FOV.
 uint prFootprintLevel(float3 posW, float3 cameraPosW, float sceneRadius, uint maxLevels)
 {
     float dist = distance(posW, cameraPosW);
@@ -360,16 +382,31 @@ uint prCellPoolWriteCascade(
 bool prCellPoolReadCascadeDescending(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint maxLevels, out PathReservoir reservoir)
+    uint startLevel, uint maxLevels,
+    uint jitterSeed, float jitterPos, uint jitterLevel,
+    out PathReservoir reservoir)
 {
-    for (uint i = 0u; i < maxLevels; ++i)
+    // Walk levels (maxLevels-1, maxLevels-2, ..., startLevel) — coarse → fine.
+    for (uint i = 0u; i + startLevel < maxLevels; ++i)
     {
-        uint lvl = (maxLevels - 1u) - i;     // N-1, N-2, ..., 0
-        PathReservoirCellAddr a = prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        uint lvl = (maxLevels - 1u) - i;
+        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
+            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
+            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
         if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
     }
     reservoir = pool[0].reservoir;
     return false;
+}
+
+// Back-compat: no jitter, startLevel=0.
+bool prCellPoolReadCascadeDescending(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint maxLevels, out PathReservoir reservoir)
+{
+    return prCellPoolReadCascadeDescending(pool, posW, faceN, sceneRadius, capacity,
+        0u, maxLevels, 0u, 0.f, 0u, reservoir);
 }
 
 // ---------------------------------------------------------------------------

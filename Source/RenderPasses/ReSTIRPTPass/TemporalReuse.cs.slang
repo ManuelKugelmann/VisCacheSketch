@@ -105,10 +105,13 @@ struct PathReusePass
             const uint stride = kScreenTileDim.x * kScreenTileDim.y;
             const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
             PathReservoir cellRes;
-            const uint entryLvl = prFootprintLevel(centralPrimarySd.posW, gScene.camera.data.posW, params.sceneRadius, kPRCellPoolLevels);
+            const uint entryLvl = prFootprintLevel(centralPrimarySd.posW, gScene.camera.data.posW, params.sceneRadius,
+                                                   params.frameDim.y, gScene.camera.data.frameHeight,
+                                                   gScene.camera.data.focalLength, kPRCellPoolLevels);
+            const uint jSeed = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
             if (prCellPoolReadCascade(gPathTracer.pathReservoirCellPool, centralPrimarySd.posW, centralPrimarySd.faceN,
                                       params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                      /*jitterSeed*/params.frameCount, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
+                                      jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
             {
                 dstReservoir = cellRes;
             }
