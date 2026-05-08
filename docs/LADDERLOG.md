@@ -556,6 +556,42 @@ parallel-agent PT side can also use (0) directly to retire its
 cold-cell regression — single Bayer-stage gate vs porting an
 RTXDI-style pre-pass plugin.
 
+**Fresh-vs-pool Pareto sweep at K_total=24 (RDI00 ablation 2026-05-08).**
+Sweep `freshK` ∈ {0, 1, 2, 4, 8, 16, 24} on R2dR3dP3d base, Cornell_1AL +
+Sponza × x4. Quality-only (gpu_ms is too noisy for cost claims).
+
+| freshK | Cornell_1AL err | Sponza err |
+|---:|---:|---:|
+| 0 (preOnly, RTXDI-faithful) | **4.43** | 7.03 |
+| 1  | 4.38 | 6.96 |
+| 2  | 4.31 | 7.17 |
+| 4  | 4.07 | 7.12 |
+| 8  (current default's ratio) | 3.38 | 6.87 |
+| 16 | 2.06 | 6.24 |
+| **24** (noPre, all-fresh)    | **1.42** | **6.14** |
+| Reference: vanilla x4        | 1.06 | 5.32 |
+| Reference: rtxdi (production) | 2.18 | 6.62 |
+| Reference: current default K=48 (32+16) | 2.15 | 6.13 |
+| **R3dP3d_noPreK24 (24 fresh, R3d-only, no pool)** | **1.40** | **5.68** |
+
+Findings:
+
+1. **Fresh samples monotonically beat pool samples on Cornell_1AL** —
+   every step from F00→F24 improves err (4.43 → 1.42, 3.2× lift) at
+   the same K_total. RTXDI-faithful preOnly is the *worst* lane;
+   single-area-light Cornell gives no useful diversity for shading-
+   agnostic pool fill.
+2. **Sponza is much less ratio-sensitive** (F00=7.03, F24=6.14, ~14 %
+   range). With many emissives, pool diversification approaches "good
+   enough" but pure-fresh still wins narrowly.
+3. **Current default K=48 is empirically suboptimal.** On Cornell_1AL,
+   K=48 (32+16) gives 2.15; K=24 (24+0) gives 1.42 — half the samples,
+   30 % better quality. The pool samples in the current default are
+   *actively diluting* the LightBVH fresh samples.
+4. **R3dP3d_noPreK24 (24 fresh + 0 pool, no per-pixel layer, R3d-only)
+   is the best variant on both scenes** — Cornell 1.40 (only 0.34 pp
+   from vanilla x4), Sponza 5.68 (0.36 pp from vanilla x4).
+
 **Pre-pass redundancy ablation — pre-pass actively hurts quality (RDI00 ablation 2026-05-08).**
 Validated by running `R2dR3dP3d_noPre` and `R3dP3d_noPre` (same canonicals
 with `wsCellPoolPrePass=False`):

@@ -39,7 +39,12 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_R3dP3d,
     run_baseline_ReSTIRDI_H2dR3dP3d,
     run_baseline_ReSTIRDI_R2dR3dP3d_noPre,
+    run_baseline_ReSTIRDI_R2dR3dP3d_preOnly,
+    run_baseline_ReSTIRDI_R2dR3dP3d_hybrid,
     run_baseline_ReSTIRDI_R3dP3d_noPre,
+    # preOnlyLightBVH ruled out — LightBVH samples are pixel-conditional and
+    # can't be shared across pool readers; pool/presampling pattern only makes
+    # sense with shading-agnostic samplers (PdfMipmap).
     finalize_step, kResX, kResY,
 )
 
@@ -74,13 +79,22 @@ for scene_file in get_scenes(default=["Sponza"]):
     run_baseline_ReSTIRDI_H2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d    (STEP, [(0, 0, 1)], scene_file, **common)
 
-    # === Pre-pass redundancy ablation ===
-    # Test whether implicit Bayer-subframe-0 warmup (free, default with
-    # bayerN > 1) is sufficient pre-fill on its own. If these match the
-    # canonical R2dR3dP3d / R3dP3d numbers within sampling noise, the
-    # explicit PathTracerPrePass dispatch is retirable from canonical.
-    run_baseline_ReSTIRDI_R2dR3dP3d_noPre(STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R3dP3d_noPre   (STEP, [(0, 0, 1)], scene_file, **common)
+    # === Fresh-vs-pool Pareto sweep, K_total=24 normalized ===
+    # All variants run K_total = 24 (= RTXDI localLightCandidateCount) for
+    # apples-to-apples architectural comparison. Sweep fresh-K from 0
+    # (RTXDI-faithful pure pool) to 24 (no pool, pure main-pass LightBVH):
+    #   F00P24 = preOnly (RTXDI-faithful)
+    #   F01P23..F02P22 = pool-heavy hybrids
+    #   F04P20..F08P16 = mid hybrids (F08P16 ≈ current default's split)
+    #   F16P08         = fresh-heavy hybrid
+    #   F24P00 = noPre (pure main-pass LightBVH)
+    # Pre-pass is auto-enabled for poolK > 0; auto-disabled for poolK = 0.
+    for freshK in (0, 1, 2, 4, 8, 16, 24):
+        run_baseline_ReSTIRDI_R2dR3dP3d_hybrid(STEP, [(0, 0, 1)], scene_file,
+                                               freshK=freshK, **common)
+    # R3dP3d corner samples (pure 3D, no per-pixel layer) — kept narrow
+    # because R3d-vs-R2d-pixel-layer is the H2d ladder's job.
+    run_baseline_ReSTIRDI_R3dP3d_noPre(STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===
 # carried_winners=[] because RDI00 is not setting up a hand-off to RDI01
