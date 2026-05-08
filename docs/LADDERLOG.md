@@ -515,6 +515,27 @@ proper is therefore deferred to whenever dynamic scenes enter the
 ladder. The current matrix variant slot remains a no-op intermediate
 between R2dR3dP3d and R3dP3d for completeness.
 
+**Pre-pass attribution and alternatives (correction):** The pre-pass
+pattern is from RTXDI (their `Presampling` pass that fills the
+screen-tile pool). Our `PathTracerPrePass + wsCellPoolFillOnly=true`
+is the world-cell-pool analog of the same idea, not an original
+contribution. There are three pre-fill mechanisms on a spectrum:
+
+1. **RTXDI separate pre-pass** (our current DI canonical): extra
+   render-pass dispatch, full-screen of cell-fills before any read.
+2. **Bayer-subframe warmup**: same pass, gate first K of N² Bayer
+   slots write-only. Already plumbed in the cache cbuffer
+   (`warmupSlotsFirst`, `warmupSlotsRun`; `VisCache.slang:839–849`)
+   but defaults off. Time-multiplexes warmup with shading.
+3. **Frame-level warmup**: first M frames write-only, then steady-
+   state. Static-camera only.
+
+The Bayer-subframe approach (2) is meaningfully simpler than (1) —
+single shader gate change, no second render-pass instance. Worth
+testing as an alternative pre-fill in a later RDI step (or porting to
+the PT side as the simplest path to retire its cold-cell regression
+without adding pipeline plugins).
+
 ---
 
 ## Steps 19–25 — recorded null result
