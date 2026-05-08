@@ -515,26 +515,46 @@ proper is therefore deferred to whenever dynamic scenes enter the
 ladder. The current matrix variant slot remains a no-op intermediate
 between R2dR3dP3d and R3dP3d for completeness.
 
-**Pre-pass attribution and alternatives (correction):** The pre-pass
+**Pre-pass attribution and alternatives (correction).** The pre-pass
 pattern is from RTXDI (their `Presampling` pass that fills the
 screen-tile pool). Our `PathTracerPrePass + wsCellPoolFillOnly=true`
 is the world-cell-pool analog of the same idea, not an original
-contribution. There are three pre-fill mechanisms on a spectrum:
+contribution. There are *four* pre-fill mechanisms on a spectrum,
+ordered by cost:
 
-1. **RTXDI separate pre-pass** (our current DI canonical): extra
-   render-pass dispatch, full-screen of cell-fills before any read.
-2. **Bayer-subframe warmup**: same pass, gate first K of N² Bayer
-   slots write-only. Already plumbed in the cache cbuffer
-   (`warmupSlotsFirst`, `warmupSlotsRun`; `VisCache.slang:839–849`)
-   but defaults off. Time-multiplexes warmup with shading.
-3. **Frame-level warmup**: first M frames write-only, then steady-
-   state. Static-camera only.
+0. **Implicit Bayer-subframe-0 warmup** (free, falls out of `bayerN > 1`).
+   Subframe 0 of every Bayer cycle lands on a cold-or-stale cache, so
+   it traces ~100% of its pixels explicitly (no cache-hit gate
+   possible) and writes those samples into the cell-pool/cell-
+   reservoir. Subframes 1..N²−1 read the warmed cells and trace
+   less. Cost is `~110% / N²` rays per subframe-0 (where the 10% is
+   subframe-1+ contention), which is what "rays_traced ~ 100%" rows
+   in the diagnostic plates measure.
+1. **Explicit Bayer-warmup gating** (`warmupSlotsFirst`,
+   `warmupSlotsRun`; `VisCache.slang:839–849`). Defaults off. Forces
+   *more* subframes write-only on top of (0)'s implicit warmup —
+   useful only when (0) alone isn't enough (deep cascades, fast
+   camera, large new-region disocclusion).
+2. **RTXDI separate pre-pass** (our current DI canonical). Extra
+   render-pass dispatch that does cell-fill on a full-screen render
+   *before* the main pass reads any cells. Worst-case-frame cost:
+   2× pipeline state.
+3. **Frame-level warmup** (first M frames write-only, then steady).
+   Static-camera only.
 
-The Bayer-subframe approach (2) is meaningfully simpler than (1) —
-single shader gate change, no second render-pass instance. Worth
-testing as an alternative pre-fill in a later RDI step (or porting to
-the PT side as the simplest path to retire its cold-cell regression
-without adding pipeline plugins).
+(0) is the default *because* Bayer-staging is on; the cache is
+*organically* warmed by the natural subframe ordering. (1) (2) (3)
+all add to (0).
+
+**Redundancy question for RDI01+:** with `bayerN=4` (= 16 subframes/
+cycle) the implicit subframe-0 warmup is doing real work. Is the
+separate pre-pass (2) still necessary in our canonical? Possible
+ablation: drop the pre-pass while keeping Bayer 4×4 and re-measure.
+If the numbers don't move, we can retire the extra render-pass
+dispatch from the canonical config and simplify the pipeline. The
+parallel-agent PT side can also use (0) directly to retire its
+cold-cell regression — single Bayer-stage gate vs porting an
+RTXDI-style pre-pass plugin.
 
 ---
 
