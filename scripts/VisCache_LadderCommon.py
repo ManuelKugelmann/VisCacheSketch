@@ -3974,13 +3974,13 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          tag_prefix, addr_mode_kwargs,
                          maxBounces=0, resX=kResX, resY=kResY,
                          mogwai_globals=None, capture_spps=(1, 4),
-                         wsInitialCandidates=32, wsMCap=5.0,    # K_pre=32 + Conv B reader-pdf canonical 2026-05-05. Trade: 2× pre-pass eval reduction for ~+0.1-0.2pp quality (vs K_pre=64). Still BETTER than prior canonical (Conv A + K=64) on Cornell_3AL_x4 (3.55 vs 3.61) and BistroExt_x4 (10.88 vs 11.69) — Conv B's gains outweigh K_pre's loss. Pre-pass cost-optimization per user "slim down prepass samples, keep fat prepass plumbing".
+                         wsInitialCandidates=16, wsMCap=5.0,    # New canonical 2026-05-08: K=16 main-pass-fresh-LightBVH (was 32). Combined with wsCellPoolDrawK=8 below, gives K_total=24 = RTXDI localLightCandidateCount parity. The K=48 prior default (32+16) was empirically over-spec — see RDI00 fresh-vs-pool sweep (commit 6659d0e): half the K, uniformly equal-or-better quality on every scene in the matrix.
                          wsVisInPHat=0,
                          wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
                          wsRetraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
                          extraVCProps=None,                              # additional VisCache props merged on top of the canonical recipe (used by R2dP2d/R2dP3d/R3dP3d to override defaults like wsCellReservoirFootprintPx=0).
-                         wsCellPoolPrePass=True,                         # default ON: full-PT pre-pass before main pass. Set False to ablation-test if implicit Bayer-subframe-0 warmup is sufficient.
-                         wsCellPoolDrawK=16,                             # K candidates drawn from cell-pool per pixel in main pass. Default 16; set to 24 for RTXDI-faithful pure-pool variant.
+                         wsCellPoolPrePass=True,                         # default ON: pre-pass before main pass populates the cell-pool. Set False to ablation-test reliance on implicit Bayer-subframe-0 warmup.
+                         wsCellPoolDrawK=8,                              # New canonical 2026-05-08: K=8 pool-draws (was 16). 2:1 fresh:pool ratio preserved at K_total=24 = RTXDI parity. Sweep shows F16P08 wins production scenes (Bistro: 7.70 / 9.41 vs F24P00 8.35 / 10.33), tied on simple scenes.
                          prePassEmissiveSampler="PdfMipmap",             # pre-pass emissive sampler. PdfMipmap = RTXDI-style hierarchical 2D pdf (shading-agnostic). LightBVH = shading-conditional via per-pixel BSDF guidance.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
