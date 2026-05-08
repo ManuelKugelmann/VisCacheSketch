@@ -574,29 +574,47 @@ F16 wins. Crossover roughly at log(emissive count): few-lights have no
 diversity for shading-agnostic pool fill; many-lights amortize the pool
 diversification benefit.
 
-**Cumulative err across 7 scenes (corrected 2026-05-08 — prior had
-arithmetic error):**
+**Cumulative err across 7 scenes (corrected 2026-05-08, fully audited
+2026-05-09):**
 
 | Variant | Cumulative err | Per-scene wins |
 |---|---:|---|
-| **K=48** (current default, 32+16) | **31.350** | Cornell_32PL, Sponza, BistroInt, BistroExt |
-| F16P08 (K=24, 16+8)             | 31.680 (+0.33) | Cornell_3AL |
-| F24P00 (K=24, 24+0)             | 32.473 (+1.12) | Cornell_1AL |
+| **R3dP3d_noPreK24** (pure-3D, K=24 fresh-only, no pool, no per-pixel) | **30.538** | Cornell_1AL/3AL/32PL, Sponza |
+| **K=48** (R2dR3dP3d default, 32+16 hybrid) | 31.350 (+0.81) | BistroInt, BistroExt |
+| F16P08 (R2dR3dP3d, 16+8 hybrid)            | 31.680 (+1.14) | Cornell_3AL (within R2dR3dP3d-family) |
+| F24P00 (R2dR3dP3d, 24+0 hybrid)            | 32.473 (+1.94) | Cornell_1AL (within R2dR3dP3d-family) |
 
-**K=48 has the lowest cumulative err.** Wins on the 4 production-scale
-scenes (Cornell_32PL + Sponza + Bistros). F16P08's wins on simple
-Cornell don't outweigh its losses on Bistro Int+Ext (+0.07 to
-+0.23pp). F24P00 wins Cornell_1AL by 0.73pp but pays the most on
-Bistros (+0.72 to +1.15pp).
+**R3dP3d_noPreK24 is cumulative-best across the matrix.** Wins on
+4 of 6 cache-relevant scenes (Cornell_1AL/3AL/32PL + Sponza) by
+margins of −0.03 to −0.75pp; loses on BistroInt + BistroExt by
++0.33 / +0.28pp. Net cumulative −0.81pp lead. Also wins under
+production-weighting (Bistros doubled: 47.96 vs K=48 48.16; still
+ahead).
 
-**RECANTED: previous recommendation to switch the canonical default
-to F16P08 was based on an arithmetic error** (35.18 vs the actual
-31.35 for K=48). Harness default reverted to K=48 (commit following
-this correction). Per-scene preferences remain: F24 best on Cornell_1AL
-specifically, but no K=24 variant dominates the matrix cumulatively.
-K=48 is the empirical Pareto winner for the multi-scene production
-canonical. The §13 paper's existing K=48 numbers stand — no §13
-refresh needed.
+**Architecturally R3dP3d_noPreK24 is a different family from the
+R2dR3dP3d-hybrid variants:** drops the per-pixel reservoir entirely,
+no pre-pass, no pool draws — pure cell-level temporal accumulation
+fed by 24 fresh LightBVH samples per pixel per frame. The earlier
+R2dR3dP3d-internal F-sweep correctly identified K=48 as the best
+*hybrid* canonical, but missed that the pure-3D family beats all
+hybrids cumulatively.
+
+**K=48 has the lowest cumulative err among R2dR3dP3d-family hybrids.**
+Wins on Cornell_32PL + Sponza + Bistros within that family. F16P08's
+wins on simple Cornell don't outweigh its losses on Bistro Int+Ext
+within R2dR3dP3d-family.
+
+**RECANTED ×2: F16P08-promotion was based on arithmetic error (35.18
+vs 31.35 for K=48). Harness default reverted to K=48. *Then a third
+audit (2026-05-09) found R3dP3d_noPreK24 = 30.54, beating K=48 by
+0.81pp cumulative.*** R3dP3d_noPreK24 is a different architectural
+family (pure-3D, no per-pixel reservoir, no pool, no pre-pass).
+Within hybrid-family (R2dR3dP3d), K=48 is best. Across families,
+R3dP3d_noPreK24 wins. The §13 paper's K=48 numbers stand as the
+hybrid-family-best canonical, but the cumulative-best is in the
+pure-3D family — a separate architectural choice with its own
+caveats (per-pixel pick collapse on coarse cells, dynamic-scene
+behaviour untested).
 
 **What the sweep teaches that survives the recant:**
 1. Pool-only (preOnly, F00P24) is the WORST lane on every non-trivial
