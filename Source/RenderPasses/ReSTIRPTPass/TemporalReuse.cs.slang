@@ -106,7 +106,7 @@ struct PathReusePass
             const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
             PathReservoir cellRes;
             if (prCellPoolReadCascade(gPathTracer.pathReservoirCellPool, centralPrimarySd.posW, centralPrimarySd.faceN,
-                                      params.sceneRadius, capacity, /*maxLevels=*/1u, cellRes))
+                                      params.sceneRadius, capacity, kPRCellPoolLevels, cellRes))
             {
                 dstReservoir = cellRes;
             }

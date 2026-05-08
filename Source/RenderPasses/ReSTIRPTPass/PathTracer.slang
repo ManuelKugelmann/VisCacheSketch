@@ -2065,7 +2065,7 @@ struct PathTracer
                         const uint stride = kScreenTileDim.x * kScreenTileDim.y;
                         const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
                         prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
-                                               params.sceneRadius, capacity, /*maxLevels=*/1u, path.pathReservoir);
+                                               params.sceneRadius, capacity, kPRCellPoolLevels, path.pathReservoir);
                     }
                 }
             }

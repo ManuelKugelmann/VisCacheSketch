@@ -88,6 +88,15 @@ bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
 static const uint kPRCellSlotSalt = 0x7E5C2A11u;
 static const uint kPRCellFpSalt   = 0xB3F19DC7u;
 
+// Compile-time cascade depth used by all 6 call sites (TracePass writeOutput
+// + 5 reuse passes). Single source of truth so flipping cascade on/off is
+// a one-line change. Values:
+//   1  — single-level (current — bit-identical to pre-cascade behavior)
+//   2  — fine + 1 coarser fallback
+//   3  — fine + 2 coarser fallbacks (typical)
+//   4  — max (helpers cap at 4 internally)
+static const uint kPRCellPoolLevels = 3u;
+
 // Local 3D PCG hash for jitter (mirrors VisCache's pcg3d; copied here to
 // avoid pulling pcg3d out of USE_VISCACHE-guarded section). Pure.
 uint3 prPcg3d(uint3 v)
