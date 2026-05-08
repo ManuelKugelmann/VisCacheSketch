@@ -556,8 +556,42 @@ parallel-agent PT side can also use (0) directly to retire its
 cold-cell regression — single Bayer-stage gate vs porting an
 RTXDI-style pre-pass plugin.
 
-**Pre-pass cost asymmetry vs RTXDI (architectural debt).** RTXDI's
-presampling pass is a *cheap compute shader* — pure light-sampling
+**Pre-pass redundancy ablation — pre-pass actively hurts quality (RDI00 ablation 2026-05-08).**
+Validated by running `R2dR3dP3d_noPre` and `R3dP3d_noPre` (same canonicals
+with `wsCellPoolPrePass=False`):
+
+| Variant | Cornell_1AL x4 | Sponza x4 |
+|---|---:|---:|
+| R2dR3dP3d (with pre-pass)    | 2.146 | 6.126 |
+| **R2dR3dP3d_noPre**          | **1.422** (−34 %) | **6.098** (−0.5 %) |
+| R3dP3d (with pre-pass)       | 2.189 | 5.937 |
+| **R3dP3d_noPre**             | **1.404** (−36 %) | **5.725** (−3.6 %) |
+
+Removing the pre-pass IMPROVES quality on every variant tested. **R3dP3d_noPre
+at 1.404 BEATS R2dP2d's 1.422** on Cornell_1AL — the simple-Cornell loss
+that was the entire RDI01 narrowing target *disappears entirely* once the
+pre-pass is removed.
+
+**Why the pre-pass hurts.** It uses `PdfMipmap` (shading-agnostic
+hierarchical-pdf emissive sampling) while the main pass uses `LightBVH`
+(shading-conditional). Pre-pass-filled cell-pool entries dilute the main
+pass's better shading-conditional K-RIS picks. The existing comment in
+`_run_baseline_restir` already documented this risk
+(*"over-weighting pool's shading-agnostic distribution dilutes 8 fresh
+shading-conditional samples regardless of read convention"*) — but the
+ablation shows it's a *net loss*, not just suboptimal.
+
+**Implicit Bayer-subframe-0 warmup is strictly superior** to the explicit
+pre-pass because subframe 0 populates the cell-pool using the main pass's
+shading-conditional `LightBVH` sampler. Cost: zero extra dispatch.
+
+**Implication for Task #29 (lean compute pre-pass).** RETIRED — there's
+no architectural-parity target to chase. The convenience-built
+PathTracerPrePass we ship today should be removed from the canonical
+config, not optimized.
+
+**Pre-pass cost asymmetry vs RTXDI (now moot, kept for the record).**
+RTXDI's presampling pass is a *cheap compute shader* — pure light-sampling
 into the screen-tile pool, no geometry / BSDF / shading work at all.
 Our current pre-pass is `PathTracerPrePass + wsCellPoolFillOnly=true`,
 i.e. the full Falcor PathTracer pipeline running with shading writes

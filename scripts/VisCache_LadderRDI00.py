@@ -38,6 +38,8 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_R2dR3dP3d,
     run_baseline_ReSTIRDI_R3dP3d,
     run_baseline_ReSTIRDI_H2dR3dP3d,
+    run_baseline_ReSTIRDI_R2dR3dP3d_noPre,
+    run_baseline_ReSTIRDI_R3dP3d_noPre,
     finalize_step, kResX, kResY,
 )
 
@@ -71,6 +73,14 @@ for scene_file in get_scenes(default=["Sponza"]):
     run_baseline_ReSTIRDI_R2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_H2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d    (STEP, [(0, 0, 1)], scene_file, **common)
+
+    # === Pre-pass redundancy ablation ===
+    # Test whether implicit Bayer-subframe-0 warmup (free, default with
+    # bayerN > 1) is sufficient pre-fill on its own. If these match the
+    # canonical R2dR3dP3d / R3dP3d numbers within sampling noise, the
+    # explicit PathTracerPrePass dispatch is retirable from canonical.
+    run_baseline_ReSTIRDI_R2dR3dP3d_noPre(STEP, [(0, 0, 1)], scene_file, **common)
+    run_baseline_ReSTIRDI_R3dP3d_noPre   (STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===
 # carried_winners=[] because RDI00 is not setting up a hand-off to RDI01

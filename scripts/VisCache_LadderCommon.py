@@ -3979,6 +3979,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
                          wsRetraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
                          extraVCProps=None,                              # additional VisCache props merged on top of the canonical recipe (used by R2dP2d/R2dP3d/R3dP3d to override defaults like wsCellReservoirFootprintPx=0).
+                         wsCellPoolPrePass=True,                         # default ON: full-PT pre-pass before main pass. Set False to ablation-test if implicit Bayer-subframe-0 warmup is sufficient.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -4001,7 +4002,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             wsSpatialPixelsRadius=wsSpatialPixelsRadius,
             wsCellPool=True, wsCellPoolDrawK=16,    # 8 fresh + 16 pool = 24 total = RTXDI's localLightCandidateCount. K_pool=24 retested with Conv B 2026-05-05: still uniformly +0.15-0.22pp worse — over-weighting pool's shading-agnostic distribution dilutes 8 fresh shading-conditional samples regardless of read convention.
             wsCellReservoirFootprintPx=8,           # R3d cell-reservoir at ~64 px screen footprint (analytical entry, mirrors P3d's mechanism). Pool footprint stays at 16 px (~256 px) so each pool cell aggregates candidates over ~4 reservoir cells worth of pixels.
-            wsCellPoolPrePass=True,
+            wsCellPoolPrePass=wsCellPoolPrePass,     # caller can disable for the redundancy ablation (Bayer-subframe-0 warmup alternative).
             wsVisInPHat=wsVisInPHat,
             wsRetraceOnReuseMode=wsRetraceOnReuseMode,
             # Pre-pass: PdfMipmap (RTXDI-style hierarchical, Task #34).
@@ -4190,6 +4191,48 @@ def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_H2dR3dP3d",
         addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pre-pass redundancy ablation variants — same as canonicals but with the
+# full-PT cell-pool pre-pass dispatch DISABLED. Tests whether the implicit
+# Bayer-subframe-0 warmup (free, falls out of bayerN > 1) is sufficient
+# pre-fill on its own. If numbers don't move, the convenience-built
+# PathTracerPrePass dispatch is retirable from the canonical config.
+# ---------------------------------------------------------------------------
+def run_baseline_ReSTIRDI_R2dR3dP3d_noPre(step_name, frame_configs, scene_file,
+                                          wsCellPoolFootprintPx=16, **kwargs):
+    """R2dR3dP3d with the full-PT pre-pass dispatch disabled. Implicit Bayer-
+    subframe-0 warmup only; tests whether the explicit pre-pass is redundant.
+    """
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dR3dP3d_noPre",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        wsCellPoolPrePass=False,
+        **kwargs,
+    )
+
+
+def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
+                                       wsCellPoolFootprintPx=16,
+                                       wsCellReservoirFootprintPx=1, **kwargs):
+    """R3dP3d (pure 3D) with the full-PT pre-pass dispatch disabled. Same
+    ablation as R2dR3dP3d_noPre but for the variant where shading reads
+    the cell reservoir directly (no per-pixel layer)."""
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["enableWSPixelReservoir"] = False
+    extra["wsCellReservoirMerge"]   = 1
+    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R3dP3d_noPre",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        wsCellPoolPrePass=False,
         **kwargs2,
     )
 
