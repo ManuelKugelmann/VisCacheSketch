@@ -2062,23 +2062,12 @@ struct PathTracer
                     {
                         const TriangleHit th = primaryHit.getTriangleHit();
                         const VertexData v = gScene.getVertexData(th);
-                        // Cell coords (must match Params.slang::getReservoirOffsetWorldCell).
-                        const float kCellSize = max(params.sceneRadius * 0.01f, 1e-3f);
-                        int3 q = int3(floor(v.posW / kCellSize));
-                        uint nb = 0u;
-                        float3 an = abs(v.faceNormalW);
-                        if (an.x >= an.y && an.x >= an.z) nb = (v.faceNormalW.x >= 0.f) ? 0u : 1u;
-                        else if (an.y >= an.z)            nb = (v.faceNormalW.y >= 0.f) ? 2u : 3u;
-                        else                              nb = (v.faceNormalW.z >= 0.f) ? 4u : 5u;
-                        // Slot index = same hash as getReservoirOffsetWorldCell.
-                        uint h = (uint(q.x) * 73856093u) ^ (uint(q.y) * 19349663u) ^ (uint(q.z) * 83492791u) ^ (nb * 2654435761u);
-                        uint stride = kScreenTileDim.x * kScreenTileDim.y;
-                        uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
-                        uint slotIdx = h % capacity;
-                        uint fingerprint = prCellFingerprint(q, nb);
-                        if (prCellSlotClaim(pathReservoirCellPool, slotIdx, fingerprint))
+                        const uint stride = kScreenTileDim.x * kScreenTileDim.y;
+                        const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
+                        const PathReservoirCellAddr addr = prCellResolveAddr(v.posW, v.faceNormalW, params.sceneRadius, capacity);
+                        if (prCellSlotClaim(pathReservoirCellPool, addr.slot, addr.fingerprint))
                         {
-                            pathReservoirCellPool[slotIdx].reservoir = path.pathReservoir;
+                            pathReservoirCellPool[addr.slot].reservoir = path.pathReservoir;
                         }
                     }
                 }

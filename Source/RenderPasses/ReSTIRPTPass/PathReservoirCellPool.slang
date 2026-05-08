@@ -70,21 +70,66 @@ bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
 }
 
 /// Hash a quantized cell coordinate + normal-bin into a fingerprint.
-/// Uses the same xor-mul construction as the worldcell-offset hash; the
+/// Uses an xor-mul construction (independent salts from the slot hash); the
 /// fingerprint is what the SLOT stores so subsequent readers can detect
 /// hash collisions and skip stale data.
 ///
 /// Note: fingerprint is NOT frame-keyed — cell-pool slots are sticky
-/// once claimed (strict first-writer-wins). This means later frames'
-/// writes are mostly rejected (slot already claimed), so the cell pool
-/// is effectively populated by the first few frames and held stable
-/// thereafter. Cross-frame refresh (when needed for dynamic scenes)
-/// requires a host-side `clearUAV` of the pool's fingerprint field at
-/// frame start — separate from this hash.
+/// once claimed (strict first-writer-wins). The host-side `clearUAV` of
+/// the pool's fingerprint field at frame start refreshes claims; see
+/// ReSTIRPTPass.cpp::execute().
 uint prCellFingerprint(int3 q, uint nb)
 {
     uint h = (uint(q.x) * 2654435761u) ^ (uint(q.y) * 1597334677u) ^ (uint(q.z) * 805459861u) ^ (nb * 374761393u);
     return h | 1u;  // ensure non-zero: 0 is the empty sentinel
+}
+
+/// Hash a quantized cell coordinate + normal-bin into a slot index.
+/// Independent salts from prCellFingerprint so address and fingerprint
+/// hashes are uncorrelated (lower false-match rate on collisions).
+uint prCellSlotHash(int3 q, uint nb)
+{
+    return (uint(q.x) * 73856093u) ^ (uint(q.y) * 19349663u) ^ (uint(q.z) * 83492791u) ^ (nb * 2654435761u);
+}
+
+/// Compute (q, nb) from world-space primary-hit pos + face normal.
+/// Cell size is `sceneRadius * 0.01` (~1% of scene radius). Normal bin
+/// is the 6-axis hemicube (matches WS-ReSTIR's wsNormalBin scheme).
+///
+/// This is duplicated as a structural pattern across the writer
+/// (PathTracer.slang::writeOutput) and 5 reader sites (Spatial/Temporal
+/// Reuse, Spatial/Temporal PathRetrace, ComputePathReuseMISWeights);
+/// factoring here ensures all 6 sites compute the same (q, nb) for the
+/// same input. Future: replace with VisCache's wsResolveCellPoolAddr to
+/// pick up the multilevel cascade (Task #16).
+void prCellQuantize(float3 posW, float3 faceN, float sceneRadius, out int3 q, out uint nb)
+{
+    const float kCellSize = max(sceneRadius * 0.01f, 1e-3f);
+    q = int3(floor(posW / kCellSize));
+    float3 an = abs(faceN);
+    if (an.x >= an.y && an.x >= an.z) nb = (faceN.x >= 0.f) ? 0u : 1u;
+    else if (an.y >= an.z)            nb = (faceN.y >= 0.f) ? 2u : 3u;
+    else                              nb = (faceN.z >= 0.f) ? 4u : 5u;
+}
+
+/// Single-call address resolver: posW + faceN → (slot, fingerprint).
+/// `capacity` is the cell-pool buffer's slot count (=reservoir buffer size).
+/// Both writer and reader must call this with matching args; otherwise they
+/// disagree on slot/fingerprint and the pool degenerates.
+struct PathReservoirCellAddr
+{
+    uint slot;
+    uint fingerprint;
+};
+PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRadius, uint capacity)
+{
+    int3 q;
+    uint nb;
+    prCellQuantize(posW, faceN, sceneRadius, q, nb);
+    PathReservoirCellAddr a;
+    a.slot        = prCellSlotHash(q, nb) % max(capacity, 1u);
+    a.fingerprint = prCellFingerprint(q, nb);
+    return a;
 }
 
 /// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
