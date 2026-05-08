@@ -134,6 +134,7 @@ def render_and_capture(variant: str, tag: str):
 
 render_and_capture(variant="vanilla",      tag="vanilla")
 render_and_capture(variant="restirpt_ref", tag="restirpt_ref")    # verbatim dqlin copy
+render_and_capture(variant="restirpt_ref", tag="restirpt_ref2")   # determinism check — same plugin, second run
 render_and_capture(variant="restirpt",     tag="restirpt_2d")     # our active port, 2D pixel-keyed
 render_and_capture(variant="restirpt_3d",  tag="restirpt_3d")     # our active port, 3D worldcell-keyed
 print("[ab] DONE")
