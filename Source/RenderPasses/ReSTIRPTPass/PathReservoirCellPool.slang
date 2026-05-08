@@ -98,11 +98,13 @@ static const uint kPRCellFpSalt   = 0xB3F19DC7u;
 // each reader does up to N fingerprint checks. In practice most writers
 // claim level 0 immediately (early-exit), so amortized cost is small.
 //
-// Set high enough to cover the practical depth of a posA cascade across
-// scene scales. Most writes succeed at level 0-2 (sparse pool), so deeper
-// levels rarely fire. 4 covers the typical scene-scale range (cell sizes
-// 1× to 8×) — balance between compute cost and cascade flexibility.
-static const uint kPRCellPoolLevels = 4u;
+// Deep cascade: with baseCell = sceneRadius * 1e-5, 32 levels of 2× each
+// covers cellSizes from sceneRadius*1e-5 (sub-pixel at any reasonable depth)
+// up through sceneRadius * 4e4 (way beyond scene). The footprint heuristic
+// picks the level whose cellSize matches the screen-pixel footprint at the
+// primary hit's depth. Compute cost amortized — most lookups exit on first
+// match.
+static const uint kPRCellPoolLevels = 32u;
 
 // Local 3D PCG hash for jitter (mirrors VisCache's pcg3d; copied here to
 // avoid pulling pcg3d out of USE_VISCACHE-guarded section). Pure.
@@ -186,14 +188,22 @@ uint prCellSlotHash(int3 q, uint nb, uint level)
 uint prCellFingerprint(int3 q, uint nb) { return prCellFingerprint(q, nb, 0u); }
 uint prCellSlotHash(int3 q, uint nb)    { return prCellSlotHash(q, nb, 0u); }
 
-/// Cell size for a given level. Level 0 is the finest (~1% of scene
-/// radius); each step coarsens by 2× (geometric ladder). Matches the
-/// VisCache cascade convention (vhfPosASize) but uses a self-contained
-/// formula so we don't need to bind VisCache's posACoarse/posAFine.
+/// Base cell size: sceneRadius * 1e-5 (very fine, ~0.001% of scene).
+/// Combined with a deep cascade (kPRCellPoolLevels = 32 levels of 2× each,
+/// covering 4-billion× range), the analytical footprint level picks a level
+/// whose cellSize matches the screen-pixel size at the primary hit's depth.
+/// This delivers true pixel-footprint cells at any scene scale (per user
+/// 2026-05-08: "adjust the level spread and cell sizes so that any scene
+/// supports with 1px cells").
+float prBaseCell(float sceneRadius)
+{
+    return max(sceneRadius * 1e-5f, 1e-7f);
+}
+
+/// Cell size for a given level. Level 0 = baseCell; each step doubles.
 float prCellSize(float sceneRadius, uint level)
 {
-    const float kBase = max(sceneRadius * 0.01f, 1e-3f);
-    return kBase * float(1u << level);     // 2^level scaling
+    return prBaseCell(sceneRadius) * float(1u << level);     // 2^level scaling
 }
 
 /// Compute (q, nb) from world-space primary-hit pos + face normal at a

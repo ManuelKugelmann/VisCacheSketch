@@ -224,6 +224,66 @@ struct PathTracer
         return params.getReservoirOffset(pixel, posA, faceN);
     }
 
+    /** Central-reservoir lookup with mode dispatch.
+        Mirrors restir_3d's `wsResolvePoolAddr` pattern: callers don't see the
+        2D/3D mode dispatch; it's hidden inside this method. The structural
+        diff between restirpt_2d and restirpt_3d collapses to "use this lookup"
+        at every reuse-pass site.
+
+        mode=0: pixel-keyed reservoir from outputReservoirs[centralOffset].
+        mode=1: cell-pool with cascade + pos-jitter + footprint entry level;
+                pixel-keyed fall-back on collision-miss (so we never lose data).
+
+        @param[in] pixel  Screen pixel.
+        @param[in] posW   Primary hit world position.
+        @param[in] faceN  Primary hit face normal.
+        @param[in] base   Pre-fetched pixel-keyed reservoir (caller already has it).
+        @return    Either `base` or a cell-pool reservoir at fingerprint match.
+    */
+    PathReservoir lookupCentralReservoir(uint2 pixel, float3 posW, float3 faceN, PathReservoir base)
+    {
+        if (params.restirptAddrMode != 1u) return base;
+        const uint stride   = kScreenTileDim.x * kScreenTileDim.y;
+        const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
+        const uint entryLvl = prFootprintLevel(posW, gScene.camera.data.posW, params.sceneRadius,
+                                               params.frameDim.y, gScene.camera.data.frameHeight,
+                                               gScene.camera.data.focalLength, kPRCellPoolLevels);
+        const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
+        PathReservoir cellRes;
+        if (prCellPoolReadCascade(pathReservoirCellPool, posW, faceN,
+                                  params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                  jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
+            return cellRes;
+        return base;
+    }
+
+    /** Central-reservoir write with mode dispatch.
+        Mode-symmetric counterpart of lookupCentralReservoir. The pixel-keyed
+        write to outputReservoirs is shared by both modes (caller does it).
+        Mode=1 additionally tries to claim a cell-pool slot for cross-pixel
+        reuse. Mode=0 is a no-op (just returns).
+
+        @param[in] pixel  Screen pixel.
+        @param[in] reservoir Reservoir to publish.
+    */
+    void writeCentralReservoir(uint2 pixel, PathReservoir reservoir)
+    {
+        if (params.restirptAddrMode != 1u) return;
+        const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
+        if (!primaryHit.isValid() || primaryHit.getType() != HitType::Triangle) return;
+        const TriangleHit th = primaryHit.getTriangleHit();
+        const VertexData v = gScene.getVertexData(th);
+        const uint stride   = kScreenTileDim.x * kScreenTileDim.y;
+        const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
+        const uint entryLvl = prFootprintLevel(v.posW, gScene.camera.data.posW, params.sceneRadius,
+                                               params.frameDim.y, gScene.camera.data.frameHeight,
+                                               gScene.camera.data.focalLength, kPRCellPoolLevels);
+        const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
+        prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
+                               params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                               jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, reservoir);
+    }
+
     /** Generate the path state for a primary hit in screen space.
         This is treated equivalent to subsequent path vertices to reduce code divergence.
         \param[in] pathID Path ID which encodes pixel and sample index.
@@ -2049,36 +2109,8 @@ struct PathTracer
                 if (any(isnan(path.pathReservoir.F) || isinf(path.pathReservoir.F) || path.pathReservoir.F > 1e10f)) path.pathReservoir.F = 0.f;
                 if (isnan(path.pathReservoir.weight) || isinf(path.pathReservoir.weight) || path.pathReservoir.weight < 0.f || path.pathReservoir.weight > 1e10f) path.pathReservoir.weight = 0.f;
                 outputReservoirs[reservoirIdx] = path.pathReservoir;
-
-                // Mode=1 (3D worldcell-keyed): also try to claim a cell-pool
-                // slot and write the reservoir there for cross-pixel reuse.
-                // The pixel-keyed write above stays as the per-pixel fallback;
-                // reuse passes will read from cell pool first, fall back to
-                // pixel buffer on collision miss.
-                if (params.restirptAddrMode == 1u)
-                {
-                    const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
-                    if (primaryHit.isValid() && primaryHit.getType() == HitType::Triangle)
-                    {
-                        const TriangleHit th = primaryHit.getTriangleHit();
-                        const VertexData v = gScene.getVertexData(th);
-                        const uint stride = kScreenTileDim.x * kScreenTileDim.y;
-                        const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
-                        // Analytical FOV-aware footprint level (matches VisCache vhfLevelForFootprint pattern).
-                        const uint entryLvl = prFootprintLevel(v.posW, gScene.camera.data.posW, params.sceneRadius,
-                                                               params.frameDim.y, gScene.camera.data.frameHeight,
-                                                               gScene.camera.data.focalLength, kPRCellPoolLevels);
-                        // Per-pixel-per-frame pos jitter: writer/reader at SAME pixel agree (same seed)
-                        // so pools stay valid; different pixels disperse to nearby cells, resolving
-                        // cell-boundary quantization to noise that AccumulatePass averages out.
-                        const uint jSeed = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
-                        prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
-                                               params.sceneRadius, capacity,
-                                               entryLvl, kPRCellPoolLevels,
-                                               jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
-                                               path.pathReservoir);
-                    }
-                }
+                // Mode-dispatched 3D cell-pool write (no-op at mode=0).
+                writeCentralReservoir(pixel, path.pathReservoir);
             }
         }
         else

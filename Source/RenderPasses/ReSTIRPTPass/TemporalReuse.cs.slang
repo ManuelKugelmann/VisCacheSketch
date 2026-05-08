@@ -95,27 +95,10 @@ struct PathReusePass
         if (!isValidPackedHitInfo(centralPrimaryHitPacked)) return;
 
         // Compute offset into per-sample buffers. All samples are stored consecutively at this offset.
-        const uint centralOffset = gPathTracer.resolveReservoirOffset(pixel);
+        const uint centralOffset = params.getReservoirOffset(pixel);
         PathReservoir dstReservoir = outputReservoirs[centralOffset];
 
-        // Mode=1 (3D): override pixel-keyed reservoir with cell-pool reservoir
-        // on fingerprint match; fall back to pixel-keyed on collision miss.
-        if (params.restirptAddrMode == 1u)
-        {
-            const uint stride = kScreenTileDim.x * kScreenTileDim.y;
-            const uint capacity = max(params.screenTiles.x * params.screenTiles.y * stride, 1u);
-            PathReservoir cellRes;
-            const uint entryLvl = prFootprintLevel(centralPrimarySd.posW, gScene.camera.data.posW, params.sceneRadius,
-                                                   params.frameDim.y, gScene.camera.data.frameHeight,
-                                                   gScene.camera.data.focalLength, kPRCellPoolLevels);
-            const uint jSeed = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
-            if (prCellPoolReadCascade(gPathTracer.pathReservoirCellPool, centralPrimarySd.posW, centralPrimarySd.faceN,
-                                      params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                      jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
-            {
-                dstReservoir = cellRes;
-            }
-        }
+        dstReservoir = gPathTracer.lookupCentralReservoir(pixel, centralPrimarySd.posW, centralPrimarySd.faceN, dstReservoir);
 
         PathReservoir centralReservoir = dstReservoir;
         float currentM = dstReservoir.M;
@@ -158,7 +141,7 @@ struct PathReusePass
 
             bool doTemporalUpdateForDynamicScene = kTemporalUpdateForDynamicScene;
 
-            PathReservoir temporalReservoir = temporalReservoirs[gPathTracer.resolveReservoirOffset(prevPixel)];
+            PathReservoir temporalReservoir = temporalReservoirs[params.getReservoirOffset(prevPixel)];
 
             temporalReservoir.M = min(gTemporalHistoryLength * currentM, temporalReservoir.M);
 
