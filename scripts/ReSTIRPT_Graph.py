@@ -35,7 +35,7 @@ ABLATIONS = {
 
 def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
                           shadowGateBounces=3, samplesPerPixel=1,
-                          spatialNeighborCount=5, spatialReuseRadius=30,
+                          spatialNeighborCount=3, spatialReuseRadius=20,
                           candidateSamples=1, useRTXDIDirect=True,
                           useDirectLighting=True, pathSamplingMode="ReSTIR",
                           disableDirectIllumination=True, fireflyClampK=1e9,
@@ -139,17 +139,17 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
     })
     g.addPass(restirpt, "ReSTIRPTPass")
 
-    # NRD denoiser (optional)
+    # NRD denoiser previously included as a downstream consumer of
+    # ReSTIRPTPass's nrdDiffuse/nrdSpecular outputs. Removed 2026-05-09:
+    # leaving NRDPass in the graph (even with its filtered output not
+    # routed to AccumulatePass) corrupted ReSTIRPTPass.color on
+    # BistroInterior — ladder run produced 459 inf pixels at SPP=16
+    # while the AB harness (no NRD in graph) produced max=1529 on the
+    # same code with the same fireflyClampK=100. Suspect Falcor buffer-
+    # aliasing or NRD's own writes touching shared scratch state. Drop
+    # NRD entirely from the ladder graph; if anyone needs denoising for
+    # visualization they can build a separate graph with it.
     _have_nrd = False
-    try:
-        nrd = createPass("NRDPass", {
-            "method":          "RelaxDiffuseSpecular",
-            "worldSpaceMotion": True,
-        })
-        g.addPass(nrd, "NRDPass")
-        _have_nrd = True
-    except Exception:
-        print("[ReSTIRPT] WARNING: NRDPass plugin not available — outputting raw noisy radiance.")
 
     # AccumulatePass — average raw ReSTIRPT color across frames so the captured
     # EXR is comparable to vanilla PathTracer's accumulated output. Without this
