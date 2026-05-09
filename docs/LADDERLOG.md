@@ -270,10 +270,43 @@ RPT_ZOO + step 00 CSVs and reports per-scene + cumulative deltas.
 
 **Why we narrow.** restirpt_2d is at DQLin parity; restirpt_3d
 (R2dR3d/R3d) works correctly with a small expected quality cost from
-3D cell-collision noise. Production-scale audit (Bistro+Sponza) +
-H2dR3d implementation (Task #20, deferred per parallel agent's
-"fallback layer not temporal accumulator" finding) are the next two
-beats.
+3D cell-collision noise on simple scenes (Cornell). H2dR3d (Task #20,
+deferred per parallel agent's "fallback layer not temporal
+accumulator" finding) and P-axis NEE pool (Task #21) are pending.
+
+### Sponza: R3d fixes a DQLin firefly bug (2026-05-09)
+
+AB-harness ImageCompare on Sponza @ b=4 x16:
+
+| Variant | ImageCompare | Note |
+| --- | ---: | --- |
+| vanilla         | 0.0150 | reference |
+| restirpt_ref    | 0.117  | DQLin verbatim, byte-frozen plugin |
+| restirpt_2d     | 0.117  | our R2d (bit-identical to ref) |
+| restirpt_3d     | 0.012  | R2dR3d, **20% better than vanilla** |
+| restirpt_pure3d | 0.012  | R3d, same |
+
+DQLin per-pixel reservoir produces unbounded fireflies on Sponza
+(R2d capture: max=2516, 26951 pixels >100 brightness). Our 3D
+cell-pool first-writer-wins semantics naturally rejects duplicate
+winners across pixels, suppressing fireflies (R3d capture: max=25,
+no pixels >100). The DQLin-reference parity check (`restirpt_ref`
+gives the same 0.117 as our `restirpt_2d`) confirms this is an
+algorithm property of DQLin's per-pixel reservoir, not a bug in our
+port.
+
+This makes R3d a **scene-dependent win**: small Cornell quality cost
+(R3d slightly worse than R2d, +0.3-1.4pp at SPP=16) buys ~10×
+Sponza improvement and ~1.2× over vanilla. Genuine architectural
+value — a side-effect of the cell-collision write semantics that
+wasn't visible until we tested production-scale scenes.
+
+The OkLab metric pipeline (`mean_err_pct`) overflows on the
+firefly-laden DQLin Sponza captures (rmse > 200, chroma_var = NaN);
+the R3d captures have well-bounded HDR and the metric works. For
+production-scale scene audit the AB harness's ImageCompare is more
+robust until the OkLab pipeline gets a robustness pass (clamp
+incoming HDR, or median-based statistics).
 
 ## Step SMOKE — pre-stage-D toggleability validation (2026-05-06)
 
