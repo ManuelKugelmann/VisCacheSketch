@@ -15,14 +15,16 @@ Usage:
 
 Output:
   - Per-scene table: vanilla / R2d / R2dR3d / R3d err%
-  - Δ(R3d − R2d), Δ(R3d − vanilla), Δ(R2dR3d − vanilla)
+  - d(R3d − R2d), d(R3d − vanilla), d(R2dR3d − vanilla)
   - Cumulative sums (uniform + scene-weighted if SCENE_WEIGHTS available)
-  - Outlier flag: scene whose |Δ| > 50% of cumulative |Δ|
+  - Outlier flag: scene whose |d| > 50% of cumulative |d|
 """
 import os, sys, csv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV  = os.path.join(ROOT, "runtime", "captures", "ladder", "RPT_ZOO", "stats.csv")
+# Vanilla rows live in step 00, not the ZOO step. Load both.
+CSV_GT = os.path.join(ROOT, "runtime", "captures", "ladder", "00", "stats.csv")
 
 SPP = int(sys.argv[1]) if len(sys.argv) > 1 else 16
 
@@ -31,16 +33,19 @@ if not os.path.exists(CSV):
 
 # rows[(scene, variant, spp)] = mean_err_pct
 rows = {}
-with open(CSV, newline="") as f:
-    for r in csv.DictReader(f):
-        try:
-            spp_v = int(r["spp"])
-            err   = float(r["mean_err_pct"]) if r.get("mean_err_pct") else None
-            if err is None:
+for csv_path in (CSV, CSV_GT):
+    if not os.path.exists(csv_path):
+        continue
+    with open(csv_path, newline="") as f:
+        for r in csv.DictReader(f):
+            try:
+                spp_v = int(r["spp"])
+                err   = float(r["mean_err_pct"]) if r.get("mean_err_pct") else None
+                if err is None:
+                    continue
+            except (KeyError, ValueError):
                 continue
-        except (KeyError, ValueError):
-            continue
-        rows[(r["scene"], r["variant"], spp_v)] = err
+            rows[(r["scene"], r["variant"], spp_v)] = err
 
 scenes = sorted({k[0] for k in rows.keys()})
 
@@ -51,7 +56,7 @@ def get(scene, variant, spp):
 print(f"# RPT_ZOO R3d-vs-R2d audit @ SPP={SPP}")
 print(f"# Source: {CSV}")
 print()
-fmt_hdr = f"{'scene':<32} {'vanilla':>9} {'R2d':>9} {'R2dR3d':>9} {'R3d':>9}   {'Δ R3d-R2d':>10} {'Δ R3d-van':>10} {'Δ R2dR3d-van':>13}"
+fmt_hdr = f"{'scene':<32} {'vanilla':>9} {'R2d':>9} {'R2dR3d':>9} {'R3d':>9}   {'d R3d-R2d':>10} {'d R3d-van':>10} {'d R2dR3d-van':>13}"
 print(fmt_hdr)
 print("-" * len(fmt_hdr))
 
@@ -61,10 +66,12 @@ cum_r2d3d_van = 0.0
 deltas_per_scene = []
 
 for s in scenes:
-    van = get(s, "vanilla", SPP)
-    r2d = get(s, "restirpt_R2d_b3", SPP)
-    r2d3d = get(s, "restirpt_R2dR3d_b3", SPP)
-    r3d = get(s, "restirpt_R3d_b3", SPP)
+    # Vanilla rows in step 00 use bounce-tagged variants (vanilla_b1, vanilla_b4, ...).
+    van = next((v for tag in ("vanilla_b4", "vanilla", "vanilla_b1", "vanilla_b8")
+                for v in [get(s, tag, SPP)] if v is not None), None)
+    r2d = next((v for tag in (f"restirpt_R2d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
+    r2d3d = next((v for tag in (f"restirpt_R2dR3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
+    r3d = next((v for tag in (f"restirpt_R3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
     if any(x is None for x in (van, r2d, r2d3d, r3d)):
         miss = [n for n, v in (("van", van), ("R2d", r2d), ("R2dR3d", r2d3d), ("R3d", r3d)) if v is None]
         print(f"{s:<32}  (missing: {','.join(miss)})")
@@ -83,19 +90,19 @@ print("-" * len(fmt_hdr))
 print(f"{'CUMULATIVE':<32} {'':>9} {'':>9} {'':>9} {'':>9}   {cum_r3d_r2d:>+10.5f} {cum_r3d_van:>+10.5f} {cum_r2d3d_van:>+13.5f}")
 print()
 
-# Outlier detection: any scene whose |Δ R3d-R2d| > 50% of |cum|.
+# Outlier detection: any scene whose |d R3d-R2d| > 50% of |cum|.
 if deltas_per_scene and abs(cum_r3d_r2d) > 1e-9:
-    print("# Outlier check (Δ R3d-R2d):")
+    print("# Outlier check (d R3d-R2d):")
     for s, d, _, _ in deltas_per_scene:
         share = d / cum_r3d_r2d
-        flag = "  ← OUTLIER" if abs(share) > 0.5 else ""
+        flag = "  <- OUTLIER" if abs(share) > 0.5 else ""
         print(f"  {s:<32} share={share:>+6.1%}{flag}")
 print()
 
 # Verdict
 if abs(cum_r3d_r2d) < 0.01:
-    print(f"# Verdict: R3d ≈ R2d at SPP={SPP} (|cum Δ| < 0.01%) — no clear win.")
+    print(f"# Verdict: R3d ~= R2d at SPP={SPP} (|cum d| < 0.01%) — no clear win.")
 elif cum_r3d_r2d < 0:
-    print(f"# Verdict: R3d wins R2d at SPP={SPP} by cum Δ = {cum_r3d_r2d:+.4f}%.")
+    print(f"# Verdict: R3d wins R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}%.")
 else:
-    print(f"# Verdict: R3d LOSES to R2d at SPP={SPP} by cum Δ = {cum_r3d_r2d:+.4f}%.")
+    print(f"# Verdict: R3d LOSES to R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}%.")
