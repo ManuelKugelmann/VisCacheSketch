@@ -16,7 +16,7 @@ Usage:
 
 Output (default text mode):
   - Per-scene table: vanilla / R2d / R2dR3d / R3d err%
-  - d(R3d − R2d), d(R3d − vanilla), d(R2dR3d − vanilla)
+  - d(R3d - R2d), d(R3d - vanilla), d(R2dR3d - vanilla)
   - Per-scene relative-to-vanilla %
   - Cumulative sums + outlier flag (share > 50% of cum |d|)
 """
@@ -60,7 +60,7 @@ def get(scene, variant, spp):
 if MD:
     print(f"### RPT_ZOO R-axis audit @ SPP={SPP}")
     print()
-    print(f"| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d−R2d) | R3d/van% | R2dR3d/van% |")
+    print(f"| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |")
     print(f"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
 else:
     print(f"# RPT_ZOO R3d-vs-R2d audit @ SPP={SPP}")
@@ -84,7 +84,10 @@ for s in scenes:
     r3d = next((v for tag in (f"restirpt_R3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
     if any(x is None for x in (van, r2d, r2d3d, r3d)):
         miss = [n for n, v in (("van", van), ("R2d", r2d), ("R2dR3d", r2d3d), ("R3d", r3d)) if v is None]
-        print(f"{s:<32}  (missing: {','.join(miss)})")
+        if MD:
+            print(f"| {s} | _missing: {','.join(miss)}_ | | | | | | |")
+        else:
+            print(f"{s:<32}  (missing: {','.join(miss)})")
         continue
 
     d_r3d_r2d  = r3d - r2d
@@ -121,7 +124,7 @@ if not MD and deltas_per_scene and abs(cum_r3d_r2d) > 1e-9:
 
 # Verdict
 if abs(cum_r3d_r2d) < 0.01:
-    verdict = f"R3d ~= R2d at SPP={SPP} (|cum d| < 0.01%) — no clear win."
+    verdict = f"R3d ~= R2d at SPP={SPP} (|cum d| < 0.01%) - no clear win."
 elif cum_r3d_r2d < 0:
     verdict = f"R3d wins R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}pp."
 else:
