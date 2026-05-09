@@ -174,6 +174,107 @@ never fires).
 clamp). Engage via `render_graph_ReSTIRPT(fireflyClampK=K)` if a downstream
 consumer needs the RMSE ceiling — sweep table above gives the K choices.
 
+## Step RPT_ZOO — R-axis variant matrix (2026-05-09)
+
+**What it looks at.** ReSTIRPT R-axis taxonomy (mirrors the DI-side
+`Stage RDI` Rxd/Pyd matrix the parallel agent set up). Single P-axis
+slot (Pno = no NEE pool yet — Task #21 future work). Three R-axis
+variants × four Cornell scenes × three SPPs (1/4/16) at b=4.
+
+```
+runtime/pythondist/python.exe scripts/run_ladder.py -s RPT_ZOO -c <SCENES>
+```
+
+| Variant | restirptAddrMode | Reservoir storage | Status |
+|---|---|---|---|
+| R2d    | 0 | 2D pixel buffer only (DQLIN baseline) | bit-identical to ref |
+| R2dR3d | 1 | 2D pixel buffer + 3D cell-pool override (8×8 nbhd) | working |
+| R3d    | 2 | Pure 3D cell-pool, no pixel buffer | working |
+| H2dR3d | 3 | Slim 2D = empty-cell fallback + 3D main (Task #20) | not implemented |
+
+**Four ladder-methodology bugs found and fixed (commit a04ca3f).**
+Cornell_1AL R2d x16 was reporting 16.97% err while the AB harness on
+the same scene reported parity to vanilla (0.6%) — a 27× discrepancy
+hiding correct rendering behind a broken metric pipeline:
+
+1. **NRD's `filteredDiffuseRadianceHitDist` was routed into
+   `AccumulatePass.input`** when the NRDPass plugin was loaded
+   (`scripts/ReSTIRPT_Graph.py`). NRD only emits diffuse, so all
+   specular contribution was dropped from the captured EXR; comparing
+   diffuse-only variant to raw vanilla GT inflated err 27×. Fix:
+   `AccumulatePass.input` always wires from raw `ReSTIRPTPass.color`;
+   NRD edges remain for visualization but its filtered output isn't
+   captured. (The AB harness builds its graph inline without NRD, so
+   the bug only affected the ladder.)
+
+2. **Ladder rendered 1 frame at samplesPerPixel=N** instead of N
+   frames at samplesPerPixel=1, so ReSTIR-PT's main variance reduction
+   — temporal reservoir reuse across frames — never engaged.
+   `samplesPerPixel=N` in a single frame gives only spatial reuse.
+   Fix: `force_actual_spp=1` in `run_baseline_ReSTIRPT_variant`,
+   matching the AB harness methodology (16 frames × 1 SPP each) and
+   the algorithm's designed regime.
+
+3. **`fireflyClampK=1e9` (canonical, no clamp)** produced 21 inf
+   pixels per Cornell SPP=16 frame, poisoning MSE/RMSE/chroma_var
+   downstream (rmse=200, chroma_var=NaN). The DQLin canonical clamp
+   default is correct algorithmically but broke the metric pipeline.
+   Fix: ladder defaults to `fireflyClampK=100` (AB-harness setting)
+   for interpretable metrics; algorithmic parity preserved (clamp only
+   touches rare extreme paths). The §15 soft-clamp calibration in
+   RPT01 still stands; this is purely a metric-stability issue.
+
+4. **`BOUNCE=3` fell back to `vanilla_b1` GT** because step 00
+   generates `vanilla_b{1,4,8}` only — no `vanilla_b3`. So variant
+   (b=3) was compared against GT (b=1), producing a systematic
+   color-bleeding offset. Fix: `BOUNCE=4` matches step 00's
+   `vanilla_b4_x4096` GT. The four bug interactions stack
+   multiplicatively — fixing any one alone left the rest still
+   inflating the error.
+
+**After all four fixes, Cornell_1AL b=4 R2d ladder readings:**
+
+| SPP | vanilla | R2d | R2dR3d | R3d |
+| ---: | ---: | ---: | ---: | ---: |
+| 1   | 6.36 | **2.12** | 2.76 | 3.30 |
+| 4   | 1.39 | 1.54 | 2.33 | 2.49 |
+| 16  | 1.45 | 1.48 | 1.60 | 1.75 |
+
+R2d at SPP=1 wins by 4.2pp over vanilla (classic ReSTIR-PT regime).
+At SPP=16 vanilla converges fast on simple Cornell and ReSTIR variants
+land at near-parity. **restirpt_2d = DQLin parity confirmed.**
+
+**R3d-vs-R2d audit (Cornell scenes only; Bistro+Sponza pending):**
+
+| SPP | scene | R3d-R2d Δ | share of cum | flag |
+| ---: | --- | ---: | ---: | --- |
+| 1  | 1AreaLight   | +1.17 | 32.9% | |
+| 1  | 1PointLight  | +0.98 | 27.5% | |
+| 1  | 32PointLights| +0.59 | 16.4% | |
+| 1  | 3AreaLights  | +0.83 | 23.2% | |
+| 1  | **CUM**      | **+3.57** | | R3d loses to R2d on every scene |
+| 16 | 1AreaLight   | +0.26 | 15.0% | |
+| 16 | 1PointLight  | +1.43 | 81.3% | OUTLIER |
+| 16 | 32PointLights| −0.12 | −6.9% | (R3d slightly beats R2d) |
+| 16 | 3AreaLights  | +0.18 | 10.5% | |
+| 16 | **CUM**      | **+1.76** | | one scene drives 81% of loss |
+
+Same pattern as the DI side (parallel agent's audit, 37d9b3d): **R3d
+is approximately a no-op or mildly worse than R2d at canonical
+settings, with one scene driving most of the aggregate loss.** R3d
+still beats vanilla cumulatively by −16pp at SPP=1; its win comes from
+ReSTIR-PT structure, not from the 3D addressing per se.
+
+The audit script (`scripts/audit_rpt_zoo_R3d_vs_R2d.py`) cross-loads
+RPT_ZOO + step 00 CSVs and reports per-scene + cumulative deltas.
+
+**Why we narrow.** restirpt_2d is at DQLin parity; restirpt_3d
+(R2dR3d/R3d) works correctly with a small expected quality cost from
+3D cell-collision noise. Production-scale audit (Bistro+Sponza) +
+H2dR3d implementation (Task #20, deferred per parallel agent's
+"fallback layer not temporal accumulator" finding) are the next two
+beats.
+
 ## Step SMOKE — pre-stage-D toggleability validation (2026-05-06)
 
 `scripts/VisCache_LadderSMOKE.py` — gated smoke tests run before opening Stage D's full ladder. Validates that the new `wsRetraceOnReuseMode` toggle (RTXDI BiasCorrection analog: 0=Off / Basic-equiv, 1=FullTrace / ≡ RayTraced, 2=CacheCV / cheap unbiased via `evalRevalidationCV`) produces correct results on the existing 2D-tile and 3D-cell pool variants, AND captures the strict-mode reference both for RTXDI and our two implementations on Sponza + BistroInterior at x4.
