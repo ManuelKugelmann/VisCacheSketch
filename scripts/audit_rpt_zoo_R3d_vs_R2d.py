@@ -29,7 +29,8 @@ CSV_GT = os.path.join(ROOT, "runtime", "captures", "ladder", "00", "stats.csv")
 
 _args = [a for a in sys.argv[1:] if a]
 MD = "--md" in _args
-_spp_args = [a for a in _args if a != "--md"]
+ALL_SPP = "--all" in _args
+_spp_args = [a for a in _args if a not in ("--md", "--all")]
 SPP = int(_spp_args[0]) if _spp_args else 16
 
 if not os.path.exists(CSV):
@@ -57,79 +58,83 @@ scenes = sorted({k[0] for k in rows.keys()})
 def get(scene, variant, spp):
     return rows.get((scene, variant, spp))
 
-if MD:
-    print(f"### RPT_ZOO R-axis audit @ SPP={SPP}")
-    print()
-    print(f"| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |")
-    print(f"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
-else:
-    print(f"# RPT_ZOO R3d-vs-R2d audit @ SPP={SPP}")
-    print(f"# Source: {CSV}")
-    print()
-    fmt_hdr = f"{'scene':<32} {'vanilla':>9} {'R2d':>9} {'R2dR3d':>9} {'R3d':>9}   {'d R3d-R2d':>10} {'d R3d-van':>10} {'d R2dR3d-van':>13}"
-    print(fmt_hdr)
-    print("-" * len(fmt_hdr))
 
-cum_r3d_r2d = 0.0
-cum_r3d_van = 0.0
-cum_r2d3d_van = 0.0
-deltas_per_scene = []
-
-for s in scenes:
-    # Vanilla rows in step 00 use bounce-tagged variants (vanilla_b1, vanilla_b4, ...).
-    van = next((v for tag in ("vanilla_b4", "vanilla", "vanilla_b1", "vanilla_b8")
-                for v in [get(s, tag, SPP)] if v is not None), None)
-    r2d = next((v for tag in (f"restirpt_R2d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
-    r2d3d = next((v for tag in (f"restirpt_R2dR3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
-    r3d = next((v for tag in (f"restirpt_R3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, SPP)] if v is not None), None)
-    if any(x is None for x in (van, r2d, r2d3d, r3d)):
-        miss = [n for n, v in (("van", van), ("R2d", r2d), ("R2dR3d", r2d3d), ("R3d", r3d)) if v is None]
-        if MD:
-            print(f"| {s} | _missing: {','.join(miss)}_ | | | | | | |")
-        else:
-            print(f"{s:<32}  (missing: {','.join(miss)})")
-        continue
-
-    d_r3d_r2d  = r3d - r2d
-    d_r3d_van  = r3d - van
-    d_r2d3d_van = r2d3d - van
-    cum_r3d_r2d += d_r3d_r2d
-    cum_r3d_van += d_r3d_van
-    cum_r2d3d_van += d_r2d3d_van
-    deltas_per_scene.append((s, d_r3d_r2d, d_r3d_van, d_r2d3d_van))
-    if MD:
-        r3d_pct = 100.0 * (r3d - van) / van if van > 1e-9 else 0.0
-        r2d3d_pct = 100.0 * (r2d3d - van) / van if van > 1e-9 else 0.0
-        sign = lambda v: f"{v:+.1f}"
-        print(f"| {s} | {van:.3f} | {r2d:.3f} | {r2d3d:.3f} | {r3d:.3f} | {d_r3d_r2d:+.3f} | {sign(r3d_pct)}% | {sign(r2d3d_pct)}% |")
+def emit_audit(spp, md_mode):
+    """Emit the audit table for a single SPP. Returns (cum_r3d_r2d, cum_r3d_van, cum_r2d3d_van)."""
+    if md_mode:
+        print(f"### RPT_ZOO R-axis audit @ SPP={spp}")
+        print()
+        print(f"| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |")
+        print(f"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     else:
-        print(f"{s:<32} {van:>9.5f} {r2d:>9.5f} {r2d3d:>9.5f} {r3d:>9.5f}   {d_r3d_r2d:>+10.5f} {d_r3d_van:>+10.5f} {d_r2d3d_van:>+13.5f}")
+        print(f"# RPT_ZOO R3d-vs-R2d audit @ SPP={spp}")
+        print(f"# Source: {CSV}")
+        print()
+        fmt_hdr = f"{'scene':<32} {'vanilla':>9} {'R2d':>9} {'R2dR3d':>9} {'R3d':>9}   {'d R3d-R2d':>10} {'d R3d-van':>10} {'d R2dR3d-van':>13}"
+        print(fmt_hdr)
+        print("-" * len(fmt_hdr))
 
-if MD:
-    print(f"| **CUM** | | | | | **{cum_r3d_r2d:+.3f}** | **{cum_r3d_van:+.3f}pp** | **{cum_r2d3d_van:+.3f}pp** |")
-    print()
-else:
-    print("-" * len(fmt_hdr))
-    print(f"{'CUMULATIVE':<32} {'':>9} {'':>9} {'':>9} {'':>9}   {cum_r3d_r2d:>+10.5f} {cum_r3d_van:>+10.5f} {cum_r2d3d_van:>+13.5f}")
-    print()
+    cum_r3d_r2d = 0.0
+    cum_r3d_van = 0.0
+    cum_r2d3d_van = 0.0
+    deltas = []
+    for s in scenes:
+        van = next((v for tag in ("vanilla_b4", "vanilla", "vanilla_b1", "vanilla_b8")
+                    for v in [get(s, tag, spp)] if v is not None), None)
+        r2d = next((v for tag in (f"restirpt_R2d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, spp)] if v is not None), None)
+        r2d3d = next((v for tag in (f"restirpt_R2dR3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, spp)] if v is not None), None)
+        r3d = next((v for tag in (f"restirpt_R3d_b{b}" for b in (4, 3, 8)) for v in [get(s, tag, spp)] if v is not None), None)
+        if any(x is None for x in (van, r2d, r2d3d, r3d)):
+            miss = [n for n, v in (("van", van), ("R2d", r2d), ("R2dR3d", r2d3d), ("R3d", r3d)) if v is None]
+            if md_mode:
+                print(f"| {s} | _missing: {','.join(miss)}_ | | | | | | |")
+            else:
+                print(f"{s:<32}  (missing: {','.join(miss)})")
+            continue
+        d_r3d_r2d  = r3d - r2d
+        d_r3d_van  = r3d - van
+        d_r2d3d_van = r2d3d - van
+        cum_r3d_r2d += d_r3d_r2d
+        cum_r3d_van += d_r3d_van
+        cum_r2d3d_van += d_r2d3d_van
+        deltas.append((s, d_r3d_r2d, d_r3d_van, d_r2d3d_van))
+        if md_mode:
+            r3d_pct = 100.0 * (r3d - van) / van if van > 1e-9 else 0.0
+            r2d3d_pct = 100.0 * (r2d3d - van) / van if van > 1e-9 else 0.0
+            sign = lambda v: f"{v:+.1f}"
+            print(f"| {s} | {van:.3f} | {r2d:.3f} | {r2d3d:.3f} | {r3d:.3f} | {d_r3d_r2d:+.3f} | {sign(r3d_pct)}% | {sign(r2d3d_pct)}% |")
+        else:
+            print(f"{s:<32} {van:>9.5f} {r2d:>9.5f} {r2d3d:>9.5f} {r3d:>9.5f}   {d_r3d_r2d:>+10.5f} {d_r3d_van:>+10.5f} {d_r2d3d_van:>+13.5f}")
+    if md_mode:
+        print(f"| **CUM** | | | | | **{cum_r3d_r2d:+.3f}** | **{cum_r3d_van:+.3f}pp** | **{cum_r2d3d_van:+.3f}pp** |")
+        print()
+    else:
+        print("-" * len(fmt_hdr))
+        print(f"{'CUMULATIVE':<32} {'':>9} {'':>9} {'':>9} {'':>9}   {cum_r3d_r2d:>+10.5f} {cum_r3d_van:>+10.5f} {cum_r2d3d_van:>+13.5f}")
+        print()
+    if not md_mode and deltas and abs(cum_r3d_r2d) > 1e-9:
+        print("# Outlier check (d R3d-R2d):")
+        for s, d, _, _ in deltas:
+            share = d / cum_r3d_r2d
+            flag = "  <- OUTLIER" if abs(share) > 0.5 else ""
+            print(f"  {s:<32} share={share:>+6.1%}{flag}")
+        print()
+    if abs(cum_r3d_r2d) < 0.01:
+        verdict = f"R3d ~= R2d at SPP={spp} (|cum d| < 0.01%) - no clear win."
+    elif cum_r3d_r2d < 0:
+        verdict = f"R3d wins R2d at SPP={spp} by cum d = {cum_r3d_r2d:+.4f}pp."
+    else:
+        verdict = f"R3d LOSES to R2d at SPP={spp} by cum d = {cum_r3d_r2d:+.4f}pp."
+    if md_mode:
+        print(f"**Verdict @ SPP={spp}:** {verdict}")
+        print()
+    else:
+        print(f"# Verdict: {verdict}")
+    return cum_r3d_r2d, cum_r3d_van, cum_r2d3d_van
 
-# Outlier detection: any scene whose |d R3d-R2d| > 50% of |cum|.
-if not MD and deltas_per_scene and abs(cum_r3d_r2d) > 1e-9:
-    print("# Outlier check (d R3d-R2d):")
-    for s, d, _, _ in deltas_per_scene:
-        share = d / cum_r3d_r2d
-        flag = "  <- OUTLIER" if abs(share) > 0.5 else ""
-        print(f"  {s:<32} share={share:>+6.1%}{flag}")
-    print()
 
-# Verdict
-if abs(cum_r3d_r2d) < 0.01:
-    verdict = f"R3d ~= R2d at SPP={SPP} (|cum d| < 0.01%) - no clear win."
-elif cum_r3d_r2d < 0:
-    verdict = f"R3d wins R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}pp."
+if ALL_SPP:
+    for s in (1, 4, 16):
+        emit_audit(s, MD)
 else:
-    verdict = f"R3d LOSES to R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}pp."
-if MD:
-    print(f"**Verdict @ SPP={SPP}:** {verdict}")
-else:
-    print(f"# Verdict: {verdict}")
+    emit_audit(SPP, MD)
