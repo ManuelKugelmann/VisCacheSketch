@@ -190,6 +190,14 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
     g.addEdge("GBufferRT.vbuffer", "ReSTIRPTPass.vbuffer")
     g.addEdge("GBufferRT.mvec",    "ReSTIRPTPass.motionVectors")
 
+    # AccumulatePass ALWAYS receives raw ReSTIRPTPass.color so the captured
+    # AccumulatePass.output EXR is apples-to-apples comparable to vanilla
+    # PathTracer's accumulated raw color. Routing NRD's filteredDiffuse
+    # into the accumulator (prior behaviour) was a +27× err% inflation
+    # bug on the RPT_ZOO ladder — NRD only emits diffuse, dropping all
+    # specular/glossy contribution; vanilla GT is unfiltered raw, so the
+    # variant capture and GT lived in different signal spaces.
+    g.addEdge("ReSTIRPTPass.color", "AccumulatePass.input")
     if _have_nrd:
         g.addEdge("ReSTIRPTPass.nrdDiffuseRadianceHitDist",
                   "NRDPass.diffuseRadianceHitDist")
@@ -198,9 +206,6 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         g.addEdge("GBufferRT.linearZ",                  "NRDPass.viewZ")
         g.addEdge("GBufferRT.normWRoughnessMaterialID", "NRDPass.normWRoughnessMaterialID")
         g.addEdge("GBufferRT.mvec",                     "NRDPass.mvec")
-        g.addEdge("NRDPass.filteredDiffuseRadianceHitDist", "AccumulatePass.input")
-    else:
-        g.addEdge("ReSTIRPTPass.color", "AccumulatePass.input")
     g.addEdge("AccumulatePass.output", "ToneMapper.src")
 
     g.markOutput("ToneMapper.dst")

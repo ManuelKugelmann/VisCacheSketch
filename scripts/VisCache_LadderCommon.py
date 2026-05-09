@@ -4353,8 +4353,16 @@ def run_baseline_ReSTIRPT_variant(step_name, frame_configs, scene_file,
                                   maxBounces=3, resX=kResX, resY=kResY,
                                   mogwai_globals=None, capture_spps=(1, 4),
                                   gt_spp=4096, variant_tag=None,
-                                  fireflyClampK=1e9,
+                                  fireflyClampK=100.0,
                                   pathSamplingMode="ReSTIR"):
+    # fireflyClampK=100 (AB-harness default) bounds the §15 chroma-preserving
+    # GRIS estimator. The DQLin canonical default is 1e9 (no clamp), but with
+    # no clamp the ladder produces 21 inf pixels per Cornell SPP=16 frame
+    # which poison MSE/RMSE/chroma_var downstream and makes ladder readings
+    # uninterpretable. Clamp=100 is what the AB harness uses to get clean
+    # parity numbers; the ladder mirrors that for the same reason. Quality
+    # parity to DQLin canonical isn't broken (clamp affects rare extreme
+    # paths only).
     """ReSTIRPT zoo variant baseline. restirptAddrMode dispatches:
        0 = R2d    (DQLIN baseline)
        1 = R2dR3d (2D + 3D-neighbourhood)
@@ -4383,12 +4391,20 @@ def run_baseline_ReSTIRPT_variant(step_name, frame_configs, scene_file,
         gt_variant_tag=f"vanilla_b{maxBounces}",
     )
     tag = variant_tag or f"restirpt_{variant_label}_b{maxBounces}"
+    # force_actual_spp=1 makes the harness render `spp` frames at
+    # samplesPerPixel=1 instead of one frame at samplesPerPixel=spp. ReSTIR-
+    # PT's main variance reduction is the temporal reservoir reuse across
+    # frames; single-frame samplesPerPixel=N gives only spatial reuse and
+    # makes the algorithm look 33× WORSE than vanilla on Cornell SPP=16
+    # (16.57% vs 0.5%). Multi-frame matches the AB harness methodology and
+    # the algorithm's designed operating regime.
     _run_baseline_variant(
         step_name, frame_configs, scene_file, tag,
         _build, "AccumulatePass.output",
         capture_spps=capture_spps, maxBounces=maxBounces,
         resX=resX, resY=resY, mogwai_globals=mogwai_globals,
         gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
+        force_actual_spp=1,
     )
 
 
