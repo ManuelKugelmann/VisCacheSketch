@@ -8,16 +8,17 @@ emits per-scene + cumulative deltas of mean_err_pct between R3d /
 R2dR3d / vanilla and R2d-baseline.
 
 Usage:
-  runtime/pythondist/python.exe scripts/audit_rpt_zoo_R3d_vs_R2d.py [SPP]
+  runtime/pythondist/python.exe scripts/audit_rpt_zoo_R3d_vs_R2d.py [SPP] [--md]
 
   SPP defaults to 16 (the canonical comparison point); pass 1 / 4 to
   audit the cold-cell or mid-converged regimes instead.
+  --md emits a markdown table for direct LADDERLOG paste-in.
 
-Output:
+Output (default text mode):
   - Per-scene table: vanilla / R2d / R2dR3d / R3d err%
   - d(R3d − R2d), d(R3d − vanilla), d(R2dR3d − vanilla)
-  - Cumulative sums (uniform + scene-weighted if SCENE_WEIGHTS available)
-  - Outlier flag: scene whose |d| > 50% of cumulative |d|
+  - Per-scene relative-to-vanilla %
+  - Cumulative sums + outlier flag (share > 50% of cum |d|)
 """
 import os, sys, csv
 
@@ -26,7 +27,10 @@ CSV  = os.path.join(ROOT, "runtime", "captures", "ladder", "RPT_ZOO", "stats.csv
 # Vanilla rows live in step 00, not the ZOO step. Load both.
 CSV_GT = os.path.join(ROOT, "runtime", "captures", "ladder", "00", "stats.csv")
 
-SPP = int(sys.argv[1]) if len(sys.argv) > 1 else 16
+_args = [a for a in sys.argv[1:] if a]
+MD = "--md" in _args
+_spp_args = [a for a in _args if a != "--md"]
+SPP = int(_spp_args[0]) if _spp_args else 16
 
 if not os.path.exists(CSV):
     sys.exit(f"[audit] no CSV at {CSV} — run RPT_ZOO ladder first")
@@ -53,12 +57,18 @@ scenes = sorted({k[0] for k in rows.keys()})
 def get(scene, variant, spp):
     return rows.get((scene, variant, spp))
 
-print(f"# RPT_ZOO R3d-vs-R2d audit @ SPP={SPP}")
-print(f"# Source: {CSV}")
-print()
-fmt_hdr = f"{'scene':<32} {'vanilla':>9} {'R2d':>9} {'R2dR3d':>9} {'R3d':>9}   {'d R3d-R2d':>10} {'d R3d-van':>10} {'d R2dR3d-van':>13}"
-print(fmt_hdr)
-print("-" * len(fmt_hdr))
+if MD:
+    print(f"### RPT_ZOO R-axis audit @ SPP={SPP}")
+    print()
+    print(f"| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d−R2d) | R3d/van% | R2dR3d/van% |")
+    print(f"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+else:
+    print(f"# RPT_ZOO R3d-vs-R2d audit @ SPP={SPP}")
+    print(f"# Source: {CSV}")
+    print()
+    fmt_hdr = f"{'scene':<32} {'vanilla':>9} {'R2d':>9} {'R2dR3d':>9} {'R3d':>9}   {'d R3d-R2d':>10} {'d R3d-van':>10} {'d R2dR3d-van':>13}"
+    print(fmt_hdr)
+    print("-" * len(fmt_hdr))
 
 cum_r3d_r2d = 0.0
 cum_r3d_van = 0.0
@@ -84,25 +94,39 @@ for s in scenes:
     cum_r3d_van += d_r3d_van
     cum_r2d3d_van += d_r2d3d_van
     deltas_per_scene.append((s, d_r3d_r2d, d_r3d_van, d_r2d3d_van))
-    print(f"{s:<32} {van:>9.5f} {r2d:>9.5f} {r2d3d:>9.5f} {r3d:>9.5f}   {d_r3d_r2d:>+10.5f} {d_r3d_van:>+10.5f} {d_r2d3d_van:>+13.5f}")
+    if MD:
+        r3d_pct = 100.0 * (r3d - van) / van if van > 1e-9 else 0.0
+        r2d3d_pct = 100.0 * (r2d3d - van) / van if van > 1e-9 else 0.0
+        sign = lambda v: f"{v:+.1f}"
+        print(f"| {s} | {van:.3f} | {r2d:.3f} | {r2d3d:.3f} | {r3d:.3f} | {d_r3d_r2d:+.3f} | {sign(r3d_pct)}% | {sign(r2d3d_pct)}% |")
+    else:
+        print(f"{s:<32} {van:>9.5f} {r2d:>9.5f} {r2d3d:>9.5f} {r3d:>9.5f}   {d_r3d_r2d:>+10.5f} {d_r3d_van:>+10.5f} {d_r2d3d_van:>+13.5f}")
 
-print("-" * len(fmt_hdr))
-print(f"{'CUMULATIVE':<32} {'':>9} {'':>9} {'':>9} {'':>9}   {cum_r3d_r2d:>+10.5f} {cum_r3d_van:>+10.5f} {cum_r2d3d_van:>+13.5f}")
-print()
+if MD:
+    print(f"| **CUM** | | | | | **{cum_r3d_r2d:+.3f}** | **{cum_r3d_van:+.3f}pp** | **{cum_r2d3d_van:+.3f}pp** |")
+    print()
+else:
+    print("-" * len(fmt_hdr))
+    print(f"{'CUMULATIVE':<32} {'':>9} {'':>9} {'':>9} {'':>9}   {cum_r3d_r2d:>+10.5f} {cum_r3d_van:>+10.5f} {cum_r2d3d_van:>+13.5f}")
+    print()
 
 # Outlier detection: any scene whose |d R3d-R2d| > 50% of |cum|.
-if deltas_per_scene and abs(cum_r3d_r2d) > 1e-9:
+if not MD and deltas_per_scene and abs(cum_r3d_r2d) > 1e-9:
     print("# Outlier check (d R3d-R2d):")
     for s, d, _, _ in deltas_per_scene:
         share = d / cum_r3d_r2d
         flag = "  <- OUTLIER" if abs(share) > 0.5 else ""
         print(f"  {s:<32} share={share:>+6.1%}{flag}")
-print()
+    print()
 
 # Verdict
 if abs(cum_r3d_r2d) < 0.01:
-    print(f"# Verdict: R3d ~= R2d at SPP={SPP} (|cum d| < 0.01%) — no clear win.")
+    verdict = f"R3d ~= R2d at SPP={SPP} (|cum d| < 0.01%) — no clear win."
 elif cum_r3d_r2d < 0:
-    print(f"# Verdict: R3d wins R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}%.")
+    verdict = f"R3d wins R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}pp."
 else:
-    print(f"# Verdict: R3d LOSES to R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}%.")
+    verdict = f"R3d LOSES to R2d at SPP={SPP} by cum d = {cum_r3d_r2d:+.4f}pp."
+if MD:
+    print(f"**Verdict @ SPP={SPP}:** {verdict}")
+else:
+    print(f"# Verdict: {verdict}")
