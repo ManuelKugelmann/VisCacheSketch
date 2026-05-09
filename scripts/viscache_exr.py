@@ -856,8 +856,16 @@ def _pixel_metrics_suite(render_lin, gt_lin, mask):
     mask = mask & finite_mask
     if not mask.any():
         return {}
-    cl = _to_luminance(np.clip(render_lin[..., :3], 0.0, None))
-    gl = _to_luminance(np.clip(gt_lin[..., :3],     0.0, None))
+    # Zero out non-finite pixels before luminance: ms_ssim's tone-map
+    # 1/(1+cl) produces NaN where cl is +inf (sun-direction firefly), and
+    # the SSIM Gaussian-blur step would then propagate that NaN globally.
+    # The same _pixel_metrics_suite mask filtering above already excludes
+    # those pixels from numeric statistics; this just stops the blur from
+    # smearing the corruption beyond them.
+    render_lin_finite = np.where(np.isfinite(render_lin), render_lin, 0.0)
+    gt_lin_finite     = np.where(np.isfinite(gt_lin),     gt_lin,     0.0)
+    cl = _to_luminance(np.clip(render_lin_finite[..., :3], 0.0, None))
+    gl = _to_luminance(np.clip(gt_lin_finite[..., :3],     0.0, None))
     cv = cl[mask]; gv = gl[mask]
     diff = cv - gv
     abs_diff = np.abs(diff)
@@ -878,14 +886,18 @@ def _pixel_metrics_suite(render_lin, gt_lin, mask):
     gl_tm = gl / (1.0 + gl)
     ms_ssim = _ms_ssim(cl_tm, gl_tm, mask)
 
-    # FLIP HDR — uses linear RGB directly (no manual tonemap).
-    flip = _flip_score(render_lin, gt_lin)
+    # FLIP HDR — uses linear RGB directly (no manual tonemap). Pass the
+    # finite-cleaned arrays so internal blurs don't spread NaN.
+    flip = _flip_score(render_lin_finite, gt_lin_finite)
 
     # Lin 2026 §6.3 chroma noise — local chromaticity variance, no GT involved
     # (intra-image stochastic chroma grain). Lower = smoother chroma. The §6.3
     # vector-form resampler should reduce this metric without changing
     # luminance-domain metrics (mse / rmse / psnr / etc.).
-    chroma_var = _chroma_variance(render_lin, mask)
+    # Use the finite-cleaned render: _chroma_variance does Gaussian blur
+    # which propagates NaN across the whole image, then masks only at the
+    # final reduction.
+    chroma_var = _chroma_variance(render_lin_finite, mask)
 
     out = {
         "mse":     mse,

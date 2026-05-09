@@ -301,12 +301,17 @@ Sponza improvement and ~1.2× over vanilla. Genuine architectural
 value — a side-effect of the cell-collision write semantics that
 wasn't visible until we tested production-scale scenes.
 
-The OkLab metric pipeline (`mean_err_pct`) overflows on the
-firefly-laden DQLin Sponza captures (rmse > 200, chroma_var = NaN);
-the R3d captures have well-bounded HDR and the metric works. For
-production-scale scene audit the AB harness's ImageCompare is more
-robust until the OkLab pipeline gets a robustness pass (clamp
-incoming HDR, or median-based statistics).
+**Cross-metric agreement.** The same Sponza pattern shows up in OkLab%
+on AB captures: vanilla 5.41%, R2d 27.23%, R2dR3d 7.44%, R3d 7.35%.
+OkLab correctly Reinhard-tone-maps the fireflies and reports the real
+3.7× R3d-vs-R2d quality win (vs ImageCompare's 10× win — different
+metric scales, same conclusion). The OkLab `mean_err_pct` is robust
+on these scenes; the brittle metrics are the LINEAR-scale ones (`mse`,
+`rmse`, `psnr_db`, `chroma_var`, `ms_ssim`) which see the fireflies'
+raw HDR magnitudes (rmse 200+, chroma_var NaN). For the audit the
+primary `mean_err_pct` is reliable; the secondary metrics need a
+finite-pixel mask to be useful on firefly-laden inputs (open
+follow-up, not blocking the R3d finding).
 
 ## Step SMOKE — pre-stage-D toggleability validation (2026-05-06)
 
