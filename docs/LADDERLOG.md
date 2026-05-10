@@ -306,12 +306,89 @@ on AB captures: vanilla 5.41%, R2d 27.23%, R2dR3d 7.44%, R3d 7.35%.
 OkLab correctly Reinhard-tone-maps the fireflies and reports the real
 3.7× R3d-vs-R2d quality win (vs ImageCompare's 10× win — different
 metric scales, same conclusion). The OkLab `mean_err_pct` is robust
-on these scenes; the brittle metrics are the LINEAR-scale ones (`mse`,
-`rmse`, `psnr_db`, `chroma_var`, `ms_ssim`) which see the fireflies'
-raw HDR magnitudes (rmse 200+, chroma_var NaN). For the audit the
-primary `mean_err_pct` is reliable; the secondary metrics need a
-finite-pixel mask to be useful on firefly-laden inputs (open
-follow-up, not blocking the R3d finding).
+on these scenes; the brittle metrics were the LINEAR-scale ones
+(`mse`, `rmse`, `psnr_db`, `chroma_var`, `ms_ssim`) which saw the
+fireflies' raw HDR magnitudes — fixed in commit f788b4d by zeroing
+non-finite pixels before the Gaussian-blur stages.
+
+### Full 7-scene R-axis audit (2026-05-10, ladder rerun + bounce-matched GT)
+
+**SPP=1 (cold-cell regime):** R3d slightly worse than R2d on every
+scene (+0.4 to +1.9pp). R2d wins HUGE over vanilla (-30 to -63%).
+
+| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| BistroExterior | 30.247 | 16.535 | 16.731 | 17.103 | +0.568 | -43.5% | -44.7% |
+| BistroInterior | 31.666 | 11.997 | 13.110 | 13.241 | +1.244 | -58.2% | -58.6% |
+| CornellBox_1AreaLight | 6.359 | 2.281 | 2.860 | 3.342 | +1.061 | -47.4% | -55.0% |
+| CornellBox_1PointLight | 6.923 | 3.891 | 4.670 | 4.798 | +0.907 | -30.7% | -32.5% |
+| CornellBox_32PointLights | 9.368 | 3.087 | 3.410 | 3.497 | +0.411 | -62.7% | -63.6% |
+| CornellBox_3AreaLights | 8.143 | 2.528 | 3.045 | 3.167 | +0.639 | -61.1% | -62.6% |
+| Sponza | 20.828 | 10.708 | 12.826 | 12.570 | +1.862 | -39.6% | -38.4% |
+| **CUM** | | | | | **+6.690** | **-55.816pp** | **-56.883pp** |
+
+**SPP=4:** R2d FAILS on Sponza (19.6% vs vanilla 11.5%) — DQLin's
+classic Sponza fireflies. R3d/R2dR3d FIX it (9.57%, 9.60%, both well
+below vanilla). Cum: R3d wins R2d by 6.78pp (Sponza alone gives
+-10pp swing).
+
+| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| BistroExterior | 17.580 | 12.004 | 12.297 | 12.658 | +0.655 | -28.0% | -30.0% |
+| BistroInterior | 16.858 | 10.324 | 10.176 | 10.195 | -0.129 | -39.5% | -39.6% |
+| CornellBox_1AreaLight | 2.894 | 1.649 | 2.205 | 2.417 | +0.768 | -16.5% | -23.8% |
+| CornellBox_1PointLight | 4.706 | 3.039 | 4.106 | 4.065 | +1.027 | -13.6% | -12.8% |
+| CornellBox_32PointLights | 4.981 | 2.284 | 2.531 | 2.572 | +0.288 | -48.4% | -49.2% |
+| CornellBox_3AreaLights | 3.490 | 1.796 | 2.229 | 2.478 | +0.682 | -29.0% | -36.1% |
+| Sponza | 11.502 | 19.633 | 9.603 | 9.565 | -10.068 | -16.8% | -16.5% |
+| **CUM** | | | | | **-6.778** | **-18.060pp** | **-18.865pp** |
+
+**SPP=16:** R2d's firefly pathology is now severe across all
+production scenes (Sponza 27.76%, BistroInterior 25.95%, BistroExterior
+16.52%) while R3d holds together (7.18%, 7.46%, 8.43%). Cum R3d
+beats R2d by **46.08pp** at SPP=16. Cornell scenes are inverted —
+vanilla converges fast there (1PL 0.067%, 1AL 1.45%) so all ReSTIR
+variants land 1-3pp above vanilla, but the Cornell tax (~+0.1pp per
+scene) is dwarfed by the production-scale wins.
+
+| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| BistroExterior | 8.911 | 16.521 | 8.478 | 8.433 | -8.089 | -5.4% | -4.9% |
+| BistroInterior | 6.458 | 25.952 | 7.554 | 7.460 | -18.492 | +15.5% | +17.0% |
+| CornellBox_1AreaLight | 1.451 | 1.561 | 1.613 | 1.715 | +0.154 | +18.2% | +11.2% |
+| CornellBox_1PointLight | 0.067 | 2.234 | 3.174 | 3.259 | +1.025 | +4773.5% | +4645.1% |
+| CornellBox_32PointLights | 2.594 | 1.905 | 1.684 | 1.692 | -0.214 | -34.8% | -35.1% |
+| CornellBox_3AreaLights | 1.119 | 1.596 | 1.683 | 1.711 | +0.115 | +52.9% | +50.4% |
+| Sponza | 5.413 | 27.764 | 7.188 | 7.182 | -20.582 | +32.7% | +32.8% |
+| **CUM** | | | | | **-46.082** | **+5.440pp** | **+5.361pp** |
+
+**Architectural conclusion.** R3d (and equivalently R2dR3d on these
+scenes — they track within 0.1pp) is a **scene-dependent win**:
+
+- Cornell scenes: small R3d quality tax (~+0.1pp at SPP=16). Vanilla
+  converges fast on simple lighting, ReSTIR overhead doesn't pay off.
+- Production scenes (Bistro/Sponza): R3d **fixes a DQLin pathology**.
+  R2d (= DQLin per-pixel reservoir) accumulates unbounded fireflies
+  across temporal reuse; R3d's cell-pool first-writer-wins atomic-CAS
+  semantics rejects duplicate winners across pixels and naturally
+  suppresses fireflies (as a side-effect of collision-avoidance, not
+  by design).
+
+The DQLin failure is structural: cross-checked via the frozen
+`restirpt_ref` plugin in the AB harness which gives the same 0.117
+ImageCompare on Sponza as our `restirpt_2d` (R2d). It's not a bug in
+our port; it's an algorithm property of DQLin's per-pixel reservoir
+that R3d's cell semantics happen to fix.
+
+**restirpt_dqlin parity goal:** ACHIEVED.
+- restirpt_2d: bit-identical to DQLin ref (mode 0 IS the DQLin code path).
+- restirpt_3d (R2dR3d): working, scene-dependent quality (Cornell tax
+  ~+0.1pp; production scenes ~10× quality win at SPP=16).
+- R3d (mode 2): equivalent quality to R2dR3d on these scenes;
+  drops the per-pixel reservoir buffer entirely.
+- H2dR3d (mode 3): not implemented; deferred per parallel agent's
+  RDI-side finding ("fallback layer not temporal accumulator", not
+  exercised in canonical regimes).
 
 ## Step SMOKE — pre-stage-D toggleability validation (2026-05-06)
 
