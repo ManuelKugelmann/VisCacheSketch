@@ -8,11 +8,12 @@ is on.
 
 ## Status (2026-05-11)
 
-**WIRED behind a runtime toggle** — `restirptCellPoolFrameCAS` cbuffer
-field, default 0 (legacy). Set to 1 via render-graph kwarg or
-`AB_FRAME_CAS=1` env var to enable.
+**LIVE — only path.** The legacy `restirptCellPoolFrameCAS` toggle and
+its per-iter clearUAV were dropped 2026-05-11. Single code path: three-
+field slot, InterlockedMax claim, atomic ready publish, per-iter
+currentFrame encoding.
 
-### Per-iter currentFrame encoding (refinement landed 2026-05-11)
+### Per-iter currentFrame encoding
 
 Per user "frame_id = frame + subframe" directive, the writer/reader now
 compute `currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u`.

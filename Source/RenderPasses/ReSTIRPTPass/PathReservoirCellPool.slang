@@ -76,15 +76,6 @@ PathReservoirCellSlot prCellSlotInit()
     return s;
 }
 
-/// True if a slot is unclaimed (or sentinel).
-bool prCellSlotIsEmpty(PathReservoirCellSlot s) { return s.fingerprint == 0u; }
-
-/// True if a slot was claimed by `expectedFingerprint`.
-bool prCellSlotMatches(PathReservoirCellSlot s, uint expectedFingerprint)
-{
-    return s.fingerprint == expectedFingerprint && s.fingerprint != 0u;
-}
-
 /// Hash a quantized cell coordinate + normal-bin into a fingerprint.
 /// Uses an xor-mul construction (independent salts from the slot hash); the
 /// fingerprint is what the SLOT stores so subsequent readers can detect
@@ -276,16 +267,6 @@ PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRa
     return prCellResolveAddr(posW, faceN, sceneRadius, capacity, 0u);
 }
 
-/// Legacy claim: atomic CAS on fingerprint, strict first-writer-wins.
-/// Used by legacy (non-frame-CAS) write path which relies on host-side
-/// per-frame clearUAV to recycle slots. Kept verbatim.
-bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint)
-{
-    uint prev = 0u;
-    InterlockedCompareExchange(pool[slotIdx].fingerprint, 0u, fingerprint, prev);
-    return prev == 0u;   // strict first-writer-wins
-}
-
 /// Frame-CAS claim: atomic InterlockedMax on the separate frameStamp field
 /// elects exactly one winner per (slot, frame). The spatial fingerprint is
 /// stored separately (no bit-mixing) and used by the reader to detect
@@ -324,99 +305,17 @@ void prCellSlotFinalizeFrameCAS(RWStructuredBuffer<PathReservoirCellSlot> pool, 
     InterlockedExchange(pool[slotIdx].ready, currentFrame, prev);
 }
 
-/// Read a cell-pool slot. Returns false (and zeroed reservoir) if the
-/// slot is empty OR claimed by a different fingerprint (collision).
-/// Takes RWStructuredBuffer because that's what callers have (the buffer
-/// is bound as a UAV); reads from RW work fine.
-bool prCellSlotRead(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint expectedFingerprint, out PathReservoir reservoir)
-{
-    PathReservoirCellSlot s = pool[slotIdx];
-    reservoir = s.reservoir;
-    return s.fingerprint != 0u && s.fingerprint == expectedFingerprint;
-}
-
 // ---------------------------------------------------------------------------
 // Cascade helpers: try level 0 first, descend (coarser cells) on miss.
-// Read side: returns first level whose slot fingerprint matches.
-// Write side: claim at the first level where the slot is empty.
 //
 // Mirrors VisCache's vhfLookup pattern (try level L, descend on cellGen
 // mismatch) but applied to PathReservoir storage. Level-0 writes are the
 // most precise; coarser levels capture pixels whose level-0 cell was
 // already claimed by another writer, giving a fall-back denser-sampling
 // substrate for sparse-cell scenes.
-//
-// maxLevels=1 preserves single-level (current) behavior: bit-identical to
-// the pre-cascade implementation.
 // ---------------------------------------------------------------------------
 
-/// Cascading read. Walks levels 0..maxLevels-1; returns the first level whose
-/// slot's fingerprint matches the reader's expected fingerprint at that level.
-/// Returns false (no level matched) if every level either had an empty slot
-/// or a hash collision.
-bool prCellPoolReadCascade(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels,
-    uint jitterSeed, float jitterPos, uint jitterLevel,
-    out PathReservoir reservoir)
-{
-    for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
-    {
-        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
-            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
-            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
-        if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
-    }
-    reservoir = pool[0].reservoir;   // dummy init for unselected branch (never used by caller)
-    return false;
-}
-
-// Back-compat: no jitter, startLevel=0.
-bool prCellPoolReadCascade(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels, out PathReservoir reservoir)
-{
-    return prCellPoolReadCascade(pool, posW, faceN, sceneRadius, capacity,
-        startLevel, maxLevels, 0u, 0.f, 0u, reservoir);
-}
-
-// Back-compat wrapper: startLevel=0.
-bool prCellPoolReadCascade(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint maxLevels, out PathReservoir reservoir)
-{
-    return prCellPoolReadCascade(pool, posW, faceN, sceneRadius, capacity, 0u, maxLevels, reservoir);
-}
-
-/// Cascading write. Try-claim at level 0 first; on claim failure (slot
-/// already taken), descend to the next coarser level. The reservoir is
-/// written at the first successful claim. Returns the level claimed
-/// (or maxLevels if all levels had collisions and nothing was written).
-uint prCellPoolWriteCascade(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels,
-    uint jitterSeed, float jitterPos, uint jitterLevel,
-    PathReservoir reservoir)
-{
-    for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
-    {
-        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
-            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
-            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
-        if (prCellSlotClaim(pool, a.slot, a.fingerprint))
-        {
-            pool[a.slot].reservoir = reservoir;
-            return lvl;
-        }
-    }
-    return maxLevels;
-}
-
-/// Frame-CAS variant of cascading write.
+/// Cascading write.
 ///
 /// Per cascade level:
 ///   1. Resolve (slot, spatialFp) for this (posW, faceN, level).
@@ -487,65 +386,6 @@ bool prCellPoolReadCascadeFrameCAS(
     }
     reservoir = pool[0].reservoir;   // dummy init
     return false;
-}
-
-// Back-compat: no jitter, startLevel=0.
-uint prCellPoolWriteCascade(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels, PathReservoir reservoir)
-{
-    return prCellPoolWriteCascade(pool, posW, faceN, sceneRadius, capacity,
-        startLevel, maxLevels, 0u, 0.f, 0u, reservoir);
-}
-
-// Back-compat wrapper: startLevel=0.
-uint prCellPoolWriteCascade(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint maxLevels, PathReservoir reservoir)
-{
-    return prCellPoolWriteCascade(pool, posW, faceN, sceneRadius, capacity, 0u, maxLevels, reservoir);
-}
-
-// ---------------------------------------------------------------------------
-// Descending cascade: query coarse → fine. Useful when the reader prefers
-// the most-aggregated reservoir (coarser cell = higher M) at the cost of
-// some bias from the larger averaging area. Mirror of prCellPoolReadCascade
-// but iterates in reverse.
-//
-// Used by passes that benefit from variance reduction over precision (e.g.
-// Spatial/Temporal PathRetrace, where a coarser cell's higher-M reservoir
-// drives MIS denominator stability).
-// ---------------------------------------------------------------------------
-bool prCellPoolReadCascadeDescending(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint startLevel, uint maxLevels,
-    uint jitterSeed, float jitterPos, uint jitterLevel,
-    out PathReservoir reservoir)
-{
-    // Walk levels (maxLevels-1, maxLevels-2, ..., startLevel) — coarse → fine.
-    for (uint i = 0u; i + startLevel < maxLevels; ++i)
-    {
-        uint lvl = (maxLevels - 1u) - i;
-        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
-            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
-            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
-        if (prCellSlotRead(pool, a.slot, a.fingerprint, reservoir)) return true;
-    }
-    reservoir = pool[0].reservoir;
-    return false;
-}
-
-// Back-compat: no jitter, startLevel=0.
-bool prCellPoolReadCascadeDescending(
-    RWStructuredBuffer<PathReservoirCellSlot> pool,
-    float3 posW, float3 faceN, float sceneRadius, uint capacity,
-    uint maxLevels, out PathReservoir reservoir)
-{
-    return prCellPoolReadCascadeDescending(pool, posW, faceN, sceneRadius, capacity,
-        0u, maxLevels, 0u, 0.f, 0u, reservoir);
 }
 
 // ---------------------------------------------------------------------------

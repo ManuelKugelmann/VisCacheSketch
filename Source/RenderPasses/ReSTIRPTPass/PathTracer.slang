@@ -258,21 +258,12 @@ struct PathTracer
                                                params.frameDim.y, gScene.camera.data.frameHeight,
                                                gScene.camera.data.focalLength, kPRCellPoolLevels);
         const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
+        const uint currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u;
         PathReservoir cellRes;
-        bool hit;
-        if (params.restirptCellPoolFrameCAS != 0u)
-        {
-            hit = prCellPoolReadCascadeFrameCAS(pathReservoirCellPool, posW, faceN,
-                                                params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                                jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
-                                                /*currentFrame*/(params.frameCount * 256u) + uint(gSppId) + 1u, cellRes);
-        }
-        else
-        {
-            hit = prCellPoolReadCascade(pathReservoirCellPool, posW, faceN,
-                                        params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                        jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes);
-        }
+        bool hit = prCellPoolReadCascadeFrameCAS(pathReservoirCellPool, posW, faceN,
+                                                 params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                                 jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                                 currentFrame, cellRes);
         if (hit) return cellRes;
         // R3d miss: empty reservoir, no pixel-buffer fallback.
         PathReservoir empty;
@@ -301,19 +292,11 @@ struct PathTracer
                                                params.frameDim.y, gScene.camera.data.frameHeight,
                                                gScene.camera.data.focalLength, kPRCellPoolLevels);
         const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
-        if (params.restirptCellPoolFrameCAS != 0u)
-        {
-            prCellPoolWriteCascadeFrameCAS(pathReservoirCellPool, v.posW, v.faceNormalW,
-                                           params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                           jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
-                                           /*currentFrame*/(params.frameCount * 256u) + uint(gSppId) + 1u, reservoir);
-        }
-        else
-        {
-            prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
-                                   params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                   jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, reservoir);
-        }
+        const uint currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u;
+        prCellPoolWriteCascadeFrameCAS(pathReservoirCellPool, v.posW, v.faceNormalW,
+                                       params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                       jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                       currentFrame, reservoir);
     }
 
     /** Compute world-space position by projecting a screen pixel's eye ray

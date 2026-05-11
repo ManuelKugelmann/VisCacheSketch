@@ -190,7 +190,6 @@ namespace
     const std::string kRestirptAddrMode = "restirptAddrMode";
     const std::string kRestirptPoolAddrMode = "restirptPoolAddrMode";
     const std::string kRestirptPoolFootprintPx = "restirptPoolFootprintPx";
-    const std::string kRestirptCellPoolFrameCAS = "restirptCellPoolFrameCAS";
 
     const std::string kTemporalHistoryLength = "temporalHistoryLength";
     const std::string kUseMaxHistory = "useMaxHistory";
@@ -343,7 +342,6 @@ bool ReSTIRPTPass::parseDictionary(const Properties& props)
         else if (key == kRestirptAddrMode) mParams.restirptAddrMode = value;
         else if (key == kRestirptPoolAddrMode) mParams.restirptPoolAddrMode = value;
         else if (key == kRestirptPoolFootprintPx) mParams.restirptPoolFootprintPx = value;
-        else if (key == kRestirptCellPoolFrameCAS) mParams.restirptCellPoolFrameCAS = value;
         else if (key == kTemporalHistoryLength) mTemporalHistoryLength = value;
         else if (key == kUseMaxHistory) mUseMaxHistory = value;
         else if (key == kSeedOffset) mSeedOffset = value;
@@ -504,7 +502,6 @@ Properties ReSTIRPTPass::getProperties() const
     d[kRestirptAddrMode] = mParams.restirptAddrMode;
     d[kRestirptPoolAddrMode] = mParams.restirptPoolAddrMode;
     d[kRestirptPoolFootprintPx] = mParams.restirptPoolFootprintPx;
-    d[kRestirptCellPoolFrameCAS] = mParams.restirptCellPoolFrameCAS;
     d[kTemporalHistoryLength] = mTemporalHistoryLength;
     d[kUseMaxHistory] = mUseMaxHistory;
     d[kSeedOffset] = mSeedOffset;
@@ -651,26 +648,11 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 assert(mpCounters);
                 pRenderContext->clearUAV(mpCounters->getUAV().get(), uint4(0));
 
-                // restirpt_3d (any 3D-aware mode): clear the cell-pool buffer
-                // so each frame starts with empty fingerprints and writers
-                // can claim fresh slots. Without this clear, slots remain
-                // "sticky" once claimed (strict first-writer-wins semantics
-                // never lets the claim refresh).
-                // mode 0 (R2d): no cell pool. mode 1 (R2dR3d): cell pool used.
-                // mode 2 (R3d): cell pool is the ONLY store.
-                //
-                // Frame-CAS toggle (restirptCellPoolFrameCAS=1): skip the
-                // clear; per-slot frameStamp lock + ready publish (see
-                // PathReservoirCellPool.slang prCellSlotClaimFrameCAS)
-                // elects exactly one writer per (slot, frame) via
-                // InterlockedMax, and the reader rejects any slot whose
+                // Cell-pool needs no per-frame clear: frame-CAS writer
+                // protocol (PathReservoirCellPool.slang) elects exactly one
+                // writer per (slot, subframe-id) via InterlockedMax on
+                // frameStamp, and the reader rejects any slot whose
                 // frameStamp != currentFrame. Stale entries auto-invalidate.
-                // Saves one GPU op per ReSTIR iter when enabled.
-                if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool
-                    && mParams.restirptCellPoolFrameCAS == 0u)
-                {
-                    pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
-                }
 
                 mpPathTracerBlock->getRootVar()["gSppId"] = restir_i;
                 mpPathTracerBlock->getRootVar()["gNumSpatialRounds"] = mNumSpatialRounds;

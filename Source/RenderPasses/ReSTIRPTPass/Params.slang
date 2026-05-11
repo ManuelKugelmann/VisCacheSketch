@@ -227,15 +227,6 @@ struct RestirPathTracerParams
     uint    restirptAddrMode = 0u;
     uint    restirptPoolAddrMode = 0u;
     uint    restirptPoolFootprintPx = 16u;
-    /// Frame-CAS toggle for the cell-pool fingerprint claim.
-    /// 0 = legacy strict-first-writer-wins + per-frame clearUAV.
-    /// 1 = three-field design (separate spatial fingerprint / frameStamp /
-    ///     ready), InterlockedMax-elected one-writer-per-(slot,subframe),
-    ///     atomic ready publish; per-iter currentFrame encoding
-    ///     `frameCount*256 + sppId + 1` per "frame_id = frame + subframe".
-    /// Default 1 (validated 2026-05-11 across 7 scenes; closer to vanilla
-    /// GT on Bistro than legacy; TDR-free at x32). See PORT_NOTES_FRAMEFP.md.
-    uint    restirptCellPoolFrameCAS = 1u;
 
 #ifndef HOST_CODE
 

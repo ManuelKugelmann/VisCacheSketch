@@ -28,14 +28,19 @@ DI-side `Rxd/Pyd` matrix.
 | 1 | full frame, no Bayer gate (default) | LIVE | — |
 | 2+ | Bayer-staged subframes (replaces explicit pre-pass) | DEFERRED — substrate (frame-CAS) now in place; ~1 day port left | [PORT_NOTES_BAYER.md](PORT_NOTES_BAYER.md) |
 
-## Frame-CAS cell-pool write protocol (`restirptCellPoolFrameCAS`)
+## Cell-pool write protocol
 
-| value | behaviour | status | doc |
-|---:|---|---|---|
-| 0 | Legacy: per-iter clearUAV + strict first-writer-wins via fingerprint CAS | LIVE (kept for A/B) | [PORT_NOTES_FRAMEFP.md](PORT_NOTES_FRAMEFP.md) |
-| 1 | Frame-CAS: per-iter freshness stamp + InterlockedMax claim + ready publish | **DEFAULT (validated 7 scenes 2026-05-11)** | same |
+Single path: three-field slot (`fingerprint` / `frameStamp` / `ready`),
+InterlockedMax-elected one-writer-per-(slot, subframe), atomic `ready`
+publish. `currentFrame = (frameCount * 256u) + uint(gSppId) + 1u`
+per user's "frame_id = frame + subframe" directive. The legacy clearUAV
++ strict-first-writer-wins path was dropped 2026-05-11 (commit pending);
+frame-CAS eliminates both the per-frame clear and the 2nd-CAS-overwrite
+race that previously TDR'd BistroExt at x12.
 
-`currentFrame = (frameCount * 256u) + uint(gSppId) + 1u` — per-iter freshness keys per user's "frame_id = frame + subframe" directive. Cornell/Sponza parity at noise floor; BistroInterior 45% closer to vanilla GT than legacy clearUAV path; BistroExterior R3d x16+x32 TDR-free.
+Validation (Cornell/Sponza parity at noise floor; BistroInt 45% closer
+to vanilla GT than the dropped legacy path; BistroExt R3d x16+x32 TDR-
+free): see [PORT_NOTES_FRAMEFP.md](PORT_NOTES_FRAMEFP.md).
 
 ## Headline finding (commits `83d3878`, `e158663`)
 

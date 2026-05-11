@@ -53,9 +53,8 @@ Host side: `ReSTIRPTPass.cpp::execute()` increments `restirptSubframeIdx`
 each frame, wrapping at `RESTIRPT_BAYER_N²`.
 
 **clearUAV substrate (unblocked 2026-05-11 by frame-CAS refactor).** The
-per-iter `clearUAV(pathReservoirCellPool)` at `ReSTIRPTPass.cpp:664` is
-now gated on `restirptCellPoolFrameCAS == 0u`. When FLAG=1, the clear is
-skipped entirely; the per-slot frameStamp lock + ready publish
+per-iter `clearUAV(pathReservoirCellPool)` has been removed entirely;
+the per-slot frameStamp lock + ready publish
 (`PathReservoirCellPool.slang::prCellSlotClaimFrameCAS`) handles stale-
 data rejection at the reader. **This removes the historical blocker on
 cross-frame cell persistence.**
@@ -107,9 +106,8 @@ Total: ~3 days for a working Bayer MVP.
 
 ## Status update 2026-05-11 — substrate now in place
 
-Frame-CAS refactor (`restirptCellPoolFrameCAS=1`) removed the per-iter
-clearUAV that previously gated cross-frame persistence. The remaining
-work for Bayer-staged subframes is:
+Frame-CAS refactor removed the per-iter clearUAV that previously gated
+cross-frame persistence. The remaining work for Bayer-staged subframes is:
 
 1. Add a `RESTIRPT_BAYER_N` compile-time define + `restirptSubframeIdx`
    cbuffer field.
