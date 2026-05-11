@@ -50,9 +50,30 @@ no-op) and a `restirptSubframeIdx` cbuffer field. Mirror the
 (no path generation, no reservoir write).
 
 Host side: `ReSTIRPTPass.cpp::execute()` increments `restirptSubframeIdx`
-each frame, wrapping at `RESTIRPT_BAYER_N²`. The cell-pool's per-iter
-`clearUAV` should be gated on `restirptSubframeIdx == 0` (only clear at
-start of a new Bayer cycle, NOT every subframe).
+each frame, wrapping at `RESTIRPT_BAYER_N²`.
+
+**Critical clearUAV refactor.** The current cell-pool `clearUAV` is INSIDE
+the per-iter ReSTIR loop (`ReSTIRPTPass.cpp:644`, inside the
+`for (restir_i = 0; restir_i < numPasses; ++restir_i)` block at :609). It
+fires once per ReSTIR iter, multiple times per frame.
+
+For Bayer to amortize cell fill across multiple frames, the cell pool
+must persist BETWEEN frames; clearUAV needs to move OUTSIDE the per-iter
+loop AND be gated on `restirptSubframeIdx == 0` (Bayer cycle start).
+
+This is a non-trivial restructure — currently the per-iter clear is the
+canonical refresh strategy (it's what fixed the frame-stamp regression in
+commit a3129ab). Moving to per-Bayer-cycle clear means BREAKS:
+- Per-frame quality character: cells now hold multi-frame fingerprint
+  history; stale fingerprints from previous frame leak into current frame's
+  reads.
+- Atomic-CAS contention across frames: claimants from frame N might still
+  have valid claims at frame N+1's NEE.
+
+Mitigation: the parallel-agent-suggested Bayer pattern only works if the
+CELL CONTENT is content-stable across frames (matching the FREE-warmup
+claim). For dynamic scenes or non-deterministic resampling within the
+cell, this assumption breaks; per-iter clear stays the safer default.
 
 ## Composition with R-axis
 
