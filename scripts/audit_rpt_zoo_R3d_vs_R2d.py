@@ -134,7 +134,24 @@ def emit_audit(spp, md_mode):
 
 
 if ALL_SPP:
+    results = {}   # spp -> (cum_r3d_r2d, cum_r3d_van, cum_r2d3d_van)
     for s in (1, 4, 16):
-        emit_audit(s, MD)
+        results[s] = emit_audit(s, MD)
+    # Cross-SPP summary — useful for spot-checking regressions across re-runs.
+    if MD:
+        print("### Cross-SPP summary")
+        print()
+        print("| SPP | cum d(R3d-R2d) | cum d(R3d-van) | cum d(R2dR3d-van) |")
+        print("| ---: | ---: | ---: | ---: |")
+        for s in (1, 4, 16):
+            a, b, c = results[s]
+            print(f"| {s} | {a:+.3f}pp | {b:+.3f}pp | {c:+.3f}pp |")
+        print()
+    else:
+        print()
+        print("# Cross-SPP summary:")
+        for s in (1, 4, 16):
+            a, b, c = results[s]
+            print(f"  SPP={s:>2}: cum d(R3d-R2d)={a:>+8.3f}pp  d(R3d-van)={b:>+8.3f}pp  d(R2dR3d-van)={c:>+8.3f}pp")
 else:
     emit_audit(SPP, MD)
