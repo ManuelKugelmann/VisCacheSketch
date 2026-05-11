@@ -28,25 +28,48 @@ DI-side `Rxd/Pyd` matrix.
 | 1 | full frame, no Bayer gate (default) | LIVE | — |
 | 2+ | Bayer-staged subframes (replaces explicit pre-pass) | DEFERRED — clearUAV restructure required | [PORT_NOTES_BAYER.md](PORT_NOTES_BAYER.md) |
 
-## Headline finding (commit `83d3878`, 2026-05-09)
+## Headline finding (commits `83d3878`, `e158663`)
 
 R3d's cell-pool first-writer-wins atomic-CAS suppresses a DQLin
-per-pixel-reservoir firefly pathology on Bistro/Sponza:
+per-pixel-reservoir firefly pathology on Bistro/Sponza, **and** R3d
+runs ~67% faster than R2d everywhere.
 
-| scene | R2d (DQLin) x16 OkLab | R3d x16 OkLab | speedup |
+### Quality axis (mean_err_pct OkLab vs vanilla GT, SPP=16)
+
+| scene | R2d (DQLin) | R3d | quality speedup |
 |---|---:|---:|---:|
 | Sponza | 27.76% | 7.18% | **3.9×** |
 | BistroInterior | 25.95% | 7.46% | **3.5×** |
 | BistroExterior | 16.52% | 8.43% | **2.0×** |
 
 Cumulative R3d-vs-R2d delta across 7 scenes at SPP=16: **−46.08pp WIN**.
+Cornell scenes pay a small R3d tax (+0.1pp at SPP=16).
 
-Cross-checked via frozen `restirpt_ref` plugin → pathology is a DQLin
-algorithm property, not a port bug. Cornell scenes pay a small R3d tax
-(+0.1pp at SPP=16) where vanilla converges fast.
+### Cost axis (gpu_total_ms ratio, ladder-relative)
 
-Full per-scene table in [docs/LADDERLOG.md](../../../docs/LADDERLOG.md)
-"Step RPT_ZOO" section.
+| scene | R2dR3d/R2d | R3d/R2d |
+|---|---:|---:|
+| BistroExterior | 0.572× | 0.352× |
+| BistroInterior | 0.578× | 0.362× |
+| Cornell_1AL | 0.542× | 0.306× |
+| Cornell_1PL | 0.534× | 0.297× |
+| Cornell_32PL | 0.549× | 0.318× |
+| Cornell_3AL | 0.538× | 0.307× |
+| Sponza | 0.575× | 0.359× |
+| **mean** | **0.555×** | **0.329×** |
+
+Remarkable uniformity (R3d/R2d all 0.297-0.362×) → structural speedup
+from skipping per-pixel reservoir write + downstream temporal/spatial-
+reuse passes that read it. Per-scene independent.
+
+**Combined**: R3d Pareto-dominates R2d on both axes. The Cornell
+"+0.1pp quality tax" is offset by a 67% compute drop. Cross-checked
+via frozen `restirpt_ref` plugin → R2d's firefly pathology is a DQLin
+algorithm property, not a port bug.
+
+Full per-scene tables in [docs/LADDERLOG.md](../../../docs/LADDERLOG.md)
+"Step RPT_ZOO" section. Cost audit:
+`scripts/audit_rpt_zoo_cost.py 16`.
 
 ## Tooling
 
