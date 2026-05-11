@@ -224,6 +224,14 @@ private:
     /// Allocated when restirptAddrMode != 0, otherwise nullptr.
     ref<Buffer>                     mpPathReservoirCellPool;
 
+    /// Per-tile / per-cell presampled NEE light-sample pool (Task #21,
+    /// step 1: allocation only; fill pass + NEE-site read TODO).
+    /// Allocated when restirptPoolAddrMode != 0, otherwise nullptr.
+    /// One LightPoolSlot per slot (K=16 packed samples). Sized to the
+    /// cell-pool capacity for both P2d and P3d for now (revisit when
+    /// fill pass lands and tile-sizing semantics matter).
+    ref<Buffer>                     mpLightPool;
+
     ref<Texture>                    mpTemporalVBuffer;
 
     ref<Texture>                    mpNeighborOffsets;

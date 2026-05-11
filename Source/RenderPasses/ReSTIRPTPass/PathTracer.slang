@@ -27,6 +27,7 @@ import Falcor8Compat;
 import PathBuilder;
 import PathReservoir;
 import PathReservoirCellPool;
+import LightPool;
 
 #include "Utils/Math/MathConstants.slangh"
 
@@ -73,6 +74,13 @@ struct PathTracer
     /// Bound only when params.restirptAddrMode == 1; null otherwise.
     /// One PathReservoirCellSlot per cell (fingerprint + reservoir).
     RWStructuredBuffer<PathReservoirCellSlot> pathReservoirCellPool;
+
+    /// Optional NEE light-sample pool (Task #21 step 1: allocation only).
+    /// Bound only when params.restirptPoolAddrMode != 0; null otherwise.
+    /// One LightPoolSlot per slot (K presampled lights, see LightPool.slang).
+    /// Not yet read by any code path — fill pass + NEE-site read are TODO.
+    RWStructuredBuffer<LightPoolSlot> lightPool;
+
     bool isLastRound;
     bool useDirectLighting;
     int  gSppId;

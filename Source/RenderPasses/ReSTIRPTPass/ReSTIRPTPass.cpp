@@ -1243,6 +1243,25 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
             mpPathReservoirCellPool = nullptr;   // free when mode=0
         }
 
+        // P-axis NEE light-sample pool (Task #21 step 1: allocation only).
+        // Sized to reservoirCount for both P2d and P3d for now; tile-vs-cell
+        // sizing semantics are revisited when the fill pass lands.
+        if (mParams.restirptPoolAddrMode != 0u)
+        {
+            if (!mpLightPool || mpLightPool->getElementCount() != reservoirCount)
+            {
+                mpLightPool = mpDevice->createStructuredBuffer(
+                    var["lightPool"], reservoirCount,
+                    ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                    MemoryType::DeviceLocal, nullptr, false);
+                mVarsChanged = true;
+            }
+        }
+        else if (mpLightPool)
+        {
+            mpLightPool = nullptr;   // free when Pno (default)
+        }
+
         // Allocate path buffers.
         if (!mpOutputReservoirs || reservoirCount != mpOutputReservoirs->getElementCount())
         {
@@ -1295,6 +1314,7 @@ void ReSTIRPTPass::preparePathTracer(const RenderData& renderData)
     setShaderData(var, renderData, true, false);
     var["outputReservoirs"] = mpOutputReservoirs;
     if (mpPathReservoirCellPool) var["pathReservoirCellPool"] = mpPathReservoirCellPool;
+    if (mpLightPool) var["lightPool"] = mpLightPool;
     var["directLighting"] = renderData[kInputDirectLighting]->asTexture();
 }
 
