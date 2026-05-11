@@ -41,6 +41,47 @@ Without it, frame 0 hits uninitialized GPU memory → the 2nd-CAS
 overwrite path race-writes payload over garbage → TDR. With one-time
 clear, fingerprint starts at zero so 1st CAS wins cleanly.
 
+## Known limitation — TDR at high contention (FOUND 2026-05-11)
+
+The 2nd-CAS-overwrite path has a fundamental race on the non-atomic
+`pool[slot].reservoir = ...` payload write:
+- Writer A in frame N: 1st CAS wins empty slot → writes payload.
+- Writer A in frame N+1 (different pixel hash, same cell): 1st CAS
+  fails (slot has stamp_N); 2nd CAS wins (overwrites stamp_N→stamp_N+1)
+  → writes payload non-atomically.
+
+Across many frames with high cell contention (e.g. BistroExterior R3d
+mode 2 at AB_FRAMES≥12), multiple writers' payload writes can interleave
+on the same slot. Torn `rcVertexHit` → `gScene.getVertexData(invalid)`
+→ DXGI_DEVICE_REMOVED → TDR.
+
+**Empirical TDR threshold:** R3d (pure 3D, no pixel fallback) on
+BistroExterior:
+- AB_FRAMES=4:  PASS
+- AB_FRAMES=8:  PASS
+- AB_FRAMES=12: FAIL (TDR)
+- AB_FRAMES=16: FAIL (TDR)
+
+Cornell scenes don't hit this — fewer cells, less contention. R2dR3d
+(mode 1) also wasn't reproduced to TDR yet because pixel fallback
+masks per-cell-slot torn-payload writes.
+
+**Workarounds for a robust frame-CAS scheme:**
+1. **Drop the 2nd CAS** entirely → stale slots stay forever; needs a
+   separate periodic clear (e.g. every 256 frames) or read-side
+   "freshness" gate (only accept if frame byte differs by ≤K).
+2. **Per-slot write lock** via a separate uint flag: writer CAS-takes
+   a lock bit, writes payload, releases. Adds 2 atomics + 1 store per
+   write but eliminates the payload race.
+3. **Atomically-replaceable payload**: shrink `PathReservoir` to fit
+   in a uint64_t / uint4 atomic. Loses fidelity; needs a smaller
+   PathReservoir variant.
+
+For production: KEEP toggle off. Legacy strict-first-writer-wins +
+per-frame clearUAV remains safe. Frame-CAS is useful as a low-
+contention proof-of-concept; needs option 2 or 3 to be production-ready
+across the full scene matrix.
+
 ## Why this differs from the reverted frame-stamp scheme (a3129ab)
 
 The reverted scheme used a SEPARATE `frameStamp` field with
