@@ -9,9 +9,9 @@ DI-side `Rxd/Pyd` matrix.
 | mode | tag | storage | status | doc |
 |---:|---|---|---|---|
 | 0 | R2d | 2D pixel buffer only (DQLin baseline) | LIVE — bit-identical to frozen `restirpt_ref` | [PORT_NOTES.md](PORT_NOTES.md) |
-| 1 | R2dR3d | 2D pixel + 3D cell-pool override (cell-first, pixel-fallback) | LIVE | same |
-| 2 | R3d | Pure 3D cell-pool, no pixel buffer | LIVE | same |
-| 3 | H2dR3d | Per-pixel "last good shade" fallback for empty cells | DEFERRED — three viable design options enumerated | [PORT_NOTES_H2DR3D.md](PORT_NOTES_H2DR3D.md) |
+| 1 | R3d | Pure 3D cell-pool, no pixel buffer | LIVE | same |
+
+**Dropped variants** (2026-05-11): `R2dR3d` (was mode 1, hybrid pixel+cell — no measurable win vs pure R3d; parallel agent's RDI00 validated as no-op +Δ 0.004); `H2dR3d` (was mode 3, per-pixel history fallback — H2dR3dP3d ≡ R3dP3d at static camera per parallel agent's audit; dynamic-camera regime needed to demonstrate value, deferred indefinitely).
 
 ## P-axis — NEE light-sample pool (`restirptPoolAddrMode`)
 
@@ -26,7 +26,16 @@ DI-side `Rxd/Pyd` matrix.
 | value | behaviour | status | doc |
 |---:|---|---|---|
 | 1 | full frame, no Bayer gate (default) | LIVE | — |
-| 2+ | Bayer-staged subframes (replaces explicit pre-pass) | DEFERRED — clearUAV restructure required | [PORT_NOTES_BAYER.md](PORT_NOTES_BAYER.md) |
+| 2+ | Bayer-staged subframes (replaces explicit pre-pass) | DEFERRED — substrate (frame-CAS) now in place; ~1 day port left | [PORT_NOTES_BAYER.md](PORT_NOTES_BAYER.md) |
+
+## Frame-CAS cell-pool write protocol (`restirptCellPoolFrameCAS`)
+
+| value | behaviour | status | doc |
+|---:|---|---|---|
+| 0 | Legacy: per-iter clearUAV + strict first-writer-wins via fingerprint CAS | LIVE (kept for A/B) | [PORT_NOTES_FRAMEFP.md](PORT_NOTES_FRAMEFP.md) |
+| 1 | Frame-CAS: per-iter freshness stamp + InterlockedMax claim + ready publish | **DEFAULT (validated 7 scenes 2026-05-11)** | same |
+
+`currentFrame = (frameCount * 256u) + uint(gSppId) + 1u` — per-iter freshness keys per user's "frame_id = frame + subframe" directive. Cornell/Sponza parity at noise floor; BistroInterior 45% closer to vanilla GT than legacy clearUAV path; BistroExterior R3d x16+x32 TDR-free.
 
 ## Headline finding (commits `83d3878`, `e158663`)
 

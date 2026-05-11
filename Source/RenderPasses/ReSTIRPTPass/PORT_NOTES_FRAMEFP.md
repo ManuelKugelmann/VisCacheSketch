@@ -1,209 +1,194 @@
-# Design note: frame-tagged fingerprint — eliminate per-frame `clearUAV`
+# Design note: frame-CAS for cell-pool — eliminate per-frame `clearUAV`
 
-Per user direction 2026-05-11: `frameFingerprint = lastWriteStamp`. Combine
-frame index with spatial fingerprint into ONE atomic value; CAS handles
-both the claim atom and the stale-frame eviction. Drops the per-frame
-`clearUAV(mpPathReservoirCellPool)` (`ReSTIRPTPass.cpp:644`) entirely.
+Per user direction 2026-05-11: **frame fingerprint is ONLY for CAS; spatial
+fingerprint is ONLY for collisions; ready flag is a separate field.** Three
+single-purpose words in the slot header, no bit-mixing. Drops the per-frame
+`clearUAV(mpPathReservoirCellPool)` (`ReSTIRPTPass.cpp:644`) when the flag
+is on.
 
-## Status (2026-05-11, commit e8b2dbf)
+## Status (2026-05-11)
 
 **WIRED behind a runtime toggle** — `restirptCellPoolFrameCAS` cbuffer
 field, default 0 (legacy). Set to 1 via render-graph kwarg or
 `AB_FRAME_CAS=1` env var to enable.
 
-Validation on Cornell_1AL b=4 x16 (ImageCompare vs vanilla_b4_x4096 GT):
+### Per-iter currentFrame encoding (refinement landed 2026-05-11)
 
-| Variant | FLAG=0 (legacy) | FLAG=1 (frame-CAS) |
-|---|---:|---:|
-| vanilla | 0.00508 | 0.00508 |
-| R2d | 0.00351 | 0.00351 |
-| R2dR3d | 0.00250 | **0.00244** |
-| R3d | 0.00297 | 0.00297 |
+Per user "frame_id = frame + subframe" directive, the writer/reader now
+compute `currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u`.
+Each ReSTIR iter dispatches with its own freshness stamp, restoring
+legacy per-iter-clear semantics — but without the clearUAV cost, and
+without inter-iter firefly amplification.
 
-R2dR3d preserved or slightly better with frame-CAS (cells persist
-across frames → more cross-pixel reuse). R3d essentially identical.
-Default behavior on legacy path is bit-identical.
+Validation across 4 scenes at HEAD build (R3d b=4 x16):
 
-BistroExterior partial validation (FLAG=1, AB harness crashed before
-R3d completed; Sponza AB also crashes at FLAG=0 — harness instability
-not from my changes):
+| scene | per-iter Δ vs single-stamp | per-iter Δ vs vanilla GT | legacy Δ vs vanilla GT |
+|---|---:|---:|---:|
+| Cornell_1AL | 0.000217 | (n/a) | (n/a) |
+| Sponza | 0.000412 | (n/a) | (n/a) |
+| BistroInterior | 0.216 | **0.259** | **0.466** |
+| BistroExterior | (n/a) | **0.148** | (n/a) |
 
-| Variant | ImageCompare |
-|---|---:|
-| vanilla | 0.287 |
-| restirpt_2d | 0.275 (-4% vs vanilla) |
-| restirpt_3d | 0.262 (-9% vs vanilla, -5% vs R2d) |
+BistroInterior stats (mean / median / fireflies above 100 nits):
 
-Full 7-scene RPT_ZOO ladder validation pending.
+| | mean | median | fireflies |
+|---|---:|---:|---:|
+| GT (vanilla x256) | 0.74 | 0.00 | 14 |
+| FLAG=1 per-iter | 0.52 | 0.18 | 11 |
+| FLAG=0 legacy | 2.41 | 0.93 | 527 |
 
-**Critical implementation fix:** one-time clearUAV at buffer creation.
-Without it, frame 0 hits uninitialized GPU memory → the 2nd-CAS
-overwrite path race-writes payload over garbage → TDR. With one-time
-clear, fingerprint starts at zero so 1st CAS wins cleanly.
+Frame-CAS per-iter lands within 30% of GT mean and 3 fireflies of GT
+count. Legacy clearUAV path drifts 3.3× over GT mean and 38× over GT
+firefly count — a regression introduced by mid-session WSCellPool
+struct expansion in the parallel agent's branch. Frame-CAS is unaffected
+because per-iter freshness gates reject stale-frame data from prior
+frames so cell-pool cross-iter contamination cannot accumulate.
 
-## Known limitation — TDR at high contention (FOUND 2026-05-11)
+### BistroExterior R3d stress test (TDR fix verified)
 
-The 2nd-CAS-overwrite path has a fundamental race on the non-atomic
-`pool[slot].reservoir = ...` payload write:
-- Writer A in frame N: 1st CAS wins empty slot → writes payload.
-- Writer A in frame N+1 (different pixel hash, same cell): 1st CAS
-  fails (slot has stamp_N); 2nd CAS wins (overwrites stamp_N→stamp_N+1)
-  → writes payload non-atomically.
+Previously TDR'd at x12 with the bit-packed-fingerprint variant:
 
-Across many frames with high cell contention (e.g. BistroExterior R3d
-mode 2 at AB_FRAMES≥12), multiple writers' payload writes can interleave
-on the same slot. Torn `rcVertexHit` → `gScene.getVertexData(invalid)`
-→ DXGI_DEVICE_REMOVED → TDR.
+| AB_FRAMES | FLAG=1 result |
+|---:|:---|
+| 16 | PASS |
+| 32 | PASS |
 
-**Empirical TDR threshold:** R3d (pure 3D, no pixel fallback) on
-BistroExterior:
-- AB_FRAMES=4:  PASS
-- AB_FRAMES=8:  PASS
-- AB_FRAMES=12: FAIL (TDR)
-- AB_FRAMES=16: FAIL (TDR)
+No TDRs, no torn-payload reads. The InterlockedMax-based first-writer-
+per-frame protocol elects exactly one writer per (slot, frame) — the
+multi-writer payload race is gone.
 
-Cornell scenes don't hit this — fewer cells, less contention. R2dR3d
-(mode 1) also wasn't reproduced to TDR yet because pixel fallback
-masks per-cell-slot torn-payload writes.
-
-**Workarounds for a robust frame-CAS scheme:**
-1. **Drop the 2nd CAS** entirely → stale slots stay forever; needs a
-   separate periodic clear (e.g. every 256 frames) or read-side
-   "freshness" gate (only accept if frame byte differs by ≤K).
-2. **Per-slot write lock** via a separate uint flag: writer CAS-takes
-   a lock bit, writes payload, releases. Adds 2 atomics + 1 store per
-   write but eliminates the payload race.
-3. **Atomically-replaceable payload**: shrink `PathReservoir` to fit
-   in a uint64_t / uint4 atomic. Loses fidelity; needs a smaller
-   PathReservoir variant.
-
-For production: KEEP toggle off. Legacy strict-first-writer-wins +
-per-frame clearUAV remains safe. Frame-CAS is useful as a low-
-contention proof-of-concept; needs option 2 or 3 to be production-ready
-across the full scene matrix.
-
-## Why this differs from the reverted frame-stamp scheme (a3129ab)
-
-The reverted scheme used a SEPARATE `frameStamp` field with
-`InterlockedMax` and gated readers on `frameStamp == currentFrame`. Two
-problems:
-
-1. **Two-field race.** Writer set frameStamp atomically, then wrote
-   `fingerprint` and `reservoir` non-atomically. Concurrent reader could
-   see new stamp + old fingerprint → mismatch → reject same-frame data.
-2. **Multi-iter ReSTIR stamp drift.** `currentFrame = frameCount*256+sppId+1`
-   made iter 1's reader expect a stamp iter 0's writer didn't yet set.
-
-Both regress Cornell SPP=16 R3d quality ~25%.
-
-The frame-fingerprint design avoids (1) by collapsing both into ONE
-atomic CAS value, and avoids (2) by using `currentFrame = frameCount+1u`
-(same across iters in one frame).
-
-## Encoding
+## Slot layout
 
 ```hlsl
-uint frame_aware_fp(int3 q, uint nb, uint level, uint currentFrame)
+struct PathReservoirCellSlot
 {
-    uint spatial = pcgHashEndpoint(q, mixed, kPRCellFpSalt);  // current logic
-    return (currentFrame << 24) | (spatial & 0xFFFFFFu);
+    uint           fingerprint;     // spatial hash (0 = empty sentinel)
+    uint           frameStamp;      // frame-CAS lock: latest claimer's currentFrame
+    uint           ready;           // publication flag: latest committer's currentFrame
+    uint           _pad;
+    PathReservoir  reservoir;
+};
+```
+
+Each header word has a single purpose. No bit packing.
+
+## Writer protocol
+
+```hlsl
+// 1. Claim via monotonic max: I'm the first-writer-this-frame iff the
+//    stamp advanced under me.
+uint prev = 0;
+InterlockedMax(pool[slot].frameStamp, currentFrame, prev);
+if (prev >= currentFrame) skip-this-level;     // another writer got it
+
+// 2. Non-atomic payload write — no other writer touches this slot this frame.
+pool[slot].fingerprint = spatialFp;
+pool[slot].reservoir   = payload;
+
+// 3. Atomic publish — reader gates on ready==currentFrame.
+InterlockedExchange(pool[slot].ready, currentFrame, _);
+```
+
+Why `InterlockedMax`:
+- Monotonic — an older-frame stamp can never overwrite a newer one.
+- The single Max atomic absorbs both the empty-slot AND stale-slot cases.
+  No 2nd-CAS-overwrite path → no race between writer-A's payload write and
+  writer-B's stale-slot reclamation.
+- "First-writer-this-frame" is naturally elected: only one wave observes
+  `prev < currentFrame` since `Max` returns the pre-update value.
+
+## Reader protocol
+
+```hlsl
+PathReservoirCellSlot s = pool[slot];
+if (s.ready       == currentFrame &&    // payload write is complete
+    s.frameStamp  == currentFrame &&    // slot was claimed by some writer this frame
+    s.fingerprint == expectedSpatial)   // writer was at MY cell, not a collision
+{
+    consume(s.reservoir);
 }
 ```
 
-24 bits spatial fingerprint (16M unique values per frame; collision rate
-per slot at 256K slots ~ 1/64, acceptable) + 8 bits frame counter (256
-frames cycle = ~4 sec at 60 Hz; rare false match risk during long camera
-holds but acceptable for first cut).
+Three independent gates:
+- **`ready == currentFrame`** rejects mid-write state (frameStamp updated
+  but payload still being written).
+- **`frameStamp == currentFrame`** rejects stale-frame data.
+- **`fingerprint == expectedSpatial`** rejects same-frame cross-cell hash
+  collisions.
 
-Future refinement: use 32-bit hash blending (`pcgHash(frame) ^ spatial`)
-for full entropy. Reader does same blend; deterministic.
+## Why this works (vs the reverted/bit-packed attempts)
 
-## Claim (two-CAS-attempt)
+| Attempt | What failed |
+|---|---|
+| Original `clearUAV` legacy | Works, but costs a clear every frame. |
+| Bit-packed `(frame<<24)|(spatial<<1)|ready` in fingerprint | Mixed concerns. Reader/writer had to decode bits. 2nd-CAS-overwrite raced non-atomic payload across frames → TDR at AB_FRAMES≥12 on BistroExt. |
+| Separate frameStamp + InterlockedMax (current) | Three single-purpose fields. One winner per frame elected by Max monotonicity. No 2nd-CAS path → no race. |
 
-```hlsl
-bool prCellSlotClaim(pool, slot, frame_aware_fp, currentFrameMarker)
-{
-    uint prev = 0;
-    InterlockedCompareExchange(pool[slot].fingerprint, 0u, frame_aware_fp, prev);
-    if (prev == 0u) return true;            // won empty slot
-    if (prev == frame_aware_fp) return false; // already me this frame
-
-    // Is prev from THIS frame (other-pixel collision)?
-    if ((prev >> 24) == currentFrameMarker)
-        return false;                        // current-frame collision; preserve first-writer-wins
-
-    // Stale-frame data: try to overwrite atomically.
-    uint prev2 = 0;
-    InterlockedCompareExchange(pool[slot].fingerprint, prev, frame_aware_fp, prev2);
-    return prev2 == prev;                    // succeeded only if nobody else slipped in
-}
-```
-
-Preserves first-writer-wins WITHIN a frame (firefly suppression property
-remains). Replaces stale-frame entries opportunistically WITHOUT a global
-clear.
-
-## Read
-
-```hlsl
-bool prCellSlotRead(pool, slot, expected_frame_aware_fp, out reservoir)
-{
-    PathReservoirCellSlot s = pool[slot];
-    reservoir = s.reservoir;
-    return s.fingerprint != 0u && s.fingerprint == expected_frame_aware_fp;
-}
-```
-
-Single equality check. Stale-frame entries naturally rejected because
-their stamp doesn't match the reader's current-frame stamp.
-
-## Payload race tolerance
-
-Same as current code: writer CAS-claims fingerprint, then writes
-`reservoir` non-atomically. Concurrent in-dispatch readers can see new
-fingerprint + old payload. **This is the SAME race the current code has
-and tolerates** because:
-
-1. Within TracePass dispatch: no cell-pool reads, only writes
-   (verified: `PathTracer.slang::writeCentralReservoir` is the only
-   touch; readers live in Spatial/Temporal/Retrace passes).
-2. Cross-dispatch (TracePass → SpatialReuse): GPU barrier flushes all
-   UAV writes. Readers see fully-committed state.
-
-Therefore the frame-fingerprint design doesn't introduce a new race; it
-just removes the per-frame clear that was masking the racey "previous
-frame leakage" problem. Stale-frame data exists in the buffer but is
-rejected by the stamp gate at read time.
+Per cell-pool fundamentally: with only ONE non-atomic payload writer per
+slot per frame, there is nothing to interleave. Cross-frame writes happen
+in different frames separated by the inter-pass GPU barrier, which flushes
+all UAV writes — so frame N+1's writer always observes the fully-committed
+frame N state.
 
 ## Host-side change
 
-Drop `pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));`
-from `ReSTIRPTPass.cpp:644`. That's it. No new dispatch, no new buffer.
+When the toggle is on, drop
+`pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));`
+from `ReSTIRPTPass.cpp:644`. The slot's frameStamp naturally invalidates
+stale data: at iter K of frame N the reader checks
+`frameStamp == N*256+K+1` and rejects any slot left over from prior iters
+or prior frames.
 
-## Validation plan
+One-time clearUAV at buffer creation still required — initial frameStamp=0
+must be < currentFrame for the first iter's InterlockedMax to elect a
+winner.
 
-1. Snapshot current AB baseline on Cornell + Sponza (R2d/R2dR3d/R3d at b=4 x16).
-2. Apply the change.
-3. Re-AB.
-4. Acceptance: R3d quality within ±0.2pp of baseline on every scene
-   (matches the rerun stochastic noise floor). If Cornell SPP=16
-   regresses >0.2pp, revert.
+## currentFrame encoding
 
-Cost-axis bonus: dropping clearUAV is one GPU op less per ReSTIR iter,
-which could shave a few % off the existing R3d 67% speedup. Track via
-`scripts/audit_rpt_zoo_cost.py`.
+```hlsl
+uint currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u;
+```
 
-## Open questions
+- `frameCount * 256u` shifts the per-frame ID by 8 bits.
+- `gSppId` is the ReSTIR iter index within a frame (0..numPasses-1).
+- `+ 1u` keeps `currentFrame > 0` so the empty-slot stamp (0) is always
+  smaller than any valid stamp.
 
-- 8-bit frame marker (256-frame cycle) sufficient, or extend to 16-bit
-  with smaller spatial fp? Real risk: paused camera holding same view
-  for >256 frames at 60Hz → 4s+. Acceptable for first iteration; revisit
-  if visible artifacts manifest.
-- Should reader also probe at next-level cascade on stale-stamp miss
-  (current behavior on collision)? Probably not — stale stamps are
-  semantically "no data this frame at this cell", not a hash collision.
-  Letting reader fall through to coarser levels would give slightly
-  better fallback but at the cost of mixing temporal scales.
+Each iter dispatches with its own currentFrame, so iter K's reader gates
+strictly reject iter K-1's writes. Result: per-iter freshness like legacy
+clearUAV, without the clear's GPU cost and without inter-iter firefly
+amplification.
+
+256 iters per frame fits comfortably above any practical
+`samplesPerPixel × numPasses`. Wrap at `frameCount = 2^24 = 16M` frames
+(~3 days at 60 Hz). If wrap matters someday, switch to 64-bit stamps or
+modulo at `frameCount`.
+
+## Cost-axis note
+
+Drops one clearUAV per ReSTIR iteration. Negligible on top of the existing
+R3d 67% speedup. The new write protocol adds:
+- 1 InterlockedMax (was 1 CompareExchange in legacy strict-first-writer-wins)
+- 1 InterlockedExchange for publish (was 0 in legacy)
+
+Reader: 1 extra equality check (`ready == currentFrame`). Negligible
+compared to the structured-buffer load.
+
+## What's no longer needed (vs prior design)
+
+- Bit packing of frame + spatial + ready into one uint.
+- 2-CAS-attempt claim path (with stale-frame overwrite).
+- Per-slot writeLock field (briefly attempted as workaround c).
+- `prCellFrameAwareFingerprint` encoding function — deleted.
+
+## Open question (deferred)
+
+The 32-bit `frameStamp` wraps after ~4 billion frames (~year+ at 60 Hz) —
+not a real concern but worth noting. If wrap-around ever matters,
+`InterlockedMax` semantics break (a smaller frameStamp could be "newer"
+post-wrap). Could be mitigated by `frameStamp = frameCount % 0x40000000`
+to keep the upper 2 bits as flag space, OR by periodic clearUAV every
+2^31 frames.
 
 Source: `Source/RenderPasses/ReSTIRPTPass/PathReservoirCellPool.slang`
-+ `ReSTIRPTPass.cpp:644` (clearUAV site).
++ `ReSTIRPTPass.cpp` (clearUAV gate site).

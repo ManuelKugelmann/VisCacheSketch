@@ -660,9 +660,11 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 // mode 2 (R3d): cell pool is the ONLY store.
                 //
                 // Frame-CAS toggle (restirptCellPoolFrameCAS=1): skip the
-                // clear; stale-frame entries are naturally rejected by the
-                // frame-tagged fingerprint at read time, and opportunistically
-                // overwritten by writers via the two-CAS-attempt claim.
+                // clear; per-slot frameStamp lock + ready publish (see
+                // PathReservoirCellPool.slang prCellSlotClaimFrameCAS)
+                // elects exactly one writer per (slot, frame) via
+                // InterlockedMax, and the reader rejects any slot whose
+                // frameStamp != currentFrame. Stale entries auto-invalidate.
                 // Saves one GPU op per ReSTIR iter when enabled.
                 if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool
                     && mParams.restirptCellPoolFrameCAS == 0u)

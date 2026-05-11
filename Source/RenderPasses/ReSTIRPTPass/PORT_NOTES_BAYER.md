@@ -52,28 +52,25 @@ no-op) and a `restirptSubframeIdx` cbuffer field. Mirror the
 Host side: `ReSTIRPTPass.cpp::execute()` increments `restirptSubframeIdx`
 each frame, wrapping at `RESTIRPT_BAYER_N²`.
 
-**Critical clearUAV refactor.** The current cell-pool `clearUAV` is INSIDE
-the per-iter ReSTIR loop (`ReSTIRPTPass.cpp:644`, inside the
-`for (restir_i = 0; restir_i < numPasses; ++restir_i)` block at :609). It
-fires once per ReSTIR iter, multiple times per frame.
+**clearUAV substrate (unblocked 2026-05-11 by frame-CAS refactor).** The
+per-iter `clearUAV(pathReservoirCellPool)` at `ReSTIRPTPass.cpp:664` is
+now gated on `restirptCellPoolFrameCAS == 0u`. When FLAG=1, the clear is
+skipped entirely; the per-slot frameStamp lock + ready publish
+(`PathReservoirCellPool.slang::prCellSlotClaimFrameCAS`) handles stale-
+data rejection at the reader. **This removes the historical blocker on
+cross-frame cell persistence.**
 
-For Bayer to amortize cell fill across multiple frames, the cell pool
-must persist BETWEEN frames; clearUAV needs to move OUTSIDE the per-iter
-loop AND be gated on `restirptSubframeIdx == 0` (Bayer cycle start).
+The remaining piece for Bayer is a one-line change at the reader: relax
+the freshness gate from strict `frameStamp == currentFrame` to a windowed
+`currentFrame - frameStamp < BAYER_N²`. Writer protocol unchanged
+(InterlockedMax still elects one writer per frame); readers accept any
+slot whose claim landed within the last BAYER_N² frames. Cells written
+on subframe 0 stay readable through subframes 1..BAYER_N²-1.
 
-This is a non-trivial restructure — currently the per-iter clear is the
-canonical refresh strategy (it's what fixed the frame-stamp regression in
-commit a3129ab). Moving to per-Bayer-cycle clear means BREAKS:
-- Per-frame quality character: cells now hold multi-frame fingerprint
-  history; stale fingerprints from previous frame leak into current frame's
-  reads.
-- Atomic-CAS contention across frames: claimants from frame N might still
-  have valid claims at frame N+1's NEE.
-
-Mitigation: the parallel-agent-suggested Bayer pattern only works if the
-CELL CONTENT is content-stable across frames (matching the FREE-warmup
-claim). For dynamic scenes or non-deterministic resampling within the
-cell, this assumption breaks; per-iter clear stays the safer default.
+Older note (pre-frame-CAS) recorded that the per-iter clear was the only
+safe refresh strategy. That's no longer true — frame-CAS is the cleaner
+substrate, and the parallel-agent-suggested "FREE warmup on subframe 0"
+pattern now composes naturally.
 
 ## Composition with R-axis
 
@@ -108,21 +105,35 @@ is 1; per-frame compute drops 4×.
 
 Total: ~3 days for a working Bayer MVP.
 
-## Why we haven't implemented
+## Status update 2026-05-11 — substrate now in place
 
-ReSTIRPTPass's existing `samplesPerPixel × numPasses` per-frame multi-iter
-already amortizes cell fill within a single frame. Bayer subframes would
-only matter when extending across MULTIPLE frames (e.g. SPP=1 with cell
-pool persisting across frames — currently NOT how the pass operates;
-clearUAV is per-frame).
+Frame-CAS refactor (`restirptCellPoolFrameCAS=1`) removed the per-iter
+clearUAV that previously gated cross-frame persistence. The remaining
+work for Bayer-staged subframes is:
+
+1. Add a `RESTIRPT_BAYER_N` compile-time define + `restirptSubframeIdx`
+   cbuffer field.
+2. Mirror `isActiveSubframeSlot` gate in `TracePass.cs.slang` (skip
+   inactive Bayer slots).
+3. Relax the reader's freshness gate in
+   `prCellPoolReadCascadeFrameCAS` from `frameStamp == currentFrame`
+   to `currentFrame - frameStamp < BAYER_N²`.
+4. Host: increment `restirptSubframeIdx` each frame, wrap at BAYER_N².
+
+Estimated total: ~1 day (was ~3 days when clearUAV refactor was
+required). All four steps are independent of the Falcor 8 PathTracer
+integration (Task #11), so this can land standalone.
+
+## Why we still haven't implemented
 
 The headline R3d firefly-cleanup win on Bistro/Sponza is achieved without
 Bayer; adding it would be a perf-only optimization (skip ~75% of pixel
-work per frame at N=2) without changing the quality story.
+work per frame at N=2) without changing the quality story. ReSTIRPTPass's
+existing `samplesPerPixel × numPasses` per-frame multi-iter already
+amortizes cell fill within a single frame.
 
 Implement when:
-- Stage F (Falcor 8 native PathTracer integration, Task #11) lands and
-  the PathTracer's existing Bayer infra naturally extends into the
-  reservoir reuse passes.
 - A perf-constrained scenario surfaces where ReSTIR-PT's full per-frame
   cost is the bottleneck and SPP can be amortized over multiple frames.
+- The dynamic-scene regime is reached and we want to test cold-cell
+  amortization across the Bayer cycle.

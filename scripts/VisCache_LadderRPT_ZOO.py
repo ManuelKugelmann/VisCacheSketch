@@ -8,7 +8,6 @@ restir_DI Rxd/Pyd matrix the parallel agent set up:
   R2d    — DQLIN baseline (2D pixel reservoir only)
   R2dR3d — 2D + 3D cell-pool override (8×8 neighbourhood)
   R3d    — pure 3D reservoir at pixel footprint, no pixel buffer
-  H2dR3d — slim 2D = history (TODO; raises NotImplementedError)
 
 Runs each variant at b=3, SPP=1/4/16 against bounce-matched
 `vanilla_b3_x4096` GT (read from step 00). Plates + plots via standard

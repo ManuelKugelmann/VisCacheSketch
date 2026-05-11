@@ -33,17 +33,10 @@ void main(uint3 dtid : SV_DispatchThreadID)
                           * (kScreenTileDim.x * kScreenTileDim.y);
     if (slotIdx >= max(poolSize, 1u)) return;
 
-    // Sentinel fill — uses WSCellPool layout. Sets a non-zero
-    // fingerprint (= slotIdx + 1, so the wsCellPoolIsEmpty test in Step 3
-    // can distinguish "filled" from "empty initial state") and a single
-    // dummy candidate at index 0 to verify per-slot writes work.
-    // Sentinel fill — writes WSCellPool fields directly via buffer accessors.
-    // Never materialise a local WSCellPool: at N=1024 the struct is 12 KB
-    // and exceeds DXC's per-thread local-memory validation.
-    gPathTracer.lightPool[slotIdx].fingerprint       = slotIdx + 1u;  // non-zero fingerprint
-    gPathTracer.lightPool[slotIdx].count             = 1u;
-    gPathTracer.lightPool[slotIdx].frameLastInsert   = 0u;
-    gPathTracer.lightPool[slotIdx].lightTypeIndex[0] = slotIdx;       // recognizable: slot index
-    gPathTracer.lightPool[slotIdx].payload[0]        = slotIdx * 7u;  // recognizable: slot * 7
-    gPathTracer.lightPool[slotIdx].sourcePdf[0]      = float(slotIdx) / float(max(poolSize, 1u));
+    // Sentinel header init — touches only WSCellPool's top-level fields.
+    // The nested slots[] array (1024 × 12 B) is left to the parallel
+    // agent's WSCellPoolIO::wsCellPoolInsert; this pass just marks the
+    // pool as "initialised" via a non-zero fingerprint.
+    gPathTracer.lightPool[slotIdx].fingerprint = slotIdx + 1u;
+    gPathTracer.lightPool[slotIdx].count       = 0u;
 }

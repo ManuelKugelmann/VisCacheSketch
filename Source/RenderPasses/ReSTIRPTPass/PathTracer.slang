@@ -71,15 +71,16 @@ struct PathTracer
 
     RWStructuredBuffer<PathReservoir> outputReservoirs;            ///< Output paths from the path tracing pass.
 
-    /// Optional world-cell-keyed reservoir pool (restirpt_3d, Task #15).
+    /// Optional world-cell-keyed reservoir pool (R3d, Task #15).
     /// Bound only when params.restirptAddrMode == 1; null otherwise.
     /// One PathReservoirCellSlot per cell (fingerprint + reservoir).
     RWStructuredBuffer<PathReservoirCellSlot> pathReservoirCellPool;
 
     /// Optional NEE light-sample pool (Task #21 step 1: allocation only).
     /// Bound only when params.restirptPoolAddrMode != 0; null otherwise.
-    /// One WSCellPool slot per pool slot (N=128 packed light candidates,
-    /// shared layout with VisCache's DI-side pool — see LightPool.slang).
+    /// One WSCellPool slot per pool slot (N=1024 packed light candidates,
+    /// AoS layout `WSCellPoolSlot[N]`, shared with VisCache's DI-side pool —
+    /// see LightPool.slang).
     /// Not yet read by any code path — fill pass + NEE-site read are TODO.
     RWStructuredBuffer<WSCellPool> lightPool;
 
@@ -236,21 +237,16 @@ struct PathTracer
 
     /** Central-reservoir lookup with mode dispatch.
 
-        restirptAddrMode taxonomy (per user 2026-05-08, mirrors restir_DI's
-        Rxd/Pyd matrix):
-          0 = R2d    — DQLIN baseline; pixel-keyed reservoir only.
-          1 = R2dR3d — pixel-keyed reservoir + 3D cell-pool override on match.
-                       Pixel buffer is always written; cell-pool acts as a
-                       neighbourhood-spatial-reuse layer.
-          2 = R3d    — pure 3D reservoir; pixel buffer is unused. Cell-pool
-                       is the only store. On cell-pool miss returns an empty
-                       reservoir (no pixel-buffer fallback).
+        restirptAddrMode taxonomy:
+          0 = R2d — DQLIN baseline; pixel-keyed reservoir only.
+          1 = R3d — pure 3D reservoir; pixel buffer is unused. Cell-pool
+                    is the only store. On cell-pool miss returns an empty
+                    reservoir (no pixel-buffer fallback).
 
         @param[in] pixel  Screen pixel.
         @param[in] posW   Primary hit world position.
         @param[in] faceN  Primary hit face normal.
-        @param[in] base   Pre-fetched pixel-keyed reservoir (used at mode 0 and as
-                          fallback at mode 1; ignored at mode 2).
+        @param[in] base   Pre-fetched pixel-keyed reservoir (used at mode 0).
         @return    Mode-dispatched reservoir.
     */
     PathReservoir lookupCentralReservoir(uint2 pixel, float3 posW, float3 faceN, PathReservoir base)
@@ -266,11 +262,10 @@ struct PathTracer
         bool hit;
         if (params.restirptCellPoolFrameCAS != 0u)
         {
-            // Frame-CAS path: reader matches frame-tagged fingerprint; stale-frame entries naturally rejected.
             hit = prCellPoolReadCascadeFrameCAS(pathReservoirCellPool, posW, faceN,
                                                 params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
                                                 jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
-                                                /*currentFrame*/params.frameCount + 1u, cellRes);
+                                                /*currentFrame*/(params.frameCount * 256u) + uint(gSppId) + 1u, cellRes);
         }
         else
         {
@@ -279,28 +274,22 @@ struct PathTracer
                                         jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes);
         }
         if (hit) return cellRes;
-        // mode 1 (R2dR3d): fall back to pixel-keyed; mode 2 (R3d): empty (no pixel buffer).
-        if (params.restirptAddrMode == 2u)
-        {
-            PathReservoir empty;
-            empty.init();
-            return empty;
-        }
-        return base;
+        // R3d miss: empty reservoir, no pixel-buffer fallback.
+        PathReservoir empty;
+        empty.init();
+        return empty;
     }
 
     /** Central-reservoir write with mode dispatch.
-        Mode-symmetric counterpart of lookupCentralReservoir. The pixel-keyed
-        write to outputReservoirs is shared by both modes (caller does it).
-        Mode=1 additionally tries to claim a cell-pool slot for cross-pixel
-        reuse. Mode=0 is a no-op (just returns).
+        Mode 0 (R2d) is a no-op (caller wrote the pixel buffer). Mode 1 (R3d)
+        claims a cell-pool slot.
 
         @param[in] pixel  Screen pixel.
         @param[in] reservoir Reservoir to publish.
     */
     void writeCentralReservoir(uint2 pixel, PathReservoir reservoir)
     {
-        // Cell-pool write fires for any 3D-aware mode (R2dR3d or R3d).
+        // Cell-pool write fires only in R3d (mode 1).
         if (params.restirptAddrMode == 0u) return;
         const HitInfo primaryHit = HitInfo(vbuffer[pixel]);
         if (!primaryHit.isValid() || primaryHit.getType() != HitType::Triangle) return;
@@ -317,7 +306,7 @@ struct PathTracer
             prCellPoolWriteCascadeFrameCAS(pathReservoirCellPool, v.posW, v.faceNormalW,
                                            params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
                                            jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
-                                           /*currentFrame*/params.frameCount + 1u, reservoir);
+                                           /*currentFrame*/(params.frameCount * 256u) + uint(gSppId) + 1u, reservoir);
         }
         else
         {
@@ -2199,11 +2188,10 @@ struct PathTracer
                 // Reservoir-write magnitude safety net (1e10) + Inf/NaN guard.
                 if (any(isnan(path.pathReservoir.F) || isinf(path.pathReservoir.F) || path.pathReservoir.F > 1e10f)) path.pathReservoir.F = 0.f;
                 if (isnan(path.pathReservoir.weight) || isinf(path.pathReservoir.weight) || path.pathReservoir.weight < 0.f || path.pathReservoir.weight > 1e10f) path.pathReservoir.weight = 0.f;
-                // mode 0 (R2d) + mode 1 (R2dR3d): pixel-buffer write (always).
-                // mode 2 (R3d): skip pixel-buffer write — cell-pool is the only store.
-                if (params.restirptAddrMode != 2u)
+                // mode 0 (R2d): pixel-buffer write. mode 1 (R3d): cell-pool only.
+                if (params.restirptAddrMode == 0u)
                     outputReservoirs[reservoirIdx] = path.pathReservoir;
-                // Cell-pool write fires for any 3D-aware mode (no-op at mode 0).
+                // Cell-pool write fires only in R3d (no-op at R2d).
                 writeCentralReservoir(pixel, path.pathReservoir);
             }
         }

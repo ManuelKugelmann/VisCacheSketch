@@ -37,19 +37,16 @@ def make_graph(variant: str, name: str):
     g = RenderGraph(name)
 
     # restirpt variant taxonomy (per user 2026-05-08, mirror of restir_DI's Rxd/Pyd matrix):
-    #   restirpt_R2d    = mode 0: DQLIN baseline, 2D pixel reservoir only
-    #   restirpt_R2dR3d = mode 1: 2D + 3D cell-pool override (8×8 neighbourhood)
-    #   restirpt_R3d    = mode 2: pure 3D, no pixel buffer
+    #   restirpt_R2d = mode 0: DQLIN baseline, 2D pixel reservoir only
+    #   restirpt_R3d = mode 1: pure 3D, no pixel buffer
     pass_class_map = {
         "restirpt_ref":     "ReSTIRPTReferencePass",   # frozen verbatim copy
         "restirpt":         "ReSTIRPTPass",            # = restirpt_R2d (mode 0)
-        "restirpt_3d":      "ReSTIRPTPass",            # = restirpt_R2dR3d (mode 1)
-        "restirpt_pure3d":  "ReSTIRPTPass",            # = restirpt_R3d   (mode 2)
+        "restirpt_pure3d":  "ReSTIRPTPass",            # = restirpt_R3d (mode 1)
     }
     addr_mode_map = {
         "restirpt":         0,
-        "restirpt_3d":      1,
-        "restirpt_pure3d":  2,
+        "restirpt_pure3d":  1,
         "restirpt_ref":     0,
     }
     if variant in pass_class_map:
@@ -157,6 +154,5 @@ _do("vanilla",          "vanilla")
 _do("restirpt_ref",     "restirpt_ref")     # verbatim dqlin copy
 _do("restirpt_ref",     "restirpt_ref2")    # determinism check — same plugin, second run
 _do("restirpt",         "restirpt_2d")      # restirpt_R2d (DQLIN baseline, mode 0)
-_do("restirpt_3d",      "restirpt_3d")      # restirpt_R2dR3d (2D + 3D-neighbourhood, mode 1)
-_do("restirpt_pure3d",  "restirpt_pure3d")  # restirpt_R3d (pure 3D, no pixel buffer, mode 2)
+_do("restirpt_pure3d",  "restirpt_pure3d")  # restirpt_R3d (pure 3D, no pixel buffer, mode 1)
 print("[ab] DONE")

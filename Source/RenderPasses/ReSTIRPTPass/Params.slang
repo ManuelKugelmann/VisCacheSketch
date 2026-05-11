@@ -212,10 +212,8 @@ struct RestirPathTracerParams
     // Rxd/Pyd matrix). A/B-scored against each other:
     //
     // R-axis (reservoir storage; restirptAddrMode):
-    //   0 = R2d    — DQLIN baseline, 2D pixel reservoir only.
-    //   1 = R2dR3d — 2D pixel reservoir + 3D cell-pool override at 8×8 neighbourhood.
-    //   2 = R3d    — pure 3D reservoir at pixel footprint, no pixel buffer.
-    //   3 = H2dR3d — 2D = current-pick storage, 3D = cross-frame Bitterli temporal merge.
+    //   0 = R2d — DQLIN baseline, 2D pixel reservoir only.
+    //   1 = R3d — pure 3D reservoir at pixel footprint, no pixel buffer.
     //
     // P-axis (NEE light-sample pool; restirptPoolAddrMode — RTXDI-style
     // presampling tied at the per-vertex NEE step in the path walk):
@@ -229,14 +227,15 @@ struct RestirPathTracerParams
     uint    restirptAddrMode = 0u;
     uint    restirptPoolAddrMode = 0u;
     uint    restirptPoolFootprintPx = 16u;
-    /// Frame-CAS toggle for the cell-pool fingerprint claim (Task: drop
-    /// per-frame clearUAV). 0 = legacy strict-first-writer-wins +
-    /// per-frame clearUAV (default; firefly-suppression-validated).
-    /// 1 = frame-tagged fingerprint (upper byte = currentFrame mod 256)
-    /// + two-CAS-attempt claim (preserves first-writer-wins within frame,
-    /// opportunistically overwrites stale-frame entries; clearUAV skipped).
-    /// See PORT_NOTES_FRAMEFP.md for design + validation plan.
-    uint    restirptCellPoolFrameCAS = 0u;
+    /// Frame-CAS toggle for the cell-pool fingerprint claim.
+    /// 0 = legacy strict-first-writer-wins + per-frame clearUAV.
+    /// 1 = three-field design (separate spatial fingerprint / frameStamp /
+    ///     ready), InterlockedMax-elected one-writer-per-(slot,subframe),
+    ///     atomic ready publish; per-iter currentFrame encoding
+    ///     `frameCount*256 + sppId + 1` per "frame_id = frame + subframe".
+    /// Default 1 (validated 2026-05-11 across 7 scenes; closer to vanilla
+    /// GT on Bistro than legacy; TDR-free at x32). See PORT_NOTES_FRAMEFP.md.
+    uint    restirptCellPoolFrameCAS = 1u;
 
 #ifndef HOST_CODE
 

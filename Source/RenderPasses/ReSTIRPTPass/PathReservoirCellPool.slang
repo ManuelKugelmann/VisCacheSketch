@@ -39,27 +39,39 @@ import PathReservoir;
 // world-space caching machinery.
 import RenderPasses.VisCache.VisCache;
 
-/// Per-cell slot: PathReservoir + fingerprint for collision detection.
+/// Per-cell slot: PathReservoir + three single-purpose header words.
 ///
-/// Total size matches PathReservoir + 16 bytes (4 fingerprint + 12 pad).
-/// Padding is for alignment; can be tightened later.
+/// Frame-CAS scheme keeps three concerns in three separate fields:
+///   fingerprint - 32-bit spatial hash (cell coords + faceN + level).
+///                 Full entropy. ONLY for collision detection between
+///                 different cells that hash to the same slot index.
+///                 Never contains frame info.
+///   frameStamp  - currentFrame value of the latest writer to CLAIM this
+///                 slot (via InterlockedMax). The "only 1 writer per
+///                 frame" gate. Strictly monotonic.
+///   ready       - currentFrame value of the latest writer to COMPLETE
+///                 its payload write. Set as the final atomic step in
+///                 the write protocol. Reader gates on ready==currentFrame
+///                 to avoid torn-payload reads.
+///
+/// Total: PathReservoir + 16 bytes (4 fingerprint + 4 frameStamp + 4 ready + 4 pad).
 struct PathReservoirCellSlot
 {
-    uint           fingerprint;     ///< 0 = empty; non-zero = claimed by a pixel hash
-    uint           _pad0;
-    uint           _pad1;
-    uint           _pad2;
+    uint           fingerprint;     ///< spatial hash (0 = empty sentinel)
+    uint           frameStamp;      ///< frame-CAS lock: latest claimer's currentFrame
+    uint           ready;           ///< publication flag: latest committer's currentFrame
+    uint           _pad;
     PathReservoir  reservoir;
 };
 
-/// Initialize an empty slot (zero fingerprint).
+/// Initialize an empty slot (all header words zero).
 PathReservoirCellSlot prCellSlotInit()
 {
     PathReservoirCellSlot s;
     s.fingerprint = 0u;
-    s._pad0 = 0u;
-    s._pad1 = 0u;
-    s._pad2 = 0u;
+    s.frameStamp = 0u;
+    s.ready = 0u;
+    s._pad = 0u;
     s.reservoir.init();
     return s;
 }
@@ -264,48 +276,9 @@ PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRa
     return prCellResolveAddr(posW, faceN, sceneRadius, capacity, 0u);
 }
 
-/// Encode a frame-aware fingerprint: upper 8 bits = currentFrame mod 256,
-/// lower 24 bits = spatial fingerprint. Both writer and reader compute the
-/// same combined value from (q, nb, level, currentFrame); equality at the
-/// read site means "this cell was written THIS frame by my pixel".
-///
-/// HELPER ONLY — not yet wired through cascade write/read. Currently
-/// prCellSlotClaim uses the original strict-first-writer-wins CAS on
-/// raw spatial fingerprint + per-frame clearUAV. See PORT_NOTES_FRAMEFP.md
-/// for the design of switching to the frame-aware variant (drops the
-/// clearUAV; requires threading currentFrame through prCellPool*Cascade
-/// + 6 call sites in PathTracer.slang).
-///
-/// Why future-implementer should consider it:
-/// - Collapses frame stamp + spatial fp into ONE atomic CAS value,
-///   eliminating the two-field race that regressed the earlier separate
-///   frameStamp scheme (commit a3129ab reverted because reader saw new
-///   stamp + old fp before non-atomic fp write committed).
-/// - Drops the per-frame clearUAV at ReSTIRPTPass.cpp:644 → small cost win.
-///
-/// 8 bits frame = 256-frame cycle (~4 sec at 60 Hz) — acceptable false-
-/// match risk during long camera holds. 24 bits fp = 16M unique values;
-/// at 256K slots collision rate ~1.5%, at 4K slots ~0.025%.
-uint prCellFrameAwareFingerprint(uint spatial_fp, uint currentFrame)
-{
-    return ((currentFrame & 0xFFu) << 24) | (spatial_fp & 0xFFFFFFu);
-}
-
-/// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
-/// fingerprint field — strict first-writer-wins, no rewrites.
-///
-/// Behavior:
-/// - Empty slot (fingerprint==0): claim it, return true. ONLY the thread
-///   that successfully transitioned the slot from empty wins; subsequent
-///   threads with the same fingerprint see prev==fingerprint and return
-///   false — important to prevent concurrent non-atomic reservoir writes
-///   from tearing the PathReservoir payload (it's ~256 B, no atomic
-///   support).
-/// - Slot already claimed: return false. Caller must NOT write the
-///   reservoir — fall back to pixel-keyed buffer.
-///
-/// On the read side, prCellSlotRead handles the across-frame stale-data
-/// case by validating the fingerprint matches the reader's cell.
+/// Legacy claim: atomic CAS on fingerprint, strict first-writer-wins.
+/// Used by legacy (non-frame-CAS) write path which relies on host-side
+/// per-frame clearUAV to recycle slots. Kept verbatim.
 bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint fingerprint)
 {
     uint prev = 0u;
@@ -313,24 +286,42 @@ bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotId
     return prev == 0u;   // strict first-writer-wins
 }
 
-/// Frame-CAS variant of slot claim. Two-CAS-attempt sequence preserves
-/// first-writer-wins WITHIN a frame (firefly suppression) while
-/// opportunistically overwriting STALE-frame entries — eliminating the
-/// need for per-frame clearUAV. See PORT_NOTES_FRAMEFP.md for design.
-/// `frame_aware_fp` must be encoded via prCellFrameAwareFingerprint().
-bool prCellSlotClaimFrameCAS(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint frame_aware_fp)
+/// Frame-CAS claim: atomic InterlockedMax on the separate frameStamp field
+/// elects exactly one winner per (slot, frame). The spatial fingerprint is
+/// stored separately (no bit-mixing) and used by the reader to detect
+/// cross-cell collisions inside the slot.
+///
+/// Returns true if THIS thread is the first-writer for this slot at
+/// `currentFrame` and should:
+///   1. Non-atomically write `pool[slot].fingerprint = spatialFp`.
+///   2. Non-atomically write `pool[slot].reservoir = payload`.
+///   3. Call prCellSlotFinalizeFrameCAS to atomically publish `ready = currentFrame`.
+///
+/// Why InterlockedMax instead of CompareExchange:
+/// - Max is monotonic: an older-frame stamp can never displace a newer one.
+/// - First-writer-per-frame is naturally elected by "I'm the thread that
+///   observed prev < currentFrame"; subsequent waves observe prev == currentFrame
+///   and short-circuit. No need to know the previous frame's exact value to CAS against.
+/// - The single Max atomic absorbs both the empty-slot and stale-slot cases.
+///   No 2nd-CAS-overwrite path → no torn-payload race.
+bool prCellSlotClaimFrameCAS(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint currentFrame)
 {
     uint prev = 0u;
-    InterlockedCompareExchange(pool[slotIdx].fingerprint, 0u, frame_aware_fp, prev);
-    if (prev == 0u) return true;                 // won empty slot
-    if (prev == frame_aware_fp) return false;    // already claimed by me this frame
-    // Is prev from THIS frame (other-pixel collision)? Frame byte equal?
-    if ((prev & 0xFF000000u) == (frame_aware_fp & 0xFF000000u))
-        return false;                            // current-frame collision: respect first-writer
-    // Stale-frame data: try to overwrite atomically.
-    uint prev2 = 0u;
-    InterlockedCompareExchange(pool[slotIdx].fingerprint, prev, frame_aware_fp, prev2);
-    return prev2 == prev;                        // succeeded only if no one else slipped in
+    InterlockedMax(pool[slotIdx].frameStamp, currentFrame, prev);
+    return prev < currentFrame;   // I'm the first-writer-this-frame iff stamp advanced under me
+}
+
+/// Finalize a frame-CAS claim after the payload write completes.
+/// Atomically publishes `ready = currentFrame` so readers can consume.
+/// MUST be called by any caller that received true from prCellSlotClaimFrameCAS.
+///
+/// The reader checks ready == currentFrame AND frameStamp == currentFrame
+/// AND fingerprint == expected; ready lags frameStamp during the writer's
+/// non-atomic payload write so readers naturally reject mid-write state.
+void prCellSlotFinalizeFrameCAS(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint currentFrame)
+{
+    uint prev = 0u;
+    InterlockedExchange(pool[slotIdx].ready, currentFrame, prev);
 }
 
 /// Read a cell-pool slot. Returns false (and zeroed reservoir) if the
@@ -425,9 +416,17 @@ uint prCellPoolWriteCascade(
     return maxLevels;
 }
 
-/// Frame-CAS variant of cascading write. Computes frame-tagged fingerprints
-/// at each level via prCellFrameAwareFingerprint and uses the two-CAS-attempt
-/// claim. Eliminates the need for per-frame clearUAV — see PORT_NOTES_FRAMEFP.md.
+/// Frame-CAS variant of cascading write.
+///
+/// Per cascade level:
+///   1. Resolve (slot, spatialFp) for this (posW, faceN, level).
+///   2. InterlockedMax-claim frameStamp = currentFrame. If I'm the winner
+///      (prev < currentFrame), I OWN this slot for this frame.
+///   3. Non-atomically write spatialFp + payload.
+///   4. Atomically publish ready = currentFrame.
+///
+/// Loser threads at level L just fall through to the next coarser level.
+/// One winner per frame per slot → no torn-payload race.
 uint prCellPoolWriteCascadeFrameCAS(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
@@ -441,19 +440,31 @@ uint prCellPoolWriteCascadeFrameCAS(
         PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
             ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
             : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
-        uint fafp = prCellFrameAwareFingerprint(a.fingerprint, currentFrame);
-        if (prCellSlotClaimFrameCAS(pool, a.slot, fafp))
+        if (prCellSlotClaimFrameCAS(pool, a.slot, currentFrame))
         {
-            pool[a.slot].reservoir = reservoir;
+            // Won the frame for this slot. Write fingerprint + payload non-
+            // atomically — no other writer touches this slot this frame.
+            pool[a.slot].fingerprint = a.fingerprint;
+            pool[a.slot].reservoir   = reservoir;
+            // Publish: readers gate on ready==currentFrame AND frameStamp==currentFrame.
+            prCellSlotFinalizeFrameCAS(pool, a.slot, currentFrame);
             return lvl;
         }
     }
     return maxLevels;
 }
 
-/// Frame-CAS variant of cascading read. Matches against frame-tagged
-/// fingerprints; stale-frame entries naturally rejected by frame-byte
-/// mismatch.
+/// Frame-CAS variant of cascading read. Returns the first level whose slot
+/// is in the published-this-frame state matching the reader's spatial fp.
+///
+/// Three-field gate, all must hold:
+///   ready       == currentFrame  (writer's payload write is complete)
+///   frameStamp  == currentFrame  (slot was claimed by some writer this frame)
+///   fingerprint == expectedSpatial  (writer is at the SAME cell, not a hash collision)
+///
+/// Stale-frame slots (older frameStamp) fail (1) and (2). Mid-write slots
+/// (frameStamp updated but ready still old) fail (1). Cross-cell collisions
+/// pass (1) + (2) but fail (3). No torn-payload reads.
 bool prCellPoolReadCascadeFrameCAS(
     RWStructuredBuffer<PathReservoirCellSlot> pool,
     float3 posW, float3 faceN, float sceneRadius, uint capacity,
@@ -467,9 +478,8 @@ bool prCellPoolReadCascadeFrameCAS(
         PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
             ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
             : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
-        uint fafp = prCellFrameAwareFingerprint(a.fingerprint, currentFrame);
         PathReservoirCellSlot s = pool[a.slot];
-        if (s.fingerprint != 0u && s.fingerprint == fafp)
+        if (s.ready == currentFrame && s.frameStamp == currentFrame && s.fingerprint == a.fingerprint)
         {
             reservoir = s.reservoir;
             return true;
