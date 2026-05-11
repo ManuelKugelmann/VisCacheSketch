@@ -146,3 +146,55 @@ of that and isn't blocking any current work. Defer until either:
 - A specific scene shows R3d+Pno underperforming where P3d would help.
 - Stage F (Falcor 8 native PathTracer integration, Task #11) starts and
   the pool design needs to be locked in before larger refactors.
+
+## Implementation pivot (2026-05-11): mirror VisCache's WSCellPool
+
+Per user direction: "mirror / reuse restirdi plumbing". Rather than the
+self-contained `LightPool.slang` introduced in commits e71cb1f/b2da2fc,
+the cleaner long-term design is to reuse the DI-side `WSCellPool`
+infrastructure from `Source/RenderPasses/VisCache/`:
+
+| DI plumbing | What PT P-axis can reuse |
+|---|---|
+| `WSCellPool` struct (N=128 packed light candidates per slot) | identical representation |
+| `WSCellPoolIO.slang::wsResolvePoolAddr(posA, faceN, pixel)` | mode-dispatched address resolver (P2d tile vs P3d cell) |
+| `WSCellPoolIO.slang::wsCellPoolFindSlot` | open-addressed double-hash probe |
+| `WSCellPoolIO.slang::wsCellPoolInsert` | RIS-at-insert with `pHat × V / sourcePdf` weight |
+| `WSCellPoolIO.slang::wsLoadCellPool` | reader-side RIS resample |
+
+**Architectural parity advantage (per parallel agent's 61e9946 audit):**
+P2d (screen-tile pool, K=24 pure-pool) BEATS RTXDI on Cornell_1AL and
+Sponza by 0.85-1.06pp; P3d (3D-cell pool, pure-pool) is 2-4pp worse than
+P2d on every measured scene. Suspect 128 slots vs RTXDI's 1024 + first-
+writer-wins discards write effort. **Default to P2d for PT side too.**
+
+**What blocks the direct reuse:**
+Each VisCache helper depends on cbuffer fields (`gWSCellPoolCapacity`,
+`gWSCellPoolFootprintPx`, `gWSPoolAddrMode`, `gWSPoolTileSize`,
+`gWSCellLevel`, `gWSNormalAddr`, `gNumLevels`, jitter params, etc.).
+Those are bound by `VisCachePass`'s cbuffer. ReSTIRPTPass needs either:
+(a) the same cbuffer-field plumbing in its own params (one-time
+    refactor; field names + parser additions + bind calls — match
+    `kRestirptPoolAddrMode`/`kRestirptPoolFootprintPx` pattern from
+    commit 2a52663), or
+(b) an indirect reference to the VisCachePass's parameter block when
+    one is active in the render graph (cross-pass binding, fragile —
+    breaks when ReSTIRPTPass runs without VisCache).
+
+Recommend (a). Estimated effort:
+- Plumb 8-10 cbuffer fields from `gWS*` namespace to `restirpt*` namespace
+  in `Params.slang` + cpp parser/dict: ~1 day.
+- Import `WSCellPool`/`WSCellPoolIO` slang modules into ReSTIRPTPass's
+  shader compile path; rename per-cbuffer-field references in a copy of
+  `WSCellPoolIO.slang` (or extract the helpers into a shared
+  `WSCellPoolHelpers.slang` that doesn't depend on the cbuffer fields,
+  taking them as function args): ~1 day.
+- Fill pass: do RIS-at-insert per pixel in a Bayer-prepass pattern
+  (mirrors VisCache's existing prepass): ~1 day.
+- NEE-site reader-side RIS at `generateLightSample`: ~1 day.
+
+Total: ~4 days. The current `LightPool.slang` + `LightPoolFill.cs.slang`
+scaffolding (commits e71cb1f → 7346222) is preserved as a stub that
+demonstrates buffer alloc + dispatch wiring works end-to-end. The next
+implementer should DELETE those files and start from the WSCellPool
+reuse pattern instead.
