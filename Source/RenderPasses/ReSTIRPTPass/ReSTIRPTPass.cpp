@@ -24,6 +24,7 @@ namespace
     const std::string kSpatialPathRetraceFile = "RenderPasses/ReSTIRPTPass/SpatialPathRetrace.cs.slang";
     const std::string kTemporalPathRetraceFile = "RenderPasses/ReSTIRPTPass/TemporalPathRetrace.cs.slang";
     const std::string kComputePathReuseMISWeightsFile = "RenderPasses/ReSTIRPTPass/ComputePathReuseMISWeights.cs.slang";
+    const std::string kLightPoolFillFile = "RenderPasses/ReSTIRPTPass/LightPoolFill.cs.slang";
 
     // Render pass inputs and outputs.
     const std::string kInputVBuffer = "vbuffer";
@@ -606,6 +607,19 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
 
     uint32_t numPasses = mStaticParams.pathSamplingMode == PathSamplingMode::PathTracing ? 1 : mStaticParams.samplesPerPixel;
 
+    // P-axis NEE pool fill (Task #21 step 2). Runs ONCE per frame (outside
+    // the per-iter ReSTIR loop) — the pool is read-only during TracePass.
+    // Currently dispatches a stub that zeroes the slots; real fill is TODO
+    // (see LightPoolFill.cs.slang inline TODOs). Gated on mode != Pno so
+    // mode-0 has no extra dispatch cost.
+    if (mParams.restirptPoolAddrMode != 0u && mpLightPool && mpLightPoolFill)
+    {
+        auto var = mpLightPoolFill->getRootVar()["CB"]["gFiller"];
+        var["lightPool"] = mpLightPool;
+        var["poolSize"]  = mpLightPool->getElementCount();
+        mpLightPoolFill->execute(pRenderContext, mpLightPool->getElementCount(), 1, 1);
+    }
+
     for (uint32_t restir_i = 0; restir_i < numPasses; restir_i++)
     {
         {
@@ -1070,6 +1084,7 @@ void ReSTIRPTPass::resetPrograms()
     // current scene shader modules and type conformances.
     mpGeneratePaths = nullptr;
     mpTracePass = nullptr;
+    mpLightPoolFill = nullptr;
     mpReflectTypes = nullptr;
     mpSpatialPathRetracePass = nullptr;
     mpTemporalPathRetracePass = nullptr;
@@ -1146,6 +1161,12 @@ void ReSTIRPTPass::updatePrograms()
         desc.addShaderLibrary(kComputePathReuseMISWeightsFile).csEntry("main").setShaderModel(ShaderModel::SM6_5);
         mpComputePathReuseMISWeightsPass = ComputePass::create(mpDevice, desc, defines, false);
     }
+    if (!mpLightPoolFill)
+    {
+        ProgramDesc desc = baseDesc;
+        desc.addShaderLibrary(kLightPoolFillFile).csEntry("main");
+        mpLightPoolFill = ComputePass::create(mpDevice, desc, defines, false);
+    }
 
     // Update defines on all programs. Use setDefines (not addDefines) to replace
     // any stale state, matching PathTracer::updatePrograms() pattern.
@@ -1162,6 +1183,7 @@ void ReSTIRPTPass::updatePrograms()
     preparePass(mpSpatialReusePass);
     preparePass(mpTemporalReusePass);
     preparePass(mpComputePathReuseMISWeightsPass);
+    preparePass(mpLightPoolFill);
 
     mVarsChanged = true;
     mRecompile = false;

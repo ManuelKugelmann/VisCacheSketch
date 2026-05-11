@@ -204,6 +204,7 @@ private:
 
     ref<ComputePass>                mpGeneratePaths;                ///< Fullscreen compute pass generating paths starting at primary hits.
     ref<ComputePass>                mpTracePass;                    ///< Main tracing pass.
+    ref<ComputePass>                mpLightPoolFill;                ///< P-axis NEE pool fill pass (Task #21 step 2; currently a stub).
 
     ref<ComputePass>                mpReflectTypes;             ///< Helper for reflecting structured buffer types.
 

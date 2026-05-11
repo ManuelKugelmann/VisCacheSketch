@@ -72,6 +72,7 @@ def make_graph(variant: str, name: str):
             "pathSamplingMode":            "ReSTIR",
             "fireflyClampK":               100.0,    # bound the RIS estimator
             "restirptAddrMode":            addr_mode_map.get(variant, 0),
+            "restirptPoolAddrMode":        int(os.environ.get("AB_POOL_MODE", "0")),
         })
         g.addPass(restirpt, pass_class)
         accum = createPass("AccumulatePass", {"enabled": True, "precisionMode": "Single"})
