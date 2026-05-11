@@ -172,11 +172,27 @@ infrastructure from `Source/RenderPasses/VisCache/`:
 | `WSCellPoolIO.slang::wsCellPoolInsert` | RIS-at-insert with `pHat × V / sourcePdf` weight |
 | `WSCellPoolIO.slang::wsLoadCellPool` | reader-side RIS resample |
 
-**Architectural parity advantage (per parallel agent's 61e9946 audit):**
+**Architectural parity (per parallel agent's 61e9946 audit):**
 P2d (screen-tile pool, K=24 pure-pool) BEATS RTXDI on Cornell_1AL and
-Sponza by 0.85-1.06pp; P3d (3D-cell pool, pure-pool) is 2-4pp worse than
-P2d on every measured scene. Suspect 128 slots vs RTXDI's 1024 + first-
-writer-wins discards write effort. **Default to P2d for PT side too.**
+Sponza by 0.85-1.06pp at architectural parity.
+
+P3d (3D-cell pool) was 2-4pp WORSE than P2d at the time of that audit
+— but the parallel agent's own note identifies the cause as **N=128
+slots vs RTXDI's 1024 + first-writer-wins discards write effort**, NOT
+the 3D-vs-2D architecture itself. They've since landed
+`wsCellPoolFindSlot` (double-hash probe, 2026-05-11) to fix the
+collision-handling half of that gap; Sponza re-run pending.
+
+**Provisional guidance** (likely to change once the parallel agent's
+Sponza re-run with the collision fix lands):
+- Match RTXDI's slot capacity (N=1024, currently 128 in `WS_CELL_POOL_N`
+  at `Source/RenderPasses/VisCache/WSCellPool.slang:38`).
+  Memory cost ×8: per-slot grows from ~1 KB → ~8 KB, total ~512 MB for
+  a 65K-slot pool (vs ~64 MB at N=128). Tractable for production GPUs.
+- Don't hard-default to P2d for PT side. Let the post-fix Sponza data
+  decide. Hash collisions are P3d's main weakness; P2d's direct-map
+  semantic avoids them entirely but doesn't benefit from world-space
+  cell sharing across pixels in close primary regions.
 
 **What blocks the direct reuse:**
 Each VisCache helper depends on cbuffer fields (`gWSCellPoolCapacity`,
