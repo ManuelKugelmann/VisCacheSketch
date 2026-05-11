@@ -264,6 +264,33 @@ PathReservoirCellAddr prCellResolveAddr(float3 posW, float3 faceN, float sceneRa
     return prCellResolveAddr(posW, faceN, sceneRadius, capacity, 0u);
 }
 
+/// Encode a frame-aware fingerprint: upper 8 bits = currentFrame mod 256,
+/// lower 24 bits = spatial fingerprint. Both writer and reader compute the
+/// same combined value from (q, nb, level, currentFrame); equality at the
+/// read site means "this cell was written THIS frame by my pixel".
+///
+/// HELPER ONLY — not yet wired through cascade write/read. Currently
+/// prCellSlotClaim uses the original strict-first-writer-wins CAS on
+/// raw spatial fingerprint + per-frame clearUAV. See PORT_NOTES_FRAMEFP.md
+/// for the design of switching to the frame-aware variant (drops the
+/// clearUAV; requires threading currentFrame through prCellPool*Cascade
+/// + 6 call sites in PathTracer.slang).
+///
+/// Why future-implementer should consider it:
+/// - Collapses frame stamp + spatial fp into ONE atomic CAS value,
+///   eliminating the two-field race that regressed the earlier separate
+///   frameStamp scheme (commit a3129ab reverted because reader saw new
+///   stamp + old fp before non-atomic fp write committed).
+/// - Drops the per-frame clearUAV at ReSTIRPTPass.cpp:644 → small cost win.
+///
+/// 8 bits frame = 256-frame cycle (~4 sec at 60 Hz) — acceptable false-
+/// match risk during long camera holds. 24 bits fp = 16M unique values;
+/// at 256K slots collision rate ~1.5%, at 4K slots ~0.025%.
+uint prCellFrameAwareFingerprint(uint spatial_fp, uint currentFrame)
+{
+    return ((currentFrame & 0xFFu) << 24) | (spatial_fp & 0xFFFFFFu);
+}
+
 /// Try to claim a cell-pool slot for `fingerprint`. Atomic CAS on the
 /// fingerprint field — strict first-writer-wins, no rewrites.
 ///
