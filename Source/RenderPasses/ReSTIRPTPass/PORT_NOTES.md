@@ -1,6 +1,6 @@
 # ReSTIRPTPass — active port toward Falcor 8 native PathTracer
 
-## Status (2026-05-08)
+## Status (2026-05-10) — R-axis ZOO COMPLETE
 
 This plugin is the **active port** of dqlin-style ReSTIR-PT, paired with
 `Source/RenderPasses/ReSTIRPTReferencePass/` (byte-frozen verbatim mirror
@@ -11,17 +11,41 @@ same diff to `ReSTIRPTReferencePass/` first, then port the same delta to this
 plugin. Deliberate divergences are called out inline (e.g. dqlin RTXDI gating
 in `evalEnvAtMiss`).
 
-## Validation (current)
+## R-axis variants (ALL LIVE)
 
-AB harness `scripts/RestirPT2D_AB.py`, SPP=32, 512×512, vs ladder x4096 GT:
+`restirptAddrMode` cbuffer field dispatches three live R-axis variants:
 
-| scene             | vanilla | `restirpt_ref` | `restirpt_2d` | `restirpt_3d` |
-|-------------------|---------|----------------|---------------|---------------|
-| Cornell_1AreaLight| 0.00519 | 0.02133220     | 0.02133220    | 0.02133220    |
-| Sponza            | 0.00821 | 0.150901       | 0.150901      | 0.150901      |
+| mode | name    | reservoir storage                            |
+|-----:|---------|----------------------------------------------|
+| 0    | R2d     | 2D pixel buffer only (DQLin baseline)        |
+| 1    | R2dR3d  | 2D pixel + 3D cell-pool override (cell-first, pixel-fallback) |
+| 2    | R3d     | Pure 3D cell-pool, no pixel buffer           |
+| 3    | H2dR3d  | NOT IMPLEMENTED (deferred — see memory `project_h2dr3d_design_constraint`) |
 
-All variants bit-identical at mode=0 default. **restirpt_3d (mode=1) currently
-falls back to mode=0** due to the cell-pool blocker described below.
+## Validation (current — full 7-scene RPT_ZOO ladder, b=4, OkLab%×2L vs vanilla_b4_x4096 GT)
+
+AB harness (`scripts/RestirPT2D_AB.py`, ImageCompare metric) confirms
+`restirpt_2d` is **bit-identical to `restirpt_ref`** (the frozen DQLin verbatim
+plugin) on every tested scene. Mode-0 = DQLin parity, validated.
+
+Ladder cumulative R3d-vs-R2d delta across the 7-scene matrix
+(`docs/LADDERLOG.md` Step RPT_ZOO has the per-scene table):
+
+| SPP | cum d(R3d−R2d) | cum d(R3d−vanilla) | story |
+|----:|---:|---:|---|
+| 1   | +6.69pp | -55.82pp | R3d cold-cell penalty; R2d wins HUGE over vanilla |
+| 4   | -6.78pp | -18.06pp | DQLin Sponza fireflies start; R3d fixes |
+| 16  | **-46.08pp** | +5.44pp | R3d severe firefly cleanup on Bistro/Sponza; small Cornell tax |
+
+**Architectural finding:** R3d's cell-pool first-writer-wins atomic-CAS
+suppresses a DQLin per-pixel-reservoir firefly pathology on Bistro/Sponza
+at SPP≥4. Sponza R2d at SPP=16 = 27.76% OkLab; R3d = 7.18%. Cross-
+checked via frozen `restirpt_ref` plugin → confirmed it's a DQLin algorithm
+property, not a port bug.
+
+Cornell scenes pay a small tax (R3d slightly worse than R2d) — vanilla
+converges fast on simple lighting, ReSTIR overhead doesn't earn back its
+bias. Net cumulative across the matrix is a substantial R3d win.
 
 ## v2 progress so far
 
@@ -47,32 +71,24 @@ falls back to mode=0** due to the cell-pool blocker described below.
     (path.L update, pathBuilder.addEscapeVertex, NRD writes) —
     diminishing returns on further extraction.
 
-## Open blockers
+## Resolved blockers
 
-### Task #15 — restirpt_3d concurrent-write corruption
+### Task #15 — restirpt_3d concurrent-write corruption ✅ RESOLVED
 
-Hash-keyed flat reservoir buffer cannot safely handle concurrent writes
-from multiple pixels mapping to the same slot. Symptoms: torn writes →
-corrupt `rcVertex.hit` data → downstream
-`gScene.getVertexData(invalid_hit)` triggers DXGI_DEVICE_REMOVED after
-a few frames.
+Original symptom: hash-keyed flat reservoir buffer couldn't handle concurrent
+writes from multiple pixels mapping to the same slot — torn writes → corrupt
+`rcVertex.hit` → DXGI_DEVICE_REMOVED.
 
-**Fix**: real 3D mode requires a proper **cell-pool data structure**
-(fingerprints + slot-claim atomics) like VisCache's `WSCellPool` for DI.
+Resolution: `PathReservoirCellPool.slang` cell-pool with fingerprint +
+atomic-CAS slot claim. First writer wins; subsequent writers fall back to
+pixel buffer (mode 1) or empty (mode 2). Validated working on all 7 scenes
+in the RPT_ZOO ladder. Cell-pool cleared every frame via `clearUAV` in
+`ReSTIRPTPass.cpp::execute()` for natural per-frame refresh.
 
-**Progress (commits 4650730, b861f4f, b9339be):**
-- ✅ `PathReservoirCellPool.slang` — `PathReservoirCellSlot` struct
-  (`fingerprint + reservoir`), `prCellFingerprint(q, nb)` hash,
-  `prCellSlotClaim(pool, slotIdx, fp)` atomic-CAS claim,
-  `prCellSlotRead(pool, slotIdx, fp, out reservoir)` collision-checked read.
-- ✅ Host-side `mpPathReservoirCellPool` allocated when `restirptAddrMode==1`,
-  freed when 0. Bound via `pathReservoirCellPool` slot on PathTracer struct.
-- ✅ Reflected via `ReflectTypes.cs.slang` so layout is queryable.
-- ⏳ Wire writes: `writeOutput` should `prCellSlotClaim` and write to cell
-  pool when mode=1 (in addition to the pixel buffer for fallback?).
-- ⏳ Wire reads: spatial/temporal reuse should `prCellSlotRead` when
-  mode=1, fall back to pixel buffer on collision-miss.
-- ⏳ Validate non-trivial 3D output (Task #14).
+A frame-stamp scheme (`InterlockedMax` on per-slot frameStamp) was prototyped
+and reverted (commit `a3129ab`) — the non-atomic stamp write between the
+CAS and reader consumption introduced a write-ordering race that regressed
+Cornell quality 25%. Per-frame `clearUAV` is the canonical refresh.
 
 ## Future steps (Task #11 continued)
 
