@@ -363,16 +363,27 @@ scene) is dwarfed by the production-scale wins.
 | **CUM** | | | | | **-46.082** | **+5.440pp** | **+5.361pp** |
 
 **Architectural conclusion.** R3d (and equivalently R2dR3d on these
-scenes — they track within 0.1pp) is a **scene-dependent win**:
+scenes — they track within 0.1pp) is a **dominant-on-both-axes win**:
 
-- Cornell scenes: small R3d quality tax (~+0.1pp at SPP=16). Vanilla
+- Quality on Cornell: small R3d tax (~+0.1pp at SPP=16). Vanilla
   converges fast on simple lighting, ReSTIR overhead doesn't pay off.
-- Production scenes (Bistro/Sponza): R3d **fixes a DQLin pathology**.
-  R2d (= DQLin per-pixel reservoir) accumulates unbounded fireflies
-  across temporal reuse; R3d's cell-pool first-writer-wins atomic-CAS
-  semantics rejects duplicate winners across pixels and naturally
-  suppresses fireflies (as a side-effect of collision-avoidance, not
-  by design).
+- Quality on production scenes (Bistro/Sponza): R3d **fixes a DQLin
+  pathology**. R2d (= DQLin per-pixel reservoir) accumulates unbounded
+  fireflies across temporal reuse; R3d's cell-pool first-writer-wins
+  atomic-CAS semantics rejects duplicate winners across pixels and
+  naturally suppresses fireflies (as a side-effect of
+  collision-avoidance, not by design).
+- **Cost: R3d is also ~67% FASTER than R2d** (gpu_total_ms, 7-scene
+  mean R3d/R2d = 0.329×; R2dR3d/R2d = 0.555×). Per-scene ratios are
+  remarkably uniform (0.297-0.362×), suggesting a structural speedup
+  (skipped per-pixel reservoir write + the temporal/spatial-reuse
+  passes that read it) rather than scene-dependent. R3d's Cornell
+  quality tax (+0.1pp) is now Pareto-dominated by a 67% compute drop.
+
+(Cost figures from `scripts/audit_rpt_zoo_cost.py 16` — the ladder
+runner's gpu_total_ms includes warmup overhead so absolute values
+aren't real-time-relevant, only ratios are. Real wall-clock claims
+would need TIMING_HONEST methodology with post-equilibrium window.)
 
 The DQLin failure is structural: cross-checked via the frozen
 `restirpt_ref` plugin in the AB harness which gives the same 0.117
@@ -924,13 +935,14 @@ pool draws, no R3d cell-level reservoir.
 
 | Scene | RTXDI production | R2dP2d_F00P24 (screen-tile mirror) | R2dR3dP3d_F00P24 (3D-cell pool) |
 |---|---:|---:|---:|
-| Cornell_1AL | 2.18 | **1.34** (−0.85 win) | 4.43 |
+| Cornell_1AL | 2.18 | **1.34** (−0.84 win) | 4.43 |
 | Cornell_3AL | 2.56 | 2.97 (+0.41 trail) | 5.72 |
 | Sponza | 6.62 | **5.56** (−1.06 win) | 7.03 |
-| BistroInt | 10.04 | (pending re-run) | 13.13 |
-| BistroExt | 11.46 | (pending re-run) | 15.54 |
+| BistroInt | 10.04 | 11.19 (+1.15 trail) | 13.13 |
+| BistroExt | 11.46 | **11.41** (−0.05 ~tie) | 15.54 |
+| **Cumulative** | **32.86** | **32.47** (**−0.39 WIN**) | **45.85** (+12.99 WORSE) |
 
-**Findings (Cornell + Sponza so far):**
+**Findings (5-scene matrix, 2026-05-11):**
 
 1. **Our screen-tile-pool reimplementation matches/beats RTXDI at the
    same architectural config.** R2dP2d_F00P24 wins Cornell_1AL by
@@ -950,10 +962,24 @@ pool draws, no R3d cell-level reservoir.
 
 **Honest §13 narrative update:** at architectural equivalence
 (R2dP2d_F00P24, RTXDI's K=24 pure-pool config) we **match or beat
-RTXDI on Cornell_1AL, Cornell_3AL within 0.4pp, Sponza** (Bistro
-pending). The published §13.5 wins from K=48 hybrid are *additional*
-technique gains on top of architectural parity, not the only place
-where we beat RTXDI.
+RTXDI on Cornell_1AL, Cornell_3AL within 0.4pp, Sponza, BistroExt;
+trail BistroInt by 1.15pp** (5-scene cumulative −0.39pp WIN). The
+K=48 hybrid §13.5 wins are *additional* technique gains on top of
+architectural parity, not the only place where we beat RTXDI.
+
+**Cell-pool double-hash probing (in-flight 2026-05-11).** The 13pp
+P3d-vs-P2d cumulative gap at F00P24 is localised to hash-collision
+behaviour: when two distinct world cells hash to the same primary
+buffer slot, the old code did `wsCellPoolInit(newFp)` — zeroing all
+128 candidate slots and the old cell's accumulated content. Patched
+`WSCellPoolIO.slang` to mirror `vhfFindSlot`'s double-hash probe:
+8 steps along an fp-derived odd-step sequence find a slot whose
+fingerprint matches OR is empty. Reader and writer share the same
+probe so they converge. Eviction-with-pressure + decay-pass extension
+deferred (TODO) — without decay, monotonic eviction pressure would
+pathologically favour established cells. Re-running RDI00 to measure
+the closure (expected: P3d catches up to P2d on Cornell + Sponza,
+remaining gap localises to slot-depth N=128 vs RTXDI 1024).
 
 **Pre-pass redundancy ablation — initial finding overstated (corrected 2026-05-09).**
 Earlier pass (commits `b5b6496` / `13fc09c`) tested `R2dR3dP3d_noPre` /
