@@ -1,11 +1,21 @@
 # Design note: P-axis NEE pool for ReSTIR-PT (Tasks #18 + #21)
 
-## Status
+## Status (2026-05-11)
 
-Scaffolding exists (`restirptPoolAddrMode`, `restirptPoolFootprintPx` cbuffer
-fields in `Params.slang`, property parser in `ReSTIRPTPass.cpp`, render-graph
-kwarg in `scripts/ReSTIRPT_Graph.py`); no pool buffer allocated, no shader
-logic. This document specifies the design for a future implementer.
+Scaffolding through Step 2b complete (commits e71cb1f → 673b020):
+- `restirptPoolAddrMode` / `restirptPoolFootprintPx` cbuffer fields
+  (`Params.slang`, parser in `ReSTIRPTPass.cpp`, kwarg in `ReSTIRPT_Graph.py`)
+- `mpLightPool` ref<Buffer> allocated when mode != 0 (sized to reservoirCount)
+- `LightPool.slang` re-exports VisCache's `WSCellPool` (N=128 packed
+  candidates per slot — single source of truth shared with DI side)
+- `LightPoolFill.cs.slang` compute pass dispatched once/frame before
+  TracePass when mode != 0. Currently writes sentinel WSCellPool entries
+  (recognizable lightTypeIndex/payload values for downstream verification).
+- AB harness `AB_POOL_MODE` env var enables P-axis end-to-end without
+  graph edits.
+
+Steps remaining for working MVP (Step 2c real fill + Step 3 NEE-site
+read): ~2 days, see "Implementation pivot" section below.
 
 ## What it is
 
