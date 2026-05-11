@@ -5,11 +5,41 @@ frame index with spatial fingerprint into ONE atomic value; CAS handles
 both the claim atom and the stale-frame eviction. Drops the per-frame
 `clearUAV(mpPathReservoirCellPool)` (`ReSTIRPTPass.cpp:644`) entirely.
 
-## Status
+## Status (2026-05-11, commit e8b2dbf)
 
-NOT YET IMPLEMENTED. Sketched here for handoff to next implementer (or
-self) once the parallel agent's `WSCellPool` refactor settles (currently
-N=128/1024 in flux). Risk of compounding their WIP if implemented now.
+**WIRED behind a runtime toggle** — `restirptCellPoolFrameCAS` cbuffer
+field, default 0 (legacy). Set to 1 via render-graph kwarg or
+`AB_FRAME_CAS=1` env var to enable.
+
+Validation on Cornell_1AL b=4 x16 (ImageCompare vs vanilla_b4_x4096 GT):
+
+| Variant | FLAG=0 (legacy) | FLAG=1 (frame-CAS) |
+|---|---:|---:|
+| vanilla | 0.00508 | 0.00508 |
+| R2d | 0.00351 | 0.00351 |
+| R2dR3d | 0.00250 | **0.00244** |
+| R3d | 0.00297 | 0.00297 |
+
+R2dR3d preserved or slightly better with frame-CAS (cells persist
+across frames → more cross-pixel reuse). R3d essentially identical.
+Default behavior on legacy path is bit-identical.
+
+BistroExterior partial validation (FLAG=1, AB harness crashed before
+R3d completed; Sponza AB also crashes at FLAG=0 — harness instability
+not from my changes):
+
+| Variant | ImageCompare |
+|---|---:|
+| vanilla | 0.287 |
+| restirpt_2d | 0.275 (-4% vs vanilla) |
+| restirpt_3d | 0.262 (-9% vs vanilla, -5% vs R2d) |
+
+Full 7-scene RPT_ZOO ladder validation pending.
+
+**Critical implementation fix:** one-time clearUAV at buffer creation.
+Without it, frame 0 hits uninitialized GPU memory → the 2nd-CAS
+overwrite path race-writes payload over garbage → TDR. With one-time
+clear, fingerprint starts at zero so 1st CAS wins cleanly.
 
 ## Why this differs from the reverted frame-stamp scheme (a3129ab)
 
