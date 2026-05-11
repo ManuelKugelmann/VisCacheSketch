@@ -614,10 +614,11 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
     // mode-0 has no extra dispatch cost.
     if (mParams.restirptPoolAddrMode != 0u && mpLightPool && mpLightPoolFill)
     {
-        auto var = mpLightPoolFill->getRootVar()["CB"]["gFiller"];
-        var["lightPool"]  = mpLightPool;
-        var["poolSize"]   = mpLightPool->getElementCount();
-        var["frameCount"] = mParams.frameCount;
+        // Reuse the PathTracer parameter block — it already binds the scene,
+        // emissiveSampler, envMapSampler, and the lightPool field. Saves
+        // setting up duplicate bindings for the fill pass.
+        mpLightPoolFill->getRootVar()["gPathTracer"] = mpPathTracerBlock;
+        mpScene->bindShaderData(mpLightPoolFill->getRootVar()["gScene"]);
         mpLightPoolFill->execute(pRenderContext, mpLightPool->getElementCount(), 1, 1);
     }
 

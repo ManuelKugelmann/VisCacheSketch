@@ -1,74 +1,55 @@
 /***************************************************************************
  * LightPoolFill.cs.slang
  *
- * P-axis pool fill pass — STUB. Step 2 of 3 in P-axis MVP (Task #21).
+ * P-axis pool fill pass — Step 2c partial.
  *
- * Compiles + dispatches if wired in by host but does no useful work yet
- * (writes zeroed PackedLightPoolSamples). Use this as the starting point
- * for the real fill implementation.
+ * Reuses gPathTracer's binding (cbuffer "CB" wrapping PathTracer struct)
+ * to gain access to scene + emissiveSampler + lightPool buffer without
+ * a separate parameter block. Sentinel-fill for now (writes recognizable
+ * values so Step 3 can verify slot keying); real emissiveSampler.sampleLight
+ * integration is the final piece of Step 2c.
  *
- * Design: see Source/RenderPasses/ReSTIRPTPass/PORT_NOTES_P_AXIS.md.
- *
- * Real implementation (TODO):
- *   - import Rendering.Lights.EmissiveLightSampler + EnvMapSampler
- *   - construct SampleGenerator with slot-keyed seed (deterministic per
- *     slot per frame; e.g. pcg(slotIdx ^ frameCount))
- *   - for k in [0, kLightPoolK): call emissiveSampler.sampleLight at a
- *     proxy shading point (slot-cell-center for P3d, screen-tile-center
- *     for P2d) and pack the resulting LightSample into samples[k]
- *   - host: insert dispatch BEFORE TracePass, ONCE per frame (not per
- *     ReSTIR iter), gated on params.restirptPoolAddrMode != 0
+ * Design: see Source/RenderPasses/ReSTIRPTPass/PORT_NOTES_P_AXIS.md
  **************************************************************************/
+import Scene.Scene;
+import PathTracer;     // pulls EnvMapSampler, EmissiveLightSampler, lightPool field
 import LightPool;
+import Params;
 
-struct LightPoolFiller
-{
-    RWStructuredBuffer<LightPoolSlot> lightPool;
-    uint poolSize;     ///< Number of slots to fill (= mpLightPool->getElementCount())
-    uint frameCount;   ///< For temporal seeding when real sampler is wired in (TODO).
-
-    void execute(uint slotIdx)
-    {
-        if (slotIdx >= poolSize) return;
-        // STUB: writes a recognizable sentinel value so the NEE-site read
-        // (Step 3) can verify the pool actually persists between fill-pass
-        // and main TracePass without yet sampling real lights:
-        //   samples[k].Li.x = slotIdx (slot ID, lets NEE assert pool is keyed correctly)
-        //   samples[k].pdf  = float(k) / kLightPoolK  (slot-internal index check)
-        //
-        // Real implementation TODO (Step 2c):
-        //   - import Rendering.Lights.EmissiveLightSampler + EnvMapSampler
-        //   - bind emissiveSampler/envMapSampler on this struct (separate
-        //     from PathTracer's bindings, OR share via mpPathTracerBlock)
-        //   - SampleGenerator sg = SampleGenerator(uint2(slotIdx, frameCount), 0);
-        //   - compute proxy shading point:
-        //       P2d: tile-center pixel -> primary ray -> hit.posW
-        //       P3d: invert cell hash -> cell-center world pos (requires
-        //            a separate slotIdx -> worldPos table, since cell
-        //            hashes are one-way; populated by writeCentralReservoir)
-        //   - for k in [0, kLightPoolK): emissiveSampler.sampleLight(...)
-        //     -> pack into PackedLightPoolSample
-        LightPoolSlot slot;
-        for (uint k = 0; k < kLightPoolK; ++k)
-        {
-            slot.samples[k].Li = float3(float(slotIdx), 0.0, 0.0);
-            slot.samples[k].pdf = float(k) / float(kLightPoolK);
-            slot.samples[k].origin = float3(0.0);
-            slot.samples[k].distance = 0.0;
-            slot.samples[k].dir = float3(0.0);
-            slot.samples[k].lightType = 0u;
-        }
-        lightPool[slotIdx] = slot;
-    }
-};
-
-cbuffer CB
-{
-    LightPoolFiller gFiller;
-}
+ParameterBlock<PathTracer> gPathTracer;
 
 [numthreads(64, 1, 1)]
 void main(uint3 dtid : SV_DispatchThreadID)
 {
-    gFiller.execute(dtid.x);
+    const uint slotIdx = dtid.x;
+    const uint poolSize = gPathTracer.params.screenTiles.x * gPathTracer.params.screenTiles.y
+                          * (kScreenTileDim.x * kScreenTileDim.y);
+    if (slotIdx >= max(poolSize, 1u)) return;
+
+    // Sentinel fill — writes recognizable values for Step 3 verification:
+    //   samples[k].Li.x = slotIdx (slot ID lets NEE assert pool keying)
+    //   samples[k].pdf  = k/K     (slot-internal index check)
+    //
+    // Real implementation TODO:
+    //   - SampleGenerator sg = SampleGenerator(uint2(slotIdx, gPathTracer.params.frameCount), 0);
+    //   - compute proxy shading point per slot (tile-center pixel for P2d,
+    //     cell-center world pos for P3d — P3d needs a separate slot->pos
+    //     table since cell hashes are one-way)
+    //   - for k in [0, kLightPoolK):
+    //       LightSample ls;
+    //       if (gPathTracer.emissiveSampler.sampleLight(proxyPos, proxyN, true, sg, tls, ls)) {
+    //           pack into samples[k]
+    //       }
+    LightPoolSlot slot;
+    [unroll]
+    for (uint k = 0; k < kLightPoolK; ++k)
+    {
+        slot.samples[k].Li = float3(float(slotIdx), 0.0, 0.0);
+        slot.samples[k].pdf = float(k) / float(kLightPoolK);
+        slot.samples[k].origin = float3(0.0);
+        slot.samples[k].distance = 0.0;
+        slot.samples[k].dir = float3(0.0);
+        slot.samples[k].lightType = 0u;
+    }
+    gPathTracer.lightPool[slotIdx] = slot;
 }
