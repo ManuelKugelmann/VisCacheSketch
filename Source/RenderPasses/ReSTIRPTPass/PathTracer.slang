@@ -263,10 +263,22 @@ struct PathTracer
                                                gScene.camera.data.focalLength, kPRCellPoolLevels);
         const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
         PathReservoir cellRes;
-        if (prCellPoolReadCascade(pathReservoirCellPool, posW, faceN,
-                                  params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                                  jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes))
-            return cellRes;
+        bool hit;
+        if (params.restirptCellPoolFrameCAS != 0u)
+        {
+            // Frame-CAS path: reader matches frame-tagged fingerprint; stale-frame entries naturally rejected.
+            hit = prCellPoolReadCascadeFrameCAS(pathReservoirCellPool, posW, faceN,
+                                                params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                                jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                                /*currentFrame*/params.frameCount + 1u, cellRes);
+        }
+        else
+        {
+            hit = prCellPoolReadCascade(pathReservoirCellPool, posW, faceN,
+                                        params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                        jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, cellRes);
+        }
+        if (hit) return cellRes;
         // mode 1 (R2dR3d): fall back to pixel-keyed; mode 2 (R3d): empty (no pixel buffer).
         if (params.restirptAddrMode == 2u)
         {
@@ -300,9 +312,19 @@ struct PathTracer
                                                params.frameDim.y, gScene.camera.data.frameHeight,
                                                gScene.camera.data.focalLength, kPRCellPoolLevels);
         const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
-        prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
-                               params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
-                               jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, reservoir);
+        if (params.restirptCellPoolFrameCAS != 0u)
+        {
+            prCellPoolWriteCascadeFrameCAS(pathReservoirCellPool, v.posW, v.faceNormalW,
+                                           params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                           jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u,
+                                           /*currentFrame*/params.frameCount + 1u, reservoir);
+        }
+        else
+        {
+            prCellPoolWriteCascade(pathReservoirCellPool, v.posW, v.faceNormalW,
+                                   params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
+                                   jSeed, /*jitterPos*/1.0f, /*jitterLevel*/0u, reservoir);
+        }
     }
 
     /** Compute world-space position by projecting a screen pixel's eye ray

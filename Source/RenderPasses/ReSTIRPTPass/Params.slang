@@ -229,7 +229,14 @@ struct RestirPathTracerParams
     uint    restirptAddrMode = 0u;
     uint    restirptPoolAddrMode = 0u;
     uint    restirptPoolFootprintPx = 16u;
-    uint    _restirptVariantPad = 0u;       // 16-byte align (4 uints = 16 B)
+    /// Frame-CAS toggle for the cell-pool fingerprint claim (Task: drop
+    /// per-frame clearUAV). 0 = legacy strict-first-writer-wins +
+    /// per-frame clearUAV (default; firefly-suppression-validated).
+    /// 1 = frame-tagged fingerprint (upper byte = currentFrame mod 256)
+    /// + two-CAS-attempt claim (preserves first-writer-wins within frame,
+    /// opportunistically overwrites stale-frame entries; clearUAV skipped).
+    /// See PORT_NOTES_FRAMEFP.md for design + validation plan.
+    uint    restirptCellPoolFrameCAS = 0u;
 
 #ifndef HOST_CODE
 

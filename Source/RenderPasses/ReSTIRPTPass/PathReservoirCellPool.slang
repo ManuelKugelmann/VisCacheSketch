@@ -313,6 +313,26 @@ bool prCellSlotClaim(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotId
     return prev == 0u;   // strict first-writer-wins
 }
 
+/// Frame-CAS variant of slot claim. Two-CAS-attempt sequence preserves
+/// first-writer-wins WITHIN a frame (firefly suppression) while
+/// opportunistically overwriting STALE-frame entries — eliminating the
+/// need for per-frame clearUAV. See PORT_NOTES_FRAMEFP.md for design.
+/// `frame_aware_fp` must be encoded via prCellFrameAwareFingerprint().
+bool prCellSlotClaimFrameCAS(RWStructuredBuffer<PathReservoirCellSlot> pool, uint slotIdx, uint frame_aware_fp)
+{
+    uint prev = 0u;
+    InterlockedCompareExchange(pool[slotIdx].fingerprint, 0u, frame_aware_fp, prev);
+    if (prev == 0u) return true;                 // won empty slot
+    if (prev == frame_aware_fp) return false;    // already claimed by me this frame
+    // Is prev from THIS frame (other-pixel collision)? Frame byte equal?
+    if ((prev & 0xFF000000u) == (frame_aware_fp & 0xFF000000u))
+        return false;                            // current-frame collision: respect first-writer
+    // Stale-frame data: try to overwrite atomically.
+    uint prev2 = 0u;
+    InterlockedCompareExchange(pool[slotIdx].fingerprint, prev, frame_aware_fp, prev2);
+    return prev2 == prev;                        // succeeded only if no one else slipped in
+}
+
 /// Read a cell-pool slot. Returns false (and zeroed reservoir) if the
 /// slot is empty OR claimed by a different fingerprint (collision).
 /// Takes RWStructuredBuffer because that's what callers have (the buffer
@@ -403,6 +423,60 @@ uint prCellPoolWriteCascade(
         }
     }
     return maxLevels;
+}
+
+/// Frame-CAS variant of cascading write. Computes frame-tagged fingerprints
+/// at each level via prCellFrameAwareFingerprint and uses the two-CAS-attempt
+/// claim. Eliminates the need for per-frame clearUAV — see PORT_NOTES_FRAMEFP.md.
+uint prCellPoolWriteCascadeFrameCAS(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint startLevel, uint maxLevels,
+    uint jitterSeed, float jitterPos, uint jitterLevel,
+    uint currentFrame,
+    PathReservoir reservoir)
+{
+    for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
+    {
+        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
+            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
+            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        uint fafp = prCellFrameAwareFingerprint(a.fingerprint, currentFrame);
+        if (prCellSlotClaimFrameCAS(pool, a.slot, fafp))
+        {
+            pool[a.slot].reservoir = reservoir;
+            return lvl;
+        }
+    }
+    return maxLevels;
+}
+
+/// Frame-CAS variant of cascading read. Matches against frame-tagged
+/// fingerprints; stale-frame entries naturally rejected by frame-byte
+/// mismatch.
+bool prCellPoolReadCascadeFrameCAS(
+    RWStructuredBuffer<PathReservoirCellSlot> pool,
+    float3 posW, float3 faceN, float sceneRadius, uint capacity,
+    uint startLevel, uint maxLevels,
+    uint jitterSeed, float jitterPos, uint jitterLevel,
+    uint currentFrame,
+    out PathReservoir reservoir)
+{
+    for (uint lvl = startLevel; lvl < maxLevels; ++lvl)
+    {
+        PathReservoirCellAddr a = (jitterPos > 0.f || jitterLevel > 0u)
+            ? prCellResolveAddrJittered(posW, faceN, sceneRadius, capacity, lvl, jitterSeed, jitterPos, jitterLevel)
+            : prCellResolveAddr(posW, faceN, sceneRadius, capacity, lvl);
+        uint fafp = prCellFrameAwareFingerprint(a.fingerprint, currentFrame);
+        PathReservoirCellSlot s = pool[a.slot];
+        if (s.fingerprint != 0u && s.fingerprint == fafp)
+        {
+            reservoir = s.reservoir;
+            return true;
+        }
+    }
+    reservoir = pool[0].reservoir;   // dummy init
+    return false;
 }
 
 // Back-compat: no jitter, startLevel=0.

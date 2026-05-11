@@ -190,6 +190,7 @@ namespace
     const std::string kRestirptAddrMode = "restirptAddrMode";
     const std::string kRestirptPoolAddrMode = "restirptPoolAddrMode";
     const std::string kRestirptPoolFootprintPx = "restirptPoolFootprintPx";
+    const std::string kRestirptCellPoolFrameCAS = "restirptCellPoolFrameCAS";
 
     const std::string kTemporalHistoryLength = "temporalHistoryLength";
     const std::string kUseMaxHistory = "useMaxHistory";
@@ -342,6 +343,7 @@ bool ReSTIRPTPass::parseDictionary(const Properties& props)
         else if (key == kRestirptAddrMode) mParams.restirptAddrMode = value;
         else if (key == kRestirptPoolAddrMode) mParams.restirptPoolAddrMode = value;
         else if (key == kRestirptPoolFootprintPx) mParams.restirptPoolFootprintPx = value;
+        else if (key == kRestirptCellPoolFrameCAS) mParams.restirptCellPoolFrameCAS = value;
         else if (key == kTemporalHistoryLength) mTemporalHistoryLength = value;
         else if (key == kUseMaxHistory) mUseMaxHistory = value;
         else if (key == kSeedOffset) mSeedOffset = value;
@@ -502,6 +504,7 @@ Properties ReSTIRPTPass::getProperties() const
     d[kRestirptAddrMode] = mParams.restirptAddrMode;
     d[kRestirptPoolAddrMode] = mParams.restirptPoolAddrMode;
     d[kRestirptPoolFootprintPx] = mParams.restirptPoolFootprintPx;
+    d[kRestirptCellPoolFrameCAS] = mParams.restirptCellPoolFrameCAS;
     d[kTemporalHistoryLength] = mTemporalHistoryLength;
     d[kUseMaxHistory] = mUseMaxHistory;
     d[kSeedOffset] = mSeedOffset;
@@ -655,7 +658,14 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
                 // never lets the claim refresh).
                 // mode 0 (R2d): no cell pool. mode 1 (R2dR3d): cell pool used.
                 // mode 2 (R3d): cell pool is the ONLY store.
-                if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool)
+                //
+                // Frame-CAS toggle (restirptCellPoolFrameCAS=1): skip the
+                // clear; stale-frame entries are naturally rejected by the
+                // frame-tagged fingerprint at read time, and opportunistically
+                // overwritten by writers via the two-CAS-attempt claim.
+                // Saves one GPU op per ReSTIR iter when enabled.
+                if (mParams.restirptAddrMode != 0u && mpPathReservoirCellPool
+                    && mParams.restirptCellPoolFrameCAS == 0u)
                 {
                     pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
                 }
@@ -1259,6 +1269,12 @@ void ReSTIRPTPass::prepareResources(RenderContext* pRenderContext, const RenderD
                     var["pathReservoirCellPool"], reservoirCount,
                     ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
                     MemoryType::DeviceLocal, nullptr, false);
+                // One-time clear on creation: frame-CAS path needs a known-zero
+                // initial state for fingerprints (so the 1st CAS expecting 0u
+                // wins on frame 0). Without this, uninitialized GPU memory makes
+                // frame-CAS hit undefined collisions and risks torn payload
+                // writes via the 2nd-CAS overwrite path.
+                pRenderContext->clearUAV(mpPathReservoirCellPool->getUAV().get(), uint4(0));
                 mVarsChanged = true;
             }
         }

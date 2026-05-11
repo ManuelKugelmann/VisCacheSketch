@@ -37,10 +37,13 @@ void main(uint3 dtid : SV_DispatchThreadID)
     // fingerprint (= slotIdx + 1, so the wsCellPoolIsEmpty test in Step 3
     // can distinguish "filled" from "empty initial state") and a single
     // dummy candidate at index 0 to verify per-slot writes work.
-    WSCellPool p = wsCellPoolInit(slotIdx + 1u);   // non-zero fingerprint
-    p.count               = 1u;
-    p.lightTypeIndex[0]   = slotIdx;       // recognizable: slot index in light-type field
-    p.payload[0]          = slotIdx * 7u;  // recognizable: slot * 7 in payload
-    p.sourcePdf[0]        = float(slotIdx) / float(max(poolSize, 1u));
-    gPathTracer.lightPool[slotIdx] = p;
+    // Sentinel fill — writes WSCellPool fields directly via buffer accessors.
+    // Never materialise a local WSCellPool: at N=1024 the struct is 12 KB
+    // and exceeds DXC's per-thread local-memory validation.
+    gPathTracer.lightPool[slotIdx].fingerprint       = slotIdx + 1u;  // non-zero fingerprint
+    gPathTracer.lightPool[slotIdx].count             = 1u;
+    gPathTracer.lightPool[slotIdx].frameLastInsert   = 0u;
+    gPathTracer.lightPool[slotIdx].lightTypeIndex[0] = slotIdx;       // recognizable: slot index
+    gPathTracer.lightPool[slotIdx].payload[0]        = slotIdx * 7u;  // recognizable: slot * 7
+    gPathTracer.lightPool[slotIdx].sourcePdf[0]      = float(slotIdx) / float(max(poolSize, 1u));
 }
