@@ -4273,6 +4273,31 @@ def run_baseline_ReSTIRDI_R2dP3d_hybrid(step_name, frame_configs, scene_file,
     )
 
 
+def run_baseline_ReSTIRDI_R2dP2d_F00P24(step_name, frame_configs, scene_file,
+                                        wsPoolTileSize=16, **kwargs):
+    """**True RTXDI architectural mirror at K_total=24**: per-pixel reservoir
+    + screen-tile pool (P2d, addrMode=1) + pre-pass PdfMipmap fill +
+    F00P24 = 0 fresh + 24 pool draws. No R3d. Direct apples-to-apples
+    comparison to RTXDI production plugin numbers at the same K=24 sample
+    budget. Tests whether our screen-tile-pool reimplementation matches
+    RTXDI when configured identically.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF (RTXDI has no cell-level reservoir)
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_F00P24",
+        addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
+        wsInitialCandidates=0,                  # NO main-pass-fresh — pure pool draws (RTXDI's spec)
+        wsCellPoolDrawK=24,                     # K=24 = RTXDI localLightCandidateCount
+        wsCellPoolPrePass=True,                 # pre-pass presampling
+        prePassEmissiveSampler="PdfMipmap",     # RTXDI-style hierarchical 2D pdf
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dR3dP3d_preOnly(step_name, frame_configs, scene_file,
                                             wsCellPoolFootprintPx=16, **kwargs):
     """RTXDI-faithful: pre-pass fills pool with PdfMipmap K-RIS, main pass

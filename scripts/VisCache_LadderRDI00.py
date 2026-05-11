@@ -40,6 +40,7 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_H2dR3dP3d,
     run_baseline_ReSTIRDI_R2dR3dP3d_noPre,
     run_baseline_ReSTIRDI_R2dR3dP3d_preOnly,
+    run_baseline_ReSTIRDI_R2dP2d_F00P24,
     run_baseline_ReSTIRDI_R2dR3dP3d_hybrid,
     run_baseline_ReSTIRDI_R3dP3d_noPre,
     # preOnlyLightBVH ruled out — LightBVH samples are pixel-conditional and
@@ -95,6 +96,11 @@ for scene_file in get_scenes(default=["Sponza"]):
     # R3dP3d corner samples (pure 3D, no per-pixel layer) — kept narrow
     # because R3d-vs-R2d-pixel-layer is the H2d ladder's job.
     run_baseline_ReSTIRDI_R3dP3d_noPre(STEP, [(0, 0, 1)], scene_file, **common)
+
+    # === True RTXDI architectural mirror ===
+    # F00P24 with screen-tile pool + no R3d — direct apples-to-apples to
+    # RTXDI production plugin at K_total=24.
+    run_baseline_ReSTIRDI_R2dP2d_F00P24(STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===
 # carried_winners=[] because RDI00 is not setting up a hand-off to RDI01

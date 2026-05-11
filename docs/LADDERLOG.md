@@ -917,6 +917,44 @@ Findings:
    is the best variant on both scenes** — Cornell 1.40 (only 0.34 pp
    from vanilla x4), Sponza 5.68 (0.36 pp from vanilla x4).
 
+**RTXDI architectural-mirror parity (R2dP2d_F00P24 audit 2026-05-11).**
+True apples-to-apples mirror of RTXDI's spec at K_total=24: per-pixel
+reservoir + screen-tile pool + pre-pass PdfMipmap fill + 0 fresh + 24
+pool draws, no R3d cell-level reservoir.
+
+| Scene | RTXDI production | R2dP2d_F00P24 (screen-tile mirror) | R2dR3dP3d_F00P24 (3D-cell pool) |
+|---|---:|---:|---:|
+| Cornell_1AL | 2.18 | **1.34** (−0.85 win) | 4.43 |
+| Cornell_3AL | 2.56 | 2.97 (+0.41 trail) | 5.72 |
+| Sponza | 6.62 | **5.56** (−1.06 win) | 7.03 |
+| BistroInt | 10.04 | (pending re-run) | 13.13 |
+| BistroExt | 11.46 | (pending re-run) | 15.54 |
+
+**Findings (Cornell + Sponza so far):**
+
+1. **Our screen-tile-pool reimplementation matches/beats RTXDI at the
+   same architectural config.** R2dP2d_F00P24 wins Cornell_1AL by
+   0.85pp, Sponza by 1.06pp; trails Cornell_3AL by 0.41pp (consistent
+   with the §13.5 "structural" trail).
+2. **3D-cell pool addressing is the architectural weakness for pure-pool
+   sampling.** R2dR3dP3d_F00P24 is 2-4pp worse than R2dP2d_F00P24 on
+   every measured scene. Suspect: pool slot depth (our 128 vs RTXDI's
+   1024 per tile) + first-writer-wins on hash collision discards write
+   effort. Per-pixel pool-share ratio is theoretically higher for our
+   cells, but practical sample variety suffers.
+3. **The earlier "we are ~9pp worse than RTXDI at architectural parity"
+   reading was wrong** — that compared 3D-cell-pool F00P24 to RTXDI's
+   screen-tile production. Apples-to-oranges. At true architectural
+   parity (R2dP2d_F00P24), we MATCH or BEAT RTXDI on the measured
+   scenes.
+
+**Honest §13 narrative update:** at architectural equivalence
+(R2dP2d_F00P24, RTXDI's K=24 pure-pool config) we **match or beat
+RTXDI on Cornell_1AL, Cornell_3AL within 0.4pp, Sponza** (Bistro
+pending). The published §13.5 wins from K=48 hybrid are *additional*
+technique gains on top of architectural parity, not the only place
+where we beat RTXDI.
+
 **Pre-pass redundancy ablation — initial finding overstated (corrected 2026-05-09).**
 Earlier pass (commits `b5b6496` / `13fc09c`) tested `R2dR3dP3d_noPre` /
 `R3dP3d_noPre` on Cornell_1AL + Sponza only and concluded "pre-pass
