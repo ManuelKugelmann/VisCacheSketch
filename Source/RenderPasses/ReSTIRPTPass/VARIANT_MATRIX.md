@@ -67,6 +67,26 @@ reuse passes that read it. Per-scene independent.
 via frozen `restirpt_ref` plugin → R2d's firefly pathology is a DQLin
 algorithm property, not a port bug.
 
+### Per CLAUDE.md FULL-METRIC-BATTERY rule (commit pending)
+
+`mean_err_pct` (OkLab) is the headline; secondary metrics show
+anti-correlated trade-offs that single-metric reporting would miss:
+
+| Metric | Cum d (R3d-R2d) @ SPP=16 | Story |
+|---|---:|---|
+| `mean_err_pct` (OkLab) | **−46.08pp** | R3d wins by huge margin |
+| `rmse` | **−1092.59** | R3d wins by even larger margin in linear space (Sponza R2d 73 vs R3d 0.19) |
+| `psnr_db` (sign-flipped) | **−136.38 dB** | Same direction; R3d's PSNR much higher |
+| `artifact_5_pct` | **−36.42pp** | R3d wins cum but Cornell scenes now INCREASE artifact area: 1PL +13.1pp, 1AL +5.1pp |
+
+The artifact_5 anti-correlation: vanilla converges to <5% err on simple
+Cornell, so any R3d bias bumps pixels over the threshold even if mean
+OkLab is barely affected. On Bistro/Sponza the metric tracks mean
+(R3d −10 to −28pp). Headline cum stays in R3d's favour but Cornell-
+artifact reporting in the paper needs honesty.
+
+Regenerate any metric: `audit_rpt_zoo_R3d_vs_R2d.py 16 --md --metric=KEY`.
+
 Full per-scene tables in [docs/LADDERLOG.md](../../../docs/LADDERLOG.md)
 "Step RPT_ZOO" section. Cost audit:
 `scripts/audit_rpt_zoo_cost.py 16`.
