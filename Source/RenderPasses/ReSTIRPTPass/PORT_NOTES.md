@@ -47,6 +47,18 @@ Cornell scenes pay a small tax (R3d slightly worse than R2d) — vanilla
 converges fast on simple lighting, ReSTIR overhead doesn't earn back its
 bias. Net cumulative across the matrix is a substantial R3d win.
 
+**Cost-axis finding (2026-05-11).** R3d is also ~67% FASTER than R2d
+(gpu_total_ms, 7-scene mean R3d/R2d=0.329×, R2dR3d/R2d=0.555×). Per-
+scene ratios are uniform (0.297-0.362× for R3d) → structural speedup
+from skipping per-pixel reservoir write + downstream temporal/spatial-
+reuse passes that consume it. Combined with the quality finding above,
+**R3d Pareto-dominates R2d on every measured axis**: the Cornell
++0.1pp quality tax is offset by a 67% compute drop.
+
+Caveat: ladder gpu_total_ms includes warmup overhead — absolutes
+aren't real-time-relevant, only ratios. See
+`scripts/audit_rpt_zoo_cost.py 16` to regenerate.
+
 ## v2 progress so far
 
 - ✅ Two plugins live side-by-side: ReSTIRPTReferencePass (frozen) +
