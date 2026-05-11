@@ -24,17 +24,26 @@ glancing-angle pixels.
 
 ## Why naive impl fails on PT side
 
-The "obvious" mode-3 = "skip per-pixel write + read cell-then-pixel
-fallback" doesn't work because of the ping-pong buffer semantics:
+Two compounding problems:
 
-`outputReservoirs` is swapped from `temporalReservoirs` each frame
-(Falcor's standard ping-pong). If mode 3 NEVER writes outputReservoirs,
-then frame N+1's outputReservoirs = frame N's outputReservoirs = ... =
-the initial cleared state. The fallback on cell-miss reads garbage forever;
-the pixel buffer never stabilizes.
+**1. Ping-pong buffer semantics.** `outputReservoirs` is swapped from
+`temporalReservoirs` each frame (Falcor's standard ping-pong). If mode 3
+NEVER writes outputReservoirs, then frame N+1's outputReservoirs =
+frame N's outputReservoirs = ... = the initial cleared state. The
+fallback on cell-miss reads garbage forever; the pixel buffer never
+stabilizes.
+
+**2. TemporalReuse writes outputReservoirs unconditionally.**
+`TemporalReuse.cs.slang:316` does `outputReservoirs[centralOffset] =
+dstReservoir` every frame. Even if TracePass mode 3 skips the per-pixel
+write, TemporalReuse will read garbage (from cleared outputReservoirs)
+as central, merge with previous frame's temporal, and write garbage
+back. Without ALSO gating TemporalReuse's read+write on mode 3, any
+TracePass-side gating is meaningless.
 
 Reference: `Source/RenderPasses/ReSTIRPTPass/PathTracer.slang:2172-2173`
-write-site dispatch and `lookupCentralReservoir:283` read-site dispatch.
+write-site dispatch + `lookupCentralReservoir:283` read-site dispatch +
+`TemporalReuse.cs.slang:99,169,316` outputReservoirs read/merge/write.
 
 ## Three viable design options
 
@@ -51,8 +60,16 @@ back to the TracePass write site. Touch points: `PathTracer.slang:2172-2173`
 (per-pixel write) + `writeCentralReservoir:280-298` (currently void; needs
 to return claim-success bool).
 
-Effort: ~1 day. Couples TracePass to cell-pool's claim outcome but doesn't
-require new buffers.
+**ALSO requires gating TemporalReuse:** the unconditional write at
+`TemporalReuse.cs.slang:316` will overwrite the carefully-preserved pixel
+data with merged-with-garbage results. Two sub-options here:
+- (a.i) Gate TemporalReuse write on mode != 3, AND make its read of
+  outputReservoirs[central] read-from-cell-pool when mode == 3.
+- (a.ii) Disable TemporalReuse entirely in mode 3 (lose temporal
+  resampling). Simpler but kneecaps the variant's quality.
+
+Effort: 1-2 days. Couples TracePass to cell-pool's claim outcome AND
+requires TemporalReuse touch point.
 
 ### (b) Slim per-pixel sample buffer (16-32 B/pixel)
 
