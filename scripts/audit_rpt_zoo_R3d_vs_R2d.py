@@ -8,14 +8,21 @@ emits per-scene + cumulative deltas of mean_err_pct between R3d /
 R2dR3d / vanilla and R2d-baseline.
 
 Usage:
-  runtime/pythondist/python.exe scripts/audit_rpt_zoo_R3d_vs_R2d.py [SPP] [--md]
+  runtime/pythondist/python.exe scripts/audit_rpt_zoo_R3d_vs_R2d.py [SPP] [--md] [--all] [--metric=KEY]
 
   SPP defaults to 16 (the canonical comparison point); pass 1 / 4 to
   audit the cold-cell or mid-converged regimes instead.
   --md emits a markdown table for direct LADDERLOG paste-in.
+  --all runs SPP=1/4/16 sequentially + cross-SPP summary.
+  --metric=KEY chooses the column to audit (default: mean_err_pct).
+    Valid KEY values: mean_err_pct, rmse, psnr_db, ms_ssim, flip,
+    artifact_5_pct, mse, relmse. Per CLAUDE.md "FULL-METRIC-BATTERY"
+    rule: spot-check multiple metrics - they encode anti-correlated
+    quality dimensions (e.g. R3d wins OkLab but may trail RMSE on
+    firefly-heavy scenes).
 
 Output (default text mode):
-  - Per-scene table: vanilla / R2d / R2dR3d / R3d err%
+  - Per-scene table: vanilla / R2d / R2dR3d / R3d in chosen metric
   - d(R3d - R2d), d(R3d - vanilla), d(R2dR3d - vanilla)
   - Per-scene relative-to-vanilla %
   - Cumulative sums + outlier flag (share > 50% of cum |d|)
@@ -30,13 +37,21 @@ CSV_GT = os.path.join(ROOT, "runtime", "captures", "ladder", "00", "stats.csv")
 _args = [a for a in sys.argv[1:] if a]
 MD = "--md" in _args
 ALL_SPP = "--all" in _args
-_spp_args = [a for a in _args if a not in ("--md", "--all")]
+# --metric=KEY parser. Default mean_err_pct (OkLab perceptual).
+_metric_args = [a for a in _args if a.startswith("--metric=")]
+METRIC_KEY = _metric_args[-1].split("=", 1)[1] if _metric_args else "mean_err_pct"
+_spp_args = [a for a in _args if a not in ("--md", "--all") and not a.startswith("--metric=")]
 SPP = int(_spp_args[0]) if _spp_args else 16
+# "lower-is-better" metrics use d = variant - baseline (negative = variant
+# better). PSNR/MS-SSIM are higher-is-better; flip sign so verdict reads
+# consistently ("negative d = R3d wins").
+_HIGHER_IS_BETTER = {"psnr_db", "ms_ssim"}
+SIGN_FLIP = -1.0 if METRIC_KEY in _HIGHER_IS_BETTER else 1.0
 
 if not os.path.exists(CSV):
     sys.exit(f"[audit] no CSV at {CSV} — run RPT_ZOO ladder first")
 
-# rows[(scene, variant, spp)] = mean_err_pct
+# rows[(scene, variant, spp)] = chosen metric's value (configurable via --metric)
 rows = {}
 for csv_path in (CSV, CSV_GT):
     if not os.path.exists(csv_path):
@@ -45,12 +60,13 @@ for csv_path in (CSV, CSV_GT):
         for r in csv.DictReader(f):
             try:
                 spp_v = int(r["spp"])
-                err   = float(r["mean_err_pct"]) if r.get("mean_err_pct") else None
-                if err is None:
+                raw   = r.get(METRIC_KEY)
+                if raw is None or raw == "":
                     continue
+                val = float(raw) * SIGN_FLIP
             except (KeyError, ValueError):
                 continue
-            rows[(r["scene"], r["variant"], spp_v)] = err
+            rows[(r["scene"], r["variant"], spp_v)] = val
 
 scenes = sorted({k[0] for k in rows.keys()})
 
@@ -62,7 +78,8 @@ def get(scene, variant, spp):
 def emit_audit(spp, md_mode):
     """Emit the audit table for a single SPP. Returns (cum_r3d_r2d, cum_r3d_van, cum_r2d3d_van)."""
     if md_mode:
-        print(f"### RPT_ZOO R-axis audit @ SPP={spp}")
+        sign_note = " (sign-flipped: lower=better in printed table)" if SIGN_FLIP < 0 else ""
+        print(f"### RPT_ZOO R-axis audit @ SPP={spp} [metric={METRIC_KEY}{sign_note}]")
         print()
         print(f"| Scene | vanilla | R2d | R2dR3d | R3d | d(R3d-R2d) | R3d/van% | R2dR3d/van% |")
         print(f"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
