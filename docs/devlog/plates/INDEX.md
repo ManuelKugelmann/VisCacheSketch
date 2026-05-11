@@ -43,6 +43,24 @@ the frame is the cleanup happening?"
 
 Source: `scripts/make_r3d_firefly_heatmap.py` (commit 7f0ff4a).
 
+### `spp_convergence.png`
+
+Per-scene log-log line plot showing how vanilla / R2d / R2dR3d / R3d
+converge across SPP={1, 4, 16}.
+
+Cross-SPP story made visible at a glance:
+- Cornell scenes: vanilla has the steepest convergence (lowest error
+  at SPP=16). ReSTIR variants flatten quickly — their own bias floor.
+- Production scenes (Sponza, BistroInterior): **R2d FAILS TO CONVERGE**
+  — error climbs from x4 to x16 because DQLin's per-pixel reservoir
+  accumulates fireflies. R3d tracks vanilla's convergence slope.
+
+Use for: paper figure showing the "convergence-pathology" half of the
+firefly story. The compare/heatmap plates show that R2d has fireflies
+at SPP=16; this plot shows that R2d gets WORSE with more samples.
+
+Source: `scripts/make_spp_convergence_plot.py` (commit pending).
+
 ### `sponza_r3d_firefly_cleanup.png` (single-scene legacy)
 
 Sponza-only 2-up. Functionally subset of
