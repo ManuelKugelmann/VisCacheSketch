@@ -25,24 +25,38 @@ struct LightPoolFiller
 {
     RWStructuredBuffer<LightPoolSlot> lightPool;
     uint poolSize;     ///< Number of slots to fill (= mpLightPool->getElementCount())
+    uint frameCount;   ///< For temporal seeding when real sampler is wired in (TODO).
 
     void execute(uint slotIdx)
     {
         if (slotIdx >= poolSize) return;
-        // STUB: zero out the slot. Real impl draws K candidates from
-        // emissiveSampler. The zeroed Li=0/pdf=0 values will not
-        // contribute to RIS at the NEE-site read, so this stub is safe
-        // (NEE will fall back to fresh sampling per Pno).
+        // STUB: writes a recognizable sentinel value so the NEE-site read
+        // (Step 3) can verify the pool actually persists between fill-pass
+        // and main TracePass without yet sampling real lights:
+        //   samples[k].Li.x = slotIdx (slot ID, lets NEE assert pool is keyed correctly)
+        //   samples[k].pdf  = float(k) / kLightPoolK  (slot-internal index check)
+        //
+        // Real implementation TODO (Step 2c):
+        //   - import Rendering.Lights.EmissiveLightSampler + EnvMapSampler
+        //   - bind emissiveSampler/envMapSampler on this struct (separate
+        //     from PathTracer's bindings, OR share via mpPathTracerBlock)
+        //   - SampleGenerator sg = SampleGenerator(uint2(slotIdx, frameCount), 0);
+        //   - compute proxy shading point:
+        //       P2d: tile-center pixel -> primary ray -> hit.posW
+        //       P3d: invert cell hash -> cell-center world pos (requires
+        //            a separate slotIdx -> worldPos table, since cell
+        //            hashes are one-way; populated by writeCentralReservoir)
+        //   - for k in [0, kLightPoolK): emissiveSampler.sampleLight(...)
+        //     -> pack into PackedLightPoolSample
         LightPoolSlot slot;
         for (uint k = 0; k < kLightPoolK; ++k)
         {
-            slot.samples[k].Li = float3(0.0);
-            slot.samples[k].pdf = 0.0;
+            slot.samples[k].Li = float3(float(slotIdx), 0.0, 0.0);
+            slot.samples[k].pdf = float(k) / float(kLightPoolK);
             slot.samples[k].origin = float3(0.0);
             slot.samples[k].distance = 0.0;
             slot.samples[k].dir = float3(0.0);
             slot.samples[k].lightType = 0u;
-            // packedHit + lightNormalW: leave default-init.
         }
         lightPool[slotIdx] = slot;
     }

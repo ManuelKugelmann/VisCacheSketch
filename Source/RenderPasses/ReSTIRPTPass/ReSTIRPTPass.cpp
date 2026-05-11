@@ -615,8 +615,9 @@ void ReSTIRPTPass::execute(RenderContext* pRenderContext, const RenderData& rend
     if (mParams.restirptPoolAddrMode != 0u && mpLightPool && mpLightPoolFill)
     {
         auto var = mpLightPoolFill->getRootVar()["CB"]["gFiller"];
-        var["lightPool"] = mpLightPool;
-        var["poolSize"]  = mpLightPool->getElementCount();
+        var["lightPool"]  = mpLightPool;
+        var["poolSize"]   = mpLightPool->getElementCount();
+        var["frameCount"] = mParams.frameCount;
         mpLightPoolFill->execute(pRenderContext, mpLightPool->getElementCount(), 1, 1);
     }
 
