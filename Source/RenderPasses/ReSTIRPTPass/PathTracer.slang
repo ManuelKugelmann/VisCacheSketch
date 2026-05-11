@@ -28,6 +28,7 @@ import PathBuilder;
 import PathReservoir;
 import PathReservoirCellPool;
 import LightPool;
+import RenderPasses.VisCache.WSCellPool;   // for the WSCellPool struct used in lightPool buffer field
 
 #include "Utils/Math/MathConstants.slangh"
 
@@ -77,9 +78,10 @@ struct PathTracer
 
     /// Optional NEE light-sample pool (Task #21 step 1: allocation only).
     /// Bound only when params.restirptPoolAddrMode != 0; null otherwise.
-    /// One LightPoolSlot per slot (K presampled lights, see LightPool.slang).
+    /// One WSCellPool slot per pool slot (N=128 packed light candidates,
+    /// shared layout with VisCache's DI-side pool — see LightPool.slang).
     /// Not yet read by any code path — fill pass + NEE-site read are TODO.
-    RWStructuredBuffer<LightPoolSlot> lightPool;
+    RWStructuredBuffer<WSCellPool> lightPool;
 
     bool isLastRound;
     bool useDirectLighting;
