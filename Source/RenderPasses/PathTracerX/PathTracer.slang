@@ -579,8 +579,6 @@ struct PathTracer
         ls.origin = vertex.getRayOrigin(lightSample.dir);
         ls.distance = kRayTMax;
         ls.dir = lightSample.dir;
-        ls.lightIndex = 0u;          // §9.4 — env identity carried by ls.dir
-        ls.lightUV = float2(0.f);
 
         return any(ls.Li > 0.f);
     }
@@ -609,8 +607,6 @@ struct PathTracer
         float3 toLight = lightPos - ls.origin;
         ls.distance = length(toLight);
         ls.dir = normalize(toLight);
-        ls.lightIndex = tls.triangleIndex;   // §9.4 — emissive identity = active triangle index
-        ls.lightUV = tls.uv;                 // §9.4 — barycentric coords on the triangle
 
         return any(ls.Li > 0.f);
     }
@@ -646,8 +642,6 @@ struct PathTracer
         // Do not worry about adjusting the ray length to avoid self-intersections at the light.
         ls.distance = lightSample.distance;
         ls.dir = lightSample.dir;
-        ls.lightIndex = lightIndex;          // §9.4 — analytic light index
-        ls.lightUV = float2(0.f);
 
         return any(ls.Li > 0.f);
     }

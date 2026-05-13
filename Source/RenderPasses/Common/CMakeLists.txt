@@ -6,6 +6,7 @@ target_sources(Common PRIVATE
     # Shared slang utilities deployed under runtime/shaders/RenderPasses/Common/.
     # Imported by PathTracerX, ReSTIRDIPass, ReSTIRNEEPass, ReSTIRPTPass.
     PathTraceCore.slang
+    LightReservoir.slang
 )
 
 target_copy_shaders(Common RenderPasses/Common)

@@ -47,11 +47,12 @@ __exported import PathState;
 __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
-// Phase 3d Step 1: shared light-sample rebuilders + LightType/LightSample types.
-// Plugin keeps its nested LightType/LightSample inside `struct PathTracer` for
+// Phase 3d Step 1: shared light-sample rebuilders + LightType/LightSampleDI types.
+// Plugin keeps its nested LightType/LightSampleDI inside `struct PathTracer` for
 // now (more specific scope wins); Step 2 will remove the nested types and let
 // these imports be the canonical source.
 import RenderPasses.Common.PathTraceCore;
+import RenderPasses.Common.LightReservoir;
 
 #if USE_WS_RESERVOIRS
 import RenderPasses.VisCache.Reservoir;
@@ -139,9 +140,9 @@ struct PathTracer
     // Additional specialization.
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
-    // LightType + LightSample lifted to namespace level in
+    // LightType + LightSampleDI lifted to namespace level in
     // `RenderPasses.Common.PathTraceCore` (imported above). Bare references
-    // inside this struct (`LightType::EnvMap`, `LightSample`, etc.) now
+    // inside this struct (`LightType::EnvMap`, `LightSampleDI`, etc.) now
     // resolve to the imported types via file-scope lookup.
 
     /** Describes a path vertex.
@@ -576,7 +577,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
+    bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
 
@@ -605,7 +606,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere, inout SampleGenerator sg, out LightSample ls)
+    bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
         if (!kUseEmissiveLights) return false;
@@ -629,27 +630,27 @@ struct PathTracer
     }
 
 #if USE_WS_RESERVOIRS
-    /** §9.4 Pack the chosen LightSample's surface payload according to type.
+    /** §9.4 Pack the chosen LightSampleDI's surface payload according to type.
         Emissive: barys (16:16 unorm). EnvMap: dir (oct 16:16). Analytic: 0.
     */
-    uint packLightSamplePayload(const LightSample inLs)
+    uint packLightSamplePayload(const LightSampleDI inLs)
     {
         if (inLs.lightType == (uint)LightType::Emissive) return packUV(inLs.lightUV);
         if (inLs.lightType == (uint)LightType::EnvMap)   return packDirOct(inLs.dir);
         return 0u;
     }
 
-    /** §9.4 Re-materialise a LightSample for the env map from a stored
+    /** §9.4 Re-materialise a LightSampleDI for the env map from a stored
         oct-packed direction, evaluated at the given shading point.
         Distance is kRayTMax (env is at infinity). pdf evaluated via the
         env-map sampler's solid-angle pdf for `dir`.
     */
-    bool rebuildEnvMapLightSample(uint payload, const ShadingData sd, out LightSample ls)
+    bool rebuildEnvMapLightSample(uint payload, const ShadingData sd, out LightSampleDI ls)
     {
         return coreRebuildEnvMapLightSample(payload, sd, envMapSampler, ls);
     }
 
-    /** §9.4 Re-materialise a LightSample for an analytic light from a stored
+    /** §9.4 Re-materialise a LightSampleDI for an analytic light from a stored
         lightIndex, re-evaluated at a different shading point. Calls Falcor's
         `sampleLight()` for the analytic light type — the sample is mostly
         deterministic for point/directional lights (no uv); for area-shaped
@@ -659,18 +660,18 @@ struct PathTracer
         choice itself — the cell teaches "this light is good for this region",
         and we re-sample it from the current pixel.
     */
-    bool rebuildAnalyticLightSample(uint lightIndex, const ShadingData sd, inout SampleGenerator sg, out LightSample ls)
+    bool rebuildAnalyticLightSample(uint lightIndex, const ShadingData sd, inout SampleGenerator sg, out LightSampleDI ls)
     {
         return coreRebuildAnalyticLightSample(lightIndex, sd, sg, ls);
     }
 
-    /** §9.4 Re-materialise a LightSample for an emissive triangle from
+    /** §9.4 Re-materialise a LightSampleDI for an emissive triangle from
         stored (lightIndex, uv), re-evaluated at a different shading point.
         Mirrors generateEmissiveSample's per-sample math (see Falcor's
         EmissiveLightSamplerHelpers::sampleTriangle) but uses the stored u
         instead of drawing a new one.
     */
-    bool rebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingData sd, out LightSample ls)
+    bool rebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingData sd, out LightSampleDI ls)
     {
         return coreRebuildEmissiveLightSample(triangleIndex, u, sd, emissiveSampler, ls);
     }
@@ -682,7 +683,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
+    bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
 
@@ -777,7 +778,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSample ls)
+    bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {};
 
@@ -1046,7 +1047,7 @@ struct PathTracer
         path.setLightSampled(false, false);
         if (applyNEE || applyRTXDI)
         {
-            LightSample ls = {};
+            LightSampleDI ls = {};
             bool validSample = false;
 
             if (applyRTXDI)
@@ -1217,7 +1218,7 @@ struct PathTracer
                         uint extraK = (gInitialCandidates > 1u) ? (gInitialCandidates - 1u) : 0u;
                         for (uint k = 0u; k < extraK; ++k)
                         {
-                            LightSample lsK = {};
+                            LightSampleDI lsK = {};
                             if (!generateLightSample(vtxK, sampleUpperK, sampleLowerK, path.sg, lsK)) continue;
                             float3 weightK = mi.eval(sd, lsK.dir, path.sg);
                             float3 LrK = weightK * lsK.Li;
@@ -1313,7 +1314,7 @@ struct PathTracer
                                 // P3d (mode=0): M=0 → pSlotM=1 → no extra weight (identity).
                                 // PR3d (mode=1): scale K-RIS weight by M (slot's reservoir-sample count).
                                 float pSlotM = (gCellPoolMode != 0u) ? float(max(slotGetM(ps), 1u)) : 1.0f;
-                                LightSample poolLs;
+                                LightSampleDI poolLs;
                                 bool poolOk = false;
                                 if (pType == (uint)LightType::Emissive)
                                     poolOk = rebuildEmissiveLightSample(pIdxL, unpackUV(pPayload), sd, poolLs);
@@ -1383,7 +1384,7 @@ struct PathTracer
                                 if (pType == (uint)LightType::Emissive)
                                 {
                                     // Compute triangle normal from vertices —
-                                    // inner LightSample lacks normalW.
+                                    // inner LightSampleDI lacks normalW.
                                     const EmissiveTriangle pet = gScene.lightCollection.getTriangle(pIdxL);
                                     float3 pe0 = pet.posW[1] - pet.posW[0];
                                     float3 pe1 = pet.posW[2] - pet.posW[0];
@@ -1429,7 +1430,7 @@ struct PathTracer
                     {
                         uint winnerType = unpackLightType(local.lightTypeIndex);
                         uint winnerIdx  = unpackLightIndex(local.lightTypeIndex);
-                        LightSample winnerLs;
+                        LightSampleDI winnerLs;
                         bool winnerOk = false;
                         if (winnerType == (uint)LightType::Emissive)
                             winnerOk = rebuildEmissiveLightSample(winnerIdx, unpackUV(local.payload), sd, winnerLs);
@@ -1488,7 +1489,7 @@ struct PathTracer
 
                         uint cellType = unpackLightType(cell.lightTypeIndex);
                         uint cellIdx  = unpackLightIndex(cell.lightTypeIndex);
-                        LightSample cellLs;
+                        LightSampleDI cellLs;
                         bool cellOk = false;
                         if (cellType == (uint)LightType::Emissive)
                             cellOk = rebuildEmissiveLightSample(cellIdx, unpackUV(cell.payload), sd, cellLs);
@@ -1589,7 +1590,7 @@ struct PathTracer
                         {
                             uint prevType = unpackLightType(prev.lightTypeIndex);
                             uint prevIdx  = unpackLightIndex(prev.lightTypeIndex);
-                            LightSample prevLs;
+                            LightSampleDI prevLs;
                             bool prevOk = false;
                             if (prevType == (uint)LightType::Emissive)
                                 prevOk = rebuildEmissiveLightSample(prevIdx, unpackUV(prev.payload), sd, prevLs);
@@ -1701,7 +1702,7 @@ struct PathTracer
                             }
                             uint nbrType = unpackLightType(nbr.lightTypeIndex);
                             uint nbrIdx  = unpackLightIndex(nbr.lightTypeIndex);
-                            LightSample nbrLs;
+                            LightSampleDI nbrLs;
                             bool nbrOk = false;
                             if (nbrType == (uint)LightType::Emissive)
                                 nbrOk = rebuildEmissiveLightSample(nbrIdx, unpackUV(nbr.payload), sd, nbrLs);
@@ -1777,7 +1778,7 @@ struct PathTracer
                     {
                         uint winnerType = unpackLightType(local.lightTypeIndex);
                         uint winnerIdx  = unpackLightIndex(local.lightTypeIndex);
-                        LightSample winnerLs;
+                        LightSampleDI winnerLs;
                         bool winnerOk = false;
                         if (winnerType == (uint)LightType::Emissive)
                             winnerOk = rebuildEmissiveLightSample(winnerIdx, unpackUV(local.payload), sd, winnerLs);
