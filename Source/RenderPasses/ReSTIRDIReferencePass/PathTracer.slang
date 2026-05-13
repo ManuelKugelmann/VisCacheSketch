@@ -48,8 +48,8 @@ __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
 // Phase 3d Step 1: shared LightType/LightSampleDI types via Common.
-import RenderPasses.Common.PathTraceCore;
-import RenderPasses.Common.LightReservoir;
+import RenderPasses.PathTraceCore.PathTraceCore;
+import RenderPasses.ReSTIRCommon.LightReservoir;
 
 #if USE_WS_RESERVOIRS
 import RenderPasses.VisCache.Reservoir;
@@ -140,7 +140,7 @@ struct PathTracer
     /** Types of samplable lights.
     */
     // LightType + LightSampleDI lifted to namespace level in
-    // `RenderPasses.Common.PathTraceCore` (imported above).
+    // `RenderPasses.PathTraceCore.PathTraceCore` (imported above).
 
     /** Describes a path vertex.
     */
