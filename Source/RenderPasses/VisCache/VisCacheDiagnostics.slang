@@ -11,8 +11,13 @@
  * Accumulated outputs (persistent across frames):
  *   gVCAccumMeanVarMatCount           (RGBA32Float) — R=variance*4, G=maturity, B=mean, A=sampleCount
  *   gVCAccumRaysNoiseErrorCold        (RGBA32Float) — R=raysTraced, G=renderNoise, B=renderError, A=coldmiss
- *   gVCAccumSaved     (R32Uint)     — per-pixel count of saved rays
- *   gVCAccumTotal     (R32Uint)     — per-pixel count of total queries
+ *   gVCAccumRaysSplitNeeReval         (RGBA32Float) — R=raysTraced_NEE, G=raysTraced_Reval, B+A reserved
+ *   gVCAccumSaved          (R32Uint) — per-pixel count of saved rays (rolled up)
+ *   gVCAccumTotal          (R32Uint) — per-pixel count of total queries (rolled up)
+ *   gVCAccumSavedNEE       (R32Uint) — per-pixel saved-NEE-ray count
+ *   gVCAccumTotalNEE       (R32Uint) — per-pixel total NEE queries
+ *   gVCAccumSavedReval     (R32Uint) — per-pixel saved-revalidation-ray count
+ *   gVCAccumTotalReval     (R32Uint) — per-pixel total revalidation queries
  *
  * Usage:
  *   Import this file in any pass that calls vhfGate/vhfCommit and bind
@@ -32,16 +37,33 @@ RWTexture2D<float4> gVCFrameHashAHashBHashABRays;          ///< R=posAHash, G=po
 // --- Accumulated outputs (persistent, NOT cleared per frame) ---
 RWTexture2D<float4> gVCAccumMeanVarMatCount;               ///< R=variance*4, G=maturity, B=mean, A=count (online mean bookkeeping)
 RWTexture2D<float4> gVCAccumRaysNoiseErrorCold;            ///< R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
-RWTexture2D<uint>   gVCAccumSaved;                         ///< Internal: per-pixel saved ray count
-RWTexture2D<uint>   gVCAccumTotal;                         ///< Internal: per-pixel total query count
+RWTexture2D<uint>   gVCAccumSaved;                         ///< Internal: per-pixel saved ray count (rolled up across call sites)
+RWTexture2D<uint>   gVCAccumTotal;                         ///< Internal: per-pixel total query count (rolled up across call sites)
+
+// Per-call-site counters: separate the cost of NEE shadow rays from the cost
+// of temporal/spatial reservoir reuse-revalidation rays. Both pairs are
+// always bumped alongside the rolled-up pair above — readers can pick the
+// channel they need without breaking the existing single-counter consumers.
+RWTexture2D<uint>   gVCAccumSavedNEE;
+RWTexture2D<uint>   gVCAccumTotalNEE;
+RWTexture2D<uint>   gVCAccumSavedReval;
+RWTexture2D<uint>   gVCAccumTotalReval;
+RWTexture2D<float4> gVCAccumRaysSplitNeeReval;             ///< R=NEE_ratio, G=Reval_ratio, B+A reserved
+
+// Call-site tags for vcWriteDiag / vcDiagCountRay.
+// Slang exports `static const` symbols across `import` boundaries but NOT
+// `#define`s — keep these as constants so importers see them.
+static const uint VC_RAY_SITE_NEE   = 0u;
+static const uint VC_RAY_SITE_REVAL = 1u;
 
 /// Write per-pixel diagnostics after a vhfGate/vhfCommit sequence.
 /// @param pixel       Screen-space pixel coordinate.
 /// @param g           Gate result from vhfGate() or vhfGateDeterministic().
 /// @param traced      True if a shadow ray was actually traced.
 /// @param V           Ground-truth visibility (only valid when traced=true).
+/// @param callSite    VC_RAY_SITE_* — tags the bump for the split counters.
 void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
-                  float3 posA, float3 posB)
+                  float3 posA, float3 posB, uint callSite = VC_RAY_SITE_NEE)
 {
     // noEntry = no mature/trusted entry was found at the lookup level. The
     // queried cell coords (g.qa/qb) and level (g.level) ARE always set —
@@ -106,11 +128,30 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         );
     }
 
-    // Ray counters + derived metrics
+    // Ray counters + derived metrics (rolled-up + per-call-site).
     uint saved = gVCAccumSaved[pixel] + (traced ? 0u : 1u);
     uint total = gVCAccumTotal[pixel] + 1u;
     gVCAccumSaved[pixel] = saved;
     gVCAccumTotal[pixel] = total;
+
+    uint savedNEE   = gVCAccumSavedNEE[pixel];
+    uint totalNEE   = gVCAccumTotalNEE[pixel];
+    uint savedReval = gVCAccumSavedReval[pixel];
+    uint totalReval = gVCAccumTotalReval[pixel];
+    if (callSite == VC_RAY_SITE_REVAL)
+    {
+        savedReval += traced ? 0u : 1u;
+        totalReval += 1u;
+        gVCAccumSavedReval[pixel] = savedReval;
+        gVCAccumTotalReval[pixel] = totalReval;
+    }
+    else // VC_RAY_SITE_NEE (default for cache-NEE bounce-0 path)
+    {
+        savedNEE += traced ? 0u : 1u;
+        totalNEE += 1u;
+        gVCAccumSavedNEE[pixel] = savedNEE;
+        gVCAccumTotalNEE[pixel] = totalNEE;
+    }
 
     float accumRaysTracedRatio = float(total - saved) / float(total);
     float hitCount = gVCAccumMeanVarMatCount[pixel].a;
@@ -124,24 +165,52 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
         prevAccum.b,                // B: renderError (filled by post-process, preserved)
         accumColdmissRate           // A: accumulated cold miss rate [0,1]
     );
+
+    // Split per-call-site ratios. Pixels with zero queries on a site report
+    // 0 (not-traced); postprocess can mask on totals to avoid skewing means.
+    float ratioNEE   = (totalNEE   > 0u) ? float(totalNEE   - savedNEE)   / float(totalNEE)   : 0.f;
+    float ratioReval = (totalReval > 0u) ? float(totalReval - savedReval) / float(totalReval) : 0.f;
+    gVCAccumRaysSplitNeeReval[pixel] = float4(ratioNEE, ratioReval, 0.f, 0.f);
 }
 
 /// Lightweight ray-counter bump for V-tests that do NOT go through the
 /// vhfGate/vhfCommit cache path — used by the WS-ReSTIR pipeline whose
 /// K-RIS winner V-test and (mode=1 FullTrace) retrace-on-reuse sites
-/// fire `vq.traceVisibilityRay` directly. Bumps total by 1 and (for
-/// `traced=false`) saved by 1; rebuilds the rays_traced_ratio in
-/// `gVCAccumRaysNoiseErrorCold.r`.  Mode=2 (CacheCV) paths go through
-/// `evalRevalidationCV` → `vcWriteDiag`, so they are NOT counted here
-/// (would double-count).
-void vcDiagCountRay(uint2 pixel, bool traced)
+/// fire `vq.traceVisibilityRay` directly. Bumps the rolled-up counters
+/// plus the per-call-site counters keyed on `callSite`. Mode=2 (CacheCV)
+/// paths go through `evalRevalidationCV` → `vcWriteDiag`, so they are
+/// counted there, not here (would double-count).
+void vcDiagCountRay(uint2 pixel, bool traced, uint callSite = VC_RAY_SITE_NEE)
 {
     uint saved = gVCAccumSaved[pixel] + (traced ? 0u : 1u);
     uint total = gVCAccumTotal[pixel] + 1u;
     gVCAccumSaved[pixel] = saved;
     gVCAccumTotal[pixel] = total;
 
+    uint savedNEE   = gVCAccumSavedNEE[pixel];
+    uint totalNEE   = gVCAccumTotalNEE[pixel];
+    uint savedReval = gVCAccumSavedReval[pixel];
+    uint totalReval = gVCAccumTotalReval[pixel];
+    if (callSite == VC_RAY_SITE_REVAL)
+    {
+        savedReval += traced ? 0u : 1u;
+        totalReval += 1u;
+        gVCAccumSavedReval[pixel] = savedReval;
+        gVCAccumTotalReval[pixel] = totalReval;
+    }
+    else
+    {
+        savedNEE += traced ? 0u : 1u;
+        totalNEE += 1u;
+        gVCAccumSavedNEE[pixel] = savedNEE;
+        gVCAccumTotalNEE[pixel] = totalNEE;
+    }
+
     float ratio = float(total - saved) / float(total);
     float4 prev = gVCAccumRaysNoiseErrorCold[pixel];
     gVCAccumRaysNoiseErrorCold[pixel] = float4(ratio, prev.g, prev.b, prev.a);
+
+    float ratioNEE   = (totalNEE   > 0u) ? float(totalNEE   - savedNEE)   / float(totalNEE)   : 0.f;
+    float ratioReval = (totalReval > 0u) ? float(totalReval - savedReval) / float(totalReval) : 0.f;
+    gVCAccumRaysSplitNeeReval[pixel] = float4(ratioNEE, ratioReval, 0.f, 0.f);
 }

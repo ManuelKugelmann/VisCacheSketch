@@ -1,7 +1,7 @@
 /***************************************************************************
  * WSCellPool.slang
  *
- * §9.4 World-space ReSTIR DI — per-cell N=8-slot candidate buffer
+ * §9.4 World-space ReSTIR DI — per-cell N=128-slot candidate buffer
  * (RTXDI-tile semantics: each slot is one pdf-sampled proposal, NO
  * Bitterli streaming RIS at write, NO writer-pHat tracking).
  *
@@ -15,48 +15,78 @@
  * candidate, the reader does its own K-RIS at its pHat with sourcePdf-
  * based unbias.
  *
- * Layout (104 B / pool):
- *   uint fingerprint;          // 0 = empty sentinel
- *   uint count;                // 0..WS_CELL_POOL_N (high-water mark)
- *   uint lightTypeIndex[8];    // (lightType<<24) | lightIndex
- *   uint payload[8];           // emissive barys / env dir / analytic 0
- *   float sourcePdf[8];        // writer-side NEE proposal pdf — preserved for
- *                              //   reader-side RIS unbias (Convention B), and
- *                              //   to match RTXDI's slot data layout
+ * Layout (12,296 B / pool at N=1024 — AoS slot layout):
+ *   uint           fingerprint;     // 0 = empty sentinel
+ *   uint           count;           // high-water mark of slot index touched (capped at N at read)
+ *   WSCellPoolSlot slots[N]:
+ *     uint  lightTypeIndex;        // (lightType<<24) | lightIndex
+ *     uint  payload;               // emissive barys / env dir / analytic 0
+ *     float sourcePdf;             // writer-side NEE proposal pdf — preserved for
+ *                                  //   reader-side RIS unbias (Convention B), and
+ *                                  //   to match RTXDI's slot data layout
+ *
+ * AoS is load-bearing: per-slot 3-field contiguity means a single bufferLoad/
+ * bufferStore at one offset handles a whole slot. SoA (separate arrays for
+ * lightTypeIndex / payload / sourcePdf) would split slot access across three
+ * non-adjacent buffer ops — under concurrent reader/writer, observable as
+ * torn reads (sourcePdf from new writer, lightTypeIndex/payload from old).
  ***************************************************************************/
 
 #pragma once
 import RenderPasses.VisCache.WSReservoir;
 
-// N=128 — Cornell_3AL_x4 trail-closure experiment 2026-05-05 (Task #35).
-// Pre-pass sampler change (Power → PdfMipmap) showed 0pp Cornell_3AL impact,
-// confirming bottleneck is downstream of fill. Bumping per-cell candidate
-// count further (RTXDI uses 1024 per tile; we previously won big on
-// Sponza/BistroInt going 16→64 + K_pre 8→32). Doubling again to test if
-// diversity is still the binding constraint. K_pre also doubles to keep
-// slot-turnover ratio consistent.
-static const uint WS_CELL_POOL_N = 128u;
+// N=128 — interim hold while N=1024 (RTXDI-parity slot count) hits a
+// shader-side limit that's not yet diagnosed. The other improvements in
+// this iteration (probe-on-collision, atomic-increment wrap fill, per-
+// field buffer access, frameLastInsert timestamp) all land and validate
+// at N=128 first. Once N=1024 is unblocked the only change needed here
+// is the constant + the array sizes.
+static const uint WS_CELL_POOL_N = 1024u;
 
-struct WSCellPool
+// AoS slot layout — three fields contiguous per slot (12 B), so a single
+// `gWSCellPools[slot].slots[i] = ...` compiles to one struct-store at
+// computed offset rather than three SoA bufferStores at offsets 12 KB
+// apart. Within-slot coherence is preserved without needing whole-cell
+// struct copies — that was the load-bearing property of the old layout
+// (reader iterating pool.X[slotR] saw the same writer's contribution).
+struct WSCellPoolSlot
 {
-    uint  fingerprint;
-    uint  count;
-    uint  lightTypeIndex[128];
-    uint  payload[128];
-    float sourcePdf[128];    // writer's NEE proposal density — used at read time for RIS unbias
+    uint  lightTypeIndex;
+    uint  payload;
+    float sourcePdf;       // writer's NEE proposal density — used at read time for RIS unbias.
+    uint  mAndFrame;       // Packed: (M << 16) | (frame & 0xFFFFu).
+                           //   - Low 16 bits  = frameStamp (gFrameCount & 0xFFFFu) — freshness filter at reader.
+                           //   - High 16 bits = M (sample count, used by PR3d mode; 0 in P3d mode).
+                           // 16-byte alignment for single uint4 bufferStore.
 };
 
+// Header-only struct — slot data lives in a SEPARATE flat buffer
+// (`gWSCellPoolSlotBuf`) indexed as `cellIdx * WS_CELL_POOL_N + slotIdx`.
+// The nested-array-in-struct pattern (slots[N] inside WSCellPool) trips
+// DXC's local-memory validation at N≥1024 even with full-struct buffer
+// accesses, so we split. Keeps single bufferLoad/store per slot via the
+// flat buffer's element type = WSCellPoolSlot (16 B).
+struct WSCellPool
+{
+    uint fingerprint;
+    uint count;
+};
+
+// Stack-allocated init for callers that hold a local WSCellPool (rare —
+// reader path now uses `wsLookupCellPool` + direct buffer indexing, avoiding
+// the 12 KB struct copy). Slot arrays are intentionally left uninitialised:
+// writers fill random slots and readers only access [0, count), so any
+// content beyond count is unreachable garbage.
+// No longer used in the hot path — readers/writers access the buffer
+// directly. Kept for parity with parallel agent's LightPoolFill that may
+// still call it. Slot data is intentionally left uninitialised; reader's
+// `if (sourcePdf <= 0) continue` guard handles uninit slots (zero-init
+// at buffer creation handles the first-frame case).
 WSCellPool wsCellPoolInit(uint fp)
 {
     WSCellPool p;
     p.fingerprint = fp;
     p.count       = 0u;
-    [unroll] for (uint i = 0u; i < 128u; ++i)
-    {
-        p.lightTypeIndex[i] = 0u;
-        p.payload[i]        = 0u;
-        p.sourcePdf[i]      = 0.f;
-    }
     return p;
 }
 

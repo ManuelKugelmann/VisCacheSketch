@@ -1401,25 +1401,46 @@ struct PathTracer
                     //     been freshly drawn at the reader.
                     if (gWSCellPoolDrawK > 0u && wsCellPoolEnabled())
                     {
-                        WSCellPool pool;
-                        if (wsLoadCellPool(poolAddrA, pool) && pool.count > 0u)
+                        // AoS reader — fetch one whole WSCellPoolSlot per
+                        // K-RIS iteration. The 12-B slot is a single
+                        // bufferLoad at one offset, so the three fields
+                        // (lightTypeIndex, payload, sourcePdf) come from
+                        // the same writer's contribution — no torn reads
+                        // under concurrent writes. Avoids the 12 KB whole-
+                        // struct copy that DXIL rejects at N=1024.
+                        uint poolSlot, poolCount;
+                        if (wsLookupCellPool(poolAddrA, poolSlot, poolCount))
                         {
-                            uint kPool = min(gWSCellPoolDrawK, pool.count);
+                            uint kPool = min(gWSCellPoolDrawK, poolCount);
                             for (uint d = 0u; d < kPool; ++d)
                             {
-                                uint slotR = uint(sampleNext1D(path.sg) * float(pool.count)) % pool.count;
-                                uint pType = wsUnpackLightType(pool.lightTypeIndex[slotR]);
-                                uint pIdxL = wsUnpackLightIndex(pool.lightTypeIndex[slotR]);
-                                float pSrcPdf = pool.sourcePdf[slotR];
-                                if (pSrcPdf <= 0.f) continue;
+                                uint slotR = uint(sampleNext1D(path.sg) * float(poolCount)) % poolCount;
+                                WSCellPoolSlot ps = gWSCellPoolSlotBuf[wsSlotIndex(poolSlot, slotR)];
+                                // Per-slot freshness filter — `frameStamp ==
+                                // currentFrame` means the slot was written this
+                                // frame and is valid; otherwise it's stale (from
+                                // a previous frame or previous cell occupant).
+                                // sourcePdf guard remains as defense-in-depth.
+                                // Per-slot freshness filter — `slotFrame == currentFrame & 0xFFFF`
+                                // means slot was written this frame. Modular handling of 16-bit wrap.
+                                if (slotGetFrame(ps) != slotCurrentFrame()) continue;
+                                if (ps.sourcePdf <= 0.f) continue;
+                                uint pLTI  = ps.lightTypeIndex;
+                                uint pType = wsUnpackLightType(pLTI);
+                                uint pIdxL = wsUnpackLightIndex(pLTI);
+                                float pSrcPdf = ps.sourcePdf;
+                                uint pPayload = ps.payload;
+                                // P3d (mode=0): M=0 → pSlotM=1 → no extra weight (identity).
+                                // PR3d (mode=1): scale K-RIS weight by M (slot's reservoir-sample count).
+                                float pSlotM = (gWSCellPoolMode != 0u) ? float(max(slotGetM(ps), 1u)) : 1.0f;
                                 LightSample poolLs;
                                 bool poolOk = false;
                                 if (pType == (uint)LightType::Emissive)
-                                    poolOk = wsRebuildEmissiveLightSample(pIdxL, wsUnpackUV(pool.payload[slotR]), sd, poolLs);
+                                    poolOk = wsRebuildEmissiveLightSample(pIdxL, wsUnpackUV(pPayload), sd, poolLs);
                                 else if (pType == (uint)LightType::Analytic)
                                     poolOk = wsRebuildAnalyticLightSample(pIdxL, sd, path.sg, poolLs);
                                 else if (pType == (uint)LightType::EnvMap)
-                                    poolOk = wsRebuildEnvMapLightSample(pool.payload[slotR], sd, poolLs);
+                                    poolOk = wsRebuildEnvMapLightSample(pPayload, sd, poolLs);
                                 if (!poolOk) continue;
 
                                 float NdotLP = dot(sd.faceN, poolLs.dir);
@@ -1493,9 +1514,10 @@ struct PathTracer
                                     float readerPdf = emissiveSampler.evalPdf(sd.posW, sd.faceN, true, poolHit);
                                     invSrcPdf = (readerPdf > 0.f) ? (1.f / readerPdf) : 0.f;
                                 }
+                                // PR3d: weight by M_slot. P3d: pSlotM=1 (no-op).
                                 local.streamingAdd(
-                                    pool.lightTypeIndex[slotR], pool.payload[slotR],
-                                    pHatP, invSrcPdf, path.sg);
+                                    pLTI, pPayload,
+                                    pHatP * pSlotM, invSrcPdf, path.sg);
                             }
                         }
                     }
@@ -1739,13 +1761,13 @@ struct PathTracer
                                         {
                                             vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
 #if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                            vcDiagCountRay(path.getPixel(), true);   // FullTrace retrace-on-reuse (temporal)
+                                            vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);   // FullTrace retrace-on-reuse (temporal)
 #endif
                                         }
 #else
                                         vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
 #if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                        vcDiagCountRay(path.getPixel(), true);
+                                        vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);
 #endif
 #endif
                                         pHatPrev *= vR;
@@ -1840,13 +1862,13 @@ struct PathTracer
                                 {
                                     vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
 #if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                    vcDiagCountRay(path.getPixel(), true);   // FullTrace retrace-on-reuse (spatial)
+                                    vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);   // FullTrace retrace-on-reuse (spatial)
 #endif
                                 }
 #else
                                 vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
 #if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                vcDiagCountRay(path.getPixel(), true);
+                                vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);
 #endif
 #endif
                                 pHatN *= vN;

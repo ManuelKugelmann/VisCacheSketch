@@ -175,6 +175,7 @@ public:
         uint32_t wsSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
         uint32_t wsPoolAddrMode;       ///< 0 = 3D cell, 1 = 2D screen-tile.
         uint32_t wsPoolTileSize;       ///< Tile edge in pixels (default 16). AddrMode=1 only.
+        uint32_t wsCellPoolMode;       ///< 0 = P3d (raw pdf-proposal, age-pressure), 1 = PR3d (pool-of-reservoirs).
         float    dirSolidAngleScale;   ///< §4.2 posB angular axis multiplier (default 1.0).
         float    distSolidAngleScale;  ///< §4.2 posB distance axis multiplier (default 1.0).
         uint32_t wsCellReservoirMerge; ///< 0 = identity-hint cell (legacy), 1 = Bitterli merge (3D-eq variant).
@@ -307,7 +308,12 @@ public:
                                                         ///< MCPG 2025 (merian-quake/mc.glsl: -log2(1-u)). Composes
                                                         ///< with gJitterFilter / gJitterCell (spatial jitter from
                                                         ///< VisCache).
-        uint32_t wsReservoirCapacity           = 1u << 18u; ///< 256K slots × ~32 B = 8 MB default.
+        uint32_t wsReservoirCapacity           = 1u << 20u; ///< 1M cells × 32 B = 32 MB. Sized for the WORST-CASE
+                                                        ///< R3dP3d variant (footprint=1 → 1 cell per screen pixel
+                                                        ///< → ~262K active at 512² + cascade fan-out). 4× headroom.
+                                                        ///< Canonical R3d (footprint=8, ~4K active) under-uses the
+                                                        ///< capacity (much lower load factor, ~0.4%) — fine, it's
+                                                        ///< just unused VRAM until R3dP3d kicks in.
         float    wsMCap                        = 5.0f;  ///< Temporal M-cap for reservoir merge.
                                                         ///< Higher = more temporal stability but per-pixel
                                                         ///< reservoir lock-in bias (occluded picks stay dark
@@ -341,7 +347,10 @@ public:
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
         bool     enableWSCellPool              = false; ///< Master gate for the multi-light pool (step a+ of
                                                         ///< .plans/rtxdi-parity-ws-cascade.md).
-        uint32_t wsCellPoolCapacity            = 1u << 18u; ///< 256K slots × 72 B = 18 MB default.
+        uint32_t wsCellPoolCapacity            = 1u << 12u; ///< 4K cells at N=1024 → 64 MB slot buffer
+                                                        ///< (~4× the ~1K active cells per user "8× generous" rule,
+                                                        ///< probing handles collisions; total alloc fits VRAM
+                                                        ///< headroom for laptop GPUs).
         uint32_t wsCellPoolDrawK               = 0u;    ///< K candidates drawn from pool per pixel (read path).
                                                         ///< 0 = pool fills from write-back only; main pass keeps
                                                         ///<     using fresh generateLightSample candidates.
@@ -366,6 +375,11 @@ public:
                                                         ///< tiles match RTXDI's default; larger = fewer tiles
                                                         ///< (more inserts per tile = better filter quality but
                                                         ///< broader candidate region per pixel).
+        uint32_t wsCellPoolMode                = 0u;    ///< 0 = P3d (raw pdf-proposal slots, age-pressure
+                                                        ///< replacement). 1 = PR3d (pool-of-reservoirs at tile,
+                                                        ///< reservoir-sample replacement with M-count + decay,
+                                                        ///< reader weights by M_slot). Slot layout identical
+                                                        ///< across modes — only insert/read math branches.
         float    dirSolidAngleScale            = 1.0f;  ///< §4.2 posB Option B angular-axis multiplier.
                                                         ///< α = clamp((cellSizeA / posACoarse) × this, 0.05, 0.5).
                                                         ///< 1.0 = posA-cell-matched (recommended). <1 = finer
@@ -422,8 +436,14 @@ private:
     // persists across frames so temporal-M accumulation kicks in.
     ref<Buffer>         mpPixelReservoirs;
     uint2               mPixelReservoirsCommitted = {0u, 0u};
-    // §9.4 WS-cascade ReGIR cell pool — multi-light pool per cell.
+    // §9.4 WS-cascade ReGIR cell pool — split-buffer layout.
+    //   mpWSCellPools     : RWStructuredBuffer<WSCellPool> (header only — fingerprint + count)
+    //   mpWSCellPoolSlots : RWStructuredBuffer<WSCellPoolSlot> (flat, capacity*N entries)
+    // Slot at cell c, index i lives at mpWSCellPoolSlots[c * N + i]. The
+    // nested-array-in-struct pattern (slots[N] inside WSCellPool) breaks
+    // DXC linking at N≥256; split-buffer scales cleanly to N=1024.
     ref<Buffer>         mpWSCellPools;
+    ref<Buffer>         mpWSCellPoolSlots;
     uint32_t            mWSCellPoolCapacityCommitted = 0u;
 
     ref<ComputePass>    mpDecayPass;
@@ -478,8 +498,13 @@ private:
     ref<Texture>    mpFrameHashAHashBHashABRaysTex;   ///< RGBA32F frame: R=posAHash, G=posBHash, B=combinedHash, A=raysTraced
 
     // Accumulated textures (persistent across frames, cleared on reset)
-    ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count
-    ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count
+    ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count (rolled up across call sites)
+    ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count (rolled up across call sites)
+    ref<Texture>    mpAccumSavedNEE;    ///< R32Uint: per-pixel saved-NEE ray count
+    ref<Texture>    mpAccumTotalNEE;    ///< R32Uint: per-pixel total NEE queries
+    ref<Texture>    mpAccumSavedReval;  ///< R32Uint: per-pixel saved-revalidation ray count
+    ref<Texture>    mpAccumTotalReval;  ///< R32Uint: per-pixel total revalidation queries
+    ref<Texture>    mpAccumRaysSplitNeeRevalTex; ///< RGBA32F: R=NEE_ratio, G=Reval_ratio, B+A reserved
     ref<Texture>    mpAccumRaysNoiseErrorColdTex; ///< RGBA32Float: R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
     bool            mResetAccum = true;      ///< Clear accum textures next frame
     bool            mClearHashTable = true;  ///< Clear hash table to empty sentinel

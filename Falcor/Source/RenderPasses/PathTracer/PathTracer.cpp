@@ -1313,6 +1313,7 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             mVCParams.wsSpatialPixelsRadius = getU("vhfParam_wsSpatialPixelsRadius", 32u);
             mVCParams.wsPoolAddrMode        = getU("vhfParam_wsPoolAddrMode", 0u);
             mVCParams.wsPoolTileSize        = getU("vhfParam_wsPoolTileSize", 16u);
+            mVCParams.wsCellPoolMode        = getU("vhfParam_wsCellPoolMode", 0u);
             mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
             mVCParams.wsCellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
@@ -1327,6 +1328,8 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
             ? dict.getValue<ref<Buffer>>("wsPixelReservoirBuffer") : nullptr;
         mpVHFWSCellPools = (mVisCacheAvailable && dict.keyExists("wsCellPoolBuffer"))
             ? dict.getValue<ref<Buffer>>("wsCellPoolBuffer") : nullptr;
+        mpVHFWSCellPoolSlots = (mVisCacheAvailable && dict.keyExists("wsCellPoolSlotBuffer"))
+            ? dict.getValue<ref<Buffer>>("wsCellPoolSlotBuffer") : nullptr;
         mVHFPixelDimX = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimX"))
             ? dict.getValue<uint32_t>("vhfParam_wsFrameDimX") : 0u;
         mVHFPixelDimY = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimY"))
@@ -1601,6 +1604,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         vc["gWSSpatialPixelsRadius"]         = mVCParams.wsSpatialPixelsRadius;
         vc["gWSPoolAddrMode"]                = mVCParams.wsPoolAddrMode;
         vc["gWSPoolTileSize"]                = mVCParams.wsPoolTileSize;
+        vc["gWSCellPoolMode"]                = mVCParams.wsCellPoolMode;
         vc["gDirSolidAngleScale"]            = mVCParams.dirSolidAngleScale;
         vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
         vc["gWSCellReservoirMerge"]          = mVCParams.wsCellReservoirMerge;
@@ -1614,6 +1618,7 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
         var["gWSReservoirs"]      = mpVHFWSReservoirs;
         if (mpVHFPixelReservoirs) var["gWSPixelReservoirs"] = mpVHFPixelReservoirs;
         if (mpVHFWSCellPools)     var["gWSCellPools"]       = mpVHFWSCellPools;
+        if (mpVHFWSCellPoolSlots) var["gWSCellPoolSlotBuf"] = mpVHFWSCellPoolSlots;
         var["VisCacheParams"]["gWSFrameDimX"] = mVHFPixelDimX;
         var["VisCacheParams"]["gWSFrameDimY"] = mVHFPixelDimY;
     }

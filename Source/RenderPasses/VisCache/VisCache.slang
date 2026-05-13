@@ -276,6 +276,7 @@ cbuffer VisCacheParams
     uint   gWSSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
     uint   gWSPoolAddrMode;       ///< 0 = 3D cell (default), 1 = 2D screen-tile (RTXDI-style).
     uint   gWSPoolTileSize;       ///< Tile edge in pixels (default 16). Only used when AddrMode=1.
+    uint   gWSCellPoolMode;       ///< 0 = P3d (raw pdf-proposal slots, age-pressure), 1 = PR3d (pool-of-reservoirs, ReGIR-at-tile).
     // §4.2 posB solid-angle quantization (Option B — posA-cell-coupled).
     // alpha (angular cell, octahedral units) = (cellSizeA / gPosACoarse) * gDirSolidAngleScale,
     // clamped to [kAlphaMin=0.05, kAlphaMax=0.5] (≈ 3°..30°).

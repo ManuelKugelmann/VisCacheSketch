@@ -967,19 +967,48 @@ trail BistroInt by 1.15pp** (5-scene cumulative −0.39pp WIN). The
 K=48 hybrid §13.5 wins are *additional* technique gains on top of
 architectural parity, not the only place where we beat RTXDI.
 
-**Cell-pool double-hash probing (in-flight 2026-05-11).** The 13pp
-P3d-vs-P2d cumulative gap at F00P24 is localised to hash-collision
-behaviour: when two distinct world cells hash to the same primary
-buffer slot, the old code did `wsCellPoolInit(newFp)` — zeroing all
-128 candidate slots and the old cell's accumulated content. Patched
-`WSCellPoolIO.slang` to mirror `vhfFindSlot`'s double-hash probe:
-8 steps along an fp-derived odd-step sequence find a slot whose
-fingerprint matches OR is empty. Reader and writer share the same
-probe so they converge. Eviction-with-pressure + decay-pass extension
-deferred (TODO) — without decay, monotonic eviction pressure would
-pathologically favour established cells. Re-running RDI00 to measure
-the closure (expected: P3d catches up to P2d on Cornell + Sponza,
-remaining gap localises to slot-depth N=128 vs RTXDI 1024).
+**Cell-pool double-hash probing (validated 2026-05-11).** The 13pp
+P3d-vs-P2d cumulative gap at F00P24 had a hash-collision component:
+when two distinct world cells hashed to the same primary buffer slot,
+the old code did `wsCellPoolInit(newFp)` — zeroing all 128 candidate
+slots and the old cell's accumulated content. Patched
+`WSCellPoolIO.slang` to mirror `vhfFindSlot`'s double-hash probe
+(`h2 = fp | 1u`, `kMaxProbe = 8`); reader and writer share the same
+probe so they converge on the same slot for the same cell.
+
+**Bisection finding: per-field insert is a regression.** Initial
+refactor aimed for RTXDI parity at N=1024 by replacing the
+1.5 KB struct-copy insert/read with per-field buffer access (avoids
+DXIL per-thread limits at the 12 KB struct size). At N=128 with
+probing-only and struct-copy insert, Sponza F00P24 x4 = 6.87 (down
+from 7.03 pre-probing, a small structural win). The per-field
+refactor moved this to 7.45 (+0.58pp regression) consistently across
+many variant insert strategies (random-pick, atomic+wrap,
+atomic+linear-then-random). Reverting to struct-copy insert restores
+6.97 — within 0.10pp of the original baseline.
+
+**Why struct-copy wins.** Multi-writer races on whole-struct
+write-back are destructive (one thread's write-back overwrites
+another's), so some contributions are lost. The per-field pattern
+preserves every writer's slot — strictly more samples in the pool.
+Empirically the "lossy struct-copy" pool produces better K-RIS reads
+on Sponza F00P24. Unclear exact mechanism; suspected: the
+hardware-scheduling-biased race acts as an implicit reservoir filter,
+concentrating surviving samples in a way that aligns with K-RIS
+selection.
+
+**Locked design (post-bisection):** probing + struct-copy insert +
+struct-copy reader at N=128, capacity 256K. No `frameLastInsert`,
+no pressure-eviction, no Bayer-bypass, no atomic-increment. The
+single architectural improvement that landed cleanly is the probe-
+on-collision (replaces the whole-cell zero-reset).
+
+**N=1024 (RTXDI slot-count parity) deferred.** Struct-copy at 12 KB
+hits DXIL limits, but per-field is worse. A future split-buffer
+refactor (header SoA + slot-data SoA in separate buffers, with the
+header still struct-copied per cell) might unblock this, but is a
+larger change. Current N=128 lands ~6.97 on Sponza F00P24 which is
+the practical operating point.
 
 **Pre-pass redundancy ablation — initial finding overstated (corrected 2026-05-09).**
 Earlier pass (commits `b5b6496` / `13fc09c`) tested `R2dR3dP3d_noPre` /

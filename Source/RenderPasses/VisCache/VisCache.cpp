@@ -15,11 +15,19 @@ static constexpr size_t kEntrySize = 8u;
 // §9.4 Reservoir slot size must match Slang struct WSReservoir
 // (8 fields × 4 bytes = 32 bytes — see WSReservoir.slang).
 static constexpr size_t kWSReservoirSize = 32u;
-static constexpr size_t kWSCellPoolSize  = 1544u;   // 2*4 header + 3×(128*4) entry arrays
-                                                    // (lightTypeIndex + payload + sourcePdf — RTXDI-tile layout).
-                                                    // N=128 — Cornell_3AL_x4 trail closure (Task #35) 2026-05-05.
-                                                    // PdfMipmap pre-pass = Power pre-pass on quality, so trail
-                                                    // is downstream of fill. Doubling N (with K_pre also 2×).
+// Split-buffer layout (2026-05-11): header buffer + flat slot buffer.
+// Slot data was moved OUT of WSCellPool's nested array to a separate flat
+// `gWSCellPoolSlotBuf` (RWStructuredBuffer<WSCellPoolSlot>), indexed as
+// cellIdx * N + slotIdx. The nested-array-in-struct pattern at N≥256
+// breaks DXC shader linking. Split buffer cleanly scales to N=1024.
+// Each WSCellPoolSlot = lightTypeIndex + payload + sourcePdf + frameStamp = 16 B.
+static constexpr size_t kWSCellPoolSize     = 8u;            // fingerprint + count
+static constexpr size_t kWSCellPoolSlotSize = 16u;           // lti + payload + pdf + frameStamp
+static constexpr uint32_t kWSCellPoolN      = 1024u;        // mirror WS_CELL_POOL_N — must match WSCellPool.slang.
+                                                            // RTXDI-parity slot count. Earlier N=1024 attempt
+                                                            // OOMed because PathTracer_Graph.py overrode capacity
+                                                            // to 1<<18 (4 GB slot buffer at N=1024); harness now
+                                                            // passes 1<<12 (64 MB) which fits VRAM comfortably.
                                                     // Faster slot turnover at
                                                     // higher N for our K=24 K-RIS pool reads. K=24/N=16 = 150%
                                                     // (with-replacement reads), so K-RIS still gets variety.
@@ -39,6 +47,7 @@ static const std::string kOutputFrameMeanVarMatSamplesRaw  = "vcFrameMeanVarMatS
 static const std::string kOutputFrameLevelProbesSamplesCold  = "vcFrameLevelProbesSamplesCold";
 static const std::string kOutputFrameHashAHashBHashABRays  = "vcFrameHashAHashBHashABRays";
 static const std::string kOutputAccumRaysNoiseErrorCold  = "vcAccumRaysNoiseErrorCold";
+static const std::string kOutputAccumRaysSplitNeeReval   = "vcAccumRaysSplitNeeReval";
 
 static const ChannelList kDiagOutputChannels = {
     { kOutputAccumMeanVarMatCount,  "", "Accumulated avg (R=variance*4, G=maturity, B=mean, A=count)",    true, ResourceFormat::RGBA32Float },
@@ -46,6 +55,7 @@ static const ChannelList kDiagOutputChannels = {
     { kOutputFrameLevelProbesSamplesCold,  "", "Frame (R=level, G=probeSteps, B=samples, A=coldmiss)",  true, ResourceFormat::RGBA32Float },
     { kOutputFrameHashAHashBHashABRays,  "", "Hash grid vis (R=posAHash, G=posBHash, B=combinedHash, A=raysTraced)",  true, ResourceFormat::RGBA32Float },
     { kOutputAccumRaysNoiseErrorCold,  "", "Accumulated (R=raysTraced, G=renderNoise, B=renderError, A=coldmiss)",  true, ResourceFormat::RGBA32Float },
+    { kOutputAccumRaysSplitNeeReval,  "", "Per-callsite rays_traced (R=NEE_ratio, G=Reval_ratio)",  true, ResourceFormat::RGBA32Float },
 };
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -134,6 +144,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("wsSpatialPixelsRadius"))         mParams.wsSpatialPixelsRadius         = props["wsSpatialPixelsRadius"];
     if (props.has("wsPoolAddrMode"))                mParams.wsPoolAddrMode                = props["wsPoolAddrMode"];
     if (props.has("wsPoolTileSize"))                mParams.wsPoolTileSize                = props["wsPoolTileSize"];
+    if (props.has("wsCellPoolMode"))                mParams.wsCellPoolMode                = props["wsCellPoolMode"];
     if (props.has("dirSolidAngleScale"))            mParams.dirSolidAngleScale            = props["dirSolidAngleScale"];
     if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
     if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
@@ -229,6 +240,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("wsSpatialPixelsRadius"))         mParams.wsSpatialPixelsRadius         = props["wsSpatialPixelsRadius"];
     if (props.has("wsPoolAddrMode"))                mParams.wsPoolAddrMode                = props["wsPoolAddrMode"];
     if (props.has("wsPoolTileSize"))                mParams.wsPoolTileSize                = props["wsPoolTileSize"];
+    if (props.has("wsCellPoolMode"))                mParams.wsCellPoolMode                = props["wsCellPoolMode"];
     if (props.has("dirSolidAngleScale"))            mParams.dirSolidAngleScale            = props["dirSolidAngleScale"];
     if (props.has("distSolidAngleScale"))           mParams.distSolidAngleScale           = props["distSolidAngleScale"];
     if (props.has("wsCellReservoirMerge"))          mParams.wsCellReservoirMerge          = props["wsCellReservoirMerge"];
@@ -314,6 +326,7 @@ Properties VisCache::getProperties() const
     p["wsSpatialPixelsRadius"]         = mParams.wsSpatialPixelsRadius;
     p["wsPoolAddrMode"]                = mParams.wsPoolAddrMode;
     p["wsPoolTileSize"]                = mParams.wsPoolTileSize;
+    p["wsCellPoolMode"]                = mParams.wsCellPoolMode;
     p["dirSolidAngleScale"]            = mParams.dirSolidAngleScale;
     p["distSolidAngleScale"]           = mParams.distSolidAngleScale;
     p["wsCellReservoirMerge"]          = mParams.wsCellReservoirMerge;
@@ -573,17 +586,33 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                         && (!mpWSCellPools || mWSCellPoolCapacityCommitted != cpCap);
         if (needs)
         {
+            // Drop OLD buffer refs FIRST so capacity bumps don't transiently
+            // hold both old + new allocations (2× VRAM peak). At N=1024 the
+            // slot buffer is 64 MB+ per capacity tier; keeping the old one
+            // alive during realloc would push us into OOM territory on
+            // 8 GB laptop GPUs.
+            mpWSCellPools = nullptr;
+            mpWSCellPoolSlots = nullptr;
             mpWSCellPools = mpDevice->createStructuredBuffer(
                 kWSCellPoolSize, cpCap,
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
                 MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
             mpWSCellPools->setName("VHF_WSCellPools");
+            // Flat slot buffer — split out of WSCellPool's nested array to
+            // unblock DXC at N=1024 (see kWSCellPoolN comment).
+            mpWSCellPoolSlots = mpDevice->createStructuredBuffer(
+                kWSCellPoolSlotSize, cpCap * kWSCellPoolN,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
+            mpWSCellPoolSlots->setName("VHF_WSCellPoolSlots");
             mWSCellPoolCapacityCommitted = cpCap;
             pCtx->clearUAV(mpWSCellPools->getUAV().get(), uint4(0u));
+            pCtx->clearUAV(mpWSCellPoolSlots->getUAV().get(), uint4(0u));
         }
         else if ((!mParams.enableWSReservoirs || !mParams.enableWSCellPool) && mpWSCellPools)
         {
             mpWSCellPools = nullptr;
+            mpWSCellPoolSlots = nullptr;
             mWSCellPoolCapacityCommitted = 0u;
         }
     }
@@ -769,6 +798,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.wsSpatialPixelsRadius = mParams.wsSpatialPixelsRadius;
     gpu.wsPoolAddrMode       = mParams.wsPoolAddrMode;
     gpu.wsPoolTileSize       = std::max(1u, mParams.wsPoolTileSize);
+    gpu.wsCellPoolMode       = mParams.wsCellPoolMode;
     gpu.dirSolidAngleScale  = std::clamp(mParams.dirSolidAngleScale, 0.1f, 10.0f);
     gpu.distSolidAngleScale = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
     gpu.wsCellReservoirMerge = mParams.wsCellReservoirMerge;
@@ -913,6 +943,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
 
     // §9.4 WS-cascade ReGIR cell-pool — buffer + cbuffer values.
     dict["wsCellPoolBuffer"]             = mpWSCellPools;
+    dict["wsCellPoolSlotBuffer"]         = mpWSCellPoolSlots;
     dict["vhfEnableWSCellPool"]          = mParams.enableWSCellPool;
     dict["vhfParam_wsCellPoolEnable"]    = mParams.enableWSCellPool ? 1u : 0u;
     dict["vhfParam_wsCellPoolCapacity"]  = mParams.wsCellPoolCapacity;
@@ -921,6 +952,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsSpatialPixelsRadius"] = mParams.wsSpatialPixelsRadius;
     dict["vhfParam_wsPoolAddrMode"]      = mParams.wsPoolAddrMode;
     dict["vhfParam_wsPoolTileSize"]      = std::max(1u, mParams.wsPoolTileSize);
+    dict["vhfParam_wsCellPoolMode"]      = mParams.wsCellPoolMode;
     dict["vhfParam_dirSolidAngleScale"]  = std::clamp(mParams.dirSolidAngleScale, 0.1f, 10.0f);
     dict["vhfParam_distSolidAngleScale"] = std::clamp(mParams.distSolidAngleScale, 0.1f, 10.0f);
     dict["vhfParam_wsCellReservoirMerge"] = mParams.wsCellReservoirMerge;
@@ -958,12 +990,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         // --- Per-frame diag textures (prefer graph-allocated, fallback to internal) ---
         ref<Texture> accumMeanVarMatCountTex, frameMeanVarMatSamplesRawTex, frameLevelProbesSamplesColdTex, frameHashTex;
         ref<Texture> accumRaysNoiseErrorColdTex;
+        ref<Texture> accumRaysSplitTex;
 
         if (auto p = renderData[kOutputAccumMeanVarMatCount])  accumMeanVarMatCountTex  = p->asTexture();
         if (auto p = renderData[kOutputFrameMeanVarMatSamplesRaw])  frameMeanVarMatSamplesRawTex  = p->asTexture();
         if (auto p = renderData[kOutputFrameLevelProbesSamplesCold])  frameLevelProbesSamplesColdTex  = p->asTexture();
         if (auto p = renderData[kOutputFrameHashAHashBHashABRays])  frameHashTex  = p->asTexture();
         if (auto p = renderData[kOutputAccumRaysNoiseErrorCold])  accumRaysNoiseErrorColdTex  = p->asTexture();
+        if (auto p = renderData[kOutputAccumRaysSplitNeeReval])   accumRaysSplitTex  = p->asTexture();
 
         bool needInternal = mEnableDiagnostics && mFrameDims.x > 0 && mFrameDims.y > 0;
         if (needInternal)
@@ -977,6 +1011,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mpFrameLevelProbesSamplesColdTex   = makeRGBA("VC_FrameLevelProbesSamplesCold");
                 mpFrameHashAHashBHashABRaysTex   = makeRGBA("VC_FrameHashAHashBHashABRays");
                 mpAccumRaysNoiseErrorColdTex   = makeRGBA("VC_AccumRaysNoiseErrorCold");
+                mpAccumRaysSplitNeeRevalTex     = makeRGBA("VC_AccumRaysSplitNeeReval");
                 mResetAccum = true;  // accum textures need realloc too
 
                 // Clear snapshot textures on allocation so unwritten pixels
@@ -991,6 +1026,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             if (!frameLevelProbesSamplesColdTex)  frameLevelProbesSamplesColdTex  = mpFrameLevelProbesSamplesColdTex;
             if (!frameHashTex)  frameHashTex  = mpFrameHashAHashBHashABRaysTex;
             if (!accumRaysNoiseErrorColdTex)  accumRaysNoiseErrorColdTex  = mpAccumRaysNoiseErrorColdTex;
+            if (!accumRaysSplitTex)  accumRaysSplitTex  = mpAccumRaysSplitNeeRevalTex;
         }
 
         // --- Accumulated textures (persistent, only cleared on reset) ---
@@ -1001,20 +1037,30 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 || mpAccumSaved->getHeight() != mFrameDims.y;
             if (needAccumRealloc)
             {
-                mpAccumSaved = makeR32U("VHF_AccumSaved");
-                mpAccumTotal = makeR32U("VHF_AccumTotal");
+                mpAccumSaved      = makeR32U("VHF_AccumSaved");
+                mpAccumTotal      = makeR32U("VHF_AccumTotal");
+                mpAccumSavedNEE   = makeR32U("VHF_AccumSavedNEE");
+                mpAccumTotalNEE   = makeR32U("VHF_AccumTotalNEE");
+                mpAccumSavedReval = makeR32U("VHF_AccumSavedReval");
+                mpAccumTotalReval = makeR32U("VHF_AccumTotalReval");
                 mResetAccum = true;
             }
             if (mResetAccum)
             {
-                pCtx->clearUAV(mpAccumSaved->getUAV().get(), uint4(0u));
-                pCtx->clearUAV(mpAccumTotal->getUAV().get(), uint4(0u));
+                pCtx->clearUAV(mpAccumSaved->getUAV().get(),      uint4(0u));
+                pCtx->clearUAV(mpAccumTotal->getUAV().get(),      uint4(0u));
+                pCtx->clearUAV(mpAccumSavedNEE->getUAV().get(),   uint4(0u));
+                pCtx->clearUAV(mpAccumTotalNEE->getUAV().get(),   uint4(0u));
+                pCtx->clearUAV(mpAccumSavedReval->getUAV().get(), uint4(0u));
+                pCtx->clearUAV(mpAccumTotalReval->getUAV().get(), uint4(0u));
                 // Clear accumulated diagnostic textures so the
                 // averaging window starts fresh.
                 if (accumMeanVarMatCountTex)
                     pCtx->clearUAV(accumMeanVarMatCountTex->getUAV().get(), float4(0.f));
                 if (accumRaysNoiseErrorColdTex)
                     pCtx->clearUAV(accumRaysNoiseErrorColdTex->getUAV().get(), float4(0.f));
+                if (accumRaysSplitTex)
+                    pCtx->clearUAV(accumRaysSplitTex->getUAV().get(), float4(0.f));
                 // Clear snapshot textures too so stale data from the previous
                 // warmup phase doesn't leak into the averaging window.
                 if (frameMeanVarMatSamplesRawTex)
@@ -1025,8 +1071,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                     pCtx->clearUAV(frameHashTex->getUAV().get(), float4(0.f));
                 mResetAccum = false;
             }
-            dict["vhfAccumSaved"] = mpAccumSaved;
-            dict["vhfAccumTotal"] = mpAccumTotal;
+            dict["vhfAccumSaved"]      = mpAccumSaved;
+            dict["vhfAccumTotal"]      = mpAccumTotal;
+            dict["vhfAccumSavedNEE"]   = mpAccumSavedNEE;
+            dict["vhfAccumTotalNEE"]   = mpAccumTotalNEE;
+            dict["vhfAccumSavedReval"] = mpAccumSavedReval;
+            dict["vhfAccumTotalReval"] = mpAccumTotalReval;
         }
 
         // Per-frame clear: frame textures must be zeroed every frame so the
@@ -1048,6 +1098,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         // Accumulated (NOT cleared per frame — running averages)
         expose(accumMeanVarMatCountTex,  "vhfAccumMeanVarMatCount");
         expose(accumRaysNoiseErrorColdTex,  "vhfAccumRaysNoiseErrorCold");
+        expose(accumRaysSplitTex,        "vhfAccumRaysSplitNeeReval");
 
         dict["vhfDiagEnabled"] = (accumMeanVarMatCountTex != nullptr);
         dict["vhfDiagMode"]    = uint32_t(mDiagMode);

@@ -261,6 +261,7 @@ private:
              uint32_t wsSpatialPixelsRadius=32;
              uint32_t wsPoolAddrMode=0;
              uint32_t wsPoolTileSize=16;
+             uint32_t wsCellPoolMode=0;        // 0 = P3d, 1 = PR3d
              float    dirSolidAngleScale=1.0f;
              float    distSolidAngleScale=1.0f;
              uint32_t wsCellReservoirMerge=0;
@@ -271,7 +272,8 @@ private:
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
     ref<Buffer> mpVHFWSReservoirs;
     ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
-    ref<Buffer> mpVHFWSCellPools;              ///< Multi-light cell pool (ReGIR).
+    ref<Buffer> mpVHFWSCellPools;              ///< Multi-light cell pool — header (fingerprint, count).
+    ref<Buffer> mpVHFWSCellPoolSlots;          ///< Multi-light cell pool — flat slot buffer (split for DXC at N=1024).
     uint32_t    mVHFPixelDimX = 0u;
     uint32_t    mVHFPixelDimY = 0u;
     bool        mVisCacheWSReservoirs = false; ///< Master gate read from dict.
