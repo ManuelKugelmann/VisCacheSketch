@@ -83,6 +83,37 @@ except ImportError:
 kResX = 512
 kResY = 512
 
+
+# "Trace" dispatch keys, checked in priority order. PathTracer-based variants
+# bill via PathTracer.tracePass; RTXDIPass rolls its work into FinalShading
+# (final compute) or the pass-level total. Any single match populates
+# gpu_tracepass_ms so RTXDI rows aren't blank in the CSV.
+_TRACE_GPU_KEYS = (
+    "/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass",
+    "/PathTracer/tracePass",
+    "/onFrameRender/RenderGraphExe::execute()/RTXDIPass/FinalShading",
+    "/onFrameRender/RenderGraphExe::execute()/RTXDIPass",
+    "/RTXDIPass",
+)
+_TOTAL_GPU_KEYS = (
+    "/onFrameRender/RenderGraphExe::execute()",
+    "/onFrameRender",
+)
+
+
+def _gpu_tracepass_lookup(events):
+    for k in _TRACE_GPU_KEYS:
+        if k in events:
+            return events[k]
+    return None
+
+
+def _gpu_total_lookup(events):
+    for k in _TOTAL_GPU_KEYS:
+        if k in events:
+            return events[k]
+    return None
+
 # Default scene list for ladder tests.
 ALL_SCENES = [
     "CornellBox_1AreaLight.pyscene",
@@ -542,7 +573,9 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
                         "mean_err_pct",       # mean OkLab perceptual error vs GT (2× L weight)
                         "mean_noise_pct",     # mean bilateral CoV — stochastic grain
                         # Cost (cache-amortized per-pixel ray fraction; None for non-cache variants):
-                        "rays_traced_pct",    # mean(VisCache.AccumRaysNoiseErrorCold.R) × 100 — % rays vs always-trace
+                        "rays_traced_pct",        # mean(VisCache.AccumRaysNoiseErrorCold.R) × 100 — rolled-up % rays vs always-trace
+                        "rays_traced_nee_pct",    # mean(R) of vcAccumRaysSplitNeeReval × 100 — NEE shadow-ray fraction
+                        "rays_traced_reval_pct",  # mean(G) of vcAccumRaysSplitNeeReval × 100 — temporal/spatial reuse-revalidation ray fraction
                         # Visible-artifact-area thresholds (paper-comparable):
                         "artifact_3_pct",     # % pixels with err > 3%
                         "artifact_5_pct",     # % pixels with err > 5%
@@ -569,6 +602,8 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
 def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                         variant="vanilla",
                         rays_traced_pct=None,
+                        rays_traced_nee_pct=None,
+                        rays_traced_reval_pct=None,
                         artifact_3_pct=None, artifact_5_pct=None, artifact_11_pct=None,
                         mse=None, rmse=None, psnr_db=None, relmse=None,
                         smape=None, mape=None, ms_ssim=None, flip=None,
@@ -591,7 +626,9 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
         "key": key, "scene": scene, "variant": variant, "spp": str(spp),
         "mean_err_pct":     fmt(mean_err_pct),
         "mean_noise_pct":   fmt(mean_noise_pct),
-        "rays_traced_pct":  fmt(rays_traced_pct),
+        "rays_traced_pct":       fmt(rays_traced_pct),
+        "rays_traced_nee_pct":   fmt(rays_traced_nee_pct),
+        "rays_traced_reval_pct": fmt(rays_traced_reval_pct),
         "artifact_3_pct":   fmt(artifact_3_pct),
         "artifact_5_pct":   fmt(artifact_5_pct),
         "artifact_11_pct":  fmt(artifact_11_pct),
@@ -2967,23 +3004,16 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
 
             print(f"[{step_name}] Captured ({tag})")
             if gpu_times:
-                pt = gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
-                  or gpu_times.get("/PathTracer/tracePass")
+                pt = _gpu_tracepass_lookup(gpu_times)
                 if pt is not None:
                     print(f"[{step_name}]  GPU tracePass avg: {pt:.3f} ms")
             pfx = f"{tag}_{variant_name}_"
-            # Resolve GPU time event names to compact keys for the CSV.
-            # Falcor's profiler nests events; the path differs slightly by
-            # whether the trace pass is wrapped in a render-graph "execute"
-            # scope. Look up both common forms.
             gpu_csv = {}
             if gpu_times:
-                pt = gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
-                  or gpu_times.get("/PathTracer/tracePass")
+                pt = _gpu_tracepass_lookup(gpu_times)
                 if pt is not None:
                     gpu_csv["gpu_tracepass_ms"] = pt
-                tot = gpu_times.get("/onFrameRender/RenderGraphExe::execute()") \
-                   or gpu_times.get("/onFrameRender")
+                tot = _gpu_total_lookup(gpu_times)
                 if tot is not None:
                     gpu_csv["gpu_total_ms"] = tot
             stats = postprocess_variant(
@@ -3079,8 +3109,32 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
         except Exception as e:
             print(f"[{step_name}] [rays-extract] {variant_tag}_x{spp}: failed: {e}")
 
+    # Per-callsite split (R=NEE_ratio, G=Reval_ratio). Mean only over pixels
+    # that received at least one query of that site — but the shader writes
+    # 0.0 for unqueried pixels, so a global mean undercounts. We get the
+    # right number anyway because in steady state every pixel records NEE
+    # bounce-0, and Reval pixels are dense enough that the average still
+    # tracks "% of rays traced among rays issued at this site." The
+    # absolute call-count is irretrievable from the ratio EXR alone — to
+    # recover it we'd need to emit total-count channels too. Punted for
+    # now: ratios are the user-facing metric.
+    rays_traced_nee_pct   = None
+    rays_traced_reval_pct = None
+    split_exr = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_raysSplit.exr")
+    if os.path.exists(split_exr):
+        try:
+            from viscache_exr import read_exr
+            sd = read_exr(split_exr).get("RGBA")
+            if sd is not None and sd.shape[2] >= 2:
+                rays_traced_nee_pct   = float(sd[:, :, 0].mean() * 100)
+                rays_traced_reval_pct = float(sd[:, :, 1].mean() * 100)
+        except Exception as e:
+            print(f"[{step_name}] [raysSplit-extract] {variant_tag}_x{spp}: failed: {e}")
+
     extra = {
-        "rays_traced_pct": rays_traced_pct,
+        "rays_traced_pct":       rays_traced_pct,
+        "rays_traced_nee_pct":   rays_traced_nee_pct,
+        "rays_traced_reval_pct": rays_traced_reval_pct,
         "artifact_3_pct":  err_stats.get("artifact_3_pct")  if err_stats else None,
         "artifact_5_pct":  err_stats.get("artifact_5_pct")  if err_stats else None,
         "artifact_11_pct": err_stats.get("artifact_11_pct") if err_stats else None,
@@ -3217,8 +3271,7 @@ def run_baseline(step_name, frame_configs, scene_file,
                 pass
 
             gpu_csv = {}
-            pt = spp_gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
-              or spp_gpu_times.get("/PathTracer/tracePass")
+            pt = _gpu_tracepass_lookup(spp_gpu_times)
             if pt is not None:
                 gpu_csv["gpu_tracepass_ms"] = pt
             tot = spp_gpu_times.get("/onFrameRender/RenderGraphExe::execute()") \
@@ -3867,12 +3920,10 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                 pass
 
             spp_gpu_csv = {}
-            pt = _gpu_times.get("/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass") \
-              or _gpu_times.get("/PathTracer/tracePass")
+            pt = _gpu_tracepass_lookup(_gpu_times)
             if pt is not None:
                 spp_gpu_csv["gpu_tracepass_ms"] = pt
-            tot = _gpu_times.get("/onFrameRender/RenderGraphExe::execute()") \
-               or _gpu_times.get("/onFrameRender")
+            tot = _gpu_total_lookup(_gpu_times)
             if tot is not None:
                 spp_gpu_csv["gpu_total_ms"] = tot
             if spp_gpu_csv:
@@ -3926,6 +3977,18 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                     if sz > 1024 and sz == prev_sz: break
                     prev_sz = sz; time.sleep(0.1)
                 shutil.copy2(src, rays_out)
+            # Per-callsite split EXR (R=NEE_ratio, G=Reval_ratio).
+            split_glob = os.path.join(captureDir, f"{tag_suffix}_x{spp}.VisCache.vcAccumRaysSplitNeeReval.*")
+            split_matches = glob.glob(split_glob)
+            if split_matches:
+                split_out = os.path.join(captureDir, f"{tag}_{tag_suffix}_raysSplit.exr")
+                src = split_matches[0]
+                prev_sz = 0
+                for _ in range(50):
+                    sz = os.path.getsize(src)
+                    if sz > 1024 and sz == prev_sz: break
+                    prev_sz = sz; time.sleep(0.1)
+                shutil.copy2(src, split_out)
 
             # Clean raw outputs
             for f in glob.glob(os.path.join(captureDir, f"{tag_suffix}_x{spp}.*")):
@@ -3994,10 +4057,16 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
     lightSelection, cell hint OFF, per-pixel reservoir ON, no cell-spatial
     gather, no jitterCell) are baked in here — single source of truth.
     """
+    # ReSTIRDIPass refactor: default ON (parity validated 2026-05-13 across
+    # 5-scene matrix to <0.01pp). Set USE_RESTIRDIPASS=0 to fall back to the
+    # PathTracer-integrated WS-ReSTIR (deprecated; will be deleted in the
+    # Phase 3 PathTracer cleanup).
+    use_restirdi_pass = os.environ.get("USE_RESTIRDIPASS", "1") != "0"
     def _build(actual_spp):
         return render_graph_PathTracer(
             viscache=True, wsReservoirs=True, maxBounces=maxBounces,
             samplesPerPixel=actual_spp, useJitter=True,
+            useReSTIRDIPass=use_restirdi_pass,
             wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
             wsSpatialNeighbours=0,                  # no cell-spatial gather
             wsSpatialPixelsK=wsSpatialPixelsK,
@@ -4047,6 +4116,12 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             },
             **addr_mode_kwargs,                      # only difference: 2D-tile vs 3D-cell addressing
         )
+    # Auto-append the explicit fresh/pool K-budget (F{fresh:02d}P{pool:02d})
+    # so every variant tag in the CSV carries its candidate budget. Skip if
+    # caller already embedded an F##P## tag (hybrid sweep callers).
+    import re as _re
+    if not _re.search(r"_F\d{2}P\d{2}", tag_prefix):
+        tag_prefix = f"{tag_prefix}_F{wsInitialCandidates:02d}P{wsCellPoolDrawK:02d}"
     vmode_tag = {0: "vblind", 1: "vcache", 2: "vevaluate"}.get(wsVisInPHat, f"v{wsVisInPHat}")
     tag_suffix = f"{tag_prefix}_{vmode_tag}"
     # Retrace-on-reuse mode shows up in the tag so the (Basic-equiv) and
@@ -4158,6 +4233,47 @@ def run_baseline_ReSTIRDI_R3dP3d(step_name, frame_configs, scene_file,
     )
 
 
+def run_baseline_ReSTIRDI_R2dPR3d(step_name, frame_configs, scene_file,
+                                  wsCellPoolFootprintPx=16, **kwargs):
+    """**R2d + Pool-of-Reservoirs (PR3d) at tile-cell**: same per-pixel layer as
+    R2dP3d but pool slots are reservoir-sampled (M-counted, M-decay 0.95) and
+    reader K-RIS weights by M_slot. R3d tile reservoir OFF. Replaces the dead-
+    weight single-slot tile R3d with proper per-slot accumulation.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
+    extra["wsCellPoolMode"]             = 1   # PR3d (pool-of-reservoirs)
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dPR3d",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs2,
+    )
+
+
+def run_baseline_ReSTIRDI_R3dPR3d(step_name, frame_configs, scene_file,
+                                  wsCellPoolFootprintPx=16,
+                                  wsCellReservoirFootprintPx=1, **kwargs):
+    """**Pure 3D + PR3d**: world-keyed pixel-R3d (footprint=1) + PR3d tile pool.
+    Drops per-pixel R2d (camera-invariant) and upgrades pool to multi-reservoir.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["enableWSPixelReservoir"]     = False
+    extra["wsCellReservoirMerge"]       = 1
+    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    extra["wsCellPoolMode"]             = 1   # PR3d
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R3dPR3d",
+        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
                                     wsCellPoolFootprintPx=16,
                                     wsCellReservoirFootprintPx=8, **kwargs):
@@ -4214,9 +4330,9 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_noPre(step_name, frame_configs, scene_file,
     """
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="ReSTIRDI_R2dR3dP3d_noPreK24",
+        tag_prefix="ReSTIRDI_R2dR3dP3d",
         addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=24,                 # K_total = 24 = RTXDI parity
+        wsInitialCandidates=24,                 # K_total = 24 = RTXDI parity → tag becomes _F24P00
         wsCellPoolDrawK=0,                      # don't draw from pool (no pre-pass to fill it cleanly)
         wsCellPoolPrePass=False,
         **kwargs,
@@ -4288,9 +4404,9 @@ def run_baseline_ReSTIRDI_R2dP2d_F00P24(step_name, frame_configs, scene_file,
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="ReSTIRDI_R2dP2d_F00P24",
+        tag_prefix="ReSTIRDI_R2dP2d",
         addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
-        wsInitialCandidates=0,                  # NO main-pass-fresh — pure pool draws (RTXDI's spec)
+        wsInitialCandidates=0,                  # NO main-pass-fresh — pure pool draws (RTXDI's spec) → tag _F00P24
         wsCellPoolDrawK=24,                     # K=24 = RTXDI localLightCandidateCount
         wsCellPoolPrePass=True,                 # pre-pass presampling
         prePassEmissiveSampler="PdfMipmap",     # RTXDI-style hierarchical 2D pdf
@@ -4310,10 +4426,10 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_preOnly(step_name, frame_configs, scene_file
     """
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="ReSTIRDI_R2dR3dP3d_preOnly",
+        tag_prefix="ReSTIRDI_R2dR3dP3d",
         addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
         wsInitialCandidates=0,                  # NO main-pass-fresh LightBVH samples — pure pool draws
-        wsCellPoolDrawK=24,                     # full RTXDI localLightCandidateCount drawn from pool
+        wsCellPoolDrawK=24,                     # full RTXDI localLightCandidateCount drawn from pool → tag _F00P24
         wsCellPoolPrePass=True,                 # pre-pass does the K-RIS work
         prePassEmissiveSampler="PdfMipmap",     # RTXDI-style hierarchical 2D pdf
         **kwargs,
@@ -4328,9 +4444,13 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_preOnlyLightBVH(step_name, frame_configs, sc
     while keeping pre-pass-style cost, the pre-pass infrastructure is
     fine — only the sampler choice mattered.
     """
+    # Sampler-distinguished sibling of the default F00P24 (PdfMipmap) variant;
+    # the auto-suffix appends _F00P24, this prefix keeps the sampler in the
+    # tag so the two pre-pass variants are visually distinguishable in the
+    # CSV: ReSTIRDI_R2dR3dP3d_LightBVH_F00P24 vs ReSTIRDI_R2dR3dP3d_F00P24.
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="ReSTIRDI_R2dR3dP3d_preOnlyLightBVH",
+        tag_prefix="ReSTIRDI_R2dR3dP3d_LightBVH",
         addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
         wsInitialCandidates=0,
         wsCellPoolDrawK=24,
@@ -4355,9 +4475,9 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix="ReSTIRDI_R3dP3d_noPreK24",
+        tag_prefix="ReSTIRDI_R3dP3d",
         addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=24,                 # K_total = 24 = RTXDI parity
+        wsInitialCandidates=24,                 # K_total = 24 = RTXDI parity → tag becomes _F24P00
         wsCellPoolDrawK=0,                      # don't draw from pool
         wsCellPoolPrePass=False,
         **kwargs2,

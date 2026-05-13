@@ -56,7 +56,7 @@ REM 2. CMake Configure (with FALCOR_PLUGIN_DIRS for external plugins)
 REM ---------------------------------------------------------------------------
 :configure
 for %%I in ("%FALCOR_DIR%\..") do set "VISCACHE_ROOT=%%~fI"
-set "PLUGIN_DIRS=%VISCACHE_ROOT%\Source\RenderPasses\VisCache;%VISCACHE_ROOT%\Source\RenderPasses\ReSTIRPTPass"
+set "PLUGIN_DIRS=%VISCACHE_ROOT%\Source\RenderPasses\VisCache;%VISCACHE_ROOT%\Source\RenderPasses\ReSTIRPTPass;%VISCACHE_ROOT%\Source\RenderPasses\ReSTIRDIPass;%VISCACHE_ROOT%\Source\RenderPasses\ReSTIRDIReferencePass;%VISCACHE_ROOT%\Source\RenderPasses\ReSTIRNEEPass"
 echo [build] Configuring: %CMAKE% --preset %PRESET%
 echo [build] Plugin dirs: %PLUGIN_DIRS%
 if "%USE_SCCACHE%"=="1" (

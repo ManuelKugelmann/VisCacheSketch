@@ -37,6 +37,8 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_R2dR3dP2d,
     run_baseline_ReSTIRDI_R2dR3dP3d,
     run_baseline_ReSTIRDI_R3dP3d,
+    run_baseline_ReSTIRDI_R2dPR3d,
+    run_baseline_ReSTIRDI_R3dPR3d,
     run_baseline_ReSTIRDI_H2dR3dP3d,
     run_baseline_ReSTIRDI_R2dR3dP3d_noPre,
     run_baseline_ReSTIRDI_R2dR3dP3d_preOnly,
@@ -70,15 +72,35 @@ for scene_file in get_scenes(default=["Sponza"]):
                  extra_spp=[4])
     run_baseline_rtxdi(STEP, [(0, 0, 1)], scene_file, **common)       # RTXDI production
 
-    # === Architectural matrix (5 variants) ===
-    # Move-by-move:
-    # base R2dP2d → switch pool to 3D (R2dP3d) → add R3d (R2dR3dP2d / R2dR3dP3d) → drop per-pixel (R3dP3d)
-    run_baseline_ReSTIRDI_R2dP2d    (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R2dP3d    (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R2dR3dP2d (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_H2dR3dP3d (STEP, [(0, 0, 1)], scene_file, **common)
-    run_baseline_ReSTIRDI_R3dP3d    (STEP, [(0, 0, 1)], scene_file, **common)
+    # NOTE: every ReSTIRDI_* variant tag auto-appends _F{fresh:02d}P{pool:02d}
+    # in _run_baseline_restir, so the CSV now reads e.g. ReSTIRDI_R2dP2d_F32P16
+    # (default K_total = 48 = 32 fresh-LightBVH + 16 pool-draws), or
+    # ReSTIRDI_R3dP3d_F24P00 for the noPre RTXDI-parity variant. Hybrid runners
+    # set the F##P## explicitly; the auto-suffix sees it and skips.
+
+    # === Architectural matrix (pruned 2026-05-11) ===
+    # Variant lineage RTXDI → R2dP2d → R2dP3d → R3dP3d → (future) PR3d.
+    #   R2dP2d   = our RTXDI ARCHITECTURAL EQUIVALENT (per-pixel reservoir + screen-tile pool).
+    #              Measured cum Δ = −0.39pp WIN over RTXDI across 5-scene set at F00P24.
+    #   R2dP3d   = bridge: same per-pixel layer, swap pool addressing to 3D world-cell.
+    #   R3dP3d   = bridge: also swap per-pixel to world-keyed (camera-invariant).
+    #   (future) R2dPR3d / R3dPR3d — replace P3d's raw pdf-pool with multi-reservoir pool (PR3d/ReGIR-at-tile).
+    #   (defer)  HR2d (history-overlay on full R2d) — future extension for dynamic-camera fallback.
+    # Dropped variants (validated as redundant via 5-scene A/B at N=1024 split-buffer):
+    #   R2dR3dP2d, R2dR3dP3d — single-slot tile-R3d adds nothing (cum Δ +0.004 vs no-R3d)
+    #   PR3d-alone           — no per-pixel layer = not ReSTIR
+    #   H2dR3dP3d, H2dPR3d   — slim-history variants; HR2d (full R2d + history overlay) is the chosen future direction
+    run_baseline_ReSTIRDI_R2dP2d    (STEP, [(0, 0, 1)], scene_file, **common)  # = RTXDI architectural mirror
+    run_baseline_ReSTIRDI_R2dP3d    (STEP, [(0, 0, 1)], scene_file, **common)  # bridge: 3D pool
+    run_baseline_ReSTIRDI_R3dP3d    (STEP, [(0, 0, 1)], scene_file, **common)  # bridge: + camera-invariant
+    # PR3d (mode=1) retired 2026-05-11 — quality lift on Sponza (R3dPR3d x4
+    # err=5.73 vs R3dP3d 5.91, −0.18pp) doesn't justify the 15-30× perf cost
+    # on area-light scenes. Re-enable by uncommenting below if exploring
+    # PR3d optimizations (skip-count-update, pixel-Bayer dispersion).
+    # See memory project_pr3d_perf_investigation.md.
+    if os.environ.get("ENABLE_PR3D"):
+        run_baseline_ReSTIRDI_R2dPR3d   (STEP, [(0, 0, 1)], scene_file, **common)
+        run_baseline_ReSTIRDI_R3dPR3d   (STEP, [(0, 0, 1)], scene_file, **common)
 
     # === Fresh-vs-pool Pareto sweep, K_total=24 normalized ===
     # All variants run K_total = 24 (= RTXDI localLightCandidateCount) for

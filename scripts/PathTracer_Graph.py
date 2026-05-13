@@ -21,12 +21,12 @@ except ImportError:
 
 def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, useJitter=True,
                             wsReservoirs=False, wsCellLevelJitter=0,
-                            wsReservoirCapacity=1 << 18,
+                            wsReservoirCapacity=1 << 20,  # 1M cells = 4× WORST-CASE R3dP3d footprint=1 (~262K active at 512²). 32 MB.
                             wsMCap=30.0, wsSpatialNeighbours=4, wsLightMuMin=0.01,
                             wsInitialCandidates=8,
                             wsVisInPHat=1,
                             wsRetraceOnReuseMode=0,    # 0=Off (default; matches RTXDI Basic / our shipping behaviour), 1=FullTrace (≡ RTXDI RayTraced), 2=CacheCV (cheap CV+RRR via cache, same PT-canonical knobs).
-                            wsCellPool=False, wsCellPoolCapacity=1 << 18, wsCellPoolDrawK=0,
+                            wsCellPool=False, wsCellPoolCapacity=1 << 12, wsCellPoolDrawK=0,  # 4K cells; at N=1024 × 16 B/slot = 64 MB. The previous 1<<18=256K default OOM'd at N=1024 (4 GB slot buffer).
                             wsCellPoolPrePass=False,
                             wsSpatialPixelsK=4, wsSpatialPixelsRadius=32,
                             wsPoolAddrMode=0, wsPoolTileSize=16,
@@ -37,7 +37,8 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                             prePassWsVisInPHat=None,        # pre-pass override for wsVisInPHat (defaults to wsVisInPHat). Set to 1 → pre-pass uses VisCache cache lookups for V-aware pool fill (§9.4 step (d) + §9.2 V amortization). Combined with Bayer N×N gate, this is the warmup-with-amortization design from §11.2.
                             prePassBayerN=None,             # pre-pass-only bayerN override (Bayer N×N gate). Default: same as VisCache default (1 = full screen each frame). Set to 4 → 16-frame Bayer sweep with 1/16 of pixels firing explicit shadow rays each frame, the rest using cache lookups.
                             visibilityCheck=None, lightSelection=None,
-                            extraVCProps=None):
+                            extraVCProps=None,
+                            useReSTIRDIPass=False):  # If True + wsReservoirs=True, route DI through standalone ReSTIRDIPass instead of PathTracer-integrated WS-ReSTIR (refactor in progress).
     """Build a PathTracer render graph.
 
     Args:
@@ -138,16 +139,19 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         g.addEdge("VBufferRT.vbuffer", "PathTracerPrePass.vbuffer")
         g.addEdge("VBufferRT.viewW",   "PathTracerPrePass.viewW")
 
-    # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes)
-    pt_props = {
-        "samplesPerPixel":    samplesPerPixel,
-        "maxSurfaceBounces":  maxBounces,
-        "colorFormat":        "LogLuvHDR",
-    }
-    if emissiveSampler is not None:
-        pt_props["emissiveSampler"] = emissiveSampler   # "Uniform" | "LightBVH" | "Power" | "Null"
-    pt = createPass("PathTracer", pt_props)
-    g.addPass(pt, "PathTracer")
+    # Falcor PathTracer (full-featured: NEE, MIS, Russian roulette, volumes).
+    # Skipped when ReSTIRDIPass is the radiance producer — avoids double-write
+    # to the WS reservoir buffer (both passes would target gWSPixelReservoirs).
+    if not (viscache and wsReservoirs and useReSTIRDIPass):
+        pt_props = {
+            "samplesPerPixel":    samplesPerPixel,
+            "maxSurfaceBounces":  maxBounces,
+            "colorFormat":        "LogLuvHDR",
+        }
+        if emissiveSampler is not None:
+            pt_props["emissiveSampler"] = emissiveSampler   # "Uniform" | "LightBVH" | "Power" | "Null"
+        pt = createPass("PathTracer", pt_props)
+        g.addPass(pt, "PathTracer")
     # NOTE: PathTracerPrePass → PathTracerMain ordering relies on Falcor's
     # UAV barrier system (both passes touch gWSCellPools). Within a frame,
     # pool writes from pre-pass complete before main reads (UAV barrier).
@@ -172,10 +176,35 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
     })
     g.addPass(tone, "ToneMapper")
 
+    # Optional standalone ReSTIRDIPass (refactor in progress; gated off by
+    # default). When enabled, REPLACES PathTracer as the radiance producer
+    # for primary-hit DI (mirrors RTXDIPass integration). PathTracer is also
+    # removed from the graph so it can't double-write the reservoir buffer
+    # alongside our standalone pass.
+    use_restirdi = viscache and wsReservoirs and useReSTIRDIPass
+    if use_restirdi:
+        # ReSTIRDIPass is forked from Falcor's PathTracer plugin — accepts
+        # the same props (samplesPerPixel, maxBounces, colorFormat,
+        # emissiveSampler) as PathTracer.
+        rdi_props = {
+            "samplesPerPixel":    samplesPerPixel,
+            "maxSurfaceBounces":  maxBounces,
+            "colorFormat":        "LogLuvHDR",
+        }
+        if emissiveSampler is not None:
+            rdi_props["emissiveSampler"] = emissiveSampler
+        restirdi = createPass("ReSTIRDIPass", rdi_props)
+        g.addPass(restirdi, "ReSTIRDIPass")
+        g.addEdge("VBufferRT.vbuffer", "ReSTIRDIPass.vbuffer")
+        g.addEdge("VBufferRT.viewW",   "ReSTIRDIPass.viewW")
+
     # Edges
-    g.addEdge("VBufferRT.vbuffer",   "PathTracer.vbuffer")
-    g.addEdge("VBufferRT.viewW",     "PathTracer.viewW")
-    g.addEdge("PathTracer.color",    "AccumulatePass.input")
+    if not use_restirdi:
+        g.addEdge("VBufferRT.vbuffer", "PathTracer.vbuffer")
+        g.addEdge("VBufferRT.viewW",   "PathTracer.viewW")
+        g.addEdge("PathTracer.color",  "AccumulatePass.input")
+    else:
+        g.addEdge("ReSTIRDIPass.color", "AccumulatePass.input")
     g.addEdge("AccumulatePass.output", "ToneMapper.src")
 
     # Force PathTracerPrePass to execute. Without a marked output or a
@@ -206,6 +235,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         g.markOutput("VisCache.vcFrameLevelProbesSamplesCold", TextureChannelFlags.RGBA)  # R=level, G=probeSteps, B=samples, A=coldmiss
         g.markOutput("VisCache.vcFrameHashAHashBHashABRays", TextureChannelFlags.RGBA)  # R=qAHash, G=qBHash, B=combinedHash, A=raysTraced
         g.markOutput("VisCache.vcAccumRaysNoiseErrorCold", TextureChannelFlags.RGBA)  # R=raysTraced, G=renderNoise, B=renderError, A=coldmiss
+        g.markOutput("VisCache.vcAccumRaysSplitNeeReval", TextureChannelFlags.RGBA)  # R=NEE_ratio, G=Reval_ratio, B+A reserved
 
     return g
 
