@@ -24,10 +24,6 @@ target_sources(ReSTIRDIPass PRIVATE
     GeneratePaths.cs.slang
     ReflectTypes.cs.slang
     ResolvePass.cs.slang
-
-    # ReSTIRDIPass-local additions (transitional re-exports + design notes)
-    Reservoir.slang
-    ReservoirIO.slang
 )
 
 target_copy_shaders(ReSTIRDIPass RenderPasses/ReSTIRDIPass)
