@@ -124,7 +124,7 @@ For PT side, the parallel agent's 2026-05-11 audit notes are still WIP:
 - P2d_F00P24 BEATS RTXDI at architectural parity by 0.39pp cumulative.
 - P3d_F00P24 was 12.99pp WORSE than P2d at the time of audit; root cause
   identified as N=128 slots vs RTXDI 1024 + first-writer-wins discards.
-  `wsCellPoolFindSlot` (double-hash probe) just landed to fix the
+  `cellPoolFindSlot` (double-hash probe) just landed to fix the
   collision half; slot-capacity bump + Sponza re-run pending.
 
 H2dR3d (mode 3) is deferred per parallel agent's "fallback layer not

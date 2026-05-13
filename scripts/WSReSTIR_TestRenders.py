@@ -36,11 +36,11 @@ VARIANTS = [
     # All variants get visibilityCheck=True (§9.2) so the cache-gated shadow
     # ray comparison is consistent. The toggles vary §9.1 (light selection)
     # and §9.4 (WS reservoirs) independently.
-    ("legacy", dict(viscache=True, wsReservoirs=False,
+    ("legacy", dict(viscache=True, reservoirs=False,
                     visibilityCheck=True,  lightSelection=False)),
-    ("ws",     dict(viscache=True, wsReservoirs=True,
+    ("ws",     dict(viscache=True, reservoirs=True,
                     visibilityCheck=True,  lightSelection=False)),
-    ("full",   dict(viscache=True, wsReservoirs=True,
+    ("full",   dict(viscache=True, reservoirs=True,
                     visibilityCheck=True,  lightSelection=True)),
 ]
 WARMUP_FRAMES = 8     # let the cache + reservoirs accumulate

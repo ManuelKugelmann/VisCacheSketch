@@ -168,7 +168,7 @@ struct PathReusePass
         if (!isValidPackedHitInfo(centralPrimaryHitPacked)) return;
 
         // Mode-dispatched central-reservoir lookup (mirrors restir_3d's
-        // wsResolvePoolAddr): mode=0 returns dstReservoir as-is, mode=1
+        // resolvePoolAddr): mode=0 returns dstReservoir as-is, mode=1
         // overrides with cell-pool match on fingerprint hit.
         dstReservoir = gPathTracer.lookupCentralReservoir(pixel, centralPrimarySd.posW, centralPrimarySd.faceN, dstReservoir);
         PathReservoir centralReservoir = dstReservoir;

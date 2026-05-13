@@ -201,13 +201,13 @@ effects on `path.pathBuilder` etc.), `nextVertex`, etc.
 
 ## Future extension (Task #12): 2D/3D addressing modes
 
-Mirror the `gWSPoolAddrMode` pattern from VisCache's WS-ReSTIR DI:
+Mirror the `gPoolAddrMode` pattern from VisCache's WS-ReSTIR DI:
 
 - `restirptAddrMode = 0` (2D, default): reservoir indexed by linear pixel
   offset (current behavior — `params.getReservoirOffset(pixel)`).
 - `restirptAddrMode = 1` (3D): reservoir indexed by world-cell hash via
-  VisCache's `wsResolveCellPoolAddr(posA, faceN)` from
-  `Source/RenderPasses/VisCache/WSCellPoolIO.slang`. The world-cell mode
+  VisCache's `resolveCellPoolAddr(posA, faceN)` from
+  `Source/RenderPasses/VisCache/CellPoolIO.slang`. The world-cell mode
   enables reuse across non-spatially-coherent regions, mirroring restir_3d
   for DI.
 

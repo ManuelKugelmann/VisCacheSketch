@@ -31,7 +31,7 @@ consumer of either.
   uses Falcor library calls directly (`sampleEmissiveLight`, `mi.eval`,
   `evalMIS`, `SceneRayQuery<>::traceVisibilityRay`, etc.) — same library
   calls PathTracer uses, but no shared shader module
-- WSReservoir types stay in VisCache for v1 (shared utility). Phase 6 renames
+- Reservoir types stay in VisCache for v1 (shared utility). Phase 6 renames
   + moves them into ReSTIRDIPass
 
 ## Source map: what lifts where
@@ -40,8 +40,8 @@ PathTracer.slang ranges to lift (~750 LOC):
 
 | Range | What | Target file |
 |---|---|---|
-| L50–L60 imports | `WSReservoir`, `WSReservoirIO`, `WSCellPool`, `WSCellPoolIO`, `VisCache`, `Utils.Math.MathHelpers` | `TracePass.rt.slang` imports |
-| L650–L797 | `wsPackLightSamplePayload`, `wsRebuildEnvMapLightSample`, `wsRebuildAnalyticLightSample`, `wsRebuildEmissiveLightSample` | `TracePass.rt.slang` (or factor into `Reservoir.slang` helpers) |
+| L50–L60 imports | `Reservoir`, `ReservoirIO`, `CellPool`, `CellPoolIO`, `VisCache`, `Utils.Math.MathHelpers` | `TracePass.rt.slang` imports |
+| L650–L797 | `packLightSamplePayload`, `rebuildEnvMapLightSample`, `rebuildAnalyticLightSample`, `rebuildEmissiveLightSample` | `TracePass.rt.slang` (or factor into `Reservoir.slang` helpers) |
 | L1206–L1974 | Primary-hit NEE block: K-RIS, V-aware K-RIS fill, temporal reuse, spatial reuse, retrace-on-reuse, reservoir writeback | `TracePass.rt.slang` raygen body |
 | L2010–L2019 | Boiling-filter no-op cleanup at miss | `TracePass.rt.slang` |
 | 4× `vcDiagCountRay(..., REVAL)` sites | Reuse-revalidation diag bumps | `TracePass.rt.slang` (now owns its own ReSTIRDIPass diag UAVs) |
@@ -79,7 +79,7 @@ Phase 4: render-graph wiring in `scripts/PathTracer_Graph.py` and prop routing i
 
 Phase 5: parity validation against pre-refactor `runtime/captures/ladder/RDI00/stats.csv`. Tolerance: <0.05pp err delta per scene.
 
-Phase 6: rename `WSReservoir.slang` → `Reservoir.slang` (move from VisCache → ReSTIRDIPass), drop `WS` prefix from identifiers consistently. Update all importers.
+Phase 6: rename `Reservoir.slang` → `Reservoir.slang` (move from VisCache → ReSTIRDIPass), drop `WS` prefix from identifiers consistently. Update all importers.
 
 ## Maintenance contract after port
 

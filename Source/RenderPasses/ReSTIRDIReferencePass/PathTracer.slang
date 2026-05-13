@@ -47,16 +47,19 @@ __exported import PathState;
 __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
+// Phase 3d Step 1: shared LightType/LightSample types via Common.
+import RenderPasses.Common.PathTraceCore;
+
 #if USE_WS_RESERVOIRS
-import RenderPasses.VisCache.WSReservoir;
-import RenderPasses.VisCache.WSReservoirIO;
-import RenderPasses.VisCache.WSCellPool;
-import RenderPasses.VisCache.WSCellPoolIO;
+import RenderPasses.VisCache.Reservoir;
+import RenderPasses.VisCache.ReservoirIO;
+import RenderPasses.VisCache.CellPool;
+import RenderPasses.VisCache.CellPoolIO;
 import RenderPasses.VisCache.VisCache;   // VisCacheParams cbuffer (gWS*, vhfLookup)
 import Utils.Math.MathHelpers;           // sample_triangle for emissive uv → barys
 #include "Utils/Math/MathConstants.slangh"  // FLT_MIN
 #elif USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
-import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gWSLightMuMin
+import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gLightMuMin
 #endif
 
 // vcDiagCountRay() helper for ray-counter bumps at the WS-ReSTIR V-test sites
@@ -135,33 +138,8 @@ struct PathTracer
 
     /** Types of samplable lights.
     */
-    enum class LightType
-    {
-        EnvMap,
-        Emissive,
-        Analytic
-    };
-
-    /** Describes a light sample.
-    */
-    struct LightSample
-    {
-        float3  Li;         ///< Incident radiance at the shading point (unshadowed). This is already divided by the pdf.
-        float   pdf;        ///< Pdf with respect to solid angle at the shading point.
-        float3  origin;     ///< Ray origin for visibility evaluation (offseted to avoid self-intersection).
-        float   distance;   ///< Ray distance for visibility evaluation (shortened to avoid self-intersection).
-        float3  dir;        ///< Ray direction for visibility evaluation (normalized).
-        uint    lightType;  ///< Light type this sample comes from (LightType casted to uint).
-        // §9.4 WS-ReSTIR DI: light-identity fields populated by sample generators.
-        // Used by the WS reservoir read path to re-evaluate Li from a different shading point.
-        // For LightType::Emissive: lightIndex = active triangle index, lightUV = barys.
-        // For LightType::Analytic: lightIndex = analytic light index, lightUV = unused.
-        // For LightType::EnvMap:   lightIndex = 0,                    lightUV = unused (dir carries the identity).
-        uint    lightIndex; ///< Light identity (per-type meaning above).
-        float2  lightUV;    ///< Surface parameterization (per-type meaning above).
-
-        Ray getVisibilityRay() { return Ray(origin, dir, 0.f, distance); }
-    };
+    // LightType + LightSample lifted to namespace level in
+    // `RenderPasses.Common.PathTraceCore` (imported above).
 
     /** Describes a path vertex.
     */
@@ -651,10 +629,10 @@ struct PathTracer
     /** §9.4 Pack the chosen LightSample's surface payload according to type.
         Emissive: barys (16:16 unorm). EnvMap: dir (oct 16:16). Analytic: 0.
     */
-    uint wsPackLightSamplePayload(const LightSample inLs)
+    uint packLightSamplePayload(const LightSample inLs)
     {
-        if (inLs.lightType == (uint)LightType::Emissive) return wsPackUV(inLs.lightUV);
-        if (inLs.lightType == (uint)LightType::EnvMap)   return wsPackDirOct(inLs.dir);
+        if (inLs.lightType == (uint)LightType::Emissive) return packUV(inLs.lightUV);
+        if (inLs.lightType == (uint)LightType::EnvMap)   return packDirOct(inLs.dir);
         return 0u;
     }
 
@@ -663,32 +641,9 @@ struct PathTracer
         Distance is kRayTMax (env is at infinity). pdf evaluated via the
         env-map sampler's solid-angle pdf for `dir`.
     */
-    bool wsRebuildEnvMapLightSample(uint payload, const ShadingData sd, out LightSample ls)
+    bool rebuildEnvMapLightSample(uint payload, const ShadingData sd, out LightSample ls)
     {
-        ls = {};
-        if (!kUseEnvLight) return false;
-
-        float3 dir = wsUnpackDirOct(payload);
-        float pdf = envMapSampler.evalPdf(dir);
-        if (pdf <= 0.f) return false;
-
-        float3 Le = gScene.envMap.eval(dir);
-        ls.dir       = dir;
-        ls.distance  = kRayTMax;
-        ls.origin    = computeRayOrigin(sd.posW, dot(sd.faceN, dir) >= 0.f ? sd.faceN : -sd.faceN);
-        ls.Li        = Le / pdf;
-        ls.pdf       = pdf;
-        ls.lightType = (uint)LightType::EnvMap;
-        ls.lightIndex = 0u;
-        ls.lightUV    = float2(0.f);
-
-        // Apply env-type selection probability.
-        float envSel = getEnvMapSelectionProbability();
-        if (envSel <= 0.f) return false;
-        ls.pdf *= envSel;
-        ls.Li  /= envSel;
-
-        return any(ls.Li > 0.f);
+        return coreRebuildEnvMapLightSample(payload, sd, envMapSampler, ls);
     }
 
     /** §9.4 Re-materialise a LightSample for an analytic light from a stored
@@ -701,38 +656,9 @@ struct PathTracer
         choice itself — the cell teaches "this light is good for this region",
         and we re-sample it from the current pixel.
     */
-    bool wsRebuildAnalyticLightSample(uint lightIndex, const ShadingData sd, inout SampleGenerator sg, out LightSample ls)
+    bool rebuildAnalyticLightSample(uint lightIndex, const ShadingData sd, inout SampleGenerator sg, out LightSample ls)
     {
-        ls = {};
-        if (!kUseAnalyticLights) return false;
-        uint lightCount = gScene.getLightCount();
-        if (lightCount == 0u || lightIndex >= lightCount) return false;
-
-        AnalyticLightSample lightSample;
-        if (!sampleLight(sd.posW, gScene.getLight(lightIndex), sg, lightSample)) return false;
-
-        // Match generateAnalyticLightSample's normalization: pdf is scaled by
-        // 1/lightCount, Li by lightCount (uniform selection among analytics).
-        ls.pdf = lightSample.pdf / float(lightCount);
-        ls.Li  = lightSample.Li  * float(lightCount);
-
-        // Direction-aware ray-origin offset.
-        float3 normalForOffset = (dot(sd.faceN, lightSample.dir) >= 0.f) ? sd.faceN : -sd.faceN;
-        ls.origin   = computeRayOrigin(sd.posW, normalForOffset);
-        ls.distance = lightSample.distance;
-        ls.dir      = lightSample.dir;
-        ls.lightType  = (uint)LightType::Analytic;
-        ls.lightIndex = lightIndex;
-        ls.lightUV    = float2(0.f);
-
-        // Apply analytic-type selection probability (matches the tail of
-        // generateLightSample: ls.pdf *= selectionPdf; ls.Li /= selectionPdf).
-        float analyticSel = getAnalyicSelectionProbability();
-        if (analyticSel <= 0.f) return false;
-        ls.pdf *= analyticSel;
-        ls.Li  /= analyticSel;
-
-        return any(ls.Li > 0.f);
+        return coreRebuildAnalyticLightSample(lightIndex, sd, sg, ls);
     }
 
     /** §9.4 Re-materialise a LightSample for an emissive triangle from
@@ -741,58 +667,9 @@ struct PathTracer
         EmissiveLightSamplerHelpers::sampleTriangle) but uses the stored u
         instead of drawing a new one.
     */
-    bool wsRebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingData sd, out LightSample ls)
+    bool rebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingData sd, out LightSample ls)
     {
-        ls = {};
-        if (!kUseEmissiveLights) return false;
-        if (triangleIndex >= gScene.lightCollection.getActiveTriangleCount()) return false;
-
-        EmissiveTriangle tri = gScene.lightCollection.getTriangle(triangleIndex);
-        float3 bary = sample_triangle(u);
-        float3 lightPosW = tri.getPosition(bary);
-        float3 lightOffsetPosW = computeRayOrigin(lightPosW, tri.normal);
-
-        // Direction-aware shading-point offset to avoid self-intersection.
-        float3 normalForOffset = (dot(sd.faceN, lightOffsetPosW - sd.posW) >= 0.f) ? sd.faceN : -sd.faceN;
-        ls.origin = computeRayOrigin(sd.posW, normalForOffset);
-
-        float3 toLight = lightOffsetPosW - ls.origin;
-        float distSqr = max(FLT_MIN, dot(toLight, toLight));
-        float dist = sqrt(distSqr);
-        float3 dir = toLight / dist;
-
-        float cosTheta = dot(tri.normal, -dir);
-        if (cosTheta <= 0.f) return false;
-
-        float2 texCoord = tri.getTexCoord(bary);
-        float3 Le = gScene.materials.evalEmissive(tri.materialID, texCoord);
-        if (gScene.materials.hasLightProfile(tri.materialID))
-            Le *= gScene.materials.evalLightProfile(cosTheta);
-
-        // CRITICAL: use the actual emissive sampler's pdf (LightBVH default is
-        // power-weighted, NOT uniform-area). Computing pdf as uniform-area
-        // here causes MIS to apply wrong weights → systematic bias / darkening.
-        TriangleLightHit hit;
-        hit.triangleIndex = triangleIndex;
-        hit.posW = lightPosW;
-        hit.normalW = tri.normal;
-        float emPdf = emissiveSampler.evalPdf(sd.posW, sd.faceN, /*upperHemisphere=*/true, hit);
-        if (emPdf <= 0.f) return false;
-
-        // Account for emissive selection probability (matches generateLightSample's
-        // "Account for light type selection" tail division).
-        float emissiveSel = getEmissiveSelectionProbability();
-        if (emissiveSel <= 0.f) return false;
-
-        float totalPdf = emPdf * emissiveSel;
-        ls.Li        = Le / totalPdf;
-        ls.pdf       = totalPdf;
-        ls.dir       = dir;
-        ls.distance  = dist;
-        ls.lightType = (uint)LightType::Emissive;
-        ls.lightIndex = triangleIndex;
-        ls.lightUV   = u;
-        return any(ls.Li > 0.f);
+        return coreRebuildEmissiveLightSample(triangleIndex, u, sd, emissiveSampler, ls);
     }
 #endif
 
@@ -1215,9 +1092,9 @@ struct PathTracer
                 bool isEmissive = ls.lightType == (uint)LightType::Emissive;
                 bool isAnalytic = ls.lightType == (uint)LightType::Analytic;
                 bool isEnv      = ls.lightType == (uint)LightType::EnvMap;
-                if (path.getVertexIndex() == 1 && wsEnabled() && (isEmissive || isAnalytic || isEnv))
+                if (path.getVertexIndex() == 1 && enabled() && (isEmissive || isAnalytic || isEnv))
                 {
-                    WSLocalReservoir local; local.init();
+                    LocalReservoir local; local.init();
 
                     // §9.4 Pool address — resolved once, used for both write-back
                     // and per-candidate insert-on-fill (so the pool fills within
@@ -1225,7 +1102,7 @@ struct PathTracer
                     // §9.4 mode-dispatched pool address: 3D world cell OR
                     // 2D screen tile (RTXDI-style). Same buffer/struct/insert
                     // math; only the address resolver differs.
-                    WSCellAddress poolAddrA = wsResolvePoolAddr(sd.posW, sd.faceN, path.getPixel());
+                    CellAddress poolAddrA = resolvePoolAddr(sd.posW, sd.faceN, path.getPixel());
 
                     // §9.4 — RTXDI port: pool fills via BOTH pre-pass AND
                     // main pass (matches RTXDI conceptually — every frame's
@@ -1254,24 +1131,24 @@ struct PathTracer
                         // vanilla NEE bit-identically.
                         float pHatFresh = luminance(Lr);
                         // §9.4 Visibility-aware target function (RTXDI fix).
-                        // Runtime-selected by gWSVisInPHat:
+                        // Runtime-selected by gVisInPHat:
                         //   0 = blind (no V — biased on emissive-heavy scenes)
                         //   1 = cache-amortized via traceVisibilityRayCV (cheap once warm)
                         //   2 = explicit always-trace via traceVisibilityRay (K rays/pixel,
                         //       no cache — unbiased reference, isolates RIS math from cache)
-                        if (!isEnv && wsVisInPHatMode() != 0u)
+                        if (!isEnv && visInPHatMode() != 0u)
                         {
                             Ray vrayF = ls.getVisibilityRay();
                             float vF = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                            if (wsVisInPHatMode() == 1u)
+                            if (visInPHatMode() == 1u)
                                 vF = vq.traceVisibilityRayCV(vrayF, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                             else
                                 vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
 #else
                             vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
 #endif
-                            pHatFresh *= max(vF, wsLightMuMin());
+                            pHatFresh *= max(vF, lightMuMin());
                         }
                         // invPdf = 1 because pHatFresh = lum(Lr) already includes
                         // the 1/pdf factor (Lr = weight × Li = integrand / pdf).
@@ -1281,11 +1158,11 @@ struct PathTracer
                         // the highest-quality candidate (proper pHat at reader,
                         // not cross-pixel-biased) — dropping it for "pure RTXDI
                         // pool-only K-RIS" regressed Sponza x1 by +9pp.
-                        uint freshLTI = wsPackLightTypeIndex(ls.lightType, ls.lightIndex);
-                        uint freshPL  = wsPackLightSamplePayload(ls);
+                        uint freshLTI = packLightTypeIndex(ls.lightType, ls.lightIndex);
+                        uint freshPL  = packLightSamplePayload(ls);
                         local.streamingAdd(freshLTI, freshPL,
                             pHatFresh, 1.f, path.sg);
-                        if (wsCellPoolEnabled())
+                        if (cellPoolEnabled())
                         {
                             // §9.4 step (d) FIXED: V-aware RIS-at-insert via target
                             // multiplier (NOT probabilistic acceptance). The previous
@@ -1300,7 +1177,7 @@ struct PathTracer
                             // Reader's 1/sourcePdf RIS weight uses unmodified
                             // ls.pdf — clean unbiased proposal density.
                             //
-                            // V-aware fill is decoupled from wsVisInPHat (the K-RIS
+                            // V-aware fill is decoupled from visInPHat (the K-RIS
                             // p̂ V-mode) so the cell pool always gets V-filtered
                             // candidates when enabled — RTXDI's tile-pool analog.
                             float muF = 1.f;
@@ -1310,14 +1187,14 @@ struct PathTracer
                                 VHFResult vr = vhfLookup(sd.posW, lightPosB, sd.faceN);
                                 muF = vr.valid ? vr.mu : 1.f;
                             }
-                            float vWeight = max(muF, wsLightMuMin());  // defensive μmin floor
+                            float vWeight = max(muF, lightMuMin());  // defensive μmin floor
 #if WS_CELL_POOL_FILL_ONLY
                             // Pool inserts only from pre-pass (RTXDI-style: dedicated
                             // fill source). Main pass uses LightBVH for fresh K-RIS in
                             // the local stream but does NOT write to pool, so pool
                             // content reflects only the pre-pass's sampler choice
                             // (e.g. shading-agnostic Power for cross-pixel diversity).
-                            wsCellPoolInsert(poolAddrA, freshLTI, freshPL, ls.pdf, pHatFresh * vWeight, path.sg);
+                            cellPoolInsert(poolAddrA, freshLTI, freshPL, ls.pdf, pHatFresh * vWeight, path.sg);
 #endif
                         }
                     }
@@ -1334,7 +1211,7 @@ struct PathTracer
                         bool sampleLowerK = canNeeSampleSphereK || ((lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0);
                         if (!kUseLightsInDielectricVolumes && path.isInsideDielectricVolume()) sampleUpperK = false;
 
-                        uint extraK = (gWSInitialCandidates > 1u) ? (gWSInitialCandidates - 1u) : 0u;
+                        uint extraK = (gInitialCandidates > 1u) ? (gInitialCandidates - 1u) : 0u;
                         for (uint k = 0u; k < extraK; ++k)
                         {
                             LightSample lsK = {};
@@ -1346,31 +1223,31 @@ struct PathTracer
                             // area lights (pdf>0) and Dirac point/directional
                             // lights (pdf=0). See fresh-candidate site.
                             float pHatK = luminance(LrK);
-                            if (lsK.lightType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
+                            if (lsK.lightType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
                             {
                                 Ray vrayK = lsK.getVisibilityRay();
                                 float vK = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                                if (wsVisInPHatMode() == 1u)
+                                if (visInPHatMode() == 1u)
                                     vK = vq.traceVisibilityRayCV(vrayK, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                                 else
                                     vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
 #else
                                 vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
 #endif
-                                pHatK *= max(vK, wsLightMuMin());
+                                pHatK *= max(vK, lightMuMin());
                             }
-                            uint kLTI = wsPackLightTypeIndex(lsK.lightType, lsK.lightIndex);
-                            uint kPL  = wsPackLightSamplePayload(lsK);
+                            uint kLTI = packLightTypeIndex(lsK.lightType, lsK.lightIndex);
+                            uint kPL  = packLightSamplePayload(lsK);
                             // invPdf=1; pHatK already pdf-divided (lum(Lr)).
                             local.streamingAdd(kLTI, kPL, pHatK, 1.f, path.sg);
-                            if (wsCellPoolEnabled())
+                            if (cellPoolEnabled())
                             {
                                 // §9.4 step (d) FIXED — V-aware target-multiplier
                                 // form. See full rationale at the fresh-insert
                                 // site above. always-insert with pHat × V as RIS
                                 // target, sourcePdf left = ls.pdf (unbiased).
-                                // V-aware fill is decoupled from wsVisInPHat —
+                                // V-aware fill is decoupled from visInPHat —
                                 // the cell pool always gets V-filtered candidates.
                                 float muK = 1.f;
                                 if (lsK.lightType != (uint)LightType::EnvMap
@@ -1380,9 +1257,9 @@ struct PathTracer
                                     VHFResult vrK = vhfLookup(sd.posW, lightPosBK, sd.faceN);
                                     muK = vrK.valid ? vrK.mu : 1.f;
                                 }
-                                float vWeightK = max(muK, wsLightMuMin());
+                                float vWeightK = max(muK, lightMuMin());
 #if WS_CELL_POOL_FILL_ONLY
-                                wsCellPoolInsert(poolAddrA, kLTI, kPL, lsK.pdf, pHatK * vWeightK, path.sg);
+                                cellPoolInsert(poolAddrA, kLTI, kPL, lsK.pdf, pHatK * vWeightK, path.sg);
 #endif
                             }
                         }
@@ -1399,9 +1276,9 @@ struct PathTracer
                     //     from that pdf at this reading pixel — RIS unbiases via
                     //     pHat(reader) / sourcePdf, exactly as if the entry had
                     //     been freshly drawn at the reader.
-                    if (gWSCellPoolDrawK > 0u && wsCellPoolEnabled())
+                    if (gCellPoolDrawK > 0u && cellPoolEnabled())
                     {
-                        // AoS reader — fetch one whole WSCellPoolSlot per
+                        // AoS reader — fetch one whole CellPoolSlot per
                         // K-RIS iteration. The 12-B slot is a single
                         // bufferLoad at one offset, so the three fields
                         // (lightTypeIndex, payload, sourcePdf) come from
@@ -1409,13 +1286,13 @@ struct PathTracer
                         // under concurrent writes. Avoids the 12 KB whole-
                         // struct copy that DXIL rejects at N=1024.
                         uint poolSlot, poolCount;
-                        if (wsLookupCellPool(poolAddrA, poolSlot, poolCount))
+                        if (lookupCellPool(poolAddrA, poolSlot, poolCount))
                         {
-                            uint kPool = min(gWSCellPoolDrawK, poolCount);
+                            uint kPool = min(gCellPoolDrawK, poolCount);
                             for (uint d = 0u; d < kPool; ++d)
                             {
                                 uint slotR = uint(sampleNext1D(path.sg) * float(poolCount)) % poolCount;
-                                WSCellPoolSlot ps = gWSCellPoolSlotBuf[wsSlotIndex(poolSlot, slotR)];
+                                CellPoolSlot ps = gCellPoolSlotBuf[slotIndex(poolSlot, slotR)];
                                 // Per-slot freshness filter — `frameStamp ==
                                 // currentFrame` means the slot was written this
                                 // frame and is valid; otherwise it's stale (from
@@ -1426,21 +1303,21 @@ struct PathTracer
                                 if (slotGetFrame(ps) != slotCurrentFrame()) continue;
                                 if (ps.sourcePdf <= 0.f) continue;
                                 uint pLTI  = ps.lightTypeIndex;
-                                uint pType = wsUnpackLightType(pLTI);
-                                uint pIdxL = wsUnpackLightIndex(pLTI);
+                                uint pType = unpackLightType(pLTI);
+                                uint pIdxL = unpackLightIndex(pLTI);
                                 float pSrcPdf = ps.sourcePdf;
                                 uint pPayload = ps.payload;
                                 // P3d (mode=0): M=0 → pSlotM=1 → no extra weight (identity).
                                 // PR3d (mode=1): scale K-RIS weight by M (slot's reservoir-sample count).
-                                float pSlotM = (gWSCellPoolMode != 0u) ? float(max(slotGetM(ps), 1u)) : 1.0f;
+                                float pSlotM = (gCellPoolMode != 0u) ? float(max(slotGetM(ps), 1u)) : 1.0f;
                                 LightSample poolLs;
                                 bool poolOk = false;
                                 if (pType == (uint)LightType::Emissive)
-                                    poolOk = wsRebuildEmissiveLightSample(pIdxL, wsUnpackUV(pPayload), sd, poolLs);
+                                    poolOk = rebuildEmissiveLightSample(pIdxL, unpackUV(pPayload), sd, poolLs);
                                 else if (pType == (uint)LightType::Analytic)
-                                    poolOk = wsRebuildAnalyticLightSample(pIdxL, sd, path.sg, poolLs);
+                                    poolOk = rebuildAnalyticLightSample(pIdxL, sd, path.sg, poolLs);
                                 else if (pType == (uint)LightType::EnvMap)
-                                    poolOk = wsRebuildEnvMapLightSample(pPayload, sd, poolLs);
+                                    poolOk = rebuildEnvMapLightSample(pPayload, sd, poolLs);
                                 if (!poolOk) continue;
 
                                 float NdotLP = dot(sd.faceN, poolLs.dir);
@@ -1469,24 +1346,24 @@ struct PathTracer
                                 // pHat = luminance(Lr) at reading pixel.
                                 float pHatP = luminance(LrP);
                                 // §9.4 step (d) — V-aware target function for pool draws.
-                                // Reuses the existing wsVisInPHat machinery: mode 1 = cache-
+                                // Reuses the existing visInPHat machinery: mode 1 = cache-
                                 // amortized (μ from VisCache), mode 2 = explicit shadow ray.
                                 // Applied to pool draws on top of the existing fresh-candidate
                                 // path so the per-pixel K-RIS picks visibility-aware candidates
                                 // regardless of whether they came from the pool or fresh draws.
-                                if (pType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
+                                if (pType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
                                 {
                                     Ray vrayP = poolLs.getVisibilityRay();
                                     float vP = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                                    if (wsVisInPHatMode() == 1u)
+                                    if (visInPHatMode() == 1u)
                                         vP = vq.traceVisibilityRayCV(vrayP, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                                     else
                                         vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
 #else
                                     vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
 #endif
-                                    pHatP *= max(vP, wsLightMuMin());
+                                    pHatP *= max(vP, lightMuMin());
                                 }
                                 // §9.4 read-side — Convention B (UNBIASED, RTXDI-faithful)
                                 // with reader-evaluated pdf. Validated 2026-05-05:
@@ -1547,16 +1424,16 @@ struct PathTracer
                     // Cost: 1 shadow ray per pixel per frame, main pass only.
                     if (local.M > 0.f && local.targetPdf > 0.f)
                     {
-                        uint winnerType = wsUnpackLightType(local.lightTypeIndex);
-                        uint winnerIdx  = wsUnpackLightIndex(local.lightTypeIndex);
+                        uint winnerType = unpackLightType(local.lightTypeIndex);
+                        uint winnerIdx  = unpackLightIndex(local.lightTypeIndex);
                         LightSample winnerLs;
                         bool winnerOk = false;
                         if (winnerType == (uint)LightType::Emissive)
-                            winnerOk = wsRebuildEmissiveLightSample(winnerIdx, wsUnpackUV(local.payload), sd, winnerLs);
+                            winnerOk = rebuildEmissiveLightSample(winnerIdx, unpackUV(local.payload), sd, winnerLs);
                         else if (winnerType == (uint)LightType::Analytic)
-                            winnerOk = wsRebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
+                            winnerOk = rebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
                         else if (winnerType == (uint)LightType::EnvMap)
-                            winnerOk = wsRebuildEnvMapLightSample(local.payload, sd, winnerLs);
+                            winnerOk = rebuildEnvMapLightSample(local.payload, sd, winnerLs);
                         if (winnerOk)
                         {
                             Ray vrayWin = winnerLs.getVisibilityRay();
@@ -1576,18 +1453,18 @@ struct PathTracer
 
                     // (2) Gather home cell + jittered neighbours. Home is the
                     // unjittered query; neighbours are tangent-plane-jittered
-                    // queries through the same wsResolveCell function. We
+                    // queries through the same resolveCell function. We
                     // filter out queries that landed back in the home cell
                     // by fingerprint compare.
                     //
-                    // gWSUseCellInRIS gates this whole block off — when 0,
+                    // gUseCellInRIS gates this whole block off — when 0,
                     // shading falls back to pure per-pixel ReSTIR DI (per-pixel
-                    // temporal + spatial reuse via gWSPixelReservoirs only).
-                    WSCellAddress homeAddr = wsResolveCell(sd.posW, sd.faceN);
-                    const uint nNeighbours = (gWSUseCellInRIS != 0u) ? wsSpatialNeighbourCount() : 0u;
-                    for (uint i = 0u; (gWSUseCellInRIS != 0u) && i <= nNeighbours; ++i)
+                    // temporal + spatial reuse via gPixelReservoirs only).
+                    CellAddress homeAddr = resolveCell(sd.posW, sd.faceN);
+                    const uint nNeighbours = (gUseCellInRIS != 0u) ? spatialNeighbourCount() : 0u;
+                    for (uint i = 0u; (gUseCellInRIS != 0u) && i <= nNeighbours; ++i)
                     {
-                        WSCellAddress addr;
+                        CellAddress addr;
                         if (i == 0u)
                         {
                             addr = homeAddr;
@@ -1595,27 +1472,27 @@ struct PathTracer
                         else
                         {
                             float2 j2d = sampleNext2D(path.sg);
-                            addr = wsResolveJitteredCell(sd.posW, sd.faceN, i - 1u, nNeighbours, j2d);
+                            addr = resolveJitteredCell(sd.posW, sd.faceN, i - 1u, nNeighbours, j2d);
                             // Skip if jitter landed back in the home cell —
                             // already covered by i==0.
                             if (addr.fingerprint == homeAddr.fingerprint) continue;
                         }
-                        WSReservoir cell;
-                        if (!wsLoadCell(addr, cell)) continue;
+                        Reservoir cell;
+                        if (!loadCell(addr, cell)) continue;
                         if (cell.M <= 0.f) continue;
                         // cell.W is no longer consumed for shading (selection-only
                         // design after the v5 fix); identity is what matters.
 
-                        uint cellType = wsUnpackLightType(cell.lightTypeIndex);
-                        uint cellIdx  = wsUnpackLightIndex(cell.lightTypeIndex);
+                        uint cellType = unpackLightType(cell.lightTypeIndex);
+                        uint cellIdx  = unpackLightIndex(cell.lightTypeIndex);
                         LightSample cellLs;
                         bool cellOk = false;
                         if (cellType == (uint)LightType::Emissive)
-                            cellOk = wsRebuildEmissiveLightSample(cellIdx, wsUnpackUV(cell.payload), sd, cellLs);
+                            cellOk = rebuildEmissiveLightSample(cellIdx, unpackUV(cell.payload), sd, cellLs);
                         else if (cellType == (uint)LightType::Analytic)
-                            cellOk = wsRebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
+                            cellOk = rebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
                         else if (cellType == (uint)LightType::EnvMap)
-                            cellOk = wsRebuildEnvMapLightSample(cell.payload, sd, cellLs);
+                            cellOk = rebuildEnvMapLightSample(cell.payload, sd, cellLs);
                         if (!cellOk) continue;
 
                         // Hemisphere check matching legacy NEE: accept reflection
@@ -1635,22 +1512,22 @@ struct PathTracer
                         // already pdf-divided. Works for Dirac lights.
                         float pHatCell    = luminance(cellLr);
                         if (pHatCell <= 0.f) continue;
-                        if (cellType != (uint)LightType::EnvMap && wsVisInPHatMode() != 0u)
+                        if (cellType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
                         {
                             Ray vrayC = cellLs.getVisibilityRay();
                             float vC = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
-                            if (wsVisInPHatMode() == 1u)
+                            if (visInPHatMode() == 1u)
                                 vC = vq.traceVisibilityRayCV(vrayC, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
                             else
                                 vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
 #else
                             vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
 #endif
-                            pHatCell *= max(vC, wsLightMuMin());
+                            pHatCell *= max(vC, lightMuMin());
                         }
 
-                        // Cell read mode (gWSCellReservoirMerge):
+                        // Cell read mode (gCellReservoirMerge):
                         //   0 (default) — IDENTITY hint: add cell.{lightTypeIndex,payload}
                         //     as ONE single RIS candidate at the local pixel's pHat. Per-pixel
                         //     W stays local; avoids spatial-block artifacts from inherited W.
@@ -1658,9 +1535,9 @@ struct PathTracer
                         //     fold the cell as an aggregated reservoir. World-space analog
                         //     of the per-pixel temporal/spatial reservoir; no reprojection
                         //     needed (cell ID is camera-invariant). Used by `restir_3d`.
-                        if (gWSCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
+                        if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
-                            float Mcap = min(cell.M, gWSMCap);
+                            float Mcap = min(cell.M, gMCap);
                             float w    = pHatCell * cell.W * Mcap;
                             if (w > 0.f && !isnan(w))
                             {
@@ -1684,39 +1561,39 @@ struct PathTracer
                     }
 
                     // (2.5) Per-pixel temporal+spatial reservoir layer.
-                    // Active only when enableWSPixelReservoir=True (default);
-                    // disabled by setting wsPixelReservoirEnabled() to false
+                    // Active only when enablePixelReservoir=True (default);
+                    // disabled by setting pixelReservoirEnabled() to false
                     // for pure-WS-cell-only ablation. Provides the screen-
                     // space spatial diversity that cell jittered queries
                     // cannot replicate (close cells share popular winners,
                     // close pixels' reservoirs picked diverse winners).
-                    if (wsPixelReservoirEnabled())
+                    if (pixelReservoirEnabled())
                     {
                         // ----- temporal: read self ----------------------------------
                         // Normal-aware rejection: if last frame's reservoir came
                         // from a different surface (silhouette / camera moved
                         // across an edge), skip. Cos threshold 0.9 ≈ 26°.
                         const float kWSNormalCos = 0.5f;   // RTXDI's normalThreshold default — looser angular reject (60° vs 26°), more spatial reuse
-                        uint pIdx = wsPixelIndex(path.getPixel());
-                        WSReservoir prev = gWSPixelReservoirs[pIdx];
+                        uint pIdx = pixelIndex(path.getPixel());
+                        Reservoir prev = gPixelReservoirs[pIdx];
                         bool prevNormalOk = true;
                         if (prev.normalOct != 0u)
                         {
-                            float3 prevN = wsUnpackDirOct(prev.normalOct);
+                            float3 prevN = unpackDirOct(prev.normalOct);
                             prevNormalOk = (dot(sd.faceN, prevN) >= kWSNormalCos);
                         }
                         if (prevNormalOk && prev.M > 0.f && prev.fingerprint != 0u)
                         {
-                            uint prevType = wsUnpackLightType(prev.lightTypeIndex);
-                            uint prevIdx  = wsUnpackLightIndex(prev.lightTypeIndex);
+                            uint prevType = unpackLightType(prev.lightTypeIndex);
+                            uint prevIdx  = unpackLightIndex(prev.lightTypeIndex);
                             LightSample prevLs;
                             bool prevOk = false;
                             if (prevType == (uint)LightType::Emissive)
-                                prevOk = wsRebuildEmissiveLightSample(prevIdx, wsUnpackUV(prev.payload), sd, prevLs);
+                                prevOk = rebuildEmissiveLightSample(prevIdx, unpackUV(prev.payload), sd, prevLs);
                             else if (prevType == (uint)LightType::Analytic)
-                                prevOk = wsRebuildAnalyticLightSample(prevIdx, sd, path.sg, prevLs);
+                                prevOk = rebuildAnalyticLightSample(prevIdx, sd, path.sg, prevLs);
                             else if (prevType == (uint)LightType::EnvMap)
-                                prevOk = wsRebuildEnvMapLightSample(prev.payload, sd, prevLs);
+                                prevOk = rebuildEnvMapLightSample(prev.payload, sd, prevLs);
                             if (prevOk)
                             {
                                 float NdotL_prev = dot(sd.faceN, prevLs.dir);
@@ -1745,7 +1622,7 @@ struct PathTracer
                                     // RayTraced — unbiased, expensive). Mode 2=CacheCV (cheap CV+RRR via
                                     // cache, same PT-canonical knobs as the regular shadow gate). Env-map
                                     // samples have no finite-distance V — skip retrace for them.
-                                    uint reuseMode = wsRetraceOnReuseMode();
+                                    uint reuseMode = retraceOnReuseMode();
                                     if (reuseMode != 0u && prevType != (uint)LightType::EnvMap && pHatPrev > 0.f)
                                     {
                                         Ray vrayR = prevLs.getVisibilityRay();
@@ -1774,7 +1651,7 @@ struct PathTracer
                                     }
                                     if (pHatPrev > 0.f)
                                     {
-                                        float Mcap = min(prev.M, gWSMCap);
+                                        float Mcap = min(prev.M, gMCap);
                                         float w    = pHatPrev * prev.W * Mcap;
                                         if (w > 0.f && !isnan(w))
                                         {
@@ -1792,14 +1669,14 @@ struct PathTracer
                             }
                         }
                         // ----- spatial: gather K random neighbour pixels -----------
-                        // gWSSpatialPixelsK / gWSSpatialPixelsRadius are runtime
-                        // knobs (Python-tunable via wsSpatialPixelsK + Radius).
+                        // gSpatialPixelsK / gSpatialPixelsRadius are runtime
+                        // knobs (Python-tunable via spatialPixelsK + Radius).
                         // Defaults 4 / 32 match RTXDI's 1-round k≈4-5; bumping
                         // K is the primary lever for testing the multi-round
                         // gap (more candidates per round) without an extra
                         // dispatch.
-                        const uint kSpatialPixels = gWSSpatialPixelsK;
-                        const int  kSpatialRadius = (int)gWSSpatialPixelsRadius;
+                        const uint kSpatialPixels = gSpatialPixelsK;
+                        const int  kSpatialRadius = (int)gSpatialPixelsRadius;
                         uint2 px = path.getPixel();
                         for (uint s = 0u; s < kSpatialPixels; ++s)
                         {
@@ -1808,27 +1685,27 @@ struct PathTracer
                             if (off.x == 0 && off.y == 0) continue;
                             int2 npx = int2(px) + off;
                             if (npx.x < 0 || npx.y < 0 ||
-                                uint(npx.x) >= gWSFrameDimX || uint(npx.y) >= gWSFrameDimY) continue;
-                            uint nIdx = uint(npx.y) * gWSFrameDimX + uint(npx.x);
-                            WSReservoir nbr = gWSPixelReservoirs[nIdx];
+                                uint(npx.x) >= gFrameDimX || uint(npx.y) >= gFrameDimY) continue;
+                            uint nIdx = uint(npx.y) * gFrameDimX + uint(npx.x);
+                            Reservoir nbr = gPixelReservoirs[nIdx];
                             if (nbr.M <= 0.f || nbr.fingerprint == 0u) continue;
                             // Normal-aware rejection: skip neighbours whose
                             // surface diverged. 0.9 ≈ 26° matches RTXDI default.
                             if (nbr.normalOct != 0u)
                             {
-                                float3 nbrN = wsUnpackDirOct(nbr.normalOct);
+                                float3 nbrN = unpackDirOct(nbr.normalOct);
                                 if (dot(sd.faceN, nbrN) < kWSNormalCos) continue;
                             }
-                            uint nbrType = wsUnpackLightType(nbr.lightTypeIndex);
-                            uint nbrIdx  = wsUnpackLightIndex(nbr.lightTypeIndex);
+                            uint nbrType = unpackLightType(nbr.lightTypeIndex);
+                            uint nbrIdx  = unpackLightIndex(nbr.lightTypeIndex);
                             LightSample nbrLs;
                             bool nbrOk = false;
                             if (nbrType == (uint)LightType::Emissive)
-                                nbrOk = wsRebuildEmissiveLightSample(nbrIdx, wsUnpackUV(nbr.payload), sd, nbrLs);
+                                nbrOk = rebuildEmissiveLightSample(nbrIdx, unpackUV(nbr.payload), sd, nbrLs);
                             else if (nbrType == (uint)LightType::Analytic)
-                                nbrOk = wsRebuildAnalyticLightSample(nbrIdx, sd, path.sg, nbrLs);
+                                nbrOk = rebuildAnalyticLightSample(nbrIdx, sd, path.sg, nbrLs);
                             else if (nbrType == (uint)LightType::EnvMap)
-                                nbrOk = wsRebuildEnvMapLightSample(nbr.payload, sd, nbrLs);
+                                nbrOk = rebuildEnvMapLightSample(nbr.payload, sd, nbrLs);
                             if (!nbrOk) continue;
                             float NdotL_n = dot(sd.faceN, nbrLs.dir);
                             bool hasReflN  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
@@ -1847,7 +1724,7 @@ struct PathTracer
                             // Works for Dirac lights.
                             float pHatN = luminance(nbrW3 * nbrLs.Li);
                             // §9.4 layer (b) — retrace V on spatial reuse. See temporal block above.
-                            uint reuseModeN = wsRetraceOnReuseMode();
+                            uint reuseModeN = retraceOnReuseMode();
                             if (reuseModeN != 0u && nbrType != (uint)LightType::EnvMap && pHatN > 0.f)
                             {
                                 Ray vrayN = nbrLs.getVisibilityRay();
@@ -1874,7 +1751,7 @@ struct PathTracer
                                 pHatN *= vN;
                             }
                             if (pHatN <= 0.f) continue;
-                            float Mcn = min(nbr.M, gWSMCap);
+                            float Mcn = min(nbr.M, gMCap);
                             float wn  = pHatN * nbr.W * Mcn;
                             if (wn <= 0.f || isnan(wn)) continue;
                             local.wSum += wn;
@@ -1895,16 +1772,16 @@ struct PathTracer
                     // small numerical drift that biases the metric vs vanilla.
                     if (local.M > 1.f && local.targetPdf > 0.f)
                     {
-                        uint winnerType = wsUnpackLightType(local.lightTypeIndex);
-                        uint winnerIdx  = wsUnpackLightIndex(local.lightTypeIndex);
+                        uint winnerType = unpackLightType(local.lightTypeIndex);
+                        uint winnerIdx  = unpackLightIndex(local.lightTypeIndex);
                         LightSample winnerLs;
                         bool winnerOk = false;
                         if (winnerType == (uint)LightType::Emissive)
-                            winnerOk = wsRebuildEmissiveLightSample(winnerIdx, wsUnpackUV(local.payload), sd, winnerLs);
+                            winnerOk = rebuildEmissiveLightSample(winnerIdx, unpackUV(local.payload), sd, winnerLs);
                         else if (winnerType == (uint)LightType::Analytic)
-                            winnerOk = wsRebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
+                            winnerOk = rebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
                         else if (winnerType == (uint)LightType::EnvMap)
-                            winnerOk = wsRebuildEnvMapLightSample(local.payload, sd, winnerLs);
+                            winnerOk = rebuildEnvMapLightSample(local.payload, sd, winnerLs);
 
                         if (winnerOk)
                         {
@@ -1932,10 +1809,10 @@ struct PathTracer
 
                     // (4) Stream the per-pixel local into the home cell with M-cap
                     // accumulation. The cell aggregates across frames (M grows to
-                    // gWSMCap) so its identity converges to the popular sample for
+                    // gMCap) so its identity converges to the popular sample for
                     // the region. Read side only consumes identity; the cell's
                     // M/W are bookkeeping for this write-side reservoir merge.
-                    wsMergeIntoCell(homeAddr, local, path.sg);
+                    mergeIntoCell(homeAddr, local, path.sg);
 
                     // (Pool write-back: now done at candidate-generation time
                     //  with per-entry sourcePdf — see (1) and (1b) above.
@@ -1945,22 +1822,22 @@ struct PathTracer
 
                     // (5) Persist the merged local back to the per-pixel
                     // reservoir for next frame's temporal reuse. Active when
-                    // wsPixelReservoirEnabled() returns true.
-                    if (wsPixelReservoirEnabled() && local.M > 0.f && local.targetPdf > 0.f)
+                    // pixelReservoirEnabled() returns true.
+                    if (pixelReservoirEnabled() && local.M > 0.f && local.targetPdf > 0.f)
                     {
-                        uint pIdx = wsPixelIndex(path.getPixel());
-                        WSReservoir px = wsReservoirInit(0xFFFFFFFFu);
+                        uint pIdx = pixelIndex(path.getPixel());
+                        Reservoir px = reservoirInit(0xFFFFFFFFu);
                         px.lightTypeIndex   = local.lightTypeIndex;
                         px.payload          = local.payload;
                         px.targetPdf        = local.targetPdf;
-                        px.M                = min(local.M, gWSMCap);
+                        px.M                = min(local.M, gMCap);
                         px.W                = local.wSum / max(local.targetPdf * local.M, 1e-12f);
                         px.frameLastUpdated = gFrameCount;
                         // Stamp the shading normal so spatial gather can reject
                         // neighbours whose surface diverged (silhouette / sharp
                         // crease). Standard ReSTIR variance-reduction technique.
-                        px.normalOct        = wsPackDirOct(sd.faceN);
-                        gWSPixelReservoirs[pIdx] = px;
+                        px.normalOct        = packDirOct(sd.faceN);
+                        gPixelReservoirs[pIdx] = px;
                     }
 #endif // !WS_CELL_POOL_FILL_ONLY
 
@@ -2000,21 +1877,21 @@ struct PathTracer
                     float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
 #endif
                     if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
-                    bool wsChosenVisible = visWeight > 0.f;
+                    bool chosenVisible = visWeight > 0.f;
 #else
                     bool visible = vq.traceVisibilityRay(ray);
                     if (visible) addToPathContribution(path, Lr);
-                    bool wsChosenVisible = visible;
+                    bool chosenVisible = visible;
 #endif
 
 #if USE_WS_RESERVOIRS
                     // §9.4 LOCK-IN BREAK: V=0 invalidation of per-pixel reservoir.
-                    // Active when wsPixelReservoirEnabled() returns true.
-                    if (path.getVertexIndex() == 1 && wsEnabled() && wsPixelReservoirEnabled()
-                        && !wsChosenVisible && (isEmissive || isAnalytic || isEnv))
+                    // Active when pixelReservoirEnabled() returns true.
+                    if (path.getVertexIndex() == 1 && enabled() && pixelReservoirEnabled()
+                        && !chosenVisible && (isEmissive || isAnalytic || isEnv))
                     {
-                        uint pIdx = wsPixelIndex(path.getPixel());
-                        gWSPixelReservoirs[pIdx] = wsReservoirInit(0u);
+                        uint pIdx = pixelIndex(path.getPixel());
+                        gPixelReservoirs[pIdx] = reservoirInit(0u);
                     }
 #endif
                 }

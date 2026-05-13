@@ -17,13 +17,13 @@
 import RenderPasses.ReSTIRPTPass.PathReservoir;
 import RenderPasses.ReSTIRPTPass.PathReservoirCellPool;
 import RenderPasses.ReSTIRPTPass.LightPool;
-import RenderPasses.VisCache.WSCellPool;   // for the WSCellPool struct used in lightPool buffer
+import RenderPasses.VisCache.CellPool;   // for the CellPool struct used in lightPool buffer
 
 StructuredBuffer<PathReservoir> outputReservoirs;
 StructuredBuffer<PixelReconnectionData> reconnectionDataBuffer;
 StructuredBuffer<PathReuseMISWeight> misWeightBuffer;
 StructuredBuffer<PathReservoirCellSlot> pathReservoirCellPool;
-StructuredBuffer<WSCellPool> lightPool;
+StructuredBuffer<CellPool> lightPool;
 
 void main() {}
 

@@ -3,7 +3,7 @@
  *
  * World-cell-keyed PathReservoir storage for restirpt_3d (Task #14/#15).
  *
- * Mirrors the design of `Source/RenderPasses/VisCache/WSCellPool.slang`
+ * Mirrors the design of `Source/RenderPasses/VisCache/CellPool.slang`
  * (DI side) but stores PathReservoir per cell instead of DI-proposal slots.
  *
  * Why this exists:
@@ -34,7 +34,7 @@
  **************************************************************************/
 #pragma once
 import PathReservoir;
-// pcgHashEndpoint — pure int hash, shared with VisCache + WSCellPool to align
+// pcgHashEndpoint — pure int hash, shared with VisCache + CellPool to align
 // restirpt_3d's cell-keyed pool with the same hash family used elsewhere in the
 // world-space caching machinery.
 import RenderPasses.VisCache.VisCache;
@@ -86,7 +86,7 @@ PathReservoirCellSlot prCellSlotInit()
 /// the pool's fingerprint field at frame start refreshes claims; see
 /// ReSTIRPTPass.cpp::execute().
 // Salts: unique per role (slot vs fingerprint) and disjoint from VisCache's
-// kSaltA/B/Dist (visibility cache) and WSReservoir's kWSFpSalt (DI reservoir
+// kSaltA/B/Dist (visibility cache) and Reservoir's kWSFpSalt (DI reservoir
 // fingerprint). Keeps the global pcgHash hash space partitioned.
 static const uint kPRCellSlotSalt = 0x7E5C2A11u;
 static const uint kPRCellFpSalt   = 0xB3F19DC7u;
@@ -129,7 +129,7 @@ uint3 prPcg3d(uint3 v)
 ///   level            = ceil(log2(target_cell / baseCell))
 ///
 /// where K = kFootprintCellsPerPx (default 16, matches VisCache's typical
-/// gWSCellPoolFootprintPx). baseCell = sceneRadius * 0.01 (level-0 cell).
+/// gCellPoolFootprintPx). baseCell = sceneRadius * 0.01 (level-0 cell).
 ///
 /// d = distance from camera to primary-hit posW.
 /// frameHeight / focalLength = vertical sensor extent / lens length, which
@@ -228,11 +228,11 @@ float prCellSize(float sceneRadius, uint level)
 }
 
 /// Compute (q, nb) from world-space primary-hit pos + face normal at a
-/// given cascade level. nb is the 6-axis hemicube (shared wsNormalBin).
+/// given cascade level. nb is the 6-axis hemicube (shared normalBin).
 void prCellQuantize(float3 posW, float3 faceN, float sceneRadius, uint level, out int3 q, out uint nb)
 {
     q = int3(floor(posW / prCellSize(sceneRadius, level)));
-    nb = wsNormalBin(faceN);
+    nb = normalBin(faceN);
 }
 
 // Level-0 wrapper for back-compat.

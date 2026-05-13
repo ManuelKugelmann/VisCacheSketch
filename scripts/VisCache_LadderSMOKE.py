@@ -6,7 +6,7 @@ VisCache_LadderSMOKE.py — smoke tests before committing to stages D-F:
   RTXDI RayTraced reference      : Sponza + BistroInt, BiasCorrection::RayTraced
 
   (B — μ-NEE — deferred. The PathTracer slang gates μ-folding on
-  `wsVisInPHat != 0`, not on `enableVisCacheLightSelection`, so the prior
+  `visInPHat != 0`, not on `enableVisCacheLightSelection`, so the prior
   test was a no-op. Real μ-NEE evaluation is part of c1+c2+c3 — see
   LADDER_PLAN.md "Stage D layered framework".)
 
@@ -52,18 +52,18 @@ PT_CANONICAL_VC = {
 
 # Common WS-ReSTIR canonical knobs (mirror _run_baseline_restir's recipe).
 WSRESTIR_KW = dict(
-    viscache=True, wsReservoirs=True, maxBounces=0, useJitter=True,
-    wsInitialCandidates=32, wsMCap=5.0,
-    wsSpatialNeighbours=0, wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,
-    wsCellPool=True, wsCellPoolDrawK=16, wsCellPoolPrePass=True,
-    wsVisInPHat=0,
+    viscache=True, reservoirs=True, maxBounces=0, useJitter=True,
+    initialCandidates=32, mCap=5.0,
+    spatialNeighbours=0, spatialPixelsK=1, spatialPixelsRadius=30,
+    cellPool=True, cellPoolDrawK=16, wsCellPoolPrePass=True,
+    visInPHat=0,
     prePassEmissiveSampler="PdfMipmap",
-    wsPoolAddrMode=1, wsPoolTileSize=16,                # 2D pool (matches restir_2d)
+    poolAddrMode=1, poolTileSize=16,                # 2D pool (matches restir_2d)
 )
 WSRESTIR_VC = {
-    "wsUseCellInRIS": False,
-    "enableWSPixelReservoir": True,
-    "wsCellReservoirMerge": 0,
+    "useCellInRIS": False,
+    "enablePixelReservoir": True,
+    "cellReservoirMerge": 0,
     **PT_CANONICAL_VC,                                  # PT-DI canonical cache config layered on top
 }
 
@@ -96,23 +96,23 @@ for scene_file in get_scenes(default=["Sponza"]):
 
     # === restir_2d / restir_3d strict-mode equivalents ===
     # Our 2D-tile and 3D-cell pool variants with retrace-on-reuse ENABLED.
-    # `wsRetraceOnReuseMode=1` (FullTrace) ≡ RTXDI BiasCorrection::RayTraced —
+    # `retraceOnReuseMode=1` (FullTrace) ≡ RTXDI BiasCorrection::RayTraced —
     # re-traces V at the temporal/spatial reservoir merge sites in
     # PathTracer.slang. Compares against the same scene's restir_2d_vblind /
     # restir_3d_vblind (Basic-equivalents) and the rtxdi_raytraced reference.
-    # `wsRetraceOnReuseMode=2` (CacheCV) is the cheap CV+RRR variant — same
+    # `retraceOnReuseMode=2` (CacheCV) is the cheap CV+RRR variant — same
     # unbiasedness via cache CV+RRR, lower ray cost.
     if scene_name in ("Sponza", "BistroInterior"):
         for retrace_mode in (1, 2):
             run_baseline_restir_2d(
                 STEP, [(0, 0, 1)], scene_file, resX=res, resY=res,
                 capture_spps=(4,), mogwai_globals=globals(),
-                wsRetraceOnReuseMode=retrace_mode,
+                retraceOnReuseMode=retrace_mode,
             )
             run_baseline_restir_3d(
                 STEP, [(0, 0, 1)], scene_file, resX=res, resY=res,
                 capture_spps=(4,), mogwai_globals=globals(),
-                wsRetraceOnReuseMode=retrace_mode,
+                retraceOnReuseMode=retrace_mode,
             )
 
     # === A: multibounce + cache (Sponza only; has vanilla_b{1,4} GT) ===

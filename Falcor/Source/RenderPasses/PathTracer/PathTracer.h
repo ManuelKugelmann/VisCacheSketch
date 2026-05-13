@@ -131,7 +131,6 @@ private:
         float       misPowerExponent = 2.f;                     ///< MIS exponent for the power heuristic. This is only used when 'PowerExp' is chosen.
         EmissiveLightSamplerType emissiveSampler = EmissiveLightSamplerType::LightBVH;  ///< Emissive light sampler to use for NEE.
         bool        useRTXDI = false;                           ///< Use RTXDI for direct illumination.
-        bool        useRestirPT = false;                        ///< Enable ReSTIR-PT path-reservoir reuse (restirpt_2d). v1: per-pixel addressing, parity target = Source/RenderPasses/ReSTIRPTPass/.
 
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
@@ -185,9 +184,6 @@ private:
     bool                            mOptionsChanged = false;    ///< True if the config has changed since last frame.
     bool                            mGBufferAdjustShadingNormals = false; ///< True if GBuffer/VBuffer has adjusted shading normals enabled.
     bool                            mFixedSampleCount = true;   ///< True if a fixed sample count per pixel is used. Otherwise load it from the pass sample count input.
-    bool                            mWSCellPoolFillOnly = false; ///< §9.4 Step (b): when true, this PathTracer instance only fills the
-                                                                 ///< WS cell pool (K-RIS + insert) and skips shading. Used as a pre-pass
-                                                                 ///< before the main render PathTracer instance reads the populated pool.
     bool                            mOutputGuideData = false;   ///< True if guide data should be generated as outputs.
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mOutputNRDAdditionalData = false;   ///< True if NRD data from delta and residual paths should be generated as designated outputs rather than being included in specular NRD outputs.
@@ -208,79 +204,4 @@ private:
     ref<Buffer>                     mpSampleNRDPrimaryHitNeeOnDelta;///< Compact per-sample NEE on delta primary vertices data.
     ref<Buffer>                     mpSampleNRDEmission;        ///< Compact per-sample NRD emission data.
     ref<Buffer>                     mpSampleNRDReflectance;     ///< Compact per-sample NRD reflectance data.
-
-    // VisCache integration — hash table + cbuffer from InternalDictionary.
-    ref<Buffer> mpVHFTable;      ///< RWStructuredBuffer<VHFEntry> — the hash table
-    ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — bound directly to keep struct in sync
-    bool mVisCacheAvailable = false;
-    bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
-    bool mVisCacheLightSelection = false;   ///< §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR)
-    bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
-    uint32_t mVisCacheBayerN = 1;           ///< Bayer N×N gate (1=full frame, 2=2×2/4 subframes, 4=4×4/16 subframes); see Falcor/LOCAL_FIXES.md #14
-
-    // Cached cbuffer values — bound per-member because Falcor 8 ParameterBlock
-    // doesn't support whole-buffer cbuffer binding.
-    struct { uint32_t tableCapacity=0, bootThreshold=0, matureThreshold=0; float varThreshold=0, pMin=0, fireflyBudget=0;
-             uint32_t numLevels=0, flags=1;
-             float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
-             float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
-             float normalACoarse=0, normalAFine=0;
-             float bootThresholdFactorFootprintPx=0;
-             uint32_t forceDescendFootprintPx=0;
-             uint32_t cascadeWindowForward=12;
-             float stderrThreshold=0;
-             uint32_t enableHierarchicalConsistency=0;
-             float hierarchicalMuTolerance=0.2f;
-             float accelDecayDisagreeThresh=0;
-             uint32_t mlAlphaFloorN=0;
-             uint32_t bootThresholdFine=0;
-             float jitterFilter=0, jitterCell=0;
-             uint32_t diagAccumWindow=128;
-             uint32_t frameCount=0, spp=1;
-             float cameraPosX=0, cameraPosY=0, cameraPosZ=0;
-             float pixelSize1=0.001f;
-             uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
-             // §9.4 WS-ReSTIR DI cbuffer fields
-             uint32_t wsEnable=0;
-             uint32_t wsCellLevelJitter=0u;
-             uint32_t wsCapacity=0;
-             float    wsMCap=30.f;
-             uint32_t wsSpatialNeighbours=4;
-             float    wsLightMuMin=0.01f;
-             float    wsLightSoftness=1.f;
-             uint32_t wsNormalAddr=0;
-             uint32_t wsInitialCandidates=8;
-             // (wsJitter* removed — shares VisCache's gJitterFilter / gJitterCell)
-             uint32_t wsUseCellInRIS=1;
-             uint32_t wsVisInPHat=1;
-             // §9.4 WS-cascade ReGIR cell pool
-             uint32_t wsCellPoolEnable=0;
-             uint32_t wsCellPoolCapacity=0;
-             uint32_t wsCellPoolDrawK=0;
-             uint32_t wsSpatialPixelsK=4;
-             uint32_t wsSpatialPixelsRadius=32;
-             uint32_t wsPoolAddrMode=0;
-             uint32_t wsPoolTileSize=16;
-             uint32_t wsCellPoolMode=0;        // 0 = P3d, 1 = PR3d
-             float    dirSolidAngleScale=1.0f;
-             float    distSolidAngleScale=1.0f;
-             uint32_t wsCellReservoirMerge=0;
-             uint32_t wsCellPoolFootprintPx=0;
-             uint32_t wsCellReservoirFootprintPx=0;
-             uint32_t wsRetraceOnReuseMode=0; } mVCParams;
-
-    // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
-    ref<Buffer> mpVHFWSReservoirs;
-    ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
-    ref<Buffer> mpVHFWSCellPools;              ///< Multi-light cell pool — header (fingerprint, count).
-    ref<Buffer> mpVHFWSCellPoolSlots;          ///< Multi-light cell pool — flat slot buffer (split for DXC at N=1024).
-    uint32_t    mVHFPixelDimX = 0u;
-    uint32_t    mVHFPixelDimY = 0u;
-    bool        mVisCacheWSReservoirs = false; ///< Master gate read from dict.
-
-    // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
-    // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.
-    bool mVisCacheDiagnostics = false;
-    ref<Texture> mpVCAccumMeanVarMatCount, mpVCFrameMeanVarMatSamplesRaw, mpVCFrameLevelProbesSamplesCold, mpVCFrameHashAHashBHashABRays;
-    ref<Texture> mpVCAccumSaved, mpVCAccumTotal, mpVCAccumRaysNoiseErrorCold;
 };

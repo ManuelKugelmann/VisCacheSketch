@@ -25,7 +25,7 @@ NUM_FRAMES = 16
 def _build(sampler_name):
     return render_graph_PathTracer(
         viscache=False,
-        wsReservoirs=False,
+        reservoirs=False,
         maxBounces=0,
         samplesPerPixel=1,
         useJitter=True,

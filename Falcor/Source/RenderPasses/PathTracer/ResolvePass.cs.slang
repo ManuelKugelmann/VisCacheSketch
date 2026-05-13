@@ -68,8 +68,8 @@ struct ResolvePass
     RWTexture2D<float4> outputNRDDeltaTransmissionRadianceHitDist;  ///< Output resolved delta transmission radiance in .rgb and hit distance in .a for NRD. Only valid if kOutputNRDData == true.
     RWTexture2D<float4> outputNRDResidualRadianceHitDist;           ///< Output resolved residual radiance in .rgb and hit distance in .a for NRD. Only valid if kOutputNRDData == true.
 
-    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
-    static const bool kOutputNRDData = OUTPUT_NRD_DATA != 0;
+    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA;
+    static const bool kOutputNRDData = OUTPUT_NRD_DATA;
 
     /** Entry point for resolve pass.
         \param[in] pixel Pixel coordinates.
@@ -89,9 +89,7 @@ struct ResolvePass
 
         // For the special case of fixed 1 spp output, the path tracer writes directly to the output color buffer.
         // In all other cases, we need to resolve the individual samples.
-        // When spp==0 (e.g. VisCache subframe gate inactive slot), preserve the stale outputColor so the
-        // N² subframes collectively compose a dense logical frame without zeroing inactive slots.
-        if (kSamplesPerPixel != 1 && spp > 0)
+        if (kSamplesPerPixel != 1)
         {
             float3 color = float3(0.f);
 

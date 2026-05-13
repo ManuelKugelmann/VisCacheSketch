@@ -14,7 +14,7 @@ from PathTracer_Graph import render_graph_PathTracer
 
 m.addGraph(render_graph_PathTracer(
     viscache=True,
-    wsReservoirs=True,
+    reservoirs=True,
     maxBounces=0,
     samplesPerPixel=1,
     useReSTIRDIPass=True,   # the new pass under test

@@ -29,7 +29,6 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Rendering/Lights/EmissiveUniformSampler.h"
-#include "Rendering/Lights/EmissivePdfMipmapSampler.h"
 
 
 namespace
@@ -113,10 +112,6 @@ namespace
 
     // Scripting options.
     const std::string kSamplesPerPixel = "samplesPerPixel";
-    // §9.4 WS-cascade ReGIR step (b): two-pass pool fill mode. When true, the
-    // path skips shading after the K-fresh pool insert — this instance
-    // exists only to populate the cell pool for the next instance.
-    const std::string kWSCellPoolFillOnly = "wsCellPoolFillOnly";
     const std::string kMaxSurfaceBounces = "maxSurfaceBounces";
     const std::string kMaxDiffuseBounces = "maxDiffuseBounces";
     const std::string kMaxSpecularBounces = "maxSpecularBounces";
@@ -134,7 +129,6 @@ namespace
     const std::string kLightBVHOptions = "lightBVHOptions";
     const std::string kUseRTXDI = "useRTXDI";
     const std::string kRTXDIOptions = "RTXDIOptions";
-    const std::string kUseRestirPT = "useRestirPT";
 
     const std::string kUseAlphaTest = "useAlphaTest";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
@@ -220,7 +214,6 @@ void PathTracer::parseProperties(const Properties& props)
     {
         // Rendering parameters
         if (key == kSamplesPerPixel) mStaticParams.samplesPerPixel = value;
-        else if (key == kWSCellPoolFillOnly) mWSCellPoolFillOnly = value;
         else if (key == kMaxSurfaceBounces) mStaticParams.maxSurfaceBounces = value;
         else if (key == kMaxDiffuseBounces) mStaticParams.maxDiffuseBounces = value;
         else if (key == kMaxSpecularBounces) mStaticParams.maxSpecularBounces = value;
@@ -239,7 +232,6 @@ void PathTracer::parseProperties(const Properties& props)
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kUseRTXDI) mStaticParams.useRTXDI = value;
         else if (key == kRTXDIOptions) mRTXDIOptions = value;
-        else if (key == kUseRestirPT) mStaticParams.useRestirPT = value;
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
@@ -347,7 +339,6 @@ Properties PathTracer::getProperties() const
 
     // Rendering parameters
     props[kSamplesPerPixel] = mStaticParams.samplesPerPixel;
-    props[kWSCellPoolFillOnly] = mWSCellPoolFillOnly;
     props[kMaxSurfaceBounces] = mStaticParams.maxSurfaceBounces;
     props[kMaxDiffuseBounces] = mStaticParams.maxDiffuseBounces;
     props[kMaxSpecularBounces] = mStaticParams.maxSpecularBounces;
@@ -366,7 +357,6 @@ Properties PathTracer::getProperties() const
     if (mStaticParams.emissiveSampler == EmissiveLightSamplerType::LightBVH) props[kLightBVHOptions] = mLightBVHOptions;
     props[kUseRTXDI] = mStaticParams.useRTXDI;
     props[kRTXDIOptions] = mRTXDIOptions;
-    props[kUseRestirPT] = mStaticParams.useRestirPT;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
@@ -431,7 +421,6 @@ void PathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScen
 
     mpScene = pScene;
     mParams.frameCount = 0;
-    mParams.subframeIdx = 0;
     mParams.frameDim = {};
     mParams.screenTiles = {};
 
@@ -469,40 +458,26 @@ void PathTracer::execute(RenderContext* pRenderContext, const RenderData& render
     // This should be called after all resources have been created.
     preparePathTracer(renderData);
 
-    // Subframe loop: for VISCACHE_BAYER_N>1 we split a logical frame into N²
-    // Bayer-interleaved sub-dispatches. Downstream passes see a fully-populated
-    // frame after all N² iterations; resolve + endFrame run once at the end.
-    const uint32_t kSubframeCount = mVisCacheBayerN * mVisCacheBayerN;
-    for (uint32_t sf = 0; sf < kSubframeCount; ++sf)
+    // Generate paths at primary hits.
+    generatePaths(pRenderContext, renderData);
+
+    // Update RTXDI.
+    if (mpRTXDI)
     {
-        mParams.subframeIdx = sf;
-        if (sf > 0) preparePathTracer(renderData);  // re-upload cbuffer with new subframeIdx
+        const auto& pMotionVectors = renderData.getTexture(kInputMotionVectors);
+        mpRTXDI->update(pRenderContext, pMotionVectors);
+    }
 
-        // Generate paths at primary hits.
-        generatePaths(pRenderContext, renderData);
+    // Trace pass.
+    FALCOR_ASSERT(mpTracePass);
+    tracePass(pRenderContext, renderData, *mpTracePass);
 
-        // Update RTXDI.
-        // TODO: RTXDI is subframe-unaware — update() runs N² times per logical
-        // frame and its temporal reservoirs see sparse per-subframe coverage.
-        // Either move update() outside the loop (once per logical frame on fully
-        // populated sample buffer) or teach RTXDI the Bayer subframe pattern.
-        if (mpRTXDI)
-        {
-            const auto& pMotionVectors = renderData.getTexture(kInputMotionVectors);
-            mpRTXDI->update(pRenderContext, pMotionVectors);
-        }
-
-        // Trace pass.
-        FALCOR_ASSERT(mpTracePass);
-        tracePass(pRenderContext, renderData, *mpTracePass);
-
-        // Launch separate passes to trace delta reflection and transmission paths to generate respective guide buffers.
-        if (mOutputNRDAdditionalData)
-        {
-            FALCOR_ASSERT(mpTraceDeltaReflectionPass && mpTraceDeltaTransmissionPass);
-            tracePass(pRenderContext, renderData, *mpTraceDeltaReflectionPass);
-            tracePass(pRenderContext, renderData, *mpTraceDeltaTransmissionPass);
-        }
+    // Launch separate passes to trace delta reflection and transmission paths to generate respective guide buffers.
+    if (mOutputNRDAdditionalData)
+    {
+        FALCOR_ASSERT(mpTraceDeltaReflectionPass && mpTraceDeltaTransmissionPass);
+        tracePass(pRenderContext, renderData, *mpTraceDeltaReflectionPass);
+        tracePass(pRenderContext, renderData, *mpTraceDeltaTransmissionPass);
     }
 
     // Resolve pass.
@@ -718,7 +693,6 @@ bool PathTracer::onMouseEvent(const MouseEvent& mouseEvent)
 void PathTracer::reset()
 {
     mParams.frameCount = 0;
-    mParams.subframeIdx = 0;
 }
 
 PathTracer::TracePass::TracePass(ref<Device> pDevice, const std::string& name, const std::string& passDefine, const ref<Scene>& pScene, const DefineList& defines, const TypeConformanceList& globalTypeConformances)
@@ -1040,9 +1014,6 @@ bool PathTracer::prepareLighting(RenderContext* pRenderContext)
             case EmissiveLightSamplerType::Power:
                 mpEmissiveSampler = std::make_unique<EmissivePowerSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
                 break;
-            case EmissiveLightSamplerType::PdfMipmap:
-                mpEmissiveSampler = std::make_unique<EmissivePdfMipmapSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
-                break;
             default:
                 FALCOR_THROW("Unknown emissive light sampler type");
             }
@@ -1231,157 +1202,6 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         mRecompile = true;
     }
 
-    // -----------------------------------------------------------------
-    // Read VisCache resources from upstream VisCache pass (if connected).
-    // Both the hash table buffer and params cbuffer must be present.
-    // -----------------------------------------------------------------
-    {
-        bool wasAvailable = mVisCacheAvailable;
-        bool wasVisCheck = mVisCacheVisibilityCheck;
-        bool wasLightSel = mVisCacheLightSelection;
-        bool wasDirDist = mVisCacheDirDistAddr;
-        uint32_t wasBayerN = mVisCacheBayerN;
-        mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
-        mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
-        mVisCacheAvailable = (mpVHFTable != nullptr && mpVHFParamsCB != nullptr &&
-            dict.keyExists("vhfParam_tableCapacity"));
-        if (mVisCacheAvailable)
-        {
-            mVCParams.tableCapacity  = dict.getValue<uint32_t>("vhfParam_tableCapacity");
-            mVCParams.bootThreshold  = dict.getValue<uint32_t>("vhfParam_bootThreshold");
-            mVCParams.matureThreshold = dict.getValue<uint32_t>("vhfParam_matureThreshold");
-            mVCParams.varThreshold   = dict.getValue<float>("vhfParam_varThreshold");
-            mVCParams.pMin           = dict.getValue<float>("vhfParam_pMin");
-            mVCParams.fireflyBudget  = dict.getValue<float>("vhfParam_fireflyBudget");
-            mVCParams.numLevels      = dict.getValue<uint32_t>("vhfParam_numLevels");
-            mVCParams.flags          = dict.getValue<uint32_t>("vhfParam_flags");
-            mVCParams.posACoarse    = dict.getValue<float>("vhfParam_posACoarse");
-            mVCParams.posAFine      = dict.getValue<float>("vhfParam_posAFine");
-            mVCParams.posBCoarse    = dict.getValue<float>("vhfParam_posBCoarse");
-            mVCParams.posBFine      = dict.getValue<float>("vhfParam_posBFine");
-            mVCParams.dirBCoarse = dict.getValue<float>("vhfParam_dirBCoarse");
-            mVCParams.dirBFine   = dict.getValue<float>("vhfParam_dirBFine");
-            mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
-            mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
-            mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
-            mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
-            mVCParams.bootThresholdFactorFootprintPx = dict.getValue<float>("vhfParam_bootThresholdFactorFootprintPx");
-            // New cbuffer fields — must be present in vhfParam_* dict for downstream binding.
-            // Use keyExists() guards for backward compat with older VisCache pass versions.
-            auto getU = [&](const char* k, uint32_t def) { return dict.keyExists(k) ? dict.getValue<uint32_t>(k) : def; };
-            auto getF = [&](const char* k, float def)    { return dict.keyExists(k) ? dict.getValue<float>(k)    : def; };
-            mVCParams.forceDescendFootprintPx       = getU("vhfParam_forceDescendFootprintPx", 0u);
-            mVCParams.cascadeWindowForward          = getU("vhfParam_cascadeWindowForward", 12u);
-            mVCParams.stderrThreshold               = getF("vhfParam_stderrThreshold", 0.f);
-            mVCParams.enableHierarchicalConsistency = getU("vhfParam_enableHierarchicalConsistency", 0u);
-            mVCParams.hierarchicalMuTolerance       = getF("vhfParam_hierarchicalMuTolerance", 0.2f);
-            mVCParams.accelDecayDisagreeThresh      = getF("vhfParam_accelDecayDisagreeThresh", 0.f);
-            mVCParams.mlAlphaFloorN                 = getU("vhfParam_mlAlphaFloorN", 0u);
-            mVCParams.bootThresholdFine             = getU("vhfParam_bootThresholdFine", 0u);
-            mVCParams.jitterFilter   = getF("vhfParam_jitterFilter", 0.f);
-            mVCParams.jitterCell     = getF("vhfParam_jitterCell",   0.f);
-            mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
-            // Per-frame fields (camera + frame counter) populated each frame
-            // by VisCache::execute() — read from same dict.
-            mVCParams.frameCount   = getU("vhfParam_frameCount", 0u);
-            mVCParams.spp          = getU("vhfParam_spp", 1u);
-            mVCParams.cameraPosX   = getF("vhfParam_cameraPosX", 0.f);
-            mVCParams.cameraPosY   = getF("vhfParam_cameraPosY", 0.f);
-            mVCParams.cameraPosZ   = getF("vhfParam_cameraPosZ", 0.f);
-            mVCParams.pixelSize1   = getF("vhfParam_pixelSize1", 0.001f);
-            mVCParams.bayerN       = getU("vhfParam_bayerN", 1u);
-            mVCParams.warmupFirst  = getU("vhfParam_warmupFirst", 0u);
-            mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
-            // §9.4 WS-ReSTIR DI cbuffer fields
-            mVCParams.wsEnable            = getU("vhfParam_wsEnable", 0u);
-            mVCParams.wsCellLevelJitter   = getU("vhfParam_wsCellLevelJitter", 0u);
-            mVCParams.wsCapacity          = getU("vhfParam_wsCapacity", 0u);
-            mVCParams.wsMCap              = getF("vhfParam_wsMCap", 30.f);
-            mVCParams.wsSpatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
-            mVCParams.wsLightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
-            mVCParams.wsLightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
-            mVCParams.wsNormalAddr        = getU("vhfParam_wsNormalAddr", 0u);
-            mVCParams.wsInitialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
-            // (wsJitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
-            mVCParams.wsUseCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
-            mVCParams.wsVisInPHat         = getU("vhfParam_wsVisInPHat", 1u);
-            // §9.4 WS-cascade ReGIR cell-pool cbuffer fields
-            mVCParams.wsCellPoolEnable    = getU("vhfParam_wsCellPoolEnable", 0u);
-            mVCParams.wsCellPoolCapacity  = getU("vhfParam_wsCellPoolCapacity", 0u);
-            mVCParams.wsCellPoolDrawK     = getU("vhfParam_wsCellPoolDrawK", 0u);
-            mVCParams.wsSpatialPixelsK      = getU("vhfParam_wsSpatialPixelsK", 4u);
-            mVCParams.wsSpatialPixelsRadius = getU("vhfParam_wsSpatialPixelsRadius", 32u);
-            mVCParams.wsPoolAddrMode        = getU("vhfParam_wsPoolAddrMode", 0u);
-            mVCParams.wsPoolTileSize        = getU("vhfParam_wsPoolTileSize", 16u);
-            mVCParams.wsCellPoolMode        = getU("vhfParam_wsCellPoolMode", 0u);
-            mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
-            mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
-            mVCParams.wsCellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
-            mVCParams.wsCellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
-            mVCParams.wsCellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
-            mVCParams.wsRetraceOnReuseMode  = getU("vhfParam_wsRetraceOnReuseMode", 0u);
-        }
-        bool wasWSReservoirs = mVisCacheWSReservoirs;
-        mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsReservoirBuffer") : nullptr;
-        mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("wsPixelReservoirBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsPixelReservoirBuffer") : nullptr;
-        mpVHFWSCellPools = (mVisCacheAvailable && dict.keyExists("wsCellPoolBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsCellPoolBuffer") : nullptr;
-        mpVHFWSCellPoolSlots = (mVisCacheAvailable && dict.keyExists("wsCellPoolSlotBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsCellPoolSlotBuffer") : nullptr;
-        mVHFPixelDimX = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimX"))
-            ? dict.getValue<uint32_t>("vhfParam_wsFrameDimX") : 0u;
-        mVHFPixelDimY = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimY"))
-            ? dict.getValue<uint32_t>("vhfParam_wsFrameDimY") : 0u;
-        mVisCacheWSReservoirs = mVisCacheAvailable
-            && dict.keyExists("vhfEnableWSReservoirs") && dict.getValue<bool>("vhfEnableWSReservoirs")
-            && mpVHFWSReservoirs != nullptr;
-        mVisCacheVisibilityCheck = mVisCacheAvailable &&
-            dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
-        mVisCacheLightSelection = mVisCacheAvailable &&
-            dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
-        mVisCacheDirDistAddr = mVisCacheAvailable && dict.keyExists("vhfEnableDirDistAddr") && dict.getValue<bool>("vhfEnableDirDistAddr");
-        mVisCacheBayerN = (mVisCacheAvailable && dict.keyExists("vhfBayerN")) ? dict.getValue<uint32_t>("vhfBayerN") : 1u;
-        if (mVisCacheBayerN != 1 && mVisCacheBayerN != 2 && mVisCacheBayerN != 4) mVisCacheBayerN = 1;
-
-        // Diagnostic textures — bound at root var like PixelStats so all RT stages
-        // can write per-pixel heatmap data inline during tracing.
-        bool wasDiag = mVisCacheDiagnostics;
-        mVisCacheDiagnostics = mVisCacheAvailable &&
-            dict.keyExists("vhfDiagEnabled") && dict.getValue<bool>("vhfDiagEnabled");
-        auto getTex = [&](const char* key) -> ref<Texture> {
-            return dict.keyExists(key) ? dict.getValue<ref<Texture>>(key) : nullptr;
-        };
-        if (mVisCacheDiagnostics)
-        {
-            mpVCAccumMeanVarMatCount   = getTex("vhfAccumMeanVarMatCount");
-            mpVCFrameMeanVarMatSamplesRaw   = getTex("vhfFrameMeanVarMatSamplesRaw");
-            mpVCFrameLevelProbesSamplesCold   = getTex("vhfFrameLevelProbesSamplesCold");
-            mpVCFrameHashAHashBHashABRays   = getTex("vhfFrameHashAHashBHashABRays");
-            mpVCAccumSaved     = getTex("vhfAccumSaved");
-            mpVCAccumTotal     = getTex("vhfAccumTotal");
-            mpVCAccumRaysNoiseErrorCold  = getTex("vhfAccumRaysNoiseErrorCold");
-        }
-        else
-        {
-            mpVCAccumMeanVarMatCount = mpVCFrameMeanVarMatSamplesRaw = mpVCFrameLevelProbesSamplesCold = mpVCFrameHashAHashBHashABRays = nullptr;
-            mpVCAccumSaved = mpVCAccumTotal = mpVCAccumRaysNoiseErrorCold = nullptr;
-        }
-
-        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
-            || mVisCacheLightSelection != wasLightSel
-            || mVisCacheDirDistAddr != wasDirDist
-            || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN
-            || mVisCacheWSReservoirs != wasWSReservoirs)
-        {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={} wsRes={}",
-                    mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheLightSelection,
-                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN, mVisCacheWSReservoirs);
-            mRecompile = true;
-        }
-    }
-
     // Check if fixed sample count should be used. When the sample count input is connected we load the count from there instead.
     mFixedSampleCount = renderData[kInputSampleCount] == nullptr;
 
@@ -1460,9 +1280,6 @@ void PathTracer::endFrame(RenderContext* pRenderContext, const RenderData& rende
     if (mpRTXDI) mpRTXDI->endFrame(pRenderContext);
 
     mVarsChanged = false;
-    // One logical frame = N² subframe dispatches (driven by execute()'s loop).
-    // Reset subframeIdx; advance logical frameCount.
-    mParams.subframeIdx = 0;
     mParams.frameCount++;
 }
 
@@ -1492,18 +1309,9 @@ void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& 
 
     if (mpRTXDI) mpRTXDI->bindShaderData(mpGeneratePaths->getRootVar());
 
-    // Launch one thread per reduced-resolution pixel when subframe gate active.
-    // At N=1 the reduced tiles equal full screenTiles; at N>1 the shader remaps
-    // its threadID via subframeRemap() to cover 1/N² of pixels per dispatch.
-    //
-    // Variable-spp (kSamplesPerPixel == 0): the shader's per-warp prefix sum packs
-    // samples assuming all threads in a group share a full tile — which reduced+remap
-    // can't guarantee at N>1. Fall back to full dispatch; shader gates spp on
-    // inactive Bayer slots (option 1 in the design notes).
-    const uint32_t N = mVisCacheBayerN;
-    const uint32_t effectiveN = (!mFixedSampleCount && N > 1) ? 1u : N;
-    const uint2 reducedTiles = (mParams.screenTiles + uint2(effectiveN - 1)) / effectiveN;
-    mpGeneratePaths->execute(pRenderContext, { reducedTiles.x * tileSize, reducedTiles.y, 1u });
+    // Launch one thread per pixel.
+    // The dimensions are padded to whole tiles to allow re-indexing the threads in the shader.
+    mpGeneratePaths->execute(pRenderContext, { mParams.screenTiles.x * tileSize, mParams.screenTiles.y, 1u });
 }
 
 void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& renderData, TracePass& tracePass)
@@ -1530,120 +1338,8 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
 
-    // -----------------------------------------------------------------
-    // Bind VisCache GPU resources when available.
-    // Cbuffer members bound individually — Falcor 8 ParameterBlock doesn't
-    // support whole-buffer cbuffer binding via setBuffer().
-    // -----------------------------------------------------------------
-    if (mVisCacheAvailable)
-    {
-        var["gVHFTable"] = mpVHFTable;
-        // NOTE: Falcor 8's setBuffer() only handles SRV/UAV — ConstantBuffer
-        // type variables can't be assigned a raw Buffer, so we must enumerate
-        // every cbuffer field. **Every field added to GPUParams + the slang
-        // cbuffer MUST also appear here**, or the shader will read 0 for it.
-        // See CLAUDE.md "Workflow → Cbuffer binding".
-        auto vc = var["VisCacheParams"];
-        vc["gTableCapacity"]                 = mVCParams.tableCapacity;
-        vc["gBootThreshold"]                 = mVCParams.bootThreshold;
-        vc["gMatureThreshold"]               = mVCParams.matureThreshold;
-        vc["gVarThreshold"]                  = mVCParams.varThreshold;
-        vc["gPMin"]                          = mVCParams.pMin;
-        vc["gFireflyBudget"]                 = mVCParams.fireflyBudget;
-        vc["gNumLevels"]                     = mVCParams.numLevels;
-        vc["gFlags"]                         = mVCParams.flags;
-        vc["gPosACoarse"]                    = mVCParams.posACoarse;
-        vc["gPosAFine"]                      = mVCParams.posAFine;
-        vc["gPosBCoarse"]                    = mVCParams.posBCoarse;
-        vc["gPosBFine"]                      = mVCParams.posBFine;
-        vc["gDirBCoarse"]                    = mVCParams.dirBCoarse;
-        vc["gDirBFine"]                      = mVCParams.dirBFine;
-        vc["gDistBCoarse"]                   = mVCParams.distBCoarse;
-        vc["gDistBFine"]                     = mVCParams.distBFine;
-        vc["gNormalACoarse"]                 = mVCParams.normalACoarse;
-        vc["gNormalAFine"]                   = mVCParams.normalAFine;
-        vc["gBootThresholdFactorFootprintPx"] = mVCParams.bootThresholdFactorFootprintPx;
-        vc["gForceDescendFootprintPx"]       = mVCParams.forceDescendFootprintPx;
-        vc["gCascadeWindowForward"]          = mVCParams.cascadeWindowForward;
-        vc["gStderrThreshold"]               = mVCParams.stderrThreshold;
-        vc["gEnableHierarchicalConsistency"] = mVCParams.enableHierarchicalConsistency;
-        vc["gHierarchicalMuTolerance"]       = mVCParams.hierarchicalMuTolerance;
-        vc["gAccelDecayDisagreeThresh"]      = mVCParams.accelDecayDisagreeThresh;
-        vc["gMLAlphaFloorN"]                 = mVCParams.mlAlphaFloorN;
-        vc["gBootThresholdFine"]             = mVCParams.bootThresholdFine;
-        vc["gJitterFilter"]                  = mVCParams.jitterFilter;
-        vc["gJitterCell"]                    = mVCParams.jitterCell;
-        vc["gDiagAccumWindow"]               = mVCParams.diagAccumWindow;
-        vc["gFrameCount"]                    = mVCParams.frameCount;
-        vc["gSpp"]                           = mVCParams.spp;
-        vc["gCameraPosX"]                    = mVCParams.cameraPosX;
-        vc["gCameraPosY"]                    = mVCParams.cameraPosY;
-        vc["gCameraPosZ"]                    = mVCParams.cameraPosZ;
-        vc["gPixelSize1"]                    = mVCParams.pixelSize1;
-        vc["gBayerN"]                        = mVCParams.bayerN;
-        vc["gWarmupFirst"]                   = mVCParams.warmupFirst;
-        vc["gWarmupRun"]                     = mVCParams.warmupRun;
-        // §9.4 WS-ReSTIR DI cbuffer fields
-        vc["gWSEnable"]                      = mVCParams.wsEnable;
-        vc["gWSCellLevelJitter"]             = mVCParams.wsCellLevelJitter;
-        vc["gWSCapacity"]                    = mVCParams.wsCapacity;
-        vc["gWSMCap"]                        = mVCParams.wsMCap;
-        vc["gWSSpatialNeighbours"]           = mVCParams.wsSpatialNeighbours;
-        vc["gWSLightMuMin"]                  = mVCParams.wsLightMuMin;
-        vc["gWSLightSoftness"]               = mVCParams.wsLightSoftness;
-        vc["gWSNormalAddr"]                  = mVCParams.wsNormalAddr;
-        vc["gWSInitialCandidates"]           = mVCParams.wsInitialCandidates;
-        // (gWSJitterFilter / gWSJitterCell cbuffer fields are now padding;
-        //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)
-        vc["gWSUseCellInRIS"]                = mVCParams.wsUseCellInRIS;
-        vc["gWSVisInPHat"]                   = mVCParams.wsVisInPHat;
-        vc["gWSCellPoolEnable"]              = mVCParams.wsCellPoolEnable;
-        vc["gWSCellPoolCapacity"]            = mVCParams.wsCellPoolCapacity;
-        vc["gWSCellPoolDrawK"]               = mVCParams.wsCellPoolDrawK;
-        vc["gWSSpatialPixelsK"]              = mVCParams.wsSpatialPixelsK;
-        vc["gWSSpatialPixelsRadius"]         = mVCParams.wsSpatialPixelsRadius;
-        vc["gWSPoolAddrMode"]                = mVCParams.wsPoolAddrMode;
-        vc["gWSPoolTileSize"]                = mVCParams.wsPoolTileSize;
-        vc["gWSCellPoolMode"]                = mVCParams.wsCellPoolMode;
-        vc["gDirSolidAngleScale"]            = mVCParams.dirSolidAngleScale;
-        vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
-        vc["gWSCellReservoirMerge"]          = mVCParams.wsCellReservoirMerge;
-        vc["gWSCellPoolFootprintPx"]         = mVCParams.wsCellPoolFootprintPx;
-        vc["gWSCellReservoirFootprintPx"]    = mVCParams.wsCellReservoirFootprintPx;
-        vc["gWSRetraceOnReuseMode"]          = mVCParams.wsRetraceOnReuseMode;
-    }
-    // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
-    if (mVisCacheWSReservoirs)
-    {
-        var["gWSReservoirs"]      = mpVHFWSReservoirs;
-        if (mpVHFPixelReservoirs) var["gWSPixelReservoirs"] = mpVHFPixelReservoirs;
-        if (mpVHFWSCellPools)     var["gWSCellPools"]       = mpVHFWSCellPools;
-        if (mpVHFWSCellPoolSlots) var["gWSCellPoolSlotBuf"] = mpVHFWSCellPoolSlots;
-        var["VisCacheParams"]["gWSFrameDimX"] = mVHFPixelDimX;
-        var["VisCacheParams"]["gWSFrameDimY"] = mVHFPixelDimY;
-    }
-    // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
-    // so all RT stages can write per-pixel heatmap data inline during tracing.
-    // Define is set in getDefines(); here we just bind the textures.
-    if (mVisCacheDiagnostics)
-    {
-        if (mpVCAccumMeanVarMatCount)   var["gVCAccumMeanVarMatCount"]   = mpVCAccumMeanVarMatCount;
-        if (mpVCFrameMeanVarMatSamplesRaw)   var["gVCFrameMeanVarMatSamplesRaw"]   = mpVCFrameMeanVarMatSamplesRaw;
-        if (mpVCFrameLevelProbesSamplesCold)   var["gVCFrameLevelProbesSamplesCold"]   = mpVCFrameLevelProbesSamplesCold;
-        if (mpVCFrameHashAHashBHashABRays)   var["gVCFrameHashAHashBHashABRays"]   = mpVCFrameHashAHashBHashABRays;
-        if (mpVCAccumSaved)     var["gVCAccumSaved"]     = mpVCAccumSaved;
-        if (mpVCAccumTotal)     var["gVCAccumTotal"]      = mpVCAccumTotal;
-        if (mpVCAccumRaysNoiseErrorCold)  var["gVCAccumRaysNoiseErrorCold"]  = mpVCAccumRaysNoiseErrorCold;
-    }
     // Full screen dispatch.
-    // Reduced-resolution dispatch when subframe gate active; raygen remaps to
-    // full-res pixel via subframeRemap(). Variable-spp + N>1 falls back to full
-    // dispatch (see comment in generatePaths); the raygen shader chooses its
-    // pixel-compute path based on kSamplesPerPixel, mirroring this host split.
-    const uint32_t N = mVisCacheBayerN;
-    const uint32_t effectiveN = (!mFixedSampleCount && N > 1) ? 1u : N;
-    const uint2 reducedDim = (mParams.frameDim + uint2(effectiveN - 1)) / effectiveN;
-    mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(reducedDim, 1));
+    mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));
 }
 
 void PathTracer::resolvePass(RenderContext* pRenderContext, const RenderData& renderData)
@@ -1712,7 +1408,6 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_MIS", useMIS ? "1" : "0");
     defines.add("USE_RUSSIAN_ROULETTE", useRussianRoulette ? "1" : "0");
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
-    defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");
@@ -1733,19 +1428,6 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("INTERIOR_LIST_SLOT_COUNT", std::to_string(maxNestedMaterials));
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
-
-    // VisCache integration.
-    defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
-    defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
-    defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    defines.add("VISCACHE_BAYER_N", std::to_string(owner.mVisCacheBayerN));
-    if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
-    // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).
-    defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
-    // §9.4 WS-ReSTIR DI: master define gates all reservoir paths in slang.
-    defines.add("USE_WS_RESERVOIRS", owner.mVisCacheWSReservoirs ? "1" : "0");
-    // §9.4 Step (b): WS cell-pool pre-pass mode (this instance fills pool, skips shading).
-    defines.add("WS_CELL_POOL_FILL_ONLY", owner.mWSCellPoolFillOnly ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults

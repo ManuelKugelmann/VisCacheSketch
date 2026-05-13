@@ -150,13 +150,19 @@ import RenderPasses.VisCache.VisCacheTracing;  // unconditional (self-guarding)
 
 ---
 
-### 2. PathTracer
+### 2. PathTracerX (forked from Falcor's PathTracer)
+
+The VisCache integration lives in `PathTracerX`, our forked variant of the
+Falcor PathTracer. Upstream `Falcor/Source/RenderPasses/PathTracer/` is
+reverted to NVIDIA-vanilla and is **not** VisCache-aware. Render graphs
+that opt into `viscache=True` route through PathTracerX automatically (see
+`scripts/PathTracer_Graph.py` auto-select logic).
 
 **Files:**
-- `Falcor/Source/RenderPasses/PathTracer/PathTracer.cpp` — dict read, defines, binding
-- `Falcor/Source/RenderPasses/PathTracer/PathTracer.h` — member variables
-- `Falcor/Source/RenderPasses/PathTracer/TracePass.rt.slang` — callback definition
-- `Falcor/Source/RenderPasses/PathTracer/PathTracer.slang` — call sites
+- `Source/RenderPasses/PathTracerX/PathTracerX.cpp` — dict read, defines, binding
+- `Source/RenderPasses/PathTracerX/PathTracerX.h` — member variables
+- `Source/RenderPasses/PathTracerX/TracePass.rt.slang` — callback definition
+- `Source/RenderPasses/PathTracerX/PathTracer.slang` — call sites (file kept named `PathTracer.slang` because the internal slang struct stays `PathTracer`)
 
 **Host (`.cpp`):**
 Same dict/define/binding pattern as MinimalPathTracer.

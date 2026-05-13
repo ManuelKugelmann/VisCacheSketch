@@ -1,5 +1,5 @@
 /***************************************************************************
- * WSReservoirBoilingFilter.cs.slang  —  DISABLED 2026-05-05
+ * ReservoirBoilingFilter.cs.slang  —  DISABLED 2026-05-05
  *
  * §9.4 RTXDI BoilingFilter port (workgroup-shared statistical outlier
  * rejection on per-pixel reservoirs). Algorithm copied from
@@ -7,7 +7,7 @@
  * directive.
  *
  * STATUS: BLOCK-COMMENTED. Dispatch fires, build is clean, smoke passes,
- * but shader writes to gWSPixelReservoirs do not reach the buffer:
+ * but shader writes to gPixelReservoirs do not reach the buffer:
  *   - Host-side clearUAV() on the same buffer at the same dispatch site
  *     moves the metric (Sponza_x4 6.49 → 6.39, −0.10pp). Buffer mutation
  *     from the host works.
@@ -27,10 +27,10 @@
  *   2026-05-05: "safety net might hide algorithm failures".
  *
  * Future fix path (the "separable-include" approach):
- *   Move the `RWStructuredBuffer<WSReservoir> gWSPixelReservoirs;`
- *   declaration out of WSReservoirIO.slang into its own tiny
- *   `WSPixelReservoirBuffer.slang` includable module. Have both
- *   WSReservoirIO and a fixed BoilingFilter import THAT module
+ *   Move the `RWStructuredBuffer<Reservoir> gPixelReservoirs;`
+ *   declaration out of ReservoirIO.slang into its own tiny
+ *   `PixelReservoirBuffer.slang` includable module. Have both
+ *   ReservoirIO and a fixed BoilingFilter import THAT module
  *   (mirroring the VisCacheDecay → VisCache.slang `gVHFTable` pattern).
  *   That eliminates the locally-redeclared-global suspect and gives one
  *   canonical declaration site to bind against.
@@ -49,11 +49,11 @@
 // ╚══════════════════════════════════════════════════════════════════════╝
 #if 0  // DISABLED — see header.
 
-import RenderPasses.VisCache.WSReservoir;
+import RenderPasses.VisCache.Reservoir;
 
-RWStructuredBuffer<WSReservoir> gWSPixelReservoirs;
+RWStructuredBuffer<Reservoir> gPixelReservoirs;
 
-cbuffer WSBoilingFilterCB
+cbuffer BoilingFilterCB
 {
     uint2 gFrameDim;        ///< (W, H) for bounds clamp on partial tiles
     float gFilterStrength;  ///< (0..1] — RTXDI default 0.2 → 41× threshold
@@ -72,12 +72,12 @@ void csBoilingFilter(uint3 dtid : SV_DispatchThreadID, uint3 gid : SV_GroupThrea
     bool inBounds = all(dtid.xy < gFrameDim);
     uint pIdx = dtid.y * gFrameDim.x + dtid.x;
 
-    WSReservoir r;
+    Reservoir r;
     bool hasWeight = false;
     float w = 0.f;
     if (inBounds)
     {
-        r = gWSPixelReservoirs[pIdx];
+        r = gPixelReservoirs[pIdx];
         hasWeight = (r.fingerprint != 0u) && (r.M > 0.f) && (r.W > 0.f);
         w = hasWeight ? r.W : 0.f;
     }
@@ -120,7 +120,7 @@ void csBoilingFilter(uint3 dtid : SV_DispatchThreadID, uint3 gid : SV_GroupThrea
     float multiplier = 10.f / max(gFilterStrength, 1e-6f) - 9.f;
     if (r.W > avgW * multiplier)
     {
-        gWSPixelReservoirs[pIdx] = wsReservoirInit(0u);
+        gPixelReservoirs[pIdx] = reservoirInit(0u);
     }
 }
 

@@ -219,7 +219,7 @@ struct RestirPathTracerParams
     // presampling tied at the per-vertex NEE step in the path walk):
     //   0 = Pno    — no presample pool, full light-tree sample at each NEE.
     //   1 = P2d    — 2D screen-tile pool (RTXDI-tile semantics).
-    //   2 = P3d    — 3D world-cell pool at gWSCellPoolFootprintPx.
+    //   2 = P3d    — 3D world-cell pool at gCellPoolFootprintPx.
     //
     // restirptPoolFootprintPx interprets:
     //   for P2d: tile side-length in pixels (default 16).
@@ -258,7 +258,7 @@ struct RestirPathTracerParams
     //
     // The world-cell hash here is a self-contained simple variant: uniform
     // grid quantize + xor-mul scramble + capacity-mod. A future iteration can
-    // route through VisCache's `wsResolveCellPoolAddr` for the same multilevel
+    // route through VisCache's `resolveCellPoolAddr` for the same multilevel
     // / footprint-adaptive / jittered hash that restir_3d uses, but that
     // requires a VisCache cross-plugin import + cbuffer plumbing. The simple
     // variant here is enough to test the 2D/3D dispatch flow.
@@ -266,7 +266,7 @@ struct RestirPathTracerParams
     // The reservoir buffer's capacity is the same `screenTiles*tileStride`
     // as the 2D-mode buffer (we reuse it). Address space collisions are
     // expected — that's fine for a real-time hash table; later collisions
-    // overwrite earlier (most-recent-wins, mirrors WSCellPool's slot rule).
+    // overwrite earlier (most-recent-wins, mirrors CellPool's slot rule).
     uint getReservoirOffsetWorldCell(const float3 posA, const float3 faceN)
     {
         // Cell size: ~1% of the scene radius — coarse enough for reuse but
@@ -275,7 +275,7 @@ struct RestirPathTracerParams
         const float kCellSize = max(sceneRadius * 0.01f, 1e-3f);
         int3 q = int3(floor(posA / kCellSize));
         // Normal bin: 6 axis-aligned hemicubes; matches WS-ReSTIR's
-        // wsNormalBin coarse scheme.
+        // normalBin coarse scheme.
         uint nb = 0u;
         float3 an = abs(faceN);
         if (an.x >= an.y && an.x >= an.z) nb = (faceN.x >= 0.f) ? 0u : 1u;

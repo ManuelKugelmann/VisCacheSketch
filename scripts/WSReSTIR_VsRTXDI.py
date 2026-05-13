@@ -28,25 +28,25 @@ SCENES = [
 VARIANTS = [
     ("vanilla",        lambda: render_graph_PathTracer(viscache=False, maxBounces=0)),
     # Visibility-in-pHat (RTXDI fix) variants:
-    #   wsVisInPHat=0 — blind p̂ (legacy behavior, biased on emissive-heavy scenes)
-    #   wsVisInPHat=1 — cache-amortized via traceVisibilityRayCV (cheap, may have cold-start variance)
-    #   wsVisInPHat=2 — explicit always-trace via traceVisibilityRay (K rays/pixel, no cache)
+    #   visInPHat=0 — blind p̂ (legacy behavior, biased on emissive-heavy scenes)
+    #   visInPHat=1 — cache-amortized via traceVisibilityRayCV (cheap, may have cold-start variance)
+    #   visInPHat=2 — explicit always-trace via traceVisibilityRay (K rays/pixel, no cache)
     # ws_explicit is the cache-independent "is RIS math correct?" reference.
     ("ws_blind",       lambda: render_graph_PathTracer(
-        viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=0,
+        viscache=True, reservoirs=True, maxBounces=0,
+        initialCandidates=8, mCap=5.0, visInPHat=0,
         visibilityCheck=True, lightSelection=True,
-        extraVCProps={"jitterFilter": 0.3, "wsUseCellInRIS": False})),
+        extraVCProps={"jitterFilter": 0.3, "useCellInRIS": False})),
     ("ws_cache",       lambda: render_graph_PathTracer(
-        viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=1,
+        viscache=True, reservoirs=True, maxBounces=0,
+        initialCandidates=8, mCap=5.0, visInPHat=1,
         visibilityCheck=True, lightSelection=True,
-        extraVCProps={"jitterFilter": 0.3, "wsUseCellInRIS": False})),
+        extraVCProps={"jitterFilter": 0.3, "useCellInRIS": False})),
     ("ws_explicit",    lambda: render_graph_PathTracer(
-        viscache=True, wsReservoirs=True, maxBounces=0,
-        wsInitialCandidates=8, wsMCap=5.0, wsVisInPHat=2,
+        viscache=True, reservoirs=True, maxBounces=0,
+        initialCandidates=8, mCap=5.0, visInPHat=2,
         visibilityCheck=True, lightSelection=True,
-        extraVCProps={"jitterFilter": 0.3, "wsUseCellInRIS": False})),
+        extraVCProps={"jitterFilter": 0.3, "useCellInRIS": False})),
     ("rtxdi",          lambda: render_graph_RTXDI(viscache=False)),
 ]
 WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate

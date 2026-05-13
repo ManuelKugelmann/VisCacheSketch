@@ -108,9 +108,10 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         })
         g.addPass(rtxdi, "RTXDIPass")
 
-    # PathTracer for shadow gating (only with VisCache, §11.2)
+    # PathTracerX for shadow gating (only with VisCache, §11.2).
+    # Phase 3: upstream PathTracer is vanilla; VisCache integration lives in PathTracerX.
     if viscache:
-        pt = createPass("PathTracer", {
+        pt = createPass("PathTracerX", {
             "samplesPerPixel":    1,
             "maxSurfaceBounces":  shadowGateBounces,
             "colorFormat":        "LogLuvHDR",

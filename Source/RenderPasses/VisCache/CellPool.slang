@@ -1,5 +1,5 @@
 /***************************************************************************
- * WSCellPool.slang
+ * CellPool.slang
  *
  * §9.4 World-space ReSTIR DI — per-cell N=128-slot candidate buffer
  * (RTXDI-tile semantics: each slot is one pdf-sampled proposal, NO
@@ -18,7 +18,7 @@
  * Layout (12,296 B / pool at N=1024 — AoS slot layout):
  *   uint           fingerprint;     // 0 = empty sentinel
  *   uint           count;           // high-water mark of slot index touched (capped at N at read)
- *   WSCellPoolSlot slots[N]:
+ *   CellPoolSlot slots[N]:
  *     uint  lightTypeIndex;        // (lightType<<24) | lightIndex
  *     uint  payload;               // emissive barys / env dir / analytic 0
  *     float sourcePdf;             // writer-side NEE proposal pdf — preserved for
@@ -33,7 +33,7 @@
  ***************************************************************************/
 
 #pragma once
-import RenderPasses.VisCache.WSReservoir;
+import RenderPasses.VisCache.Reservoir;
 
 // N=128 — interim hold while N=1024 (RTXDI-parity slot count) hits a
 // shader-side limit that's not yet diagnosed. The other improvements in
@@ -44,12 +44,12 @@ import RenderPasses.VisCache.WSReservoir;
 static const uint WS_CELL_POOL_N = 1024u;
 
 // AoS slot layout — three fields contiguous per slot (12 B), so a single
-// `gWSCellPools[slot].slots[i] = ...` compiles to one struct-store at
+// `gCellPools[slot].slots[i] = ...` compiles to one struct-store at
 // computed offset rather than three SoA bufferStores at offsets 12 KB
 // apart. Within-slot coherence is preserved without needing whole-cell
 // struct copies — that was the load-bearing property of the old layout
 // (reader iterating pool.X[slotR] saw the same writer's contribution).
-struct WSCellPoolSlot
+struct CellPoolSlot
 {
     uint  lightTypeIndex;
     uint  payload;
@@ -61,19 +61,19 @@ struct WSCellPoolSlot
 };
 
 // Header-only struct — slot data lives in a SEPARATE flat buffer
-// (`gWSCellPoolSlotBuf`) indexed as `cellIdx * WS_CELL_POOL_N + slotIdx`.
-// The nested-array-in-struct pattern (slots[N] inside WSCellPool) trips
+// (`gCellPoolSlotBuf`) indexed as `cellIdx * WS_CELL_POOL_N + slotIdx`.
+// The nested-array-in-struct pattern (slots[N] inside CellPool) trips
 // DXC's local-memory validation at N≥1024 even with full-struct buffer
 // accesses, so we split. Keeps single bufferLoad/store per slot via the
-// flat buffer's element type = WSCellPoolSlot (16 B).
-struct WSCellPool
+// flat buffer's element type = CellPoolSlot (16 B).
+struct CellPool
 {
     uint fingerprint;
     uint count;
 };
 
-// Stack-allocated init for callers that hold a local WSCellPool (rare —
-// reader path now uses `wsLookupCellPool` + direct buffer indexing, avoiding
+// Stack-allocated init for callers that hold a local CellPool (rare —
+// reader path now uses `lookupCellPool` + direct buffer indexing, avoiding
 // the 12 KB struct copy). Slot arrays are intentionally left uninitialised:
 // writers fill random slots and readers only access [0, count), so any
 // content beyond count is unreachable garbage.
@@ -82,12 +82,12 @@ struct WSCellPool
 // still call it. Slot data is intentionally left uninitialised; reader's
 // `if (sourcePdf <= 0) continue` guard handles uninit slots (zero-init
 // at buffer creation handles the first-frame case).
-WSCellPool wsCellPoolInit(uint fp)
+CellPool cellPoolInit(uint fp)
 {
-    WSCellPool p;
+    CellPool p;
     p.fingerprint = fp;
     p.count       = 0u;
     return p;
 }
 
-bool wsCellPoolIsEmpty(WSCellPool p) { return p.fingerprint == 0u || p.count == 0u; }
+bool cellPoolIsEmpty(CellPool p) { return p.fingerprint == 0u || p.count == 0u; }

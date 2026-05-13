@@ -6,10 +6,10 @@ Scaffolding through Step 2b complete (commits e71cb1f → 673b020):
 - `restirptPoolAddrMode` / `restirptPoolFootprintPx` cbuffer fields
   (`Params.slang`, parser in `ReSTIRPTPass.cpp`, kwarg in `ReSTIRPT_Graph.py`)
 - `mpLightPool` ref<Buffer> allocated when mode != 0 (sized to reservoirCount)
-- `LightPool.slang` re-exports VisCache's `WSCellPool` (N=128 packed
+- `LightPool.slang` re-exports VisCache's `CellPool` (N=128 packed
   candidates per slot — single source of truth shared with DI side)
 - `LightPoolFill.cs.slang` compute pass dispatched once/frame before
-  TracePass when mode != 0. Currently writes sentinel WSCellPool entries
+  TracePass when mode != 0. Currently writes sentinel CellPool entries
   (recognizable lightTypeIndex/payload values for downstream verification).
 - AB harness `AB_POOL_MODE` env var enables P-axis end-to-end without
   graph edits.
@@ -21,14 +21,14 @@ read): ~2 days, see "Implementation pivot" section below.
 
 P-axis (presample-pool addressing) is orthogonal to R-axis (reservoir
 storage) and dispatches **the NEE light-sample pool**. Mirrors the DI side's
-`gWSPoolAddrMode` (RTXDI-style hierarchical 2D pdf as on parallel-agent's
+`gPoolAddrMode` (RTXDI-style hierarchical 2D pdf as on parallel-agent's
 `prePassEmissiveSampler="PdfMipmap"`).
 
 | `restirptPoolAddrMode` | name | pool keying |
 |---:|---|---|
 | 0 | Pno | no presample pool — fresh `emissiveSampler.sampleLight` at every NEE (current behavior) |
 | 1 | P2d | 2D screen-tile pool (RTXDI-tile semantics) |
-| 2 | P3d | 3D world-cell pool at `gWSCellPoolFootprintPx` |
+| 2 | P3d | 3D world-cell pool at `gCellPoolFootprintPx` |
 
 `restirptPoolFootprintPx` interprets:
 - P2d: tile side-length in pixels (default 16 → 16×16 = 256 px per tile)
@@ -75,10 +75,10 @@ RWStructuredBuffer<LightPoolSlot> lightPool;  // size = ceil(W*H/poolFootprintPx
                                               //      = cellPoolCapacity for P3d
 ```
 
-Reuse the existing `WSCellPool` addressing helpers (`wsResolveTilePoolAddr`
-for P2d, `wsResolveCellPoolAddr` for P3d) — these are already in
-`Source/RenderPasses/VisCache/WSCellPoolIO.slang`. The PT-side pool would
-share those resolvers; keep `gWSPoolAddrMode` as the dispatch (DI's existing
+Reuse the existing `CellPool` addressing helpers (`resolveTilePoolAddr`
+for P2d, `resolveCellPoolAddr` for P3d) — these are already in
+`Source/RenderPasses/VisCache/CellPoolIO.slang`. The PT-side pool would
+share those resolvers; keep `gPoolAddrMode` as the dispatch (DI's existing
 field) since this is the same pool semantically.
 
 ## Fill pass
@@ -105,8 +105,8 @@ Another: refill ALL cells uniformly (simpler, more wasted work).
 if (params.restirptPoolAddrMode != 0u) {
     // Resolve pool slot for this vertex.
     uint slotIdx = (params.restirptPoolAddrMode == 1u)
-        ? wsResolveTilePoolAddr(pixel)             // P2d: 2D tile
-        : wsResolveCellPoolAddr(vertex.pos, ...);  // P3d: 3D cell
+        ? resolveTilePoolAddr(pixel)             // P2d: 2D tile
+        : resolveCellPoolAddr(vertex.pos, ...);  // P3d: 3D cell
     LightPoolSlot slot = lightPool[slotIdx];
 
     // RIS over K candidates: pick by w_i = f̂(c_i) / p(c_i)
@@ -157,20 +157,20 @@ of that and isn't blocking any current work. Defer until either:
 - Stage F (Falcor 8 native PathTracer integration, Task #11) starts and
   the pool design needs to be locked in before larger refactors.
 
-## Implementation pivot (2026-05-11): mirror VisCache's WSCellPool
+## Implementation pivot (2026-05-11): mirror VisCache's CellPool
 
 Per user direction: "mirror / reuse restirdi plumbing". Rather than the
 self-contained `LightPool.slang` introduced in commits e71cb1f/b2da2fc,
-the cleaner long-term design is to reuse the DI-side `WSCellPool`
+the cleaner long-term design is to reuse the DI-side `CellPool`
 infrastructure from `Source/RenderPasses/VisCache/`:
 
 | DI plumbing | What PT P-axis can reuse |
 |---|---|
-| `WSCellPool` struct (N=128 packed light candidates per slot) | identical representation |
-| `WSCellPoolIO.slang::wsResolvePoolAddr(posA, faceN, pixel)` | mode-dispatched address resolver (P2d tile vs P3d cell) |
-| `WSCellPoolIO.slang::wsCellPoolFindSlot` | open-addressed double-hash probe |
-| `WSCellPoolIO.slang::wsCellPoolInsert` | RIS-at-insert with `pHat × V / sourcePdf` weight |
-| `WSCellPoolIO.slang::wsLoadCellPool` | reader-side RIS resample |
+| `CellPool` struct (N=128 packed light candidates per slot) | identical representation |
+| `CellPoolIO.slang::resolvePoolAddr(posA, faceN, pixel)` | mode-dispatched address resolver (P2d tile vs P3d cell) |
+| `CellPoolIO.slang::cellPoolFindSlot` | open-addressed double-hash probe |
+| `CellPoolIO.slang::cellPoolInsert` | RIS-at-insert with `pHat × V / sourcePdf` weight |
+| `CellPoolIO.slang::loadCellPool` | reader-side RIS resample |
 
 **Architectural parity (per parallel agent's 61e9946 audit):**
 P2d (screen-tile pool, K=24 pure-pool) BEATS RTXDI on Cornell_1AL and
@@ -180,13 +180,13 @@ P3d (3D-cell pool) was 2-4pp WORSE than P2d at the time of that audit
 — but the parallel agent's own note identifies the cause as **N=128
 slots vs RTXDI's 1024 + first-writer-wins discards write effort**, NOT
 the 3D-vs-2D architecture itself. They've since landed
-`wsCellPoolFindSlot` (double-hash probe, 2026-05-11) to fix the
+`cellPoolFindSlot` (double-hash probe, 2026-05-11) to fix the
 collision-handling half of that gap; Sponza re-run pending.
 
 **Provisional guidance** (likely to change once the parallel agent's
 Sponza re-run with the collision fix lands):
 - Match RTXDI's slot capacity (N=1024, currently 128 in `WS_CELL_POOL_N`
-  at `Source/RenderPasses/VisCache/WSCellPool.slang:38`).
+  at `Source/RenderPasses/VisCache/CellPool.slang:38`).
   Memory cost ×8: per-slot grows from ~1 KB → ~8 KB, total ~512 MB for
   a 65K-slot pool (vs ~64 MB at N=128). Tractable for production GPUs.
 - Don't hard-default to P2d for PT side. Let the post-fix Sponza data
@@ -195,9 +195,9 @@ Sponza re-run with the collision fix lands):
   cell sharing across pixels in close primary regions.
 
 **What blocks the direct reuse:**
-Each VisCache helper depends on cbuffer fields (`gWSCellPoolCapacity`,
-`gWSCellPoolFootprintPx`, `gWSPoolAddrMode`, `gWSPoolTileSize`,
-`gWSCellLevel`, `gWSNormalAddr`, `gNumLevels`, jitter params, etc.).
+Each VisCache helper depends on cbuffer fields (`gCellPoolCapacity`,
+`gCellPoolFootprintPx`, `gPoolAddrMode`, `gPoolTileSize`,
+`gCellLevel`, `gNormalAddr`, `gNumLevels`, jitter params, etc.).
 Those are bound by `VisCachePass`'s cbuffer. ReSTIRPTPass needs either:
 (a) the same cbuffer-field plumbing in its own params (one-time
     refactor; field names + parser additions + bind calls — match
@@ -210,10 +210,10 @@ Those are bound by `VisCachePass`'s cbuffer. ReSTIRPTPass needs either:
 Recommend (a). Estimated effort:
 - Plumb 8-10 cbuffer fields from `gWS*` namespace to `restirpt*` namespace
   in `Params.slang` + cpp parser/dict: ~1 day.
-- Import `WSCellPool`/`WSCellPoolIO` slang modules into ReSTIRPTPass's
+- Import `CellPool`/`CellPoolIO` slang modules into ReSTIRPTPass's
   shader compile path; rename per-cbuffer-field references in a copy of
-  `WSCellPoolIO.slang` (or extract the helpers into a shared
-  `WSCellPoolHelpers.slang` that doesn't depend on the cbuffer fields,
+  `CellPoolIO.slang` (or extract the helpers into a shared
+  `CellPoolHelpers.slang` that doesn't depend on the cbuffer fields,
   taking them as function args): ~1 day.
 - Fill pass: do RIS-at-insert per pixel in a Bayer-prepass pattern
   (mirrors VisCache's existing prepass): ~1 day.
@@ -222,5 +222,5 @@ Recommend (a). Estimated effort:
 Total: ~4 days. The current `LightPool.slang` + `LightPoolFill.cs.slang`
 scaffolding (commits e71cb1f → 7346222) is preserved as a stub that
 demonstrates buffer alloc + dispatch wiring works end-to-end. The next
-implementer should DELETE those files and start from the WSCellPool
+implementer should DELETE those files and start from the CellPool
 reuse pattern instead.

@@ -25,7 +25,9 @@ def render_graph_RestirPT2DSmoke(restirpt=True, samplesPerPixel=1, maxBounces=3)
     vbuf = createPass("VBufferRT", {"samplePattern": "Stratified", "sampleCount": 16})
     g.addPass(vbuf, "VBufferRT")
 
-    pt = createPass("PathTracer", {
+    # PathTracerX carries the `useRestirPT` toggle (and all VisCache-era extensions).
+    # Phase 3: upstream PathTracer reverted to vanilla; this script needs the fork.
+    pt = createPass("PathTracerX", {
         "samplesPerPixel":    samplesPerPixel,
         "maxSurfaceBounces":  maxBounces,
         "colorFormat":        "LogLuvHDR",

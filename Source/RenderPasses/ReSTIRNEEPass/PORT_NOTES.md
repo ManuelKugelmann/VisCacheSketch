@@ -29,7 +29,7 @@ Currently this pass is byte-identical to ReSTIRDIPass. The algorithmic
 differentiation work TODO:
 
 1. **Reservoir keying.** ReSTIRDIPass uses pixel-indexed reservoir
-   (`gWSPixelReservoirs[wsPixelIndex(pixel)]`). ReSTIRNEEPass should use
+   (`gPixelReservoirs[pixelIndex(pixel)]`). ReSTIRNEEPass should use
    world-space-cell-keyed reservoir indexed by `(pos, faceN)` cascade —
    reuses VisCache's posA addressing. This is the "every-vertex" reuse
    target: each NEE site in the path walk consults a reservoir keyed by

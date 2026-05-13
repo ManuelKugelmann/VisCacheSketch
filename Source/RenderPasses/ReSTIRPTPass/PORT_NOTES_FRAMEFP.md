@@ -40,7 +40,7 @@ BistroInterior stats (mean / median / fireflies above 100 nits):
 
 Frame-CAS per-iter lands within 30% of GT mean and 3 fireflies of GT
 count. Legacy clearUAV path drifts 3.3× over GT mean and 38× over GT
-firefly count — a regression introduced by mid-session WSCellPool
+firefly count — a regression introduced by mid-session CellPool
 struct expansion in the parallel agent's branch. Frame-CAS is unaffected
 because per-iter freshness gates reject stale-frame data from prior
 frames so cell-pool cross-iter contamination cannot accumulate.

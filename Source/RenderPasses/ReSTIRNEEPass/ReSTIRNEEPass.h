@@ -185,7 +185,7 @@ private:
     bool                            mOptionsChanged = false;    ///< True if the config has changed since last frame.
     bool                            mGBufferAdjustShadingNormals = false; ///< True if GBuffer/VBuffer has adjusted shading normals enabled.
     bool                            mFixedSampleCount = true;   ///< True if a fixed sample count per pixel is used. Otherwise load it from the pass sample count input.
-    bool                            mWSCellPoolFillOnly = false; ///< §9.4 Step (b): when true, this PathTracer instance only fills the
+    bool                            mCellPoolFillOnly = false; ///< §9.4 Step (b): when true, this PathTracer instance only fills the
                                                                  ///< WS cell pool (K-RIS + insert) and skips shading. Used as a pre-pass
                                                                  ///< before the main render PathTracer instance reads the populated pool.
     bool                            mOutputGuideData = false;   ///< True if guide data should be generated as outputs.
@@ -241,42 +241,42 @@ private:
              float pixelSize1=0.001f;
              uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
              // §9.4 WS-ReSTIR DI cbuffer fields
-             uint32_t wsEnable=0;
-             uint32_t wsCellLevelJitter=0u;
-             uint32_t wsCapacity=0;
-             float    wsMCap=30.f;
-             uint32_t wsSpatialNeighbours=4;
-             float    wsLightMuMin=0.01f;
-             float    wsLightSoftness=1.f;
-             uint32_t wsNormalAddr=0;
-             uint32_t wsInitialCandidates=8;
-             // (wsJitter* removed — shares VisCache's gJitterFilter / gJitterCell)
-             uint32_t wsUseCellInRIS=1;
-             uint32_t wsVisInPHat=1;
+             uint32_t enable=0;
+             uint32_t cellLevelJitter=0u;
+             uint32_t capacity=0;
+             float    mCap=30.f;
+             uint32_t spatialNeighbours=4;
+             float    lightMuMin=0.01f;
+             float    lightSoftness=1.f;
+             uint32_t normalAddr=0;
+             uint32_t initialCandidates=8;
+             // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)
+             uint32_t useCellInRIS=1;
+             uint32_t visInPHat=1;
              // §9.4 WS-cascade ReGIR cell pool
-             uint32_t wsCellPoolEnable=0;
-             uint32_t wsCellPoolCapacity=0;
-             uint32_t wsCellPoolDrawK=0;
-             uint32_t wsSpatialPixelsK=4;
-             uint32_t wsSpatialPixelsRadius=32;
-             uint32_t wsPoolAddrMode=0;
-             uint32_t wsPoolTileSize=16;
-             uint32_t wsCellPoolMode=0;        // 0 = P3d, 1 = PR3d
+             uint32_t cellPoolEnable=0;
+             uint32_t cellPoolCapacity=0;
+             uint32_t cellPoolDrawK=0;
+             uint32_t spatialPixelsK=4;
+             uint32_t spatialPixelsRadius=32;
+             uint32_t poolAddrMode=0;
+             uint32_t poolTileSize=16;
+             uint32_t cellPoolMode=0;        // 0 = P3d, 1 = PR3d
              float    dirSolidAngleScale=1.0f;
              float    distSolidAngleScale=1.0f;
-             uint32_t wsCellReservoirMerge=0;
-             uint32_t wsCellPoolFootprintPx=0;
-             uint32_t wsCellReservoirFootprintPx=0;
-             uint32_t wsRetraceOnReuseMode=0; } mVCParams;
+             uint32_t cellReservoirMerge=0;
+             uint32_t cellPoolFootprintPx=0;
+             uint32_t cellReservoirFootprintPx=0;
+             uint32_t retraceOnReuseMode=0; } mVCParams;
 
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
-    ref<Buffer> mpVHFWSReservoirs;
+    ref<Buffer> mpVHFReservoirs;
     ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
-    ref<Buffer> mpVHFWSCellPools;              ///< Multi-light cell pool — header (fingerprint, count).
-    ref<Buffer> mpVHFWSCellPoolSlots;          ///< Multi-light cell pool — flat slot buffer (split for DXC at N=1024).
+    ref<Buffer> mpVHFCellPools;              ///< Multi-light cell pool — header (fingerprint, count).
+    ref<Buffer> mpVHFCellPoolSlots;          ///< Multi-light cell pool — flat slot buffer (split for DXC at N=1024).
     uint32_t    mVHFPixelDimX = 0u;
     uint32_t    mVHFPixelDimY = 0u;
-    bool        mVisCacheWSReservoirs = false; ///< Master gate read from dict.
+    bool        mVisCacheReservoirs = false; ///< Master gate read from dict.
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.

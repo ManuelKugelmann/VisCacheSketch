@@ -44,14 +44,6 @@ static const uint kWarpCount = (kScreenTileDim.x * kScreenTileDim.y) / 32;
 // TODO: Replace explicitly declared size by compile-time constant when it works. For now assume tile is always 16x16!
 groupshared uint gSamplesOffset[8 /* kWarpCount */];
 
-// Bayer N×N pixel interleaving. 1 = full frame (no gate),
-// 2 = 2×2 (4 subframes), 4 = 4×4 (16 subframes). Reduced-dispatch shader
-// remaps threadID to full-resolution pixel via subframeRemap() in Params.slang.
-#ifndef VISCACHE_BAYER_N
-#define VISCACHE_BAYER_N 1
-#endif
-static const uint kVisCacheBayerN = VISCACHE_BAYER_N;
-
 /** Helper struct for generating paths in screen space.
 
     The dispatch size is one thread group per screen tile. A warp is assumed to be 32 threads.
@@ -88,11 +80,11 @@ struct PathGenerator
 
     // Render settings that depend on the scene.
     // TODO: Move into scene defines.
-    static const bool kUseEnvLight = USE_ENV_LIGHT != 0;
-    static const bool kUseCurves = USE_CURVES != 0;
+    static const bool kUseEnvLight = USE_ENV_LIGHT;
+    static const bool kUseCurves = USE_CURVES;
 
     // Additional specialization.
-    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
+    static const bool kOutputGuideData = OUTPUT_GUIDE_DATA;
 
     /** Entry point for path generator.
         \param[in] tileID Tile ID in x and y on screen.
@@ -100,21 +92,10 @@ struct PathGenerator
     */
     void execute(const uint2 tileID, const uint threadIdx)
     {
-        // Map thread to pixel via Morton order within tile.
-        //
-        // Dispatch strategy depends on kSamplesPerPixel:
-        //   - Fixed spp (kSamplesPerPixel > 0): host dispatches reduced (ceil(W/N)×ceil(H/N));
-        //     shader Bayer-remaps threadID to full-resolution pixel. Each active thread
-        //     corresponds to an active-slot pixel (no waste).
-        //   - Variable spp (kSamplesPerPixel == 0): host dispatches full; shader uses
-        //     pixel = reducedPixel and zeros spp on inactive Bayer slots. The per-warp
-        //     prefix sum for sample packing requires all threads in a group to share a
-        //     full tile, which the reduced+remap path can't guarantee → full dispatch.
-        const uint2 tileOffset = tileID << kScreenTileBits;
-        const uint2 reducedPixel = deinterleave_8bit(threadIdx) + tileOffset;
-        const uint2 pixel = (kSamplesPerPixel > 0)
-            ? subframeRemap(reducedPixel, params.subframeIdx, kVisCacheBayerN)
-            : reducedPixel;
+        // Map thread to pixel based on Morton order within tile.
+        // The tiles themselves are enumerated in scanline order on screen.
+        const uint2 tileOffset = tileID << kScreenTileBits; // Tile offset in pixels.
+        const uint2 pixel = deinterleave_8bit(threadIdx) + tileOffset; // Assumes 16x16 tile or smaller. A host-side assert checks this assumption.
 
         // Process each pixel.
         // If we don't hit any surface then the background will be evaluated and written out directly.
@@ -129,15 +110,6 @@ struct PathGenerator
             // This is either a fixed number or loaded from the sample count texture.
             // TODO: We may want to use a nearest sampler to allow the texture to be of arbitrary dimension.
             spp = kSamplesPerPixel > 0 ? kSamplesPerPixel : min(sampleCount[pixel], kMaxSamplesPerPixel);
-
-            // Variable-spp + subframe gate: zero spp for inactive Bayer slots so the
-            // pass falls through as if this pixel has no samples this dispatch. Fixed
-            // spp uses reduced dispatch instead (no inactive threads to gate).
-            if (kSamplesPerPixel == 0 && kVisCacheBayerN > 1
-                && !isActiveSubframeSlot(pixel, params.subframeIdx, kVisCacheBayerN))
-            {
-                spp = 0;
-            }
 
             // Compute the primary ray.
             cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
@@ -206,28 +178,21 @@ struct PathGenerator
         if (all(pixel < params.frameDim))
         {
             // Compute the output sample index.
-            // Index by the pixel's actual full-resolution tile — at N>1 the Bayer-
-            // remapped `pixel` can fall into a different full tile than the reduced
-            // `tileID` we were dispatched under. Must match ResolvePass's reader
-            // (Params.slang::getSampleOffset), which keys on `pixel >> kScreenTileBits`.
-            const uint2 fullTile = pixel >> kScreenTileBits;
-            const uint outTileOffset = params.getTileOffset(fullTile);
+            // For a fixed sample count, the output index is computed directly from the thread index.
+            // For a variable sample count, the output index is given by the prefix sum over sample counts.
+            const uint outTileOffset = params.getTileOffset(tileID);
             uint outIdx = 0;
 
             if (kSamplesPerPixel > 0)
             {
-                const uint tileBits = kScreenTileBits.x + kScreenTileBits.y;
-                const uint pixelIdx = interleave_16bit(pixel) & ((1 << tileBits) - 1);
-                outIdx = outTileOffset + pixelIdx * kSamplesPerPixel;
+                outIdx = outTileOffset + threadIdx * kSamplesPerPixel;
             }
             else
             {
-                // TODO: variable-spp with N>1 is not yet correct — the prefix sum is
-                // keyed on threadIdx within the reduced tile, but pixels may land in
-                // different full tiles, so sampleOffset[pixel] can collide. Only fixed
-                // spp is supported with subframe gate for now.
                 uint outSampleOffset = gSamplesOffset[warpIdx] + WavePrefixSum(spp);
                 outIdx = outTileOffset + outSampleOffset;
+
+                // Write sample offset lookup table. This will be used by later passes.
                 sampleOffset[pixel] = outSampleOffset;
             }
 

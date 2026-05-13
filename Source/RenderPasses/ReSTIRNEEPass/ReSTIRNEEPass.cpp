@@ -34,10 +34,12 @@
 
 namespace
 {
-    const std::string kGeneratePathsFilename = "RenderPasses/PathTracer/GeneratePaths.cs.slang";
-    const std::string kTracePassFilename = "RenderPasses/PathTracer/TracePass.rt.slang";
-    const std::string kResolvePassFilename = "RenderPasses/PathTracer/ResolvePass.cs.slang";
-    const std::string kReflectTypesFile = "RenderPasses/PathTracer/ReflectTypes.cs.slang";
+    // Phase 3 (Falcor PathTracer reverted to vanilla): load WS-ReSTIR-bearing
+    // shaders from this plugin's own dir, not from upstream PathTracer.
+    const std::string kGeneratePathsFilename = "RenderPasses/ReSTIRNEEPass/GeneratePaths.cs.slang";
+    const std::string kTracePassFilename = "RenderPasses/ReSTIRNEEPass/TracePass.rt.slang";
+    const std::string kResolvePassFilename = "RenderPasses/ReSTIRNEEPass/ResolvePass.cs.slang";
+    const std::string kReflectTypesFile = "RenderPasses/ReSTIRNEEPass/ReflectTypes.cs.slang";
 
     // Render pass inputs and outputs.
     const std::string kInputVBuffer = "vbuffer";
@@ -116,7 +118,7 @@ namespace
     // §9.4 WS-cascade ReGIR step (b): two-pass pool fill mode. When true, the
     // path skips shading after the K-fresh pool insert — this instance
     // exists only to populate the cell pool for the next instance.
-    const std::string kWSCellPoolFillOnly = "wsCellPoolFillOnly";
+    const std::string kWSCellPoolFillOnly = "cellPoolFillOnly";
     const std::string kMaxSurfaceBounces = "maxSurfaceBounces";
     const std::string kMaxDiffuseBounces = "maxDiffuseBounces";
     const std::string kMaxSpecularBounces = "maxSpecularBounces";
@@ -220,7 +222,7 @@ void ReSTIRNEEPass::parseProperties(const Properties& props)
     {
         // Rendering parameters
         if (key == kSamplesPerPixel) mStaticParams.samplesPerPixel = value;
-        else if (key == kWSCellPoolFillOnly) mWSCellPoolFillOnly = value;
+        else if (key == kWSCellPoolFillOnly) mCellPoolFillOnly = value;
         else if (key == kMaxSurfaceBounces) mStaticParams.maxSurfaceBounces = value;
         else if (key == kMaxDiffuseBounces) mStaticParams.maxDiffuseBounces = value;
         else if (key == kMaxSpecularBounces) mStaticParams.maxSpecularBounces = value;
@@ -347,7 +349,7 @@ Properties ReSTIRNEEPass::getProperties() const
 
     // Rendering parameters
     props[kSamplesPerPixel] = mStaticParams.samplesPerPixel;
-    props[kWSCellPoolFillOnly] = mWSCellPoolFillOnly;
+    props[kWSCellPoolFillOnly] = mCellPoolFillOnly;
     props[kMaxSurfaceBounces] = mStaticParams.maxSurfaceBounces;
     props[kMaxDiffuseBounces] = mStaticParams.maxDiffuseBounces;
     props[kMaxSpecularBounces] = mStaticParams.maxSpecularBounces;
@@ -1293,50 +1295,50 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             mVCParams.warmupFirst  = getU("vhfParam_warmupFirst", 0u);
             mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
             // §9.4 WS-ReSTIR DI cbuffer fields
-            mVCParams.wsEnable            = getU("vhfParam_wsEnable", 0u);
-            mVCParams.wsCellLevelJitter   = getU("vhfParam_wsCellLevelJitter", 0u);
-            mVCParams.wsCapacity          = getU("vhfParam_wsCapacity", 0u);
-            mVCParams.wsMCap              = getF("vhfParam_wsMCap", 30.f);
-            mVCParams.wsSpatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
-            mVCParams.wsLightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
-            mVCParams.wsLightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
-            mVCParams.wsNormalAddr        = getU("vhfParam_wsNormalAddr", 0u);
-            mVCParams.wsInitialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
-            // (wsJitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
-            mVCParams.wsUseCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
-            mVCParams.wsVisInPHat         = getU("vhfParam_wsVisInPHat", 1u);
+            mVCParams.enable            = getU("vhfParam_wsEnable", 0u);
+            mVCParams.cellLevelJitter   = getU("vhfParam_wsCellLevelJitter", 0u);
+            mVCParams.capacity          = getU("vhfParam_wsCapacity", 0u);
+            mVCParams.mCap              = getF("vhfParam_wsMCap", 30.f);
+            mVCParams.spatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
+            mVCParams.lightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
+            mVCParams.lightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
+            mVCParams.normalAddr        = getU("vhfParam_wsNormalAddr", 0u);
+            mVCParams.initialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
+            // (jitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
+            mVCParams.useCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
+            mVCParams.visInPHat         = getU("vhfParam_wsVisInPHat", 1u);
             // §9.4 WS-cascade ReGIR cell-pool cbuffer fields
             mVCParams.wsCellPoolEnable    = getU("vhfParam_wsCellPoolEnable", 0u);
-            mVCParams.wsCellPoolCapacity  = getU("vhfParam_wsCellPoolCapacity", 0u);
-            mVCParams.wsCellPoolDrawK     = getU("vhfParam_wsCellPoolDrawK", 0u);
-            mVCParams.wsSpatialPixelsK      = getU("vhfParam_wsSpatialPixelsK", 4u);
-            mVCParams.wsSpatialPixelsRadius = getU("vhfParam_wsSpatialPixelsRadius", 32u);
-            mVCParams.wsPoolAddrMode        = getU("vhfParam_wsPoolAddrMode", 0u);
-            mVCParams.wsPoolTileSize        = getU("vhfParam_wsPoolTileSize", 16u);
-            mVCParams.wsCellPoolMode        = getU("vhfParam_wsCellPoolMode", 0u);
+            mVCParams.cellPoolCapacity  = getU("vhfParam_wsCellPoolCapacity", 0u);
+            mVCParams.cellPoolDrawK     = getU("vhfParam_wsCellPoolDrawK", 0u);
+            mVCParams.spatialPixelsK      = getU("vhfParam_wsSpatialPixelsK", 4u);
+            mVCParams.spatialPixelsRadius = getU("vhfParam_wsSpatialPixelsRadius", 32u);
+            mVCParams.poolAddrMode        = getU("vhfParam_wsPoolAddrMode", 0u);
+            mVCParams.poolTileSize        = getU("vhfParam_wsPoolTileSize", 16u);
+            mVCParams.cellPoolMode        = getU("vhfParam_wsCellPoolMode", 0u);
             mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
-            mVCParams.wsCellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
-            mVCParams.wsCellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
-            mVCParams.wsCellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
-            mVCParams.wsRetraceOnReuseMode  = getU("vhfParam_wsRetraceOnReuseMode", 0u);
+            mVCParams.cellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
+            mVCParams.cellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
+            mVCParams.cellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
+            mVCParams.retraceOnReuseMode  = getU("vhfParam_wsRetraceOnReuseMode", 0u);
         }
-        bool wasWSReservoirs = mVisCacheWSReservoirs;
-        mpVHFWSReservoirs = (mVisCacheAvailable && dict.keyExists("wsReservoirBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsReservoirBuffer") : nullptr;
-        mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("wsPixelReservoirBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsPixelReservoirBuffer") : nullptr;
-        mpVHFWSCellPools = (mVisCacheAvailable && dict.keyExists("wsCellPoolBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsCellPoolBuffer") : nullptr;
-        mpVHFWSCellPoolSlots = (mVisCacheAvailable && dict.keyExists("wsCellPoolSlotBuffer"))
-            ? dict.getValue<ref<Buffer>>("wsCellPoolSlotBuffer") : nullptr;
+        bool wasWSReservoirs = mVisCacheReservoirs;
+        mpVHFReservoirs = (mVisCacheAvailable && dict.keyExists("reservoirBuffer"))
+            ? dict.getValue<ref<Buffer>>("reservoirBuffer") : nullptr;
+        mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("pixelReservoirBuffer"))
+            ? dict.getValue<ref<Buffer>>("pixelReservoirBuffer") : nullptr;
+        mpVHFCellPools = (mVisCacheAvailable && dict.keyExists("cellPoolBuffer"))
+            ? dict.getValue<ref<Buffer>>("cellPoolBuffer") : nullptr;
+        mpVHFCellPoolSlots = (mVisCacheAvailable && dict.keyExists("cellPoolSlotBuffer"))
+            ? dict.getValue<ref<Buffer>>("cellPoolSlotBuffer") : nullptr;
         mVHFPixelDimX = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimX"))
             ? dict.getValue<uint32_t>("vhfParam_wsFrameDimX") : 0u;
         mVHFPixelDimY = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimY"))
             ? dict.getValue<uint32_t>("vhfParam_wsFrameDimY") : 0u;
-        mVisCacheWSReservoirs = mVisCacheAvailable
+        mVisCacheReservoirs = mVisCacheAvailable
             && dict.keyExists("vhfEnableWSReservoirs") && dict.getValue<bool>("vhfEnableWSReservoirs")
-            && mpVHFWSReservoirs != nullptr;
+            && mpVHFReservoirs != nullptr;
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheLightSelection = mVisCacheAvailable &&
@@ -1373,11 +1375,11 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             || mVisCacheLightSelection != wasLightSel
             || mVisCacheDirDistAddr != wasDirDist
             || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN
-            || mVisCacheWSReservoirs != wasWSReservoirs)
+            || mVisCacheReservoirs != wasWSReservoirs)
         {
             logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={} wsRes={}",
                     mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheLightSelection,
-                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN, mVisCacheWSReservoirs);
+                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN, mVisCacheReservoirs);
             mRecompile = true;
         }
     }
@@ -1584,43 +1586,43 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
         vc["gWarmupFirst"]                   = mVCParams.warmupFirst;
         vc["gWarmupRun"]                     = mVCParams.warmupRun;
         // §9.4 WS-ReSTIR DI cbuffer fields
-        vc["gWSEnable"]                      = mVCParams.wsEnable;
-        vc["gWSCellLevelJitter"]             = mVCParams.wsCellLevelJitter;
-        vc["gWSCapacity"]                    = mVCParams.wsCapacity;
-        vc["gWSMCap"]                        = mVCParams.wsMCap;
-        vc["gWSSpatialNeighbours"]           = mVCParams.wsSpatialNeighbours;
-        vc["gWSLightMuMin"]                  = mVCParams.wsLightMuMin;
-        vc["gWSLightSoftness"]               = mVCParams.wsLightSoftness;
-        vc["gWSNormalAddr"]                  = mVCParams.wsNormalAddr;
-        vc["gWSInitialCandidates"]           = mVCParams.wsInitialCandidates;
-        // (gWSJitterFilter / gWSJitterCell cbuffer fields are now padding;
+        vc["gEnable"]                      = mVCParams.enable;
+        vc["gCellLevelJitter"]             = mVCParams.cellLevelJitter;
+        vc["gCapacity"]                    = mVCParams.capacity;
+        vc["gMCap"]                        = mVCParams.mCap;
+        vc["gSpatialNeighbours"]           = mVCParams.spatialNeighbours;
+        vc["gLightMuMin"]                  = mVCParams.lightMuMin;
+        vc["gLightSoftness"]               = mVCParams.lightSoftness;
+        vc["gNormalAddr"]                  = mVCParams.normalAddr;
+        vc["gInitialCandidates"]           = mVCParams.initialCandidates;
+        // (gJitterFilter / gJitterCell cbuffer fields are now padding;
         //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)
-        vc["gWSUseCellInRIS"]                = mVCParams.wsUseCellInRIS;
-        vc["gWSVisInPHat"]                   = mVCParams.wsVisInPHat;
-        vc["gWSCellPoolEnable"]              = mVCParams.wsCellPoolEnable;
-        vc["gWSCellPoolCapacity"]            = mVCParams.wsCellPoolCapacity;
-        vc["gWSCellPoolDrawK"]               = mVCParams.wsCellPoolDrawK;
-        vc["gWSSpatialPixelsK"]              = mVCParams.wsSpatialPixelsK;
-        vc["gWSSpatialPixelsRadius"]         = mVCParams.wsSpatialPixelsRadius;
-        vc["gWSPoolAddrMode"]                = mVCParams.wsPoolAddrMode;
-        vc["gWSPoolTileSize"]                = mVCParams.wsPoolTileSize;
-        vc["gWSCellPoolMode"]                = mVCParams.wsCellPoolMode;
+        vc["gUseCellInRIS"]                = mVCParams.useCellInRIS;
+        vc["gVisInPHat"]                   = mVCParams.visInPHat;
+        vc["gCellPoolEnable"]              = mVCParams.wsCellPoolEnable;
+        vc["gCellPoolCapacity"]            = mVCParams.cellPoolCapacity;
+        vc["gCellPoolDrawK"]               = mVCParams.cellPoolDrawK;
+        vc["gSpatialPixelsK"]              = mVCParams.spatialPixelsK;
+        vc["gSpatialPixelsRadius"]         = mVCParams.spatialPixelsRadius;
+        vc["gPoolAddrMode"]                = mVCParams.poolAddrMode;
+        vc["gPoolTileSize"]                = mVCParams.poolTileSize;
+        vc["gCellPoolMode"]                = mVCParams.cellPoolMode;
         vc["gDirSolidAngleScale"]            = mVCParams.dirSolidAngleScale;
         vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
-        vc["gWSCellReservoirMerge"]          = mVCParams.wsCellReservoirMerge;
-        vc["gWSCellPoolFootprintPx"]         = mVCParams.wsCellPoolFootprintPx;
-        vc["gWSCellReservoirFootprintPx"]    = mVCParams.wsCellReservoirFootprintPx;
-        vc["gWSRetraceOnReuseMode"]          = mVCParams.wsRetraceOnReuseMode;
+        vc["gCellReservoirMerge"]          = mVCParams.cellReservoirMerge;
+        vc["gCellPoolFootprintPx"]         = mVCParams.cellPoolFootprintPx;
+        vc["gCellReservoirFootprintPx"]    = mVCParams.cellReservoirFootprintPx;
+        vc["gRetraceOnReuseMode"]          = mVCParams.retraceOnReuseMode;
     }
     // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
-    if (mVisCacheWSReservoirs)
+    if (mVisCacheReservoirs)
     {
-        var["gWSReservoirs"]      = mpVHFWSReservoirs;
-        if (mpVHFPixelReservoirs) var["gWSPixelReservoirs"] = mpVHFPixelReservoirs;
-        if (mpVHFWSCellPools)     var["gWSCellPools"]       = mpVHFWSCellPools;
-        if (mpVHFWSCellPoolSlots) var["gWSCellPoolSlotBuf"] = mpVHFWSCellPoolSlots;
-        var["VisCacheParams"]["gWSFrameDimX"] = mVHFPixelDimX;
-        var["VisCacheParams"]["gWSFrameDimY"] = mVHFPixelDimY;
+        var["gReservoirs"]      = mpVHFReservoirs;
+        if (mpVHFPixelReservoirs) var["gPixelReservoirs"] = mpVHFPixelReservoirs;
+        if (mpVHFCellPools)     var["gCellPools"]       = mpVHFCellPools;
+        if (mpVHFCellPoolSlots) var["gCellPoolSlotBuf"] = mpVHFCellPoolSlots;
+        var["VisCacheParams"]["gFrameDimX"] = mVHFPixelDimX;
+        var["VisCacheParams"]["gFrameDimY"] = mVHFPixelDimY;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
@@ -1743,9 +1745,9 @@ DefineList ReSTIRNEEPass::StaticParams::getDefines(const ReSTIRNEEPass& owner) c
     // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
     // §9.4 WS-ReSTIR DI: master define gates all reservoir paths in slang.
-    defines.add("USE_WS_RESERVOIRS", owner.mVisCacheWSReservoirs ? "1" : "0");
+    defines.add("USE_WS_RESERVOIRS", owner.mVisCacheReservoirs ? "1" : "0");
     // §9.4 Step (b): WS cell-pool pre-pass mode (this instance fills pool, skips shading).
-    defines.add("WS_CELL_POOL_FILL_ONLY", owner.mWSCellPoolFillOnly ? "1" : "0");
+    defines.add("WS_CELL_POOL_FILL_ONLY", owner.mCellPoolFillOnly ? "1" : "0");
 
     // Scene-specific configuration.
     // Set defaults

@@ -146,7 +146,7 @@ separate from Falcor's PathTracer plugin. Implications:
   path-tracing-only substrate. The `USE_WS_RESERVOIRS`,
   `USE_VISCACHE_LIGHTSELECTION`, K-RIS, retrace-on-reuse blocks all
   move to the new DI pass.
-- `VisCacheParams` cbuffer and `gWSCellPool*` bindings move with the
+- `VisCacheParams` cbuffer and `gCellPool*` bindings move with the
   DI pass.
 - This makes the "port to native PathTracer" target *cleaner over
   time*, not harder. Wait for the split to settle before doing the

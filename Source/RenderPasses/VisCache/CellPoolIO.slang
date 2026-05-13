@@ -1,10 +1,10 @@
 /***************************************************************************
- * WSCellPoolIO.slang
+ * CellPoolIO.slang
  *
  * §9.4 World-space ReSTIR DI — cell-pool buffer + load/insert helpers.
  *
- * Pool keyed by the same WSCellAddress as the single-slot reservoir
- * (gWSReservoirs). Lives in its own buffer so the existing read/write
+ * Pool keyed by the same CellAddress as the single-slot reservoir
+ * (gReservoirs). Lives in its own buffer so the existing read/write
  * paths to the single-slot reservoir keep working unchanged.
  *
  * Insert policy (RTXDI-tile semantics):
@@ -17,61 +17,61 @@
 
 #pragma once
 import RenderPasses.VisCache.VisCache;
-import RenderPasses.VisCache.WSReservoir;
-import RenderPasses.VisCache.WSReservoirIO;
-import RenderPasses.VisCache.WSCellPool;
+import RenderPasses.VisCache.Reservoir;
+import RenderPasses.VisCache.ReservoirIO;
+import RenderPasses.VisCache.CellPool;
 import Utils.Sampling.SampleGenerator;
 
-// Bound at root by PathTracer.cpp (var["gWSCellPools"], var["gWSCellPoolSlotBuf"]).
+// Bound at root by PathTracer.cpp (var["gCellPools"], var["gCellPoolSlotBuf"]).
 // Split-buffer layout:
-//   gWSCellPools     — header (fingerprint, count) per cell, capacity entries
-//   gWSCellPoolSlotBuf — flat slot array, capacity * WS_CELL_POOL_N entries
-// Slot at cell `c`, index `i` lives at gWSCellPoolSlotBuf[c * WS_CELL_POOL_N + i].
+//   gCellPools     — header (fingerprint, count) per cell, capacity entries
+//   gCellPoolSlotBuf — flat slot array, capacity * WS_CELL_POOL_N entries
+// Slot at cell `c`, index `i` lives at gCellPoolSlotBuf[c * WS_CELL_POOL_N + i].
 // This splits the nested-array-in-struct that DXC rejects at N≥256.
-RWStructuredBuffer<WSCellPool>     gWSCellPools;
-RWStructuredBuffer<WSCellPoolSlot> gWSCellPoolSlotBuf;
+RWStructuredBuffer<CellPool>     gCellPools;
+RWStructuredBuffer<CellPoolSlot> gCellPoolSlotBuf;
 
-uint wsSlotIndex(uint cell, uint slotIdx) { return cell * WS_CELL_POOL_N + slotIdx; }
+uint slotIndex(uint cell, uint slotIdx) { return cell * WS_CELL_POOL_N + slotIdx; }
 
 // Slot packed-field helpers (mAndFrame = (M << 16) | (frame & 0xFFFFu)).
-uint slotGetM(WSCellPoolSlot s)         { return s.mAndFrame >> 16; }
-uint slotGetFrame(WSCellPoolSlot s)     { return s.mAndFrame & 0xFFFFu; }
+uint slotGetM(CellPoolSlot s)         { return s.mAndFrame >> 16; }
+uint slotGetFrame(CellPoolSlot s)     { return s.mAndFrame & 0xFFFFu; }
 uint slotPackMFrame(uint M, uint frame) { return (min(M, 0xFFFFu) << 16) | (frame & 0xFFFFu); }
 uint slotCurrentFrame()                 { return gFrameCount & 0xFFFFu; }
 uint slotAge(uint slotFrame)            { return (slotCurrentFrame() - slotFrame) & 0xFFFFu; }
 
-bool wsCellPoolEnabled() { return gWSEnable != 0u && gWSCellPoolEnable != 0u && gWSCellPoolCapacity > 0u && gWSCellPoolFootprintPx > 0u; }
+bool cellPoolEnabled() { return gEnable != 0u && gCellPoolEnable != 0u && gCellPoolCapacity > 0u && gCellPoolFootprintPx > 0u; }
 
-/// Pool addressing mode (gWSPoolAddrMode):
+/// Pool addressing mode (gPoolAddrMode):
 ///   0 = 3D world cell (default — open-addressed hash table with double-hash
-///       probing on collision via `wsCellPoolFindSlot`; concentrates per-3D-
+///       probing on collision via `cellPoolFindSlot`; concentrates per-3D-
 ///       region; persists across frames so an animated camera's pool warms up).
 ///   1 = 2D screen tile (RTXDI-style — direct array map; tiles never collide
 ///       within typical capacity, the probe converges at step 0;
 ///       concentrates per-screen-region for the current frame only).
 ///
 /// The two modes are **functionally equivalent** up to addressing: same
-/// `WSCellPool` struct, same Bayer-prepass fill, same RIS-at-insert math
+/// `CellPool` struct, same Bayer-prepass fill, same RIS-at-insert math
 /// (`pHat × V / sourcePdf` weight), same N=128 per-slot reservoir, same
 /// reader-side RIS resample. The only physical difference is collision
 /// behaviour:
 ///   - 3D-cell: distinct world cells may hash to the same primary slot;
-///     `wsCellPoolFindSlot` probes along an fp-derived odd-step sequence
+///     `cellPoolFindSlot` probes along an fp-derived odd-step sequence
 ///     (kMaxProbe=8) to find a slot whose fingerprint matches or is empty;
 ///   - 2D-tile: direct map sized for `numTilesX × numTilesY` exactly
 ///     (tiles never collide → probe is a no-op).
 ///
-/// **Tuning equivalence**: when `gWSPoolTileSize` ≈ projected screen-space
-/// footprint of the prepass WS cell at `gWSCellLevel`, the two modes
+/// **Tuning equivalence**: when `gPoolTileSize` ≈ projected screen-space
+/// footprint of the prepass WS cell at `gCellLevel`, the two modes
 /// concentrate similar M-candidate density per region — just keyed
 /// differently. Pick tile size to match cell footprint for apples-to-apples
 /// A/B comparison.
 
 // 3D-cell addressing: hash by (posA, faceN). Level is either fixed
-// (gWSCellLevel) or footprint-derived (gWSCellPoolFootprintPx > 0).
+// (gCellLevel) or footprint-derived (gCellPoolFootprintPx > 0).
 //
-// `gWSCellPoolFootprintPx` is interpreted as **screen-space SIDE LENGTH
-// in pixels** (matching gWSPoolTileSize's 2D-tile semantics — they're
+// `gCellPoolFootprintPx` is interpreted as **screen-space SIDE LENGTH
+// in pixels** (matching gPoolTileSize's 2D-tile semantics — they're
 // equivalent when these two params agree on side-length, e.g. 16 = 16-px
 // tile = 16-px-side cell ≈ 256 px² catchment). Square it before passing
 // to vhfLevelForFootprint, which expects an AREA input (it sqrt's
@@ -83,46 +83,46 @@ bool wsCellPoolEnabled() { return gWSEnable != 0u && gWSCellPoolEnable != 0u && 
 // gJitterFilter or gJitterCell is non-zero, both writers and readers of the
 // same cell agree on the jittered cell-coordinate (jitterCell, hard
 // boundary shift) or get independent per-position jitter (jitterFilter,
-// soft boundary). Same call path as the single-slot reservoir's wsQuantizePosA.
-WSCellAddress wsResolveCellPoolAddr(float3 posA, float3 faceN)
+// soft boundary). Same call path as the single-slot reservoir's quantizePosA.
+CellAddress resolveCellPoolAddr(float3 posA, float3 faceN)
 {
     // Pool always uses analytical entry-level from primary-hit pixel
-    // footprint. gWSCellPoolFootprintPx == 0 means "P3d disabled" — caller
-    // must check wsCellPoolEnabled() before calling this; here we guard
+    // footprint. gCellPoolFootprintPx == 0 means "P3d disabled" — caller
+    // must check cellPoolEnabled() before calling this; here we guard
     // against zero just to keep the math finite.
-    float sidePx = max(float(gWSCellPoolFootprintPx), 1.f);
+    float sidePx = max(float(gCellPoolFootprintPx), 1.f);
     int lvl = vhfLevelForFootprint(posA, sidePx * sidePx);
     lvl = clamp(lvl, 0, int(gNumLevels) - 1);
     float cellSize = max(vhfPosASize(lvl), 1e-6f);
     int3 q = jitterQuantize(posA, cellSize, 0xC5u ^ uint(lvl));
-    uint nb = (gWSNormalAddr != 0u) ? wsNormalBin(faceN) : 0u;
-    WSCellAddress a;
-    a.slot        = wsAddressHash(q, nb) & (gWSCellPoolCapacity - 1u);
-    a.fingerprint = wsFingerprintHash(q, nb);
+    uint nb = (gNormalAddr != 0u) ? normalBin(faceN) : 0u;
+    CellAddress a;
+    a.slot        = addressHash(q, nb) & (gCellPoolCapacity - 1u);
+    a.fingerprint = fingerprintHash(q, nb);
     return a;
 }
 
 // 2D-tile addressing: tileIdx = (pixel/tileSize) flattened to a slot.
 // Fingerprint is a fixed sentinel (tiles never collide — direct slot map),
 // matched at the reader so the empty-slot test (`fingerprint == 0`) still works.
-WSCellAddress wsResolveTilePoolAddr(uint2 pixel)
+CellAddress resolveTilePoolAddr(uint2 pixel)
 {
-    uint tileSize = max(gWSPoolTileSize, 1u);
+    uint tileSize = max(gPoolTileSize, 1u);
     uint tx = pixel.x / tileSize;
     uint ty = pixel.y / tileSize;
-    uint numTilesX = max((gWSFrameDimX + tileSize - 1u) / tileSize, 1u);
-    WSCellAddress a;
-    a.slot        = (ty * numTilesX + tx) & (gWSCellPoolCapacity - 1u);
+    uint numTilesX = max((gFrameDimX + tileSize - 1u) / tileSize, 1u);
+    CellAddress a;
+    a.slot        = (ty * numTilesX + tx) & (gCellPoolCapacity - 1u);
     a.fingerprint = 0xA11E1234u;  // arbitrary non-zero sentinel; tiles never collide
     return a;
 }
 
 // Mode-dispatched insert/read addressing. Callers pass both posA/faceN AND
-// pixel; the resolver picks based on `gWSPoolAddrMode`.
-WSCellAddress wsResolvePoolAddr(float3 posA, float3 faceN, uint2 pixel)
+// pixel; the resolver picks based on `gPoolAddrMode`.
+CellAddress resolvePoolAddr(float3 posA, float3 faceN, uint2 pixel)
 {
-    if (gWSPoolAddrMode == 1u) return wsResolveTilePoolAddr(pixel);
-    return wsResolveCellPoolAddr(posA, faceN);
+    if (gPoolAddrMode == 1u) return resolveTilePoolAddr(pixel);
+    return resolveCellPoolAddr(posA, faceN);
 }
 
 // Double-hash probe finder, mirrors vhfFindSlot for the cell-pool table.
@@ -147,63 +147,63 @@ WSCellAddress wsResolvePoolAddr(float3 posA, float3 faceN, uint2 pixel)
 static const uint kPoolEvictStartStep = 9999u;  // DIAGNOSTIC: disabled — bisect regression source
 static const uint kPoolEvictAgeBase   = 1u;  // frames
 
-uint wsCellPoolFindSlot(uint addr0, uint fp, bool allowInsert, out bool found)
+uint cellPoolFindSlot(uint addr0, uint fp, bool allowInsert, out bool found)
 {
     uint h2 = fp | 1u;
     [unroll] for (uint i = 0u; i < 8u; ++i)
     {
-        uint slot = (addr0 + i * h2) & (gWSCellPoolCapacity - 1u);
-        uint efp  = gWSCellPools[slot].fingerprint;
+        uint slot = (addr0 + i * h2) & (gCellPoolCapacity - 1u);
+        uint efp  = gCellPools[slot].fingerprint;
         if (efp == fp)  { found = true;        return slot; }
         if (efp == 0u)  { found = allowInsert; return slot; }
     }
     found = false;
-    return addr0 & (gWSCellPoolCapacity - 1u);
+    return addr0 & (gCellPoolCapacity - 1u);
 }
 
 // Reader-side: locate the pool entry for `addr` via the probe. Returns the
 // buffer slot index + the entry's `count` so the caller can index slot data
-// directly (`gWSCellPools[slot].field[i]`). Avoids a 12 KB struct copy that
+// directly (`gCellPools[slot].field[i]`). Avoids a 12 KB struct copy that
 // would exhaust DXC validation limits at N=1024.
-bool wsLookupCellPool(WSCellAddress addr, out uint slot, out uint count)
+bool lookupCellPool(CellAddress addr, out uint slot, out uint count)
 {
     slot  = 0u;
     count = 0u;
-    if (!wsCellPoolEnabled()) return false;
+    if (!cellPoolEnabled()) return false;
     bool found;
-    uint s = wsCellPoolFindSlot(addr.slot, addr.fingerprint, false, found);
+    uint s = cellPoolFindSlot(addr.slot, addr.fingerprint, false, found);
     if (!found) return false;
-    if (gWSCellPools[s].fingerprint != addr.fingerprint) return false;
+    if (gCellPools[s].fingerprint != addr.fingerprint) return false;
     slot  = s;
     // The insert path's `InterlockedAdd` lets count grow past N (each writer
     // beyond N still bumps the counter but writes to a random in-range slot).
     // Cap here so the reader's slot pick stays within [0, N).
-    count = min(gWSCellPools[s].count, WS_CELL_POOL_N);
+    count = min(gCellPools[s].count, WS_CELL_POOL_N);
     return count > 0u;
 }
 
-void wsCellPoolInsert<S : ISampleGenerator>(WSCellAddress addr, uint lightTypeIndex, uint payload, float sourcePdf, float pHat, inout S sg)
+void cellPoolInsert<S : ISampleGenerator>(CellAddress addr, uint lightTypeIndex, uint payload, float sourcePdf, float pHat, inout S sg)
 {
-    if (!wsCellPoolEnabled()) return;
+    if (!cellPoolEnabled()) return;
     if (sourcePdf <= 0.f || pHat <= 0.f) return;
     bool found;
-    uint slot = wsCellPoolFindSlot(addr.slot, addr.fingerprint, true, found);
+    uint slot = cellPoolFindSlot(addr.slot, addr.fingerprint, true, found);
     if (!found) return;
 
-    // AoS insert at N=1024 — never materialise the whole WSCellPool struct
+    // AoS insert at N=1024 — never materialise the whole CellPool struct
     // (would be 12 KB, exceeds DXIL per-thread limits). The header
     // (fingerprint, count) is read/written via small per-field accesses;
-    // slot data lives in WSCellPoolSlot[N] inside the buffer, so a single
+    // slot data lives in CellPoolSlot[N] inside the buffer, so a single
     // `slots[writeSlot] = makeSlot(...)` compiles to one bufferStore that
     // covers the whole 12-B slot contiguously. Within-slot coherence
     // (lightTypeIndex/payload/sourcePdf from the same writer) is preserved
     // — this is the load-bearing property that the legacy whole-struct
     // copy gave; AoS gives it without the 12 KB local-memory cost.
-    uint efp = gWSCellPools[slot].fingerprint;
+    uint efp = gCellPools[slot].fingerprint;
     if (efp != addr.fingerprint)
     {
-        gWSCellPools[slot].fingerprint = addr.fingerprint;
-        gWSCellPools[slot].count       = 0u;
+        gCellPools[slot].fingerprint = addr.fingerprint;
+        gCellPools[slot].count       = 0u;
         // No cell-level slot zero-init needed — each slot carries its own
         // `frameStamp` field set at write time. Reader filters `frameStamp
         // == currentFrame` so stale slots from previous occupants (or even
@@ -211,7 +211,7 @@ void wsCellPoolInsert<S : ISampleGenerator>(WSCellAddress addr, uint lightTypeIn
     }
 
     // === Mode-gated slot replacement ===
-    // gWSCellPoolMode:
+    // gCellPoolMode:
     //   0 (P3d)   — raw-pdf-proposal slots, age-pressure replacement
     //   1 (PR3d)  — ReGIR-at-tile: each slot is a reservoir-sampled survivor
     //                  with M-count (high 16 bits of mAndFrame), reader weighs
@@ -231,17 +231,17 @@ void wsCellPoolInsert<S : ISampleGenerator>(WSCellAddress addr, uint lightTypeIn
     uint writeSlot;
     uint outM;
 
-    if (gWSCellPoolMode == 0u)
+    if (gCellPoolMode == 0u)
     {
         // P3d: K=4 age-pressure probe, pick oldest slot. M stays 0.
         const uint kAgeProbeK = 4u;
         writeSlot              = uint(sampleNext1D(sg) * float(WS_CELL_POOL_N)) % WS_CELL_POOL_N;
-        WSCellPoolSlot first   = gWSCellPoolSlotBuf[wsSlotIndex(slot, writeSlot)];
+        CellPoolSlot first   = gCellPoolSlotBuf[slotIndex(slot, writeSlot)];
         uint bestAge           = slotAge(slotGetFrame(first));
         [unroll] for (uint k = 1u; k < kAgeProbeK; ++k)
         {
             uint cand               = uint(sampleNext1D(sg) * float(WS_CELL_POOL_N)) % WS_CELL_POOL_N;
-            WSCellPoolSlot candSlot = gWSCellPoolSlotBuf[wsSlotIndex(slot, cand)];
+            CellPoolSlot candSlot = gCellPoolSlotBuf[slotIndex(slot, cand)];
             uint candAge            = slotAge(slotGetFrame(candSlot));
             if (candAge > bestAge) { bestAge = candAge; writeSlot = cand; }
         }
@@ -256,7 +256,7 @@ void wsCellPoolInsert<S : ISampleGenerator>(WSCellAddress addr, uint lightTypeIn
         // - Always update mAndFrame (new frame + new M), even if candidate kept.
         const uint kMCap        = 20u;
         writeSlot               = uint(sampleNext1D(sg) * float(WS_CELL_POOL_N)) % WS_CELL_POOL_N;
-        WSCellPoolSlot existing = gWSCellPoolSlotBuf[wsSlotIndex(slot, writeSlot)];
+        CellPoolSlot existing = gCellPoolSlotBuf[slotIndex(slot, writeSlot)];
         uint oldM               = slotGetM(existing);
         uint newM               = min(oldM + 1u, kMCap);
         outM                    = newM;
@@ -264,21 +264,21 @@ void wsCellPoolInsert<S : ISampleGenerator>(WSCellAddress addr, uint lightTypeIn
         if (sampleNext1D(sg) >= 1.0f / float(newM))
         {
             // Keep existing candidate fields — just bump mAndFrame (4-byte sub-field write).
-            gWSCellPoolSlotBuf[wsSlotIndex(slot, writeSlot)].mAndFrame =
+            gCellPoolSlotBuf[slotIndex(slot, writeSlot)].mAndFrame =
                 slotPackMFrame(newM, slotCurrentFrame());
-            if (gWSCellPools[slot].count <= writeSlot)
-                gWSCellPools[slot].count = writeSlot + 1u;
+            if (gCellPools[slot].count <= writeSlot)
+                gCellPools[slot].count = writeSlot + 1u;
             return;
         }
         // else: fall through — replace whole slot with new writer's data.
     }
 
-    WSCellPoolSlot s;
+    CellPoolSlot s;
     s.lightTypeIndex = lightTypeIndex;
     s.payload        = payload;
     s.sourcePdf      = sourcePdf;
     s.mAndFrame      = slotPackMFrame(outM, slotCurrentFrame());
-    gWSCellPoolSlotBuf[wsSlotIndex(slot, writeSlot)] = s;  // single uint4 store
-    if (gWSCellPools[slot].count <= writeSlot)
-        gWSCellPools[slot].count = writeSlot + 1u;
+    gCellPoolSlotBuf[slotIndex(slot, writeSlot)] = s;  // single uint4 store
+    if (gCellPools[slot].count <= writeSlot)
+        gCellPools[slot].count = writeSlot + 1u;
 }

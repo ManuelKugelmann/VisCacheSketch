@@ -148,46 +148,46 @@ public:
         uint32_t warmupSlotsRun;   ///< # Bayer slots write-only in every subsequent frame
 
         // --- §9.4 World-space ReSTIR DI reservoirs (rides VisCache posA cascade) ---
-        uint32_t wsEnable;             ///< 1 = WS-reservoir buffer active. Master gate.
-        uint32_t wsCapacity;           ///< Power-of-two reservoir slot count (table size).
-        float    wsMCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
-        uint32_t wsSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
-        float    wsLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
-        float    wsLightSoftness;      ///< 0..1 softening of cached μ in target p̂.
+        uint32_t enable;             ///< 1 = WS-reservoir buffer active. Master gate.
+        uint32_t capacity;           ///< Power-of-two reservoir slot count (table size).
+        float    mCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
+        uint32_t spatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
+        float    lightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
+        float    lightSoftness;      ///< 0..1 softening of cached μ in target p̂.
                                        ///< 0 = uniform (no cache effect), 1 = full trust.
-                                       ///< Effective μ = max(lerp(1, μ, softness), wsLightMuMin).
-        uint32_t wsNormalAddr;         ///< 1 = fold a 6-axis face-normal bin into the cell hash.
+                                       ///< Effective μ = max(lerp(1, μ, softness), lightMuMin).
+        uint32_t normalAddr;         ///< 1 = fold a 6-axis face-normal bin into the cell hash.
                                        ///< Prevents cross-normal pollution at corners / thin shells.
-        uint32_t wsInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
+        uint32_t initialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
                                        ///< Drives variance reduction on many-lights scenes — single
                                        ///< candidate (K=1) gives no variance benefit beyond vanilla NEE.
-        uint32_t _wsPad0;              ///< (reserved — was wsJitterFilter; WS-ReSTIR now reuses VisCache's gJitterFilter)
-        uint32_t _wsPad1;              ///< (reserved — was wsJitterCell; WS-ReSTIR now reuses VisCache's gJitterCell)
-        uint32_t wsUseCellInRIS;       ///< 1 = include WS cell candidate(s); 0 = pure per-pixel ReSTIR.
-        uint32_t wsVisInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
+        uint32_t _wsPad0;              ///< (reserved — was jitterFilter; WS-ReSTIR now reuses VisCache's gJitterFilter)
+        uint32_t _wsPad1;              ///< (reserved — was jitterCell; WS-ReSTIR now reuses VisCache's gJitterCell)
+        uint32_t useCellInRIS;       ///< 1 = include WS cell candidate(s); 0 = pure per-pixel ReSTIR.
+        uint32_t visInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-        uint32_t wsCellPoolEnable;     ///< 1 = pool buffer active. Step (a)+ master gate.
-        uint32_t wsCellPoolCapacity;   ///< Power-of-two pool slot count.
-        uint32_t wsCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled,
+        uint32_t cellPoolEnable;     ///< 1 = pool buffer active. Step (a)+ master gate.
+        uint32_t cellPoolCapacity;   ///< Power-of-two pool slot count.
+        uint32_t cellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled,
                                        ///< write-back still active so pool fills).
-        uint32_t wsCellLevelJitter;    ///< Stochastic LOD jitter range (0 = off).
-        uint32_t wsSpatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).
-        uint32_t wsSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
-        uint32_t wsPoolAddrMode;       ///< 0 = 3D cell, 1 = 2D screen-tile.
-        uint32_t wsPoolTileSize;       ///< Tile edge in pixels (default 16). AddrMode=1 only.
-        uint32_t wsCellPoolMode;       ///< 0 = P3d (raw pdf-proposal, age-pressure), 1 = PR3d (pool-of-reservoirs).
+        uint32_t cellLevelJitter;    ///< Stochastic LOD jitter range (0 = off).
+        uint32_t spatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).
+        uint32_t spatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
+        uint32_t poolAddrMode;       ///< 0 = 3D cell, 1 = 2D screen-tile.
+        uint32_t poolTileSize;       ///< Tile edge in pixels (default 16). AddrMode=1 only.
+        uint32_t cellPoolMode;       ///< 0 = P3d (raw pdf-proposal, age-pressure), 1 = PR3d (pool-of-reservoirs).
         float    dirSolidAngleScale;   ///< §4.2 posB angular axis multiplier (default 1.0).
         float    distSolidAngleScale;  ///< §4.2 posB distance axis multiplier (default 1.0).
-        uint32_t wsCellReservoirMerge; ///< 0 = identity-hint cell (legacy), 1 = Bitterli merge (3D-eq variant).
-        uint32_t wsCellPoolFootprintPx;///< Target pool cell screen-space footprint in pixels.
+        uint32_t cellReservoirMerge; ///< 0 = identity-hint cell (legacy), 1 = Bitterli merge (3D-eq variant).
+        uint32_t cellPoolFootprintPx;///< Target pool cell screen-space footprint in pixels.
                                        ///< 0 = pool DISABLED (no P3d layer); >0 = analytical entry
                                        ///< level via vhfLevelForFootprint at that pixel-footprint
                                        ///< target. Single knob: feature toggle + size in one field.
-        uint32_t wsCellReservoirFootprintPx;///< Reservoir cell footprint analog. 0 = R3d DISABLED
+        uint32_t cellReservoirFootprintPx;///< Reservoir cell footprint analog. 0 = R3d DISABLED
                                             ///< (cell-level reservoir reads/writes skipped); >0 =
                                             ///< analytical entry level. Selected independently from
                                             ///< the pool footprint so reservoir cells can be finer.
-        uint32_t wsRetraceOnReuseMode; ///< Retrace V on temporal/spatial reservoir reuse (RTXDI BiasCorrection
+        uint32_t retraceOnReuseMode; ///< Retrace V on temporal/spatial reservoir reuse (RTXDI BiasCorrection
                                        ///< analog). 0 = Off (Basic-equiv: stored W carries write-time V — what
                                        ///< we ship today), 1 = FullTrace (≡ RTXDI BiasCorrection::RayTraced —
                                        ///< unbiased, expensive), 2 = CacheCV (cache CV+RRR via existing
@@ -287,55 +287,55 @@ public:
                                                         ///< Lower = bigger cell-size step per stride, more samples per cell.
 
         // --- §9.4 World-space ReSTIR DI reservoirs ---
-        bool     enableWSReservoirs            = false; ///< Master gate. Off = legacy NEE in PathTracer.
-        bool     enableWSPixelReservoir        = true;  ///< Per-pixel temporal + spatial pixel-reuse
+        bool     enableReservoirs            = false; ///< Master gate. Off = legacy NEE in PathTracer.
+        bool     enablePixelReservoir        = true;  ///< Per-pixel temporal + spatial pixel-reuse
                                                         ///< layer (RTXDI screen-side reservoir). Set false
                                                         ///< to focus on the pure WS-cell pipeline (cell pool +
                                                         ///< cell reservoir + jittered cell-spatial gather).
         bool     enableBoilingFilter           = false; ///< DISABLED 2026-05-05. Field kept so existing
                                                         ///< Python configs / dict round-trips do not break,
                                                         ///< but VisCache.cpp does not create or dispatch the
-                                                        ///< compute pass. See WSReservoirBoilingFilter.cs.slang
+                                                        ///< compute pass. See ReservoirBoilingFilter.cs.slang
                                                         ///< header for the failure mode (shader writes never
-                                                        ///< reach gWSPixelReservoirs) and the recommended
+                                                        ///< reach gPixelReservoirs) and the recommended
                                                         ///< separable-include fix path.
         float    boilingFilterStrength         = 0.2f;  ///< Unused while enableBoilingFilter is hard-disabled.
-        uint32_t wsCellLevelJitter             = 0u;    ///< Stochastic LOD jitter (0 = off). When >0, the per-pixel
+        uint32_t cellLevelJitter             = 0u;    ///< Stochastic LOD jitter (0 = off). When >0, the per-pixel
                                                         ///< level is perturbed by a one-sided truncated-exponential
                                                         ///< offset in [0, jitter] *above* the analytical entry level
-                                                        ///< (computed from wsCellReservoirFootprintPx). P(offset=k) ∝
+                                                        ///< (computed from cellReservoirFootprintPx). P(offset=k) ∝
                                                         ///< 2^(-k); never queries levels finer than base. Form follows
                                                         ///< MCPG 2025 (merian-quake/mc.glsl: -log2(1-u)). Composes
                                                         ///< with gJitterFilter / gJitterCell (spatial jitter from
                                                         ///< VisCache).
-        uint32_t wsReservoirCapacity           = 1u << 20u; ///< 1M cells × 32 B = 32 MB. Sized for the WORST-CASE
+        uint32_t reservoirCapacity           = 1u << 20u; ///< 1M cells × 32 B = 32 MB. Sized for the WORST-CASE
                                                         ///< R3dP3d variant (footprint=1 → 1 cell per screen pixel
                                                         ///< → ~262K active at 512² + cascade fan-out). 4× headroom.
                                                         ///< Canonical R3d (footprint=8, ~4K active) under-uses the
                                                         ///< capacity (much lower load factor, ~0.4%) — fine, it's
                                                         ///< just unused VRAM until R3dP3d kicks in.
-        float    wsMCap                        = 5.0f;  ///< Temporal M-cap for reservoir merge.
+        float    mCap                        = 5.0f;  ///< Temporal M-cap for reservoir merge.
                                                         ///< Higher = more temporal stability but per-pixel
                                                         ///< reservoir lock-in bias (occluded picks stay dark
                                                         ///< on emissive scenes). Mitigated by spatial reuse.
-        uint32_t wsSpatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
-        float    wsLightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
-        float    wsLightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.
+        uint32_t spatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
+        float    lightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
+        float    lightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.
                                                         ///< 0 disables (uniform — cache has no effect on selection),
                                                         ///< 1 = full trust (current behavior). 0.5 = √μ-like soft.
-        bool     wsNormalAddr                  = false; ///< Fold 6-axis face-normal bin into cell hash.
+        bool     normalAddr                  = false; ///< Fold 6-axis face-normal bin into cell hash.
                                                         ///< Prevents cross-normal cell sharing at corners.
-        uint32_t wsInitialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
+        uint32_t initialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).
-        // (wsJitterFilter / wsJitterCell removed — WS-ReSTIR reuses
+        // (jitterFilter / jitterCell removed — WS-ReSTIR reuses
         //  VisCache's gJitterFilter / gJitterCell via the shared
         //  jitterQuantize() machinery. Set the latter via the
         //  jitterFilter / jitterCell Params.)
-        bool     wsUseCellInRIS                = true;  ///< Include WS cell candidate(s) in per-pixel RIS.
+        bool     useCellInRIS                = true;  ///< Include WS cell candidate(s) in per-pixel RIS.
                                                         ///< Off = pure per-pixel ReSTIR DI (per-pixel temporal
                                                         ///< + spatial reuse only). Useful as an ablation: WS
                                                         ///< layer's value vs the boundary artifacts it adds.
-        uint32_t wsVisInPHat                   = 0u;    ///< Visibility-aware target function (off by default).
+        uint32_t visInPHat                   = 0u;    ///< Visibility-aware target function (off by default).
                                                         ///< RTXDI-faithful behavior is BLIND RIS (this default) +
                                                         ///< V=0 reservoir invalidation after the winner's shadow
                                                         ///< trace (always-on, in PathTracer.slang). Putting V in
@@ -345,37 +345,37 @@ public:
                                                         ///< 2 = explicit always-trace (experimental — biased).
 
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-        bool     enableWSCellPool              = false; ///< Master gate for the multi-light pool (step a+ of
+        bool     enableCellPool              = false; ///< Master gate for the multi-light pool (step a+ of
                                                         ///< .plans/rtxdi-parity-ws-cascade.md).
-        uint32_t wsCellPoolCapacity            = 1u << 12u; ///< 4K cells at N=1024 → 64 MB slot buffer
+        uint32_t cellPoolCapacity            = 1u << 12u; ///< 4K cells at N=1024 → 64 MB slot buffer
                                                         ///< (~4× the ~1K active cells per user "8× generous" rule,
                                                         ///< probing handles collisions; total alloc fits VRAM
                                                         ///< headroom for laptop GPUs).
-        uint32_t wsCellPoolDrawK               = 0u;    ///< K candidates drawn from pool per pixel (read path).
+        uint32_t cellPoolDrawK               = 0u;    ///< K candidates drawn from pool per pixel (read path).
                                                         ///< 0 = pool fills from write-back only; main pass keeps
                                                         ///<     using fresh generateLightSample candidates.
                                                         ///< K>0 = main pass draws K from pool (when populated)
                                                         ///<       and falls back to fresh per-pixel for empty pools.
-        uint32_t wsSpatialPixelsK              = 4u;    ///< Per-pixel screen-space spatial-reuse neighbour count.
+        uint32_t spatialPixelsK              = 4u;    ///< Per-pixel screen-space spatial-reuse neighbour count.
                                                         ///< 0 = no per-pixel spatial gather (still has temporal).
                                                         ///< 4 = current default (matches RTXDI's 1-round k≈4–5).
                                                         ///< 8+ = compensates for missing 2nd spatial round at the
                                                         ///<      cost of more reservoir reads per pixel.
-        uint32_t wsSpatialPixelsRadius         = 32u;   ///< Spatial-reuse pixel search radius (Manhattan-ish).
+        uint32_t spatialPixelsRadius         = 32u;   ///< Spatial-reuse pixel search radius (Manhattan-ish).
                                                         ///< 32 ≈ RTXDI's default; smaller = more correlated reuse,
                                                         ///< larger = wider but more bias from disparate surfaces.
-        uint32_t wsPoolAddrMode                = 0u;    ///< 0 = 3D world cell (default), 1 = 2D screen-tile.
+        uint32_t poolAddrMode                = 0u;    ///< 0 = 3D world cell (default), 1 = 2D screen-tile.
                                                         ///< Tile mode (RTXDI-style) reuses the cell-pool buffer
                                                         ///< but addresses by `pixel.xy / tileSize`. Same K-RIS
                                                         ///< prepass (`PathTracerPrePass`) writes; main pass
                                                         ///< reads its-pixel's tile entries. Concentrates K-RIS
                                                         ///< filtering in screen-space — closes the single-frame
                                                         ///< Sponza x1 gap to RTXDI without a separate compute pass.
-        uint32_t wsPoolTileSize                = 16u;   ///< Tile edge in pixels for AddrMode=1. 16 → 256-pixel
+        uint32_t poolTileSize                = 16u;   ///< Tile edge in pixels for AddrMode=1. 16 → 256-pixel
                                                         ///< tiles match RTXDI's default; larger = fewer tiles
                                                         ///< (more inserts per tile = better filter quality but
                                                         ///< broader candidate region per pixel).
-        uint32_t wsCellPoolMode                = 0u;    ///< 0 = P3d (raw pdf-proposal slots, age-pressure
+        uint32_t cellPoolMode                = 0u;    ///< 0 = P3d (raw pdf-proposal slots, age-pressure
                                                         ///< replacement). 1 = PR3d (pool-of-reservoirs at tile,
                                                         ///< reservoir-sample replacement with M-count + decay,
                                                         ///< reader weights by M_slot). Slot layout identical
@@ -388,21 +388,21 @@ public:
                                                         ///< logStep = log(1 + α × this). 1.0 = isotropic
                                                         ///< (matched solid-angle cubic bins). <1 = finer dist;
                                                         ///< >1 = coarser dist.
-        uint32_t wsCellReservoirMerge          = 0u;    ///< 0 = legacy identity-hint cell read (preserves wsrestir).
+        uint32_t cellReservoirMerge          = 0u;    ///< 0 = legacy identity-hint cell read (preserves wsrestir).
                                                         ///< 1 = promote cell to full Bitterli weighted merge —
                                                         ///< world-space analog of per-pixel reservoir, no
                                                         ///< reprojection needed. Set to 1 for `restir_3d`.
-        uint32_t wsCellPoolFootprintPx         = 16u;   ///< Pool cell footprint in pixels (analytical entry
+        uint32_t cellPoolFootprintPx         = 16u;   ///< Pool cell footprint in pixels (analytical entry
                                                         ///< level via shared vhfLevelForFootprint). 16 →
                                                         ///< ~256 px² cell, matching RTXDI's 16-px tile.
                                                         ///< Required > 0 (legacy fixed-level fallback removed).
-        uint32_t wsCellReservoirFootprintPx    = 8u;    ///< Reservoir cell footprint in pixels (analytical
+        uint32_t cellReservoirFootprintPx    = 8u;    ///< Reservoir cell footprint in pixels (analytical
                                                         ///< entry level via vhfLevelForFootprint). 8 = ~64-px
                                                         ///< reservoir footprint — finer than the 16-px pool
                                                         ///< footprint so each pool cell aggregates candidates
                                                         ///< across ~4 reservoir cells worth of pixels.
                                                         ///< Required > 0.
-        uint32_t wsRetraceOnReuseMode          = 0u;    ///< 0 = Off (Basic-equiv, current default), 1 = FullTrace
+        uint32_t retraceOnReuseMode          = 0u;    ///< 0 = Off (Basic-equiv, current default), 1 = FullTrace
                                                         ///< (≡ RTXDI RayTraced), 2 = CacheCV (cheap CV+RRR via
                                                         ///< evalRevalidationCV with PT-canonical knobs). Toggleable
                                                         ///< like RTXDI's BiasCorrection enum.
@@ -417,7 +417,7 @@ private:
     void allocateBuffers();
     void autoTuneCellSizes();    ///< Derive posACoarse (+ posBCoarse, distBCoarse) from scene bounds
     void runDecayPass(RenderContext* pCtx);
-    // ╔══ DISABLED 2026-05-05 — see WSReservoirBoilingFilter.cs.slang ══╗
+    // ╔══ DISABLED 2026-05-05 — see ReservoirBoilingFilter.cs.slang ══╗
     // void runBoilingFilterPass(RenderContext* pCtx);
     // ╚═════════════════════════════════════════════════════════════════╝
     void readbackStats(RenderContext* pCtx);
@@ -430,24 +430,24 @@ private:
     ref<Buffer>         mpParamsBuffer;  ///< VisCacheParams cbuffer (32 bytes, exported via dict)
     ref<Buffer>         mpStatsBuffer;   ///< 5x uint32 atomic counters
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
-    ref<Buffer>         mpWSReservoirs;  ///< RWStructuredBuffer<WSReservoir>, sized by wsReservoirCapacity. Allocated on demand.
-    uint32_t            mWSReservoirCapacityCommitted = 0u; ///< Capacity used to allocate mpWSReservoirs (re-alloc on resize).
+    ref<Buffer>         mpReservoirs;  ///< RWStructuredBuffer<Reservoir>, sized by reservoirCapacity. Allocated on demand.
+    uint32_t            mReservoirCapacityCommitted = 0u; ///< Capacity used to allocate mpReservoirs (re-alloc on resize).
     // §9.4 per-pixel temporal reservoir (RTXDI-style). One slot per pixel,
     // persists across frames so temporal-M accumulation kicks in.
     ref<Buffer>         mpPixelReservoirs;
     uint2               mPixelReservoirsCommitted = {0u, 0u};
     // §9.4 WS-cascade ReGIR cell pool — split-buffer layout.
-    //   mpWSCellPools     : RWStructuredBuffer<WSCellPool> (header only — fingerprint + count)
-    //   mpWSCellPoolSlots : RWStructuredBuffer<WSCellPoolSlot> (flat, capacity*N entries)
-    // Slot at cell c, index i lives at mpWSCellPoolSlots[c * N + i]. The
-    // nested-array-in-struct pattern (slots[N] inside WSCellPool) breaks
+    //   mpCellPools     : RWStructuredBuffer<CellPool> (header only — fingerprint + count)
+    //   mpCellPoolSlots : RWStructuredBuffer<CellPoolSlot> (flat, capacity*N entries)
+    // Slot at cell c, index i lives at mpCellPoolSlots[c * N + i]. The
+    // nested-array-in-struct pattern (slots[N] inside CellPool) breaks
     // DXC linking at N≥256; split-buffer scales cleanly to N=1024.
-    ref<Buffer>         mpWSCellPools;
-    ref<Buffer>         mpWSCellPoolSlots;
-    uint32_t            mWSCellPoolCapacityCommitted = 0u;
+    ref<Buffer>         mpCellPools;
+    ref<Buffer>         mpCellPoolSlots;
+    uint32_t            mCellPoolCapacityCommitted = 0u;
 
     ref<ComputePass>    mpDecayPass;
-    // ╔══ DISABLED 2026-05-05 — see WSReservoirBoilingFilter.cs.slang ══╗
+    // ╔══ DISABLED 2026-05-05 — see ReservoirBoilingFilter.cs.slang ══╗
     // ref<ComputePass> mpBoilingFilterPass;
     // ╚═════════════════════════════════════════════════════════════════╝
 

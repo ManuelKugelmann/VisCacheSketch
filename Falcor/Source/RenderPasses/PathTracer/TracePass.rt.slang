@@ -38,14 +38,6 @@ import PathTracerNRD;
 
 import Utils.NVAPI; // TODO(@skallweit) this is currently needed to make g_NvidiaExt visible
 
-import RenderPasses.VisCache.VisCachePathTracer;
-
-// Preprocessor defines don't cross Slang import boundaries — re-guard here
-// to keep the macro visible after Params.slang is imported transitively.
-#ifndef VISCACHE_BAYER_N
-#define VISCACHE_BAYER_N 1
-#endif
-
 ParameterBlock<PathTracer> gPathTracer;
 #if USE_SER
 ReorderingScheduler gScheduler;
@@ -131,22 +123,6 @@ struct VisibilityQuery : IVisibilityQuery
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
         return sceneRayQuery.traceVisibilityRay(ray);
     }
-
-#if USE_VISCACHE_VISIBILITYCHECK
-    /// CV+RRR visibility query via VisCache. Returns fractional visWeight.
-    float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                               uint sampleIdx, float3 normalA = float3(0.f))
-    {
-        return vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA);
-    }
-#ifdef VISCACHE_DIAGNOSTICS
-    float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                                    uint sampleIdx, float3 normalA = float3(0.f))
-    {
-        return vcVisibility_Ray_Diag<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA);
-    }
-#endif
-#endif
 };
 
 /** Helper function to create a HitInfo from a HitObject.
@@ -668,15 +644,9 @@ void scatterSdfGridClosestHit(inout PathPayload payload, SDFGridHitData sdfGridH
 [shader("raygeneration")]
 void rayGen()
 {
-    // Fixed spp: host dispatches reduced; remap threadID → full-res pixel.
-    // Variable spp + N>1: host falls back to full dispatch; use identity mapping.
-    // Inactive-slot pixels have spp=0 in the sample buffer (set by GeneratePaths),
-    // so gScheduler.run() no-ops on them.
-    uint2 reducedPixel = DispatchRaysIndex().xy;
-    uint2 pixel = (kSamplesPerPixel > 0)
-        ? subframeRemap(reducedPixel, gPathTracer.params.subframeIdx, VISCACHE_BAYER_N)
-        : reducedPixel;
-    if (any(pixel >= gPathTracer.params.frameDim)) return;
+    uint2 pixel = DispatchRaysIndex().xy;
+    uint2 frameDim = DispatchRaysDimensions().xy;
+    if (all(pixel >= frameDim)) return;
 
     gScheduler.run(pixel);
 }

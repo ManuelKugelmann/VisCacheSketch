@@ -253,30 +253,30 @@ cbuffer VisCacheParams
     uint   gWarmupFirst;      ///< # Bayer slots write-only in frame 0 (force trace, no RR)
     uint   gWarmupRun;        ///< # Bayer slots write-only in every subsequent frame
     // --- §9.4 World-space ReSTIR DI reservoirs ---
-    uint   gWSEnable;             ///< 1 = WS reservoir buffer active.
-    uint   gWSCapacity;           ///< Power-of-two reservoir slot count.
-    float  gWSMCap;               ///< Temporal M-cap for reservoir merge.
-    uint   gWSSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
-    float  gWSLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
-    float  gWSLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
-    uint   gWSNormalAddr;         ///< 1 = fold 6-axis face-normal bin into the WS cell hash.
-    uint   gWSInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
-    uint   gWSFrameDimX;          ///< Frame width  (for indexing per-pixel reservoir buffer).
-    uint   gWSFrameDimY;          ///< Frame height.
-    uint   _wsPad0;               ///< (was gWSJitterFilter — now reused via VisCache's gJitterFilter)
-    uint   _wsPad1;               ///< (was gWSJitterCell   — now reused via VisCache's gJitterCell)
-    uint   gWSUseCellInRIS;       ///< 1 = WS cell candidate active; 0 = pure per-pixel ReSTIR.
-    uint   gWSVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
+    uint   gEnable;             ///< 1 = WS reservoir buffer active.
+    uint   gCapacity;           ///< Power-of-two reservoir slot count.
+    float  gMCap;               ///< Temporal M-cap for reservoir merge.
+    uint   gSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
+    float  gLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
+    float  gLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
+    uint   gNormalAddr;         ///< 1 = fold 6-axis face-normal bin into the WS cell hash.
+    uint   gInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
+    uint   gFrameDimX;          ///< Frame width  (for indexing per-pixel reservoir buffer).
+    uint   gFrameDimY;          ///< Frame height.
+    uint   _wsPad0;               ///< (was gJitterFilter — now reused via VisCache's gJitterFilter)
+    uint   _wsPad1;               ///< (was gJitterCell   — now reused via VisCache's gJitterCell)
+    uint   gUseCellInRIS;       ///< 1 = WS cell candidate active; 0 = pure per-pixel ReSTIR.
+    uint   gVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
     // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-    uint   gWSCellPoolEnable;     ///< 1 = pool buffer active. Master gate for ReGIR step (a)+.
-    uint   gWSCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
-    uint   gWSCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).
-    uint   gWSCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* analytical entry level, MCPG 2025).
-    uint   gWSSpatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).
-    uint   gWSSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
-    uint   gWSPoolAddrMode;       ///< 0 = 3D cell (default), 1 = 2D screen-tile (RTXDI-style).
-    uint   gWSPoolTileSize;       ///< Tile edge in pixels (default 16). Only used when AddrMode=1.
-    uint   gWSCellPoolMode;       ///< 0 = P3d (raw pdf-proposal slots, age-pressure), 1 = PR3d (pool-of-reservoirs, ReGIR-at-tile).
+    uint   gCellPoolEnable;     ///< 1 = pool buffer active. Master gate for ReGIR step (a)+.
+    uint   gCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
+    uint   gCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).
+    uint   gCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* analytical entry level, MCPG 2025).
+    uint   gSpatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).
+    uint   gSpatialPixelsRadius;///< Spatial-reuse search radius in pixels (default 32).
+    uint   gPoolAddrMode;       ///< 0 = 3D cell (default), 1 = 2D screen-tile (RTXDI-style).
+    uint   gPoolTileSize;       ///< Tile edge in pixels (default 16). Only used when AddrMode=1.
+    uint   gCellPoolMode;       ///< 0 = P3d (raw pdf-proposal slots, age-pressure), 1 = PR3d (pool-of-reservoirs, ReGIR-at-tile).
     // §4.2 posB solid-angle quantization (Option B — posA-cell-coupled).
     // alpha (angular cell, octahedral units) = (cellSizeA / gPosACoarse) * gDirSolidAngleScale,
     // clamped to [kAlphaMin=0.05, kAlphaMax=0.5] (≈ 3°..30°).
@@ -284,20 +284,20 @@ cbuffer VisCacheParams
     // Near-dist cutoff: dist < cellSizeA → single-bucket fallback (direction sub-resolvable).
     float  gDirSolidAngleScale;   ///< Anisotropy knob for angular axis. Default 1.0.
     float  gDistSolidAngleScale;  ///< Anisotropy knob for distance axis. Default 1.0.
-    uint   gWSCellReservoirMerge; ///< 0 = legacy identity-hint cell read (default; preserves wsrestir).
+    uint   gCellReservoirMerge; ///< 0 = legacy identity-hint cell read (default; preserves wsrestir).
                                   ///< 1 = promote cell to full Bitterli weighted merge (uses cell.W,
                                   ///< cell.M like the per-pixel temporal read). World-space analog of
                                   ///< the per-pixel reservoir, NO reprojection needed (cell ID is
                                   ///< camera-invariant). Used by the `restir_3d` variant.
-    uint   gWSCellPoolFootprintPx;///< Pool cell footprint in pixels. 0 = P3d DISABLED;
+    uint   gCellPoolFootprintPx;///< Pool cell footprint in pixels. 0 = P3d DISABLED;
                                   ///< >0 = analytical entry level via shared
                                   ///< vhfLevelForFootprint (e.g. 16 → ~256 px²,
                                   ///< matching the RTXDI 16-px tile).
-    uint   gWSCellReservoirFootprintPx;///< Reservoir cell footprint analog. 0 = R3d DISABLED;
+    uint   gCellReservoirFootprintPx;///< Reservoir cell footprint analog. 0 = R3d DISABLED;
                                        ///< >0 = analytical entry level. Selected independently
-                                       ///< from gWSCellPoolFootprintPx so the reservoir cell
+                                       ///< from gCellPoolFootprintPx so the reservoir cell
                                        ///< size can be finer than the pool's (e.g. 8 vs 16).
-    uint   gWSRetraceOnReuseMode; ///< Retrace V on reservoir temporal/spatial reuse — RTXDI
+    uint   gRetraceOnReuseMode; ///< Retrace V on reservoir temporal/spatial reuse — RTXDI
                                   ///< BiasCorrection analog. 0 = Off (Basic-equiv: stored W carries
                                   ///< write-time V), 1 = FullTrace (≡ RTXDI RayTraced), 2 = CacheCV
                                   ///< (cheap CV+RRR via evalRevalidationCV with PT-canonical knobs).
@@ -339,7 +339,7 @@ uint vhfCellPixels(int lvl, float3 posA)
 ///     16×16 tile) → cell screen footprint matches RTXDI tile pre-sample.
 ///   - VisCache lookup entry: same idea applied to vhfLookup's start level
 ///     so insertion and lookup converge on the same posA cascade level
-///     based on observed pixel footprint, not a fixed gWSCellLevel.
+///     based on observed pixel footprint, not a fixed gCellLevel.
 int vhfLevelForFootprint(float3 posA, float targetFootprintPx)
 {
     if (gNumLevels <= 1u) return 0;
@@ -446,9 +446,9 @@ static const uint kSaltB    = 0x9E3779B9u;
 static const uint kSaltDist = 0x6C62272Eu;
 
 // 6-axis face-normal bin (±X, ±Y, ±Z = 6 distinct bins). Pure; shared by
-// VisCache, WSCellPool/WSReservoirIO, and ReSTIRPTPass's PathReservoirCellPool
+// VisCache, CellPool/ReservoirIO, and ReSTIRPTPass's PathReservoirCellPool
 // so all world-cell-keyed pools agree on which face a primary hit belongs to.
-uint wsNormalBin(float3 n)
+uint normalBin(float3 n)
 {
     float3 a = abs(n);
     int axis = (a.x >= a.y && a.x >= a.z) ? 0 : (a.y >= a.z ? 1 : 2);

@@ -28,7 +28,7 @@ import PathBuilder;
 import PathReservoir;
 import PathReservoirCellPool;
 import LightPool;
-import RenderPasses.VisCache.WSCellPool;   // for the WSCellPool struct used in lightPool buffer field
+import RenderPasses.VisCache.CellPool;   // for the CellPool struct used in lightPool buffer field
 
 #include "Utils/Math/MathConstants.slangh"
 
@@ -78,11 +78,11 @@ struct PathTracer
 
     /// Optional NEE light-sample pool (Task #21 step 1: allocation only).
     /// Bound only when params.restirptPoolAddrMode != 0; null otherwise.
-    /// One WSCellPool slot per pool slot (N=1024 packed light candidates,
-    /// AoS layout `WSCellPoolSlot[N]`, shared with VisCache's DI-side pool —
+    /// One CellPool slot per pool slot (N=1024 packed light candidates,
+    /// AoS layout `CellPoolSlot[N]`, shared with VisCache's DI-side pool —
     /// see LightPool.slang).
     /// Not yet read by any code path — fill pass + NEE-site read are TODO.
-    RWStructuredBuffer<WSCellPool> lightPool;
+    RWStructuredBuffer<CellPool> lightPool;
 
     bool isLastRound;
     bool useDirectLighting;
@@ -206,7 +206,7 @@ struct PathTracer
     /** Resolve the reservoir-buffer offset for a given screen pixel.
 
         Dispatches based on `restirptAddrMode` (Task #12, mirrors VisCache's
-        `gWSPoolAddrMode` from WS-ReSTIR DI):
+        `gPoolAddrMode` from WS-ReSTIR DI):
           mode=0 (default): pixel-keyed Morton-tile offset (current behavior).
           mode=1 (3D):      world-cell hash of (primary-hit posA, faceN).
 

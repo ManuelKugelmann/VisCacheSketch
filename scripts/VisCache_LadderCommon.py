@@ -4037,21 +4037,21 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          tag_prefix, addr_mode_kwargs,
                          maxBounces=0, resX=kResX, resY=kResY,
                          mogwai_globals=None, capture_spps=(1, 4),
-                         wsInitialCandidates=32, wsMCap=5.0,    # K=32 main-pass-fresh-LightBVH. K=48 (32+16 with wsCellPoolDrawK=16 below) is the empirical canonical — RDI00 sweep at K=24 (commit 6659d0e + correction 2026-05-08) showed K=48 has the LOWEST cumulative err across the 7-scene matrix (31.35 vs F16P08=31.68 vs F24P00=32.47). K=48 wins on production-scale scenes (Cornell_32PL, Sponza, Bistro Int+Ext); K=24 variants win only on simple Cornell. Prior recommendation to switch to F16P08 retracted (arithmetic error in cumulative sum).
-                         wsVisInPHat=0,
-                         wsSpatialPixelsK=1, wsSpatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
-                         wsRetraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
-                         extraVCProps=None,                              # additional VisCache props merged on top of the canonical recipe (used by R2dP2d/R2dP3d/R3dP3d to override defaults like wsCellReservoirFootprintPx=0).
+                         initialCandidates=32, mCap=5.0,    # K=32 main-pass-fresh-LightBVH. K=48 (32+16 with cellPoolDrawK=16 below) is the empirical canonical — RDI00 sweep at K=24 (commit 6659d0e + correction 2026-05-08) showed K=48 has the LOWEST cumulative err across the 7-scene matrix (31.35 vs F16P08=31.68 vs F24P00=32.47). K=48 wins on production-scale scenes (Cornell_32PL, Sponza, Bistro Int+Ext); K=24 variants win only on simple Cornell. Prior recommendation to switch to F16P08 retracted (arithmetic error in cumulative sum).
+                         visInPHat=0,
+                         spatialPixelsK=1, spatialPixelsRadius=30,    # K=1 spatial reuse (RTXDI default; spatial-K=0 test confirmed not the bias source, < 0.06pp delta)
+                         retraceOnReuseMode=0,    # 0=Off (Basic-equiv, default); 1=FullTrace (≡ RTXDI RayTraced); 2=CacheCV. Tag suffix derived from this — _raytraced for 1, _cachecv for 2.
+                         extraVCProps=None,                              # additional VisCache props merged on top of the canonical recipe (used by R2dP2d/R2dP3d/R3dP3d to override defaults like cellReservoirFootprintPx=0).
                          wsCellPoolPrePass=True,                         # default ON: pre-pass before main pass populates the cell-pool. Set False to ablation-test reliance on implicit Bayer-subframe-0 warmup.
-                         wsCellPoolDrawK=16,                             # K=16 pool-draws. Combined with wsInitialCandidates=32 above, gives K_total=48 (2:1 fresh:pool ratio). RDI00 sweep at K=24 alternatives (F16P08, F24P00) showed K=48 still wins cumulatively across the 7-scene matrix despite over-spec vs RTXDI's K=24 localLightCandidateCount.
+                         cellPoolDrawK=16,                             # K=16 pool-draws. Combined with initialCandidates=32 above, gives K_total=48 (2:1 fresh:pool ratio). RDI00 sweep at K=24 alternatives (F16P08, F24P00) showed K=48 still wins cumulatively across the 7-scene matrix despite over-spec vs RTXDI's K=24 localLightCandidateCount.
                          prePassEmissiveSampler="PdfMipmap",             # pre-pass emissive sampler. PdfMipmap = RTXDI-style hierarchical 2D pdf (shading-agnostic). LightBVH = shading-conditional via per-pixel BSDF guidance.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
     the same render-graph build. The ONLY thing that differs is pool
     addressing — caller passes `addr_mode_kwargs` with either
-    `{"wsPoolAddrMode": 1, "wsPoolTileSize": N}` for 2D-tile or
-    `{"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": N}` for 3D-world-cell.
+    `{"poolAddrMode": 1, "poolTileSize": N}` for 2D-tile or
+    `{"poolAddrMode": 0, "cellPoolFootprintPx": N}` for 3D-world-cell.
 
     All other params (K, mCap, spatial-K/radius, vis-in-pHat, visibilityCheck,
     lightSelection, cell hint OFF, per-pixel reservoir ON, no cell-spatial
@@ -4064,18 +4064,18 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
     use_restirdi_pass = os.environ.get("USE_RESTIRDIPASS", "1") != "0"
     def _build(actual_spp):
         return render_graph_PathTracer(
-            viscache=True, wsReservoirs=True, maxBounces=maxBounces,
+            viscache=True, reservoirs=True, maxBounces=maxBounces,
             samplesPerPixel=actual_spp, useJitter=True,
             useReSTIRDIPass=use_restirdi_pass,
-            wsInitialCandidates=wsInitialCandidates, wsMCap=wsMCap,
-            wsSpatialNeighbours=0,                  # no cell-spatial gather
-            wsSpatialPixelsK=wsSpatialPixelsK,
-            wsSpatialPixelsRadius=wsSpatialPixelsRadius,
-            wsCellPool=True, wsCellPoolDrawK=wsCellPoolDrawK,    # main-pass pool-draw K. Default 16 (8 fresh main-pass-LightBVH + 16 cheap-pool = 24 total = RTXDI localLightCandidateCount). preOnly variant sets this to 24 + wsInitialCandidates=0 for RTXDI-faithful pure-pool sampling.
-            wsCellReservoirFootprintPx=8,           # R3d cell-reservoir at ~64 px screen footprint (analytical entry, mirrors P3d's mechanism). Pool footprint stays at 16 px (~256 px) so each pool cell aggregates candidates over ~4 reservoir cells worth of pixels.
+            initialCandidates=initialCandidates, mCap=mCap,
+            spatialNeighbours=0,                  # no cell-spatial gather
+            spatialPixelsK=spatialPixelsK,
+            spatialPixelsRadius=spatialPixelsRadius,
+            cellPool=True, cellPoolDrawK=cellPoolDrawK,    # main-pass pool-draw K. Default 16 (8 fresh main-pass-LightBVH + 16 cheap-pool = 24 total = RTXDI localLightCandidateCount). preOnly variant sets this to 24 + initialCandidates=0 for RTXDI-faithful pure-pool sampling.
+            cellReservoirFootprintPx=8,           # R3d cell-reservoir at ~64 px screen footprint (analytical entry, mirrors P3d's mechanism). Pool footprint stays at 16 px (~256 px) so each pool cell aggregates candidates over ~4 reservoir cells worth of pixels.
             wsCellPoolPrePass=wsCellPoolPrePass,     # caller can disable for the redundancy ablation (Bayer-subframe-0 warmup alternative).
-            wsVisInPHat=wsVisInPHat,
-            wsRetraceOnReuseMode=wsRetraceOnReuseMode,
+            visInPHat=visInPHat,
+            retraceOnReuseMode=retraceOnReuseMode,
             # Pre-pass: PdfMipmap (RTXDI-style hierarchical, Task #34).
             # Main-pass: LightBVH default (shading-CONDITIONAL — required by
             # BistroInt; mixed-sampler test 2026-05-05 with both PdfMipmap
@@ -4088,9 +4088,9 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             prePassEmissiveSampler="PdfMipmap",
             visibilityCheck=False, lightSelection=False,  # pure ReSTIR track — no VisCache cache
             extraVCProps={
-                "wsUseCellInRIS": False,             # no cell hint
-                "enableWSPixelReservoir": True,      # per-pixel reservoir ON
-                "wsCellReservoirMerge": 0,
+                "useCellInRIS": False,             # no cell hint
+                "enablePixelReservoir": True,      # per-pixel reservoir ON
+                "cellReservoirMerge": 0,
                 # Bayer 4×4 stratification matches RTXDI's per-frame presample
                 # count: 16K active pixels × K=8 candidates = 128K presamples,
                 # ≈ RTXDI's 128 × 1024 = 131K. Each Bayer position within a
@@ -4104,15 +4104,15 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                 "bayerN": 4,
                 # §9.4 RTXDI BoilingFilter — DISABLED 2026-05-05.
                 # The dispatch fired and the build was clean, but shader writes
-                # to gWSPixelReservoirs never landed (host-side clearUAV on the
+                # to gPixelReservoirs never landed (host-side clearUAV on the
                 # same buffer DID move the metric, isolating the bug to the
                 # shader/binding side). Rather than ship a silent-no-op safety
                 # net that could hide future firefly regressions, the pass is
                 # block-commented in VisCache.cpp and the canonical config no
-                # longer requests it. See WSReservoirBoilingFilter.cs.slang
+                # longer requests it. See ReservoirBoilingFilter.cs.slang
                 # header for the full diagnosis + the separable-include fix
                 # path. Defaults in VisCache.h have enableBoilingFilter=false.
-                **(extraVCProps or {}),              # caller-supplied VC overrides (e.g. wsCellReservoirFootprintPx=0 for R3d-disabled variants)
+                **(extraVCProps or {}),              # caller-supplied VC overrides (e.g. cellReservoirFootprintPx=0 for R3d-disabled variants)
             },
             **addr_mode_kwargs,                      # only difference: 2D-tile vs 3D-cell addressing
         )
@@ -4121,14 +4121,14 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
     # caller already embedded an F##P## tag (hybrid sweep callers).
     import re as _re
     if not _re.search(r"_F\d{2}P\d{2}", tag_prefix):
-        tag_prefix = f"{tag_prefix}_F{wsInitialCandidates:02d}P{wsCellPoolDrawK:02d}"
-    vmode_tag = {0: "vblind", 1: "vcache", 2: "vevaluate"}.get(wsVisInPHat, f"v{wsVisInPHat}")
+        tag_prefix = f"{tag_prefix}_F{initialCandidates:02d}P{cellPoolDrawK:02d}"
+    vmode_tag = {0: "vblind", 1: "vcache", 2: "vevaluate"}.get(visInPHat, f"v{visInPHat}")
     tag_suffix = f"{tag_prefix}_{vmode_tag}"
     # Retrace-on-reuse mode shows up in the tag so the (Basic-equiv) and
     # (RayTraced-equiv) outputs sit side-by-side in the CSV.
-    if wsRetraceOnReuseMode == 1:
+    if retraceOnReuseMode == 1:
         tag_suffix += "_raytraced"
-    elif wsRetraceOnReuseMode == 2:
+    elif retraceOnReuseMode == 2:
         tag_suffix += "_cachecv"
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
@@ -4144,7 +4144,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
 
 
 def run_baseline_ReSTIRDI_R2dR3dP2d(step_name, frame_configs, scene_file,
-                                    wsPoolTileSize=16, **kwargs):
+                                    poolTileSize=16, **kwargs):
     """**Per-pixel R2d reservoir + cell-level R3d reservoir + screen-tile P2d pool**.
     Was `restir_2d`. Pool addressing matches RTXDI's 16-px screen tiles.
     R3d cell-level reservoir at analytical entry level (default footprint=8).
@@ -4152,13 +4152,13 @@ def run_baseline_ReSTIRDI_R2dR3dP2d(step_name, frame_configs, scene_file,
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dR3dP2d",
-        addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
         **kwargs,
     )
 
 
 def run_baseline_ReSTIRDI_R2dR3dP3d(step_name, frame_configs, scene_file,
-                                    wsCellPoolFootprintPx=16, **kwargs):
+                                    cellPoolFootprintPx=16, **kwargs):
     """**Per-pixel R2d reservoir + cell-level R3d reservoir + 3D-cell P3d pool**.
     Was `restir_3d`. Pool addressed by 3D world cell at footprint-derived
     entry level (default 16 px → matches RTXDI's tile-pool footprint).
@@ -4167,120 +4167,120 @@ def run_baseline_ReSTIRDI_R2dR3dP3d(step_name, frame_configs, scene_file,
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dR3dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         **kwargs,
     )
 
 
 def run_baseline_ReSTIRDI_R2dP2d(step_name, frame_configs, scene_file,
-                                 wsPoolTileSize=16, **kwargs):
+                                 poolTileSize=16, **kwargs):
     """**Strict RTXDI baseline**: per-pixel R2d reservoir + screen-tile P2d
-    pool, NO cell-level reservoir. wsCellReservoirFootprintPx=0 disables
+    pool, NO cell-level reservoir. cellReservoirFootprintPx=0 disables
     R3d entirely. Compares directly to stock RTXDI; isolates the win/loss
     coming from the cell-level reservoir layer.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
+    extra["cellReservoirFootprintPx"] = 0   # R3d OFF
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d",
-        addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
         **kwargs2,
     )
 
 
 def run_baseline_ReSTIRDI_R2dP3d(step_name, frame_configs, scene_file,
-                                 wsCellPoolFootprintPx=16, **kwargs):
+                                 cellPoolFootprintPx=16, **kwargs):
     """**R2d + 3D pool, no R3d**: per-pixel R2d reservoir + 3D-cell P3d pool,
-    cell-level reservoir disabled (wsCellReservoirFootprintPx=0). Isolates
+    cell-level reservoir disabled (cellReservoirFootprintPx=0). Isolates
     the pool-addressing change (2D tile → 3D cell) without R3d.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
+    extra["cellReservoirFootprintPx"] = 0   # R3d OFF
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         **kwargs2,
     )
 
 
 def run_baseline_ReSTIRDI_R3dP3d(step_name, frame_configs, scene_file,
-                                 wsCellPoolFootprintPx=16,
-                                 wsCellReservoirFootprintPx=1, **kwargs):
+                                 cellPoolFootprintPx=16,
+                                 cellReservoirFootprintPx=1, **kwargs):
     """**Pure 3D**: drop per-pixel layer entirely; R3d at sub-pixel footprint
     (default 1 = each pixel ≈ one cell, structurally per-pixel-equivalent).
     P3d pool at 16-px footprint as in R2dR3dP3d. Requires
-    enableWSPixelReservoir=False + wsCellReservoirMerge=1 (Bitterli weighted
+    enablePixelReservoir=False + cellReservoirMerge=1 (Bitterli weighted
     merge instead of identity-hint) so the cell reservoir does the
     final-shading temporal accumulator role.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["enableWSPixelReservoir"] = False         # drop per-pixel layer
-    extra["wsCellReservoirMerge"]   = 1             # full Bitterli merge
-    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    extra["enablePixelReservoir"] = False         # drop per-pixel layer
+    extra["cellReservoirMerge"]   = 1             # full Bitterli merge
+    extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R3dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         **kwargs2,
     )
 
 
 def run_baseline_ReSTIRDI_R2dPR3d(step_name, frame_configs, scene_file,
-                                  wsCellPoolFootprintPx=16, **kwargs):
+                                  cellPoolFootprintPx=16, **kwargs):
     """**R2d + Pool-of-Reservoirs (PR3d) at tile-cell**: same per-pixel layer as
     R2dP3d but pool slots are reservoir-sampled (M-counted, M-decay 0.95) and
     reader K-RIS weights by M_slot. R3d tile reservoir OFF. Replaces the dead-
     weight single-slot tile R3d with proper per-slot accumulation.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
-    extra["wsCellPoolMode"]             = 1   # PR3d (pool-of-reservoirs)
+    extra["cellReservoirFootprintPx"] = 0   # R3d OFF
+    extra["cellPoolMode"]             = 1   # PR3d (pool-of-reservoirs)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dPR3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         **kwargs2,
     )
 
 
 def run_baseline_ReSTIRDI_R3dPR3d(step_name, frame_configs, scene_file,
-                                  wsCellPoolFootprintPx=16,
-                                  wsCellReservoirFootprintPx=1, **kwargs):
+                                  cellPoolFootprintPx=16,
+                                  cellReservoirFootprintPx=1, **kwargs):
     """**Pure 3D + PR3d**: world-keyed pixel-R3d (footprint=1) + PR3d tile pool.
     Drops per-pixel R2d (camera-invariant) and upgrades pool to multi-reservoir.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["enableWSPixelReservoir"]     = False
-    extra["wsCellReservoirMerge"]       = 1
-    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
-    extra["wsCellPoolMode"]             = 1   # PR3d
+    extra["enablePixelReservoir"]     = False
+    extra["cellReservoirMerge"]       = 1
+    extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
+    extra["cellPoolMode"]             = 1   # PR3d
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R3dPR3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         **kwargs2,
     )
 
 
 def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
-                                    wsCellPoolFootprintPx=16,
-                                    wsCellReservoirFootprintPx=8, **kwargs):
+                                    cellPoolFootprintPx=16,
+                                    cellReservoirFootprintPx=8, **kwargs):
     """**Minimum-viable H2d** — per-pixel layer carries pick diversity but
     NOT temporal accumulation; cell-level reservoir does the cross-frame
-    temporal merge. Composes `enableWSPixelReservoir=True` (per-pixel pick
-    storage) with `wsCellReservoirMerge=1` (Bitterli cell-temporal merge).
+    temporal merge. Composes `enablePixelReservoir=True` (per-pixel pick
+    storage) with `cellReservoirMerge=1` (Bitterli cell-temporal merge).
     Each pixel does its own K-RIS each frame from cell-pool → pick stored
     in per-pixel reservoir as the "latest history record" → pick stream
     feeds cell reservoir which accumulates temporally across frames.
@@ -4300,15 +4300,15 @@ def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
     temporal AND per-pixel-handles-pick-diversity) is what we measure.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["enableWSPixelReservoir"] = True   # per-pixel layer keeps pick diversity
-    extra["wsCellReservoirMerge"]   = 1      # cell layer does temporal Bitterli merge
-    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    extra["enablePixelReservoir"] = True   # per-pixel layer keeps pick diversity
+    extra["cellReservoirMerge"]   = 1      # cell layer does temporal Bitterli merge
+    extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_H2dR3dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         **kwargs2,
     )
 
@@ -4321,7 +4321,7 @@ def run_baseline_ReSTIRDI_H2dR3dP3d(step_name, frame_configs, scene_file,
 # PathTracerPrePass dispatch is retirable from the canonical config.
 # ---------------------------------------------------------------------------
 def run_baseline_ReSTIRDI_R2dR3dP3d_noPre(step_name, frame_configs, scene_file,
-                                          wsCellPoolFootprintPx=16, **kwargs):
+                                          cellPoolFootprintPx=16, **kwargs):
     """R2dR3dP3d with the full-PT pre-pass dispatch disabled. K_total locked
     to 24 (= RTXDI localLightCandidateCount) for architectural comparability:
     24 fresh main-pass LightBVH samples + 0 pool draws (no pre-pass = pool
@@ -4331,9 +4331,9 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_noPre(step_name, frame_configs, scene_file,
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dR3dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=24,                 # K_total = 24 = RTXDI parity → tag becomes _F24P00
-        wsCellPoolDrawK=0,                      # don't draw from pool (no pre-pass to fill it cleanly)
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=24,                 # K_total = 24 = RTXDI parity → tag becomes _F24P00
+        cellPoolDrawK=0,                      # don't draw from pool (no pre-pass to fill it cleanly)
         wsCellPoolPrePass=False,
         **kwargs,
     )
@@ -4341,7 +4341,7 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_noPre(step_name, frame_configs, scene_file,
 
 def run_baseline_ReSTIRDI_R2dR3dP3d_hybrid(step_name, frame_configs, scene_file,
                                            freshK,
-                                           wsCellPoolFootprintPx=16, **kwargs):
+                                           cellPoolFootprintPx=16, **kwargs):
     """Parameterized hybrid sweep on R2dR3dP3d base: K_total = 24 split as
     `freshK` main-pass-LightBVH + (24 - freshK) pool draws. R2dR3dP3d has
     BOTH per-pixel reservoir AND cell-level reservoir — the cell-level
@@ -4354,9 +4354,9 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_hybrid(step_name, frame_configs, scene_file,
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix=f"ReSTIRDI_R2dR3dP3d_F{freshK:02d}P{poolK:02d}",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=freshK,
-        wsCellPoolDrawK=poolK,
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=freshK,
+        cellPoolDrawK=poolK,
         wsCellPoolPrePass=use_prepass,
         prePassEmissiveSampler="PdfMipmap",
         **kwargs,
@@ -4365,24 +4365,24 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_hybrid(step_name, frame_configs, scene_file,
 
 def run_baseline_ReSTIRDI_R2dP3d_hybrid(step_name, frame_configs, scene_file,
                                         freshK,
-                                        wsCellPoolFootprintPx=16, **kwargs):
+                                        cellPoolFootprintPx=16, **kwargs):
     """Parameterized hybrid sweep on R2dP3d base (per-pixel reservoir + 3D
     pool only, NO cell-level reservoir). Architecturally-cleanest test of
     the fresh-vs-pool ratio: only moving part is where the 24 candidates
-    come from. R3d disabled via wsCellReservoirFootprintPx=0.
+    come from. R3d disabled via cellReservoirFootprintPx=0.
     """
     poolK = 24 - freshK
     use_prepass = (poolK > 0)
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF
+    extra["cellReservoirFootprintPx"] = 0   # R3d OFF
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix=f"ReSTIRDI_R2dP3d_F{freshK:02d}P{poolK:02d}",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=freshK,
-        wsCellPoolDrawK=poolK,
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=freshK,
+        cellPoolDrawK=poolK,
         wsCellPoolPrePass=use_prepass,
         prePassEmissiveSampler="PdfMipmap",
         **kwargs2,
@@ -4390,7 +4390,7 @@ def run_baseline_ReSTIRDI_R2dP3d_hybrid(step_name, frame_configs, scene_file,
 
 
 def run_baseline_ReSTIRDI_R2dP2d_F00P24(step_name, frame_configs, scene_file,
-                                        wsPoolTileSize=16, **kwargs):
+                                        poolTileSize=16, **kwargs):
     """**True RTXDI architectural mirror at K_total=24**: per-pixel reservoir
     + screen-tile pool (P2d, addrMode=1) + pre-pass PdfMipmap fill +
     F00P24 = 0 fresh + 24 pool draws. No R3d. Direct apples-to-apples
@@ -4399,15 +4399,15 @@ def run_baseline_ReSTIRDI_R2dP2d_F00P24(step_name, frame_configs, scene_file,
     RTXDI when configured identically.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["wsCellReservoirFootprintPx"] = 0   # R3d OFF (RTXDI has no cell-level reservoir)
+    extra["cellReservoirFootprintPx"] = 0   # R3d OFF (RTXDI has no cell-level reservoir)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d",
-        addr_mode_kwargs={"wsPoolAddrMode": 1, "wsPoolTileSize": wsPoolTileSize},
-        wsInitialCandidates=0,                  # NO main-pass-fresh — pure pool draws (RTXDI's spec) → tag _F00P24
-        wsCellPoolDrawK=24,                     # K=24 = RTXDI localLightCandidateCount
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=0,                  # NO main-pass-fresh — pure pool draws (RTXDI's spec) → tag _F00P24
+        cellPoolDrawK=24,                     # K=24 = RTXDI localLightCandidateCount
         wsCellPoolPrePass=True,                 # pre-pass presampling
         prePassEmissiveSampler="PdfMipmap",     # RTXDI-style hierarchical 2D pdf
         **kwargs2,
@@ -4415,7 +4415,7 @@ def run_baseline_ReSTIRDI_R2dP2d_F00P24(step_name, frame_configs, scene_file,
 
 
 def run_baseline_ReSTIRDI_R2dR3dP3d_preOnly(step_name, frame_configs, scene_file,
-                                            wsCellPoolFootprintPx=16, **kwargs):
+                                            cellPoolFootprintPx=16, **kwargs):
     """RTXDI-faithful: pre-pass fills pool with PdfMipmap K-RIS, main pass
     does NO fresh emissive sampling — pulls all 24 candidates from the
     pool. Mirrors RTXDI's actual presampling architecture (no per-pixel
@@ -4427,9 +4427,9 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_preOnly(step_name, frame_configs, scene_file
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dR3dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=0,                  # NO main-pass-fresh LightBVH samples — pure pool draws
-        wsCellPoolDrawK=24,                     # full RTXDI localLightCandidateCount drawn from pool → tag _F00P24
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=0,                  # NO main-pass-fresh LightBVH samples — pure pool draws
+        cellPoolDrawK=24,                     # full RTXDI localLightCandidateCount drawn from pool → tag _F00P24
         wsCellPoolPrePass=True,                 # pre-pass does the K-RIS work
         prePassEmissiveSampler="PdfMipmap",     # RTXDI-style hierarchical 2D pdf
         **kwargs,
@@ -4437,7 +4437,7 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_preOnly(step_name, frame_configs, scene_file
 
 
 def run_baseline_ReSTIRDI_R2dR3dP3d_preOnlyLightBVH(step_name, frame_configs, scene_file,
-                                                    wsCellPoolFootprintPx=16, **kwargs):
+                                                    cellPoolFootprintPx=16, **kwargs):
     """preOnly variant with LightBVH (shading-conditional) pre-pass instead
     of PdfMipmap. Disambiguates "is the pre-pass mechanism harmful" from
     "is the PdfMipmap sampler harmful": if this matches noPre's quality
@@ -4451,9 +4451,9 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_preOnlyLightBVH(step_name, frame_configs, sc
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dR3dP3d_LightBVH",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=0,
-        wsCellPoolDrawK=24,
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=0,
+        cellPoolDrawK=24,
         wsCellPoolPrePass=True,
         prePassEmissiveSampler="LightBVH",      # shading-conditional via per-pixel BSDF guidance
         **kwargs,
@@ -4461,24 +4461,24 @@ def run_baseline_ReSTIRDI_R2dR3dP3d_preOnlyLightBVH(step_name, frame_configs, sc
 
 
 def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
-                                       wsCellPoolFootprintPx=16,
-                                       wsCellReservoirFootprintPx=1, **kwargs):
+                                       cellPoolFootprintPx=16,
+                                       cellReservoirFootprintPx=1, **kwargs):
     """R3dP3d (pure 3D) with the pre-pass dispatch disabled. K_total = 24
     fresh + 0 pool. Same architectural lane as R2dR3dP3d_noPre but with
     the per-pixel reservoir layer also dropped (cell reservoir absorbs
     its role)."""
     extra = dict(kwargs.get("extraVCProps", {}) or {})
-    extra["enableWSPixelReservoir"] = False
-    extra["wsCellReservoirMerge"]   = 1
-    extra["wsCellReservoirFootprintPx"] = wsCellReservoirFootprintPx
+    extra["enablePixelReservoir"] = False
+    extra["cellReservoirMerge"]   = 1
+    extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R3dP3d",
-        addr_mode_kwargs={"wsPoolAddrMode": 0, "wsCellPoolFootprintPx": wsCellPoolFootprintPx},
-        wsInitialCandidates=24,                 # K_total = 24 = RTXDI parity → tag becomes _F24P00
-        wsCellPoolDrawK=0,                      # don't draw from pool
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=24,                 # K_total = 24 = RTXDI parity → tag becomes _F24P00
+        cellPoolDrawK=0,                      # don't draw from pool
         wsCellPoolPrePass=False,
         **kwargs2,
     )
