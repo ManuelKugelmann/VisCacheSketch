@@ -15,7 +15,7 @@
  # "ReSTIRCommon" plugin alongside the Reservoir struct + RIS primitives.
  *************************************************************************/
 
-import RenderPasses.Common.PathTraceCore;
+import RenderPasses.PathTraceCommon.PathTraceCore;
 import RenderPasses.VisCache.Reservoir;  // pack/unpack helpers for light-identity payloads
 import Scene.Scene;
 import Scene.ShadingData;

@@ -48,7 +48,7 @@ __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
 // Phase 3d: shared LightType/LightSample types from Common.
-import RenderPasses.PathTraceCore.PathTraceCore;
+import RenderPasses.PathTraceCommon.PathTraceCore;
 
 #if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gLightMuMin
@@ -129,7 +129,7 @@ struct PathTracer
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
     // LightType + LightSample lifted to namespace level in
-    // `RenderPasses.PathTraceCore.PathTraceCore` (imported above).
+    // `RenderPasses.PathTraceCommon.PathTraceCore` (imported above).
 
     /** Describes a path vertex.
     */

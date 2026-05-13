@@ -30,7 +30,7 @@ if [ -d "$FALCOR_SRC" ]; then
 fi
 
 # --- Shaders: our plugins (source of truth in Source/) ---
-for pass in VisCache ReSTIRPTPass ReSTIRPTReferencePass ReSTIRDIPass ReSTIRDIReferencePass ReSTIRNEEPass PathTracerX PathTraceCore ReSTIRCommon; do
+for pass in VisCache ReSTIRPTPass ReSTIRPTReferencePass ReSTIRDIPass ReSTIRDIReferencePass ReSTIRNEEPass PathTracerX PathTraceCommon ReSTIRCommon; do
     PASS_SRC="$PROJECT_ROOT/Source/RenderPasses/$pass"
     PASS_DST="$RUNTIME/shaders/RenderPasses/$pass"
     if [ -d "$PASS_SRC" ]; then

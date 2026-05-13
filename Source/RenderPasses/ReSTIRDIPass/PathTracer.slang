@@ -51,7 +51,7 @@ import Rendering.RTXDI.RTXDI;
 // Plugin keeps its nested LightType/LightSampleDI inside `struct PathTracer` for
 // now (more specific scope wins); Step 2 will remove the nested types and let
 // these imports be the canonical source.
-import RenderPasses.PathTraceCore.PathTraceCore;
+import RenderPasses.PathTraceCommon.PathTraceCore;
 import RenderPasses.ReSTIRCommon.LightReservoir;
 
 #if USE_WS_RESERVOIRS
@@ -141,7 +141,7 @@ struct PathTracer
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
     // LightType + LightSampleDI lifted to namespace level in
-    // `RenderPasses.PathTraceCore.PathTraceCore` (imported above). Bare references
+    // `RenderPasses.PathTraceCommon.PathTraceCore` (imported above). Bare references
     // inside this struct (`LightType::EnvMap`, `LightSampleDI`, etc.) now
     // resolve to the imported types via file-scope lookup.
 
