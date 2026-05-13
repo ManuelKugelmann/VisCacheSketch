@@ -8,4 +8,4 @@
  ***************************************************************************/
 #pragma once
 
-__exported import RenderPasses.VisCache.ReservoirIO;
+__exported import RenderPasses.ReSTIRCommon.ReservoirIO;

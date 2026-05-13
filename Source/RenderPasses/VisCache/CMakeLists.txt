@@ -13,11 +13,7 @@ target_sources(VisCachePass PRIVATE
     VisCacheMinimalPT.slang
     RevalidationCommon.slang
     ShadingCV.slang
-    Reservoir.slang
-    ReservoirIO.slang
-    ReservoirBoilingFilter.cs.slang
-    CellPool.slang
-    CellPoolIO.slang
+    # Reservoir struct + IO + cell pool migrated to ReSTIRCommon (Phase C-light).
 )
 
 target_copy_shaders(VisCachePass RenderPasses/VisCache)

@@ -17,9 +17,9 @@
 
 #pragma once
 import RenderPasses.VisCache.VisCache;
-import RenderPasses.VisCache.Reservoir;
-import RenderPasses.VisCache.ReservoirIO;
-import RenderPasses.VisCache.CellPool;
+import RenderPasses.ReSTIRCommon.Reservoir;
+import RenderPasses.ReSTIRCommon.ReservoirIO;
+import RenderPasses.ReSTIRCommon.CellPool;
 import Utils.Sampling.SampleGenerator;
 
 // Bound at root by PathTracer.cpp (var["gCellPools"], var["gCellPoolSlotBuf"]).

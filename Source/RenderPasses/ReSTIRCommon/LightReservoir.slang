@@ -16,7 +16,7 @@
  *************************************************************************/
 
 import RenderPasses.PathTraceCommon.PathTraceCore;
-import RenderPasses.VisCache.Reservoir;  // pack/unpack helpers for light-identity payloads
+import RenderPasses.ReSTIRCommon.Reservoir;  // pack/unpack helpers for light-identity payloads
 import Scene.Scene;
 import Scene.ShadingData;
 import Rendering.Lights.EnvMapSampler;

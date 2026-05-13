@@ -49,7 +49,7 @@
 // ╚══════════════════════════════════════════════════════════════════════╝
 #if 0  // DISABLED — see header.
 
-import RenderPasses.VisCache.Reservoir;
+import RenderPasses.ReSTIRCommon.Reservoir;
 
 RWStructuredBuffer<Reservoir> gPixelReservoirs;
 

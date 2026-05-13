@@ -23,7 +23,7 @@
 
 #pragma once
 import RenderPasses.VisCache.VisCache;
-import RenderPasses.VisCache.Reservoir;
+import RenderPasses.ReSTIRCommon.Reservoir;
 import Utils.Sampling.SampleGenerator;
 
 // ---------------------------------------------------------------------------

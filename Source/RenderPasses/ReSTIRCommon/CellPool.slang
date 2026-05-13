@@ -33,7 +33,7 @@
  ***************************************************************************/
 
 #pragma once
-import RenderPasses.VisCache.Reservoir;
+import RenderPasses.ReSTIRCommon.Reservoir;
 
 // N=128 — interim hold while N=1024 (RTXDI-parity slot count) hits a
 // shader-side limit that's not yet diagnosed. The other improvements in

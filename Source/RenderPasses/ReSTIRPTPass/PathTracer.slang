@@ -28,7 +28,7 @@ import PathBuilder;
 import PathReservoir;
 import PathReservoirCellPool;
 import LightPool;
-import RenderPasses.VisCache.CellPool;   // for the CellPool struct used in lightPool buffer field
+import RenderPasses.ReSTIRCommon.CellPool;   // for the CellPool struct used in lightPool buffer field
 
 #include "Utils/Math/MathConstants.slangh"
 

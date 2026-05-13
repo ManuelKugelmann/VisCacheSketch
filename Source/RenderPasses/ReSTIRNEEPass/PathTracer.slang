@@ -52,10 +52,10 @@ import RenderPasses.PathTraceCommon.PathTraceCore;
 import RenderPasses.ReSTIRCommon.LightReservoir;
 
 #if USE_WS_RESERVOIRS
-import RenderPasses.VisCache.Reservoir;
-import RenderPasses.VisCache.ReservoirIO;
-import RenderPasses.VisCache.CellPool;
-import RenderPasses.VisCache.CellPoolIO;
+import RenderPasses.ReSTIRCommon.Reservoir;
+import RenderPasses.ReSTIRCommon.ReservoirIO;
+import RenderPasses.ReSTIRCommon.CellPool;
+import RenderPasses.ReSTIRCommon.CellPoolIO;
 import RenderPasses.VisCache.VisCache;   // VisCacheParams cbuffer (gWS*, vhfLookup)
 import Utils.Math.MathHelpers;           // sample_triangle for emissive uv → barys
 #include "Utils/Math/MathConstants.slangh"  // FLT_MIN

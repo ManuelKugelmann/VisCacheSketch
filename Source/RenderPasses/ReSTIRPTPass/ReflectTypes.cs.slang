@@ -17,7 +17,7 @@
 import RenderPasses.ReSTIRPTPass.PathReservoir;
 import RenderPasses.ReSTIRPTPass.PathReservoirCellPool;
 import RenderPasses.ReSTIRPTPass.LightPool;
-import RenderPasses.VisCache.CellPool;   // for the CellPool struct used in lightPool buffer
+import RenderPasses.ReSTIRCommon.CellPool;   // for the CellPool struct used in lightPool buffer
 
 StructuredBuffer<PathReservoir> outputReservoirs;
 StructuredBuffer<PixelReconnectionData> reconnectionDataBuffer;

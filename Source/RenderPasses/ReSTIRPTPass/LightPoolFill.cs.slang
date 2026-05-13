@@ -20,7 +20,7 @@
 import Scene.Scene;
 import PathTracer;     // pulls EnvMapSampler, EmissiveLightSampler, lightPool field
 import LightPool;
-import RenderPasses.VisCache.CellPool;   // direct: slang imports aren't transitive
+import RenderPasses.ReSTIRCommon.CellPool;   // direct: slang imports aren't transitive
 import Params;
 
 ParameterBlock<PathTracer> gPathTracer;

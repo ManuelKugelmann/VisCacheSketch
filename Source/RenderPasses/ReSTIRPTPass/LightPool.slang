@@ -21,7 +21,7 @@
 // shared between the DI pre-pass and the PT-side fill pass. CellPool =
 // fingerprint + count + frameLastInsert + _pad + 1024 packed
 // (lightTypeIndex, payload, sourcePdf).
-import RenderPasses.VisCache.CellPool;
+import RenderPasses.ReSTIRCommon.CellPool;
 
 /// Compile-time pool slot capacity. Matches CellPool's WS_CELL_POOL_N
 /// (1024) — a single source of truth: changing N in CellPool.slang
