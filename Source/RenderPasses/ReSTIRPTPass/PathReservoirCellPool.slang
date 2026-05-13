@@ -33,6 +33,7 @@
  * binding, and read/write integration happen in later commits.
  **************************************************************************/
 #pragma once
+import RenderPasses.CacheCommon.CacheHash;  // pcg3d, pcgHashEndpoint (Phase C-light migration)
 import PathReservoir;
 // pcgHashEndpoint — pure int hash, shared with VisCache + CellPool to align
 // restirpt_3d's cell-keyed pool with the same hash family used elsewhere in the
@@ -109,16 +110,7 @@ static const uint kPRCellFpSalt   = 0xB3F19DC7u;
 // match.
 static const uint kPRCellPoolLevels = 32u;
 
-// Local 3D PCG hash for jitter (mirrors VisCache's pcg3d; copied here to
-// avoid pulling pcg3d out of USE_VISCACHE-guarded section). Pure.
-uint3 prPcg3d(uint3 v)
-{
-    v = v * 1664525u + 1013904223u;
-    v.x += v.y * v.z;  v.y += v.z * v.x;  v.z += v.x * v.y;
-    v ^= v >> 16u;
-    v.x += v.y * v.z;  v.y += v.z * v.x;  v.z += v.x * v.y;
-    return v;
-}
+// (Local prPcg3d removed — pcg3d now lives in CacheCommon.CacheHash, imported above.)
 
 /// Footprint-derived entry level: pick the cascade level whose cell projects
 /// to ~kFootprintCellsPerPx screen pixels at the primary hit's depth.
@@ -414,7 +406,7 @@ PathReservoirCellAddr prCellResolveAddrJittered(
     uint lvl = level;
     if (jitterLevel > 0u)
     {
-        uint3 r = prPcg3d(uint3(jitterSeed, 0xCAA5u, 0u));
+        uint3 r = pcg3d(uint3(jitterSeed, 0xCAA5u, 0u));
         float u = float(r.x & 0xFFFFu) / 65535.f;
         int dl = clamp(int(-log2(max(1.f - u, 1e-7f))), 0, int(jitterLevel));
         lvl = level + uint(dl);
@@ -422,7 +414,7 @@ PathReservoirCellAddr prCellResolveAddrJittered(
     float3 jpos = posW;
     if (jitterPos > 0.f)
     {
-        uint3 r = prPcg3d(uint3(jitterSeed, 0xBEEF1234u, 0u));
+        uint3 r = pcg3d(uint3(jitterSeed, 0xBEEF1234u, 0u));
         float3 j = float3(r & 0xFFFFu) / 65535.f - 0.5f;
         jpos += j * jitterPos * prCellSize(sceneRadius, lvl);
     }

@@ -27,6 +27,7 @@
 
 #pragma once
 
+import RenderPasses.CacheCommon.CacheHash;  // pcg3d, pcgHashEndpoint (Phase C-light)
 import RenderPasses.VisCache.VisCache;
 
 // --- Per-frame snapshot outputs (overwritten each frame) ---

@@ -22,6 +22,7 @@
  ***************************************************************************/
 
 #pragma once
+import RenderPasses.CacheCommon.CacheHash;  // pcg3d, pcgHashEndpoint, kSaltA (Phase C-light)
 import RenderPasses.VisCache.VisCache;
 import RenderPasses.ReSTIRCommon.Reservoir;
 import Utils.Sampling.SampleGenerator;

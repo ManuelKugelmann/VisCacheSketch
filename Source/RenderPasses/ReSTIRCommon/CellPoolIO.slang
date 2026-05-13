@@ -16,6 +16,7 @@
  ***************************************************************************/
 
 #pragma once
+import RenderPasses.CacheCommon.CacheHash;  // pcg3d, pcgHashEndpoint, normalBin (Phase C-light)
 import RenderPasses.VisCache.VisCache;
 import RenderPasses.ReSTIRCommon.Reservoir;
 import RenderPasses.ReSTIRCommon.ReservoirIO;

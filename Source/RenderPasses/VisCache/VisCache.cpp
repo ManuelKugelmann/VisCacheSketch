@@ -945,7 +945,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["cellPoolBuffer"]             = mpCellPools;
     dict["cellPoolSlotBuffer"]         = mpCellPoolSlots;
     dict["vhfEnableWSCellPool"]          = mParams.enableCellPool;
-    dict["vhfParam_wsCellPoolEnable"]    = mParams.enableCellPool ? 1u : 0u;
+    dict["vhfParam_cellPoolEnable"]    = mParams.enableCellPool ? 1u : 0u;
     dict["vhfParam_wsCellPoolCapacity"]  = mParams.cellPoolCapacity;
     dict["vhfParam_wsCellPoolDrawK"]     = mParams.cellPoolDrawK;
     dict["vhfParam_wsSpatialPixelsK"]    = mParams.spatialPixelsK;

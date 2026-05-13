@@ -54,6 +54,12 @@
 
 #pragma once
 
+// Pure-math cache primitives (PCG hash family, octahedral direction encoding,
+// 6-axis normal binning) live in CacheCommon. Imported unconditionally because
+// they have no cbuffer/state dependency and downstream consumers expect them
+// regardless of USE_VISCACHE.
+import RenderPasses.CacheCommon.CacheHash;
+
 // When USE_VISCACHE=0, this module compiles to nothing — all types,
 // resources, and functions are excluded. Consumer passes can import
 // unconditionally without #if guards; the Slang compiler eliminates
@@ -366,131 +372,9 @@ float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse, gDistBFine, lvl
 /// update entries concurrently. Bound by the host via dict["vhfTable"].
 RWStructuredBuffer<VHFEntry> gVHFTable;
 
-// ===========================================================================
-// HASH FUNCTIONS
-// ===========================================================================
-
-// ---------------------------------------------------------------------------
-// PCG3D: permuted congruential generator for 3D hashing.
-// Two rounds of multiply-add-xor-shift produce high-quality, uncorrelated
-// hash values from integer coordinates. Used for both address computation
-// and fingerprint generation.
-//
-// Reference: Jarzynski & Olano, "Hash Functions for GPU Rendering", JCGT 2020
-// ---------------------------------------------------------------------------
-uint3 pcg3d(uint3 v)
-{
-    v = v * 1664525u + 1013904223u;
-    v.x += v.y * v.z;
-    v.y += v.z * v.x;
-    v.z += v.x * v.y;
-    v ^= v >> 16u;
-    v.x += v.y * v.z;
-    v.y += v.z * v.x;
-    v.z += v.x * v.y;
-    return v;
-}
-
-// ---------------------------------------------------------------------------
-// PCG6D: 6-dimensional hash for endpoint pairs (qa, qb).
-// Extends the Jarzynski & Olano PCG pattern to 6 components so all 6
-// quantized coordinates contribute independently — no information loss
-// from XOR reduction. Each component is cross-mixed with products of
-// pairs from the other 5 components (circular neighbor pattern).
-//
-// Returns 6 hash values; callers typically XOR-fold to the needed width.
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// pcgHash: 9-dimensional hash for cache entry addressing.
-// Inputs: qa.xyz (3) + qb.xyz (3) + lvlA (1) + lvlB (1) + salt (1) = 9.
-//
-// qa/qb: quantized endpoint coordinates (6D spatial key).
-// lvlA/lvlB: independent LOD levels for each endpoint (currently synced,
-//   lvlB reserved for future independent A/B level control).
-// salt: differentiates address from fingerprint without coordinate offsets.
-//
-// Extends Jarzynski & Olano's PCG cross-mixing to 9 components.
-// Two rounds of circular neighbor products + XOR-shift.
-// Returns XOR-folded uint.
-//
-// 9 is odd, which breaks perfect circular symmetry — acceptable since the
-// inputs ARE asymmetric (positions vs levels vs salt).
-// ---------------------------------------------------------------------------
-// pcgHashEndpoint and friends are exported regardless of USE_VISCACHE — they
-// are pure int functions used by other consumers of the world-space cache
-// machinery (e.g. ReSTIRPTPass's PathReservoirCellPool). Keeping them outside
-// the guard avoids forcing those consumers to bind VisCache's parameter
-// block just to call a hash function.
-#endif // USE_VISCACHE — temporarily close to expose pure helpers below
-
-/// Hash one endpoint: int3 coords + level + salt → uint.
-/// PCG-style: LCG init, 2 rounds of circular cross-mix, XOR-fold.
-uint pcgHashEndpoint(int3 q, uint lvl, uint salt)
-{
-    uint a = uint(q.x) * 1664525u + 1013904223u;
-    uint b = uint(q.y) * 1664525u + 1013904223u;
-    uint c = uint(q.z) * 1664525u + 1013904223u;
-    uint d = lvl        * 1664525u + 1013904223u;
-    uint e = salt       * 1664525u + 1013904223u;
-
-    a += b * e;  b += c * a;  c += d * b;  d += e * c;  e += a * d;
-    a ^= a >> 16u;  b ^= b >> 16u;  c ^= c >> 16u;  d ^= d >> 16u;  e ^= e >> 16u;
-    a += b * e;  b += c * a;  c += d * b;  d += e * c;  e += a * d;
-
-    return a ^ b ^ c ^ d ^ e;
-}
-
-// Per-dimension salt constants — each dimension gets its own hash space.
-static const uint kSaltA    = 0x12345678u;
-static const uint kSaltB    = 0x9E3779B9u;
-static const uint kSaltDist = 0x6C62272Eu;
-
-// 6-axis face-normal bin (±X, ±Y, ±Z = 6 distinct bins). Pure; shared by
-// VisCache, CellPool/ReservoirIO, and ReSTIRPTPass's PathReservoirCellPool
-// so all world-cell-keyed pools agree on which face a primary hit belongs to.
-uint normalBin(float3 n)
-{
-    float3 a = abs(n);
-    int axis = (a.x >= a.y && a.x >= a.z) ? 0 : (a.y >= a.z ? 1 : 2);
-    bool pos = n[axis] >= 0.f;
-    return uint(axis * 2 + (pos ? 0 : 1));     // 0..5
-}
-
-#if USE_VISCACHE   // re-open the VisCache-only block
-
-/// Hash one dimension. posB modes reuse pcgHashEndpoint with kSaltDist for distance
-/// (distance is qb.z in dirdist mode, or a constant in pos×pos mode).
-/// Per-dimension hash functions. Same calls in rendering and diagnostics.
-uint pcgHashA(int3 qa, uint lvlA) { return pcgHashEndpoint(qa, lvlA, kSaltA); }
-uint pcgHashB(int3 qb, uint lvlB) { return pcgHashEndpoint(qb, lvlB, kSaltB); }
-uint pcgHashDist(uint lvlDist)     { return pcgHashEndpoint(int3(0), lvlDist, kSaltDist); }
-
-/// Combined hash: hashA ^ hashB ^ hashDist ^ salt.
-/// salt differentiates address from fingerprint (applied to final output only).
-uint pcgHash(int3 qa, int3 qb, uint lvlA, uint lvlB, uint lvlDist, uint salt)
-{
-    return pcgHashA(qa, lvlA) ^ pcgHashB(qb, lvlB) ^ pcgHashDist(lvlDist) ^ salt;
-}
-
-
-// ===========================================================================
-// DIRECTIONAL ENCODING — shared by IBL and dirdist addressing
-// ===========================================================================
-
-// ---------------------------------------------------------------------------
-// Octahedral direction encoding: maps unit sphere → [−1,1]² near-uniformly.
-// Used for both IBL direction encoding and dirdist addressing to quantize
-// directions as 2D bins independently of spatial cell size.
-// Reference: Meyer et al. 2010, "On Floating-Point Normal Vectors"
-// ---------------------------------------------------------------------------
-float2 octEncode(float3 n)
-{
-    float s = abs(n.x) + abs(n.y) + abs(n.z);
-    float2 o = n.xy / max(s, 1e-7f);
-    if (n.z < 0.f)
-        o = (1.f - abs(o.yx)) * float2(o.x >= 0.f ? 1.f : -1.f, o.y >= 0.f ? 1.f : -1.f);
-    return o;  // in [−1, 1]²
-}
+// Hash functions (pcg3d, pcgHashEndpoint, kSalt*, normalBin, octEncode,
+// pcgHashA/B/Dist, pcgHash) moved to `RenderPasses.CacheCommon.CacheHash`
+// — imported at top of file. They are pure math, no cbuffer dependency.
 
 /// Legacy quantization (linear distance, fixed cell sizes per level).
 /// Kept for back-compat with the pos×pos env-ray path.
