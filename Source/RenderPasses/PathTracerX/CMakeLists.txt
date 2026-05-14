@@ -5,7 +5,7 @@ target_sources(PathTracerX PRIVATE
     PathTracerX.cpp
 
     # Forked from Falcor's PathTracer plugin (Falcor/Source/RenderPasses/PathTracer/).
-    # Carries the VisCache + WS-ReSTIR DI integration. The upstream PathTracer
+    # Carries the VisCache + ReSTIR DI integration. The upstream PathTracer
     # plugin is reverted to NVIDIA-vanilla; project work happens here.
     # Plugin class is PathTracerX (distinct registration); the internal slang
     # struct stays named `PathTracer` because that's what TracePass.rt.slang and

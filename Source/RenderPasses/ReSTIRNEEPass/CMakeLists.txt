@@ -5,7 +5,7 @@ target_sources(ReSTIRNEEPass PRIVATE
     ReSTIRNEEPass.cpp
 
     # Forked from Falcor's PathTracer plugin — inherits the ParameterBlock-based
-    # binding plumbing (proven working with WS-ReSTIR DI), bringing the K-RIS +
+    # binding plumbing (proven working with ReSTIR DI), bringing the K-RIS +
     # temporal + spatial + retrace logic over byte-identical. Plugin class is
     # ReSTIRNEEPass (distinct registration); slang struct stays `PathTracer`
     # because that's what TracePass.rt.slang and friends still reference.
