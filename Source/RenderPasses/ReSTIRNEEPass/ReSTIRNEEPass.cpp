@@ -34,8 +34,6 @@
 
 namespace
 {
-    // Phase 3 (Falcor PathTracer reverted to vanilla): load WS-ReSTIR-bearing
-    // shaders from this plugin's own dir, not from upstream PathTracer.
     const std::string kGeneratePathsFilename = "RenderPasses/ReSTIRNEEPass/GeneratePaths.cs.slang";
     const std::string kTracePassFilename = "RenderPasses/ReSTIRNEEPass/TracePass.rt.slang";
     const std::string kResolvePassFilename = "RenderPasses/ReSTIRNEEPass/ResolvePass.cs.slang";
@@ -115,10 +113,6 @@ namespace
 
     // Scripting options.
     const std::string kSamplesPerPixel = "samplesPerPixel";
-    // §9.4 WS-cascade ReGIR step (b): two-pass pool fill mode. When true, the
-    // path skips shading after the K-fresh pool insert — this instance
-    // exists only to populate the cell pool for the next instance.
-    const std::string kWSCellPoolFillOnly = "cellPoolFillOnly";
     const std::string kMaxSurfaceBounces = "maxSurfaceBounces";
     const std::string kMaxDiffuseBounces = "maxDiffuseBounces";
     const std::string kMaxSpecularBounces = "maxSpecularBounces";
@@ -137,6 +131,7 @@ namespace
     const std::string kUseRTXDI = "useRTXDI";
     const std::string kRTXDIOptions = "RTXDIOptions";
     const std::string kUseRestirPT = "useRestirPT";
+    const std::string kNumNEECandidates = "numNEECandidates";
 
     const std::string kUseAlphaTest = "useAlphaTest";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
@@ -182,9 +177,9 @@ ReSTIRNEEPass::ReSTIRNEEPass(ref<Device> pDevice, const Properties& props)
     : RenderPass(pDevice)
 {
     if (!mpDevice->isShaderModelSupported(ShaderModel::SM6_5))
-        FALCOR_THROW("PathTracer requires Shader Model 6.5 support.");
+        FALCOR_THROW("ReSTIRNEEPass requires Shader Model 6.5 support.");
     if (!mpDevice->isFeatureSupported(Device::SupportedFeatures::RaytracingTier1_1))
-        FALCOR_THROW("PathTracer requires Raytracing Tier 1.1 support.");
+        FALCOR_THROW("ReSTIRNEEPass requires Raytracing Tier 1.1 support.");
 
     mSERSupported = mpDevice->isFeatureSupported(Device::SupportedFeatures::ShaderExecutionReorderingAPI);
 
@@ -222,7 +217,6 @@ void ReSTIRNEEPass::parseProperties(const Properties& props)
     {
         // Rendering parameters
         if (key == kSamplesPerPixel) mStaticParams.samplesPerPixel = value;
-        else if (key == kWSCellPoolFillOnly) mCellPoolFillOnly = value;
         else if (key == kMaxSurfaceBounces) mStaticParams.maxSurfaceBounces = value;
         else if (key == kMaxDiffuseBounces) mStaticParams.maxDiffuseBounces = value;
         else if (key == kMaxSpecularBounces) mStaticParams.maxSpecularBounces = value;
@@ -242,6 +236,7 @@ void ReSTIRNEEPass::parseProperties(const Properties& props)
         else if (key == kUseRTXDI) mStaticParams.useRTXDI = value;
         else if (key == kRTXDIOptions) mRTXDIOptions = value;
         else if (key == kUseRestirPT) mStaticParams.useRestirPT = value;
+        else if (key == kNumNEECandidates) mStaticParams.numNEECandidates = value;
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
@@ -264,7 +259,7 @@ void ReSTIRNEEPass::parseProperties(const Properties& props)
         else if (key == kFixedOutputSize) mFixedOutputSize = value;
         else if (key == kColorFormat) mStaticParams.colorFormat = value;
 
-        else logWarning("Unknown property '{}' in PathTracer properties.", key);
+        else logWarning("Unknown property '{}' in ReSTIRNEEPass properties.", key);
     }
 
     if (props.has(kMaxSurfaceBounces))
@@ -349,7 +344,6 @@ Properties ReSTIRNEEPass::getProperties() const
 
     // Rendering parameters
     props[kSamplesPerPixel] = mStaticParams.samplesPerPixel;
-    props[kWSCellPoolFillOnly] = mCellPoolFillOnly;
     props[kMaxSurfaceBounces] = mStaticParams.maxSurfaceBounces;
     props[kMaxDiffuseBounces] = mStaticParams.maxDiffuseBounces;
     props[kMaxSpecularBounces] = mStaticParams.maxSpecularBounces;
@@ -369,6 +363,7 @@ Properties ReSTIRNEEPass::getProperties() const
     props[kUseRTXDI] = mStaticParams.useRTXDI;
     props[kRTXDIOptions] = mRTXDIOptions;
     props[kUseRestirPT] = mStaticParams.useRestirPT;
+    props[kNumNEECandidates] = mStaticParams.numNEECandidates;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
@@ -449,7 +444,7 @@ void ReSTIRNEEPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pS
 
         if (pScene->hasGeometryType(Scene::GeometryType::Custom))
         {
-            logWarning("PathTracer: This render pass does not support custom primitives.");
+            logWarning("ReSTIRNEEPass: This render pass does not support custom primitives.");
         }
 
         validateOptions();
@@ -469,7 +464,7 @@ void ReSTIRNEEPass::execute(RenderContext* pRenderContext, const RenderData& ren
 
     // Prepare the path tracer parameter block.
     // This should be called after all resources have been created.
-    prepareReSTIRNEEPass(renderData);
+    preparePathTracer(renderData);
 
     // Subframe loop: for VISCACHE_BAYER_N>1 we split a logical frame into N²
     // Bayer-interleaved sub-dispatches. Downstream passes see a fully-populated
@@ -478,7 +473,7 @@ void ReSTIRNEEPass::execute(RenderContext* pRenderContext, const RenderData& ren
     for (uint32_t sf = 0; sf < kSubframeCount; ++sf)
     {
         mParams.subframeIdx = sf;
-        if (sf > 0) prepareReSTIRNEEPass(renderData);  // re-upload cbuffer with new subframeIdx
+        if (sf > 0) preparePathTracer(renderData);  // re-upload cbuffer with new subframeIdx
 
         // Generate paths at primary hits.
         generatePaths(pRenderContext, renderData);
@@ -934,7 +929,7 @@ void ReSTIRNEEPass::prepareResources(RenderContext* pRenderContext, const Render
     }
 }
 
-void ReSTIRNEEPass::prepareReSTIRNEEPass(const RenderData& renderData)
+void ReSTIRNEEPass::preparePathTracer(const RenderData& renderData)
 {
     // Create path tracer parameter block if needed.
     if (!mpPathTracerBlock || mVarsChanged)
@@ -1144,7 +1139,7 @@ void ReSTIRNEEPass::bindShaderData(const ShaderVar& var, const RenderData& rende
     if (!mFixedSampleCount)
     {
         pSampleCount = renderData.getTexture(kInputSampleCount);
-        if (!pSampleCount) FALCOR_THROW("PathTracer: Missing sample count input texture");
+        if (!pSampleCount) FALCOR_THROW("ReSTIRNEEPass: Missing sample count input texture");
     }
 
     var["params"].setBlob(mParams);
@@ -1183,7 +1178,7 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
 
     if (mEnabled && resolutionMismatch)
     {
-        logError("PathTracer I/O sizes don't match. The pass will be disabled.");
+        logError("ReSTIRNEEPass I/O sizes don't match. The pass will be disabled.");
         mEnabled = false;
     }
 
@@ -1294,51 +1289,10 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             mVCParams.bayerN       = getU("vhfParam_bayerN", 1u);
             mVCParams.warmupFirst  = getU("vhfParam_warmupFirst", 0u);
             mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
-            // §9.4 WS-ReSTIR DI cbuffer fields
-            mVCParams.enable            = getU("vhfParam_wsEnable", 0u);
-            mVCParams.cellLevelJitter   = getU("vhfParam_wsCellLevelJitter", 0u);
-            mVCParams.capacity          = getU("vhfParam_wsCapacity", 0u);
-            mVCParams.mCap              = getF("vhfParam_wsMCap", 30.f);
-            mVCParams.spatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
-            mVCParams.lightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
-            mVCParams.lightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
-            mVCParams.normalAddr        = getU("vhfParam_wsNormalAddr", 0u);
-            mVCParams.initialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
-            // (jitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
-            mVCParams.useCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
-            mVCParams.visInPHat         = getU("vhfParam_wsVisInPHat", 1u);
-            // §9.4 WS-cascade ReGIR cell-pool cbuffer fields
-            mVCParams.cellPoolEnable    = getU("vhfParam_cellPoolEnable", 0u);
-            mVCParams.cellPoolCapacity  = getU("vhfParam_wsCellPoolCapacity", 0u);
-            mVCParams.cellPoolDrawK     = getU("vhfParam_wsCellPoolDrawK", 0u);
-            mVCParams.spatialPixelsK      = getU("vhfParam_wsSpatialPixelsK", 4u);
-            mVCParams.spatialPixelsRadius = getU("vhfParam_wsSpatialPixelsRadius", 32u);
-            mVCParams.poolAddrMode        = getU("vhfParam_wsPoolAddrMode", 0u);
-            mVCParams.poolTileSize        = getU("vhfParam_wsPoolTileSize", 16u);
-            mVCParams.cellPoolMode        = getU("vhfParam_wsCellPoolMode", 0u);
+            // §9 dir/dist addressing knobs — still consumed by VisCache (non-WS-ReSTIR).
             mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
-            mVCParams.cellReservoirMerge  = getU("vhfParam_wsCellReservoirMerge", 0u);
-            mVCParams.cellPoolFootprintPx = getU("vhfParam_wsCellPoolFootprintPx", 0u);
-            mVCParams.cellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
-            mVCParams.retraceOnReuseMode  = getU("vhfParam_wsRetraceOnReuseMode", 0u);
         }
-        bool wasWSReservoirs = mVisCacheReservoirs;
-        mpVHFReservoirs = (mVisCacheAvailable && dict.keyExists("reservoirBuffer"))
-            ? dict.getValue<ref<Buffer>>("reservoirBuffer") : nullptr;
-        mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("pixelReservoirBuffer"))
-            ? dict.getValue<ref<Buffer>>("pixelReservoirBuffer") : nullptr;
-        mpVHFCellPools = (mVisCacheAvailable && dict.keyExists("cellPoolBuffer"))
-            ? dict.getValue<ref<Buffer>>("cellPoolBuffer") : nullptr;
-        mpVHFCellPoolSlots = (mVisCacheAvailable && dict.keyExists("cellPoolSlotBuffer"))
-            ? dict.getValue<ref<Buffer>>("cellPoolSlotBuffer") : nullptr;
-        mVHFPixelDimX = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimX"))
-            ? dict.getValue<uint32_t>("vhfParam_wsFrameDimX") : 0u;
-        mVHFPixelDimY = (mVisCacheAvailable && dict.keyExists("vhfParam_wsFrameDimY"))
-            ? dict.getValue<uint32_t>("vhfParam_wsFrameDimY") : 0u;
-        mVisCacheReservoirs = mVisCacheAvailable
-            && dict.keyExists("vhfEnableWSReservoirs") && dict.getValue<bool>("vhfEnableWSReservoirs")
-            && mpVHFReservoirs != nullptr;
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
         mVisCacheLightSelection = mVisCacheAvailable &&
@@ -1374,12 +1328,11 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheLightSelection != wasLightSel
             || mVisCacheDirDistAddr != wasDirDist
-            || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN
-            || mVisCacheReservoirs != wasWSReservoirs)
+            || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={} wsRes={}",
+            logInfo("[ReSTIRNEEPass] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={}",
                     mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheLightSelection,
-                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN, mVisCacheReservoirs);
+                    mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN);
             mRecompile = true;
         }
     }
@@ -1585,44 +1538,9 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
         vc["gBayerN"]                        = mVCParams.bayerN;
         vc["gWarmupFirst"]                   = mVCParams.warmupFirst;
         vc["gWarmupRun"]                     = mVCParams.warmupRun;
-        // §9.4 WS-ReSTIR DI cbuffer fields
-        vc["gEnable"]                      = mVCParams.enable;
-        vc["gCellLevelJitter"]             = mVCParams.cellLevelJitter;
-        vc["gCapacity"]                    = mVCParams.capacity;
-        vc["gMCap"]                        = mVCParams.mCap;
-        vc["gSpatialNeighbours"]           = mVCParams.spatialNeighbours;
-        vc["gLightMuMin"]                  = mVCParams.lightMuMin;
-        vc["gLightSoftness"]               = mVCParams.lightSoftness;
-        vc["gNormalAddr"]                  = mVCParams.normalAddr;
-        vc["gInitialCandidates"]           = mVCParams.initialCandidates;
-        // (gJitterFilter / gJitterCell cbuffer fields are now padding;
-        //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)
-        vc["gUseCellInRIS"]                = mVCParams.useCellInRIS;
-        vc["gVisInPHat"]                   = mVCParams.visInPHat;
-        vc["gCellPoolEnable"]              = mVCParams.cellPoolEnable;
-        vc["gCellPoolCapacity"]            = mVCParams.cellPoolCapacity;
-        vc["gCellPoolDrawK"]               = mVCParams.cellPoolDrawK;
-        vc["gSpatialPixelsK"]              = mVCParams.spatialPixelsK;
-        vc["gSpatialPixelsRadius"]         = mVCParams.spatialPixelsRadius;
-        vc["gPoolAddrMode"]                = mVCParams.poolAddrMode;
-        vc["gPoolTileSize"]                = mVCParams.poolTileSize;
-        vc["gCellPoolMode"]                = mVCParams.cellPoolMode;
+        // §9 dir/dist addressing knobs — VisCache addressing anisotropy.
         vc["gDirSolidAngleScale"]            = mVCParams.dirSolidAngleScale;
         vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
-        vc["gCellReservoirMerge"]          = mVCParams.cellReservoirMerge;
-        vc["gCellPoolFootprintPx"]         = mVCParams.cellPoolFootprintPx;
-        vc["gCellReservoirFootprintPx"]    = mVCParams.cellReservoirFootprintPx;
-        vc["gRetraceOnReuseMode"]          = mVCParams.retraceOnReuseMode;
-    }
-    // §9.4 WS-ReSTIR DI buffers at root var (parallel to gVHFTable).
-    if (mVisCacheReservoirs)
-    {
-        var["gReservoirs"]      = mpVHFReservoirs;
-        if (mpVHFPixelReservoirs) var["gPixelReservoirs"] = mpVHFPixelReservoirs;
-        if (mpVHFCellPools)     var["gCellPools"]       = mpVHFCellPools;
-        if (mpVHFCellPoolSlots) var["gCellPoolSlotBuf"] = mpVHFCellPoolSlots;
-        var["VisCacheParams"]["gFrameDimX"] = mVHFPixelDimX;
-        var["VisCacheParams"]["gFrameDimY"] = mVHFPixelDimY;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
@@ -1715,6 +1633,7 @@ DefineList ReSTIRNEEPass::StaticParams::getDefines(const ReSTIRNEEPass& owner) c
     defines.add("USE_RUSSIAN_ROULETTE", useRussianRoulette ? "1" : "0");
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
     defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
+    defines.add("NUM_NEE_CANDIDATES", std::to_string(numNEECandidates));
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");
@@ -1744,10 +1663,11 @@ DefineList ReSTIRNEEPass::StaticParams::getDefines(const ReSTIRNEEPass& owner) c
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
     // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
-    // §9.4 WS-ReSTIR DI: master define gates all reservoir paths in slang.
-    defines.add("USE_WS_RESERVOIRS", owner.mVisCacheReservoirs ? "1" : "0");
-    // §9.4 Step (b): WS cell-pool pre-pass mode (this instance fills pool, skips shading).
-    defines.add("WS_CELL_POOL_FILL_ONLY", owner.mCellPoolFillOnly ? "1" : "0");
+    // §9.4 WS-ReSTIR DI moved to ReSTIRDIPass / ReSTIRDIReferencePass / ReSTIRNEEPass —
+    // ReSTIRNEEPass no longer carries the in-tree implementation. Define stays at 0 so
+    // any leftover gates compile out.
+    defines.add("USE_WS_RESERVOIRS", "0");
+    defines.add("WS_CELL_POOL_FILL_ONLY", "0");
 
     // Scene-specific configuration.
     // Set defaults

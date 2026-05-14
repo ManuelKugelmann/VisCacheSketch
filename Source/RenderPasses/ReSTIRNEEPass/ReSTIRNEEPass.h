@@ -42,12 +42,24 @@
 
 using namespace Falcor;
 
-/** Fast path tracer.
+/** ReSTIRNEEPass — every-vertex K-RIS NEE on a clean PathTracerX base.
+
+    At every NEE call-site (every non-Delta surface vertex), this pass samples
+    K candidate lights, runs streaming RIS with target pdf p̂ = unshadowed
+    contribution, then traces a single shadow ray for the winning candidate.
+    Conceptually "ReSTIR DI with multiple bounces": the K-RIS that ReSTIR DI
+    runs at the primary hit is applied at every interior vertex too.
+
+    No buffer-backed reservoirs (no temporal/spatial reuse). The reservoir is
+    a local on the slang stack, rebuilt fresh per vertex per frame.
+
+    Internal slang struct stays named `PathTracer` — same fork hygiene as
+    ReSTIRDIPass / ReSTIRDIReferencePass / ReSTIRPTReferencePass.
 */
 class ReSTIRNEEPass : public RenderPass
 {
 public:
-    FALCOR_PLUGIN_CLASS(ReSTIRNEEPass, "ReSTIRNEEPass", "Reference path tracer.");
+    FALCOR_PLUGIN_CLASS(ReSTIRNEEPass, "ReSTIRNEEPass", "Path tracer with K-RIS NEE at every bounce.");
 
     static ref<ReSTIRNEEPass> create(ref<Device> pDevice, const Properties& props) { return make_ref<ReSTIRNEEPass>(pDevice, props); }
 
@@ -94,7 +106,7 @@ private:
     void updatePrograms();
     void setFrameDim(const uint2 frameDim);
     void prepareResources(RenderContext* pRenderContext, const RenderData& renderData);
-    void prepareReSTIRNEEPass(const RenderData& renderData);
+    void preparePathTracer(const RenderData& renderData);
     void resetLighting();
     void prepareMaterials(RenderContext* pRenderContext);
     bool prepareLighting(RenderContext* pRenderContext);
@@ -132,6 +144,12 @@ private:
         EmissiveLightSamplerType emissiveSampler = EmissiveLightSamplerType::LightBVH;  ///< Emissive light sampler to use for NEE.
         bool        useRTXDI = false;                           ///< Use RTXDI for direct illumination.
         bool        useRestirPT = false;                        ///< Enable ReSTIR-PT path-reservoir reuse (restirpt_2d). v1: per-pixel addressing, parity target = Source/RenderPasses/ReSTIRPTPass/.
+
+        // ReSTIR NEE — K-RIS over light candidates at every NEE call-site.
+        // K=1 reproduces vanilla NEE byte-for-byte; K>1 enables streaming RIS
+        // with target pdf p̂ = unshadowed contribution luminance. No buffer-
+        // backed reservoirs (no temporal/spatial reuse) — purely online RIS.
+        uint32_t    numNEECandidates = 16;                      ///< Number of light-sample candidates per NEE call (K). 1 = vanilla NEE.
 
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
@@ -185,9 +203,6 @@ private:
     bool                            mOptionsChanged = false;    ///< True if the config has changed since last frame.
     bool                            mGBufferAdjustShadingNormals = false; ///< True if GBuffer/VBuffer has adjusted shading normals enabled.
     bool                            mFixedSampleCount = true;   ///< True if a fixed sample count per pixel is used. Otherwise load it from the pass sample count input.
-    bool                            mCellPoolFillOnly = false; ///< §9.4 Step (b): when true, this PathTracer instance only fills the
-                                                                 ///< WS cell pool (K-RIS + insert) and skips shading. Used as a pre-pass
-                                                                 ///< before the main render PathTracer instance reads the populated pool.
     bool                            mOutputGuideData = false;   ///< True if guide data should be generated as outputs.
     bool                            mOutputNRDData = false;     ///< True if NRD diffuse/specular data should be generated as outputs.
     bool                            mOutputNRDAdditionalData = false;   ///< True if NRD data from delta and residual paths should be generated as designated outputs rather than being included in specular NRD outputs.
@@ -240,43 +255,9 @@ private:
              float cameraPosX=0, cameraPosY=0, cameraPosZ=0;
              float pixelSize1=0.001f;
              uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
-             // §9.4 WS-ReSTIR DI cbuffer fields
-             uint32_t enable=0;
-             uint32_t cellLevelJitter=0u;
-             uint32_t capacity=0;
-             float    mCap=30.f;
-             uint32_t spatialNeighbours=4;
-             float    lightMuMin=0.01f;
-             float    lightSoftness=1.f;
-             uint32_t normalAddr=0;
-             uint32_t initialCandidates=8;
-             // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)
-             uint32_t useCellInRIS=1;
-             uint32_t visInPHat=1;
-             // §9.4 WS-cascade ReGIR cell pool
-             uint32_t cellPoolEnable=0;
-             uint32_t cellPoolCapacity=0;
-             uint32_t cellPoolDrawK=0;
-             uint32_t spatialPixelsK=4;
-             uint32_t spatialPixelsRadius=32;
-             uint32_t poolAddrMode=0;
-             uint32_t poolTileSize=16;
-             uint32_t cellPoolMode=0;        // 0 = P3d, 1 = PR3d
+             // §9 dir/dist addressing knobs — used by VisCache regardless of WS-ReSTIR.
              float    dirSolidAngleScale=1.0f;
-             float    distSolidAngleScale=1.0f;
-             uint32_t cellReservoirMerge=0;
-             uint32_t cellPoolFootprintPx=0;
-             uint32_t cellReservoirFootprintPx=0;
-             uint32_t retraceOnReuseMode=0; } mVCParams;
-
-    // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
-    ref<Buffer> mpVHFReservoirs;
-    ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
-    ref<Buffer> mpVHFCellPools;              ///< Multi-light cell pool — header (fingerprint, count).
-    ref<Buffer> mpVHFCellPoolSlots;          ///< Multi-light cell pool — flat slot buffer (split for DXC at N=1024).
-    uint32_t    mVHFPixelDimX = 0u;
-    uint32_t    mVHFPixelDimY = 0u;
-    bool        mVisCacheReservoirs = false; ///< Master gate read from dict.
+             float    distSolidAngleScale=1.0f; } mVCParams;
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.

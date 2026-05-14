@@ -47,19 +47,10 @@ __exported import PathState;
 __exported import Params;
 import Rendering.RTXDI.RTXDI;
 
-// Phase 3d Step 1: shared LightType/LightSampleDI types via Common.
+// Phase 3d: shared LightType/LightSample types from Common.
 import RenderPasses.PathTraceCommon.PathTraceCore;
-import RenderPasses.ReSTIRCommon.LightReservoir;
 
-#if USE_WS_RESERVOIRS
-import RenderPasses.ReSTIRCommon.Reservoir;
-import RenderPasses.ReSTIRCommon.ReservoirIO;
-import RenderPasses.ReSTIRCommon.CellPool;
-import RenderPasses.ReSTIRCommon.CellPoolIO;
-import RenderPasses.VisCache.VisCache;   // VisCacheParams cbuffer (gWS*, vhfLookup)
-import Utils.Math.MathHelpers;           // sample_triangle for emissive uv → barys
-#include "Utils/Math/MathConstants.slangh"  // FLT_MIN
-#elif USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
+#if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gLightMuMin
 #endif
 
@@ -137,7 +128,7 @@ struct PathTracer
     // Additional specialization.
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
-    // LightType + LightSampleDI lifted to namespace level in
+    // LightType + LightSample lifted to namespace level in
     // `RenderPasses.PathTraceCommon.PathTraceCore` (imported above).
 
     /** Describes a path vertex.
@@ -572,7 +563,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSampleDI ls)
+    bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
 
@@ -588,8 +579,6 @@ struct PathTracer
         ls.origin = vertex.getRayOrigin(lightSample.dir);
         ls.distance = kRayTMax;
         ls.dir = lightSample.dir;
-        ls.lightIndex = 0u;          // §9.4 — env identity carried by ls.dir
-        ls.lightUV = float2(0.f);
 
         return any(ls.Li > 0.f);
     }
@@ -601,7 +590,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere, inout SampleGenerator sg, out LightSampleDI ls)
+    bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere, inout SampleGenerator sg, out LightSample ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
         if (!kUseEmissiveLights) return false;
@@ -618,59 +607,10 @@ struct PathTracer
         float3 toLight = lightPos - ls.origin;
         ls.distance = length(toLight);
         ls.dir = normalize(toLight);
-        ls.lightIndex = tls.triangleIndex;   // §9.4 — emissive identity = active triangle index
-        ls.lightUV = tls.uv;                 // §9.4 — barycentric coords on the triangle
 
         return any(ls.Li > 0.f);
     }
 
-#if USE_WS_RESERVOIRS
-    /** §9.4 Pack the chosen LightSampleDI's surface payload according to type.
-        Emissive: barys (16:16 unorm). EnvMap: dir (oct 16:16). Analytic: 0.
-    */
-    uint packLightSamplePayload(const LightSampleDI inLs)
-    {
-        if (inLs.lightType == (uint)LightType::Emissive) return packUV(inLs.lightUV);
-        if (inLs.lightType == (uint)LightType::EnvMap)   return packDirOct(inLs.dir);
-        return 0u;
-    }
-
-    /** §9.4 Re-materialise a LightSampleDI for the env map from a stored
-        oct-packed direction, evaluated at the given shading point.
-        Distance is kRayTMax (env is at infinity). pdf evaluated via the
-        env-map sampler's solid-angle pdf for `dir`.
-    */
-    bool rebuildEnvMapLightSample(uint payload, const ShadingData sd, out LightSampleDI ls)
-    {
-        return coreRebuildEnvMapLightSample(payload, sd, envMapSampler, ls);
-    }
-
-    /** §9.4 Re-materialise a LightSampleDI for an analytic light from a stored
-        lightIndex, re-evaluated at a different shading point. Calls Falcor's
-        `sampleLight()` for the analytic light type — the sample is mostly
-        deterministic for point/directional lights (no uv); for area-shaped
-        analytic lights this consumes fresh randomness, which is fine.
-
-        The cell's "stored sample identity" for analytics is just the light
-        choice itself — the cell teaches "this light is good for this region",
-        and we re-sample it from the current pixel.
-    */
-    bool rebuildAnalyticLightSample(uint lightIndex, const ShadingData sd, inout SampleGenerator sg, out LightSampleDI ls)
-    {
-        return coreRebuildAnalyticLightSample(lightIndex, sd, sg, ls);
-    }
-
-    /** §9.4 Re-materialise a LightSampleDI for an emissive triangle from
-        stored (lightIndex, uv), re-evaluated at a different shading point.
-        Mirrors generateEmissiveSample's per-sample math (see Falcor's
-        EmissiveLightSamplerHelpers::sampleTriangle) but uses the stored u
-        instead of drawing a new one.
-    */
-    bool rebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingData sd, out LightSampleDI ls)
-    {
-        return coreRebuildEmissiveLightSample(triangleIndex, u, sd, emissiveSampler, ls);
-    }
-#endif
 
     /** Generates a light sample on the analytic lights.
         \param[in] vertex Path vertex.
@@ -678,7 +618,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSampleDI ls)
+    bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
 
@@ -702,8 +642,6 @@ struct PathTracer
         // Do not worry about adjusting the ray length to avoid self-intersections at the light.
         ls.distance = lightSample.distance;
         ls.dir = lightSample.dir;
-        ls.lightIndex = lightIndex;          // §9.4 — analytic light index
-        ls.lightUV = float2(0.f);
 
         return any(ls.Li > 0.f);
     }
@@ -773,7 +711,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSampleDI ls)
+    bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSample ls)
     {
         ls = {};
 
@@ -1042,7 +980,7 @@ struct PathTracer
         path.setLightSampled(false, false);
         if (applyNEE || applyRTXDI)
         {
-            LightSampleDI ls = {};
+            LightSample ls = {};
             bool validSample = false;
 
             if (applyRTXDI)
@@ -1062,8 +1000,51 @@ struct PathTracer
                 bool sampleLowerHemisphere = canNeeSampleSphere || ((lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0);
                 if (!kUseLightsInDielectricVolumes && path.isInsideDielectricVolume()) sampleUpperHemisphere = false;
 
-                // Sample a light.
-                validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, path.sg, ls);
+                // Sample a light. With kNumNEECandidates > 1, run streaming
+                // RIS over K candidates with target pdf p̂ = luminance of the
+                // unshadowed contribution (BRDF * Li). Visibility-blind: a
+                // single shadow ray is traced below on the RIS winner only.
+                // K=1 falls through to byte-for-byte vanilla NEE.
+                if (kNumNEECandidates <= 1u)
+                {
+                    validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, path.sg, ls);
+                }
+                else
+                {
+                    LightSample lsBest = {};
+                    float pHatBest = 0.f;
+                    float sumW = 0.f;
+                    [loop]
+                    for (uint k = 0u; k < kNumNEECandidates; ++k)
+                    {
+                        LightSample lsK = {};
+                        if (!generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, path.sg, lsK)) continue;
+                        float3 weightK = mi.eval(sd, lsK.dir, path.sg);
+                        float pHatK = luminance(weightK * lsK.Li);
+                        if (pHatK <= 0.f) continue;
+                        // Source pdfs differ across light types (env / emissive /
+                        // analytic), and Dirac lights report pdf=0. luminance(Lr)
+                        // already folds in the per-sample weight (Falcor's
+                        // generateLightSample returns Li = Le/p), so the RIS
+                        // weight here is simply pHat — same convention used by
+                        // ReSTIRDIPass for its primary-hit K-RIS stream.
+                        sumW += pHatK;
+                        if (sampleNext1D(path.sg) * sumW < pHatK)
+                        {
+                            lsBest = lsK;
+                            pHatBest = pHatK;
+                        }
+                    }
+                    if (pHatBest > 0.f)
+                    {
+                        // W = mean(pHat_j) / pHat_winner unbiases the RIS estimator:
+                        //   f(winner) * W = E[(1/K) * Σ f(x_j)]  (single-sample RIS form)
+                        float W = sumW / (pHatBest * float(kNumNEECandidates));
+                        ls = lsBest;
+                        ls.Li *= W;
+                        validSample = true;
+                    }
+                }
                 path.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
             }
 
@@ -1079,775 +1060,6 @@ struct PathTracer
                 float3 weight = mi.eval(sd, ls.dir, path.sg);
                 float3 Lr = weight * ls.Li;
 
-#if USE_WS_RESERVOIRS
-                // §9.4 WS-ReSTIR DI: full read+merge+write at the primary hit.
-                //  1. seed local reservoir with the fresh NEE candidate
-                //  2. gather home cell + spatial neighbours, re-evaluate each
-                //     candidate at THIS shading point, merge into the local
-                //  3. swap the picked sample into ls (and recompute Lr)
-                //  4. persist the local back to the home cell
-                // Handles emissive, analytic AND env-map lights — full coverage
-                // of Falcor's three light-type families.
-                bool isEmissive = ls.lightType == (uint)LightType::Emissive;
-                bool isAnalytic = ls.lightType == (uint)LightType::Analytic;
-                bool isEnv      = ls.lightType == (uint)LightType::EnvMap;
-                if (path.getVertexIndex() == 1 && enabled() && (isEmissive || isAnalytic || isEnv))
-                {
-                    LocalReservoir local; local.init();
-
-                    // §9.4 Pool address — resolved once, used for both write-back
-                    // and per-candidate insert-on-fill (so the pool fills within
-                    // a single dispatch instead of waiting for next frame).
-                    // §9.4 mode-dispatched pool address: 3D world cell OR
-                    // 2D screen tile (RTXDI-style). Same buffer/struct/insert
-                    // math; only the address resolver differs.
-                    CellAddress poolAddrA = resolvePoolAddr(sd.posW, sd.faceN, path.getPixel());
-
-                    // §9.4 — RTXDI port: pool fills via BOTH pre-pass AND
-                    // main pass (matches RTXDI conceptually — every frame's
-                    // light proposals contribute to the tile/cell). Main pass
-                    // also seeds the local reservoir with the fresh NEE
-                    // sample as the first RIS candidate, then folds K_pool
-                    // additional candidates from the pool (block 1c). This
-                    // gives x1 vanilla-NEE-baseline behavior even when the
-                    // pool is cold (frame 1 / new viewpoint). Across frames,
-                    // pool fills and K=24 pool draws dominate, recovering
-                    // RTXDI-tile-presample quality.
-
-                    // (1) Add the fresh sample as the first RIS candidate.
-                    if (any(Lr > 0.f))
-                    {
-                        // pHat = luminance(Lr) directly. Falcor's ls.Li = Le/pdf,
-                        // so weight*Li = (BSDF*cos*Le)/pdf = unbiased single-sample
-                        // direct-lighting estimator. RIS over already-MC-divided
-                        // contributions uses w_i = lum(contribution); the /pdf is
-                        // already in Lr. invPdf passed as 1.0 below.
-                        // CRITICAL: this works for BOTH area lights (pdf>0) AND
-                        // point/directional lights (pdf=0, Dirac). Earlier
-                        // formulations using `pHat × 1/ls.pdf` divided by zero
-                        // for Dirac lights, making point-light candidates have
-                        // RIS weight 0 → reservoir empty → K-RIS fell through to
-                        // vanilla NEE bit-identically.
-                        float pHatFresh = luminance(Lr);
-                        // §9.4 Visibility-aware target function (RTXDI fix).
-                        // Runtime-selected by gVisInPHat:
-                        //   0 = blind (no V — biased on emissive-heavy scenes)
-                        //   1 = cache-amortized via traceVisibilityRayCV (cheap once warm)
-                        //   2 = explicit always-trace via traceVisibilityRay (K rays/pixel,
-                        //       no cache — unbiased reference, isolates RIS math from cache)
-                        if (!isEnv && visInPHatMode() != 0u)
-                        {
-                            Ray vrayF = ls.getVisibilityRay();
-                            float vF = 1.f;
-#if USE_VISCACHE_VISIBILITYCHECK
-                            if (visInPHatMode() == 1u)
-                                vF = vq.traceVisibilityRayCV(vrayF, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
-                            else
-                                vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
-#else
-                            vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
-#endif
-                            pHatFresh *= max(vF, lightMuMin());
-                        }
-                        // invPdf = 1 because pHatFresh = lum(Lr) already includes
-                        // the 1/pdf factor (Lr = weight × Li = integrand / pdf).
-                        // Standard RIS over MC-divided contributions. Fresh
-                        // sample seeds the local reservoir AND fills the pool
-                        // for next-frame reads. Empirically the fresh sample is
-                        // the highest-quality candidate (proper pHat at reader,
-                        // not cross-pixel-biased) — dropping it for "pure RTXDI
-                        // pool-only K-RIS" regressed Sponza x1 by +9pp.
-                        uint freshLTI = packLightTypeIndex(ls.lightType, ls.lightIndex);
-                        uint freshPL  = packLightSamplePayload(ls);
-                        local.streamingAdd(freshLTI, freshPL,
-                            pHatFresh, 1.f, path.sg);
-                        if (cellPoolEnabled())
-                        {
-                            // §9.4 step (d) FIXED: V-aware RIS-at-insert via target
-                            // multiplier (NOT probabilistic acceptance). The previous
-                            // formulation `if (rand < V) insert with sourcePdf*V`
-                            // mathematically AMPLIFIED occluded candidates' weight
-                            // (rare 1% inserts → 100× weight → reservoir biased
-                            // toward occluded — opposite of intent). Correct form:
-                            // always insert; modulate the RIS *target* by V, leave
-                            // sourcePdf unchanged. Then pool slot replacement
-                            // probability is ∝ pHat × V / ls.pdf — slots concentrate
-                            // on visible-bright candidates without bias inflation.
-                            // Reader's 1/sourcePdf RIS weight uses unmodified
-                            // ls.pdf — clean unbiased proposal density.
-                            //
-                            // V-aware fill is decoupled from visInPHat (the K-RIS
-                            // p̂ V-mode) so the cell pool always gets V-filtered
-                            // candidates when enabled — RTXDI's tile-pool analog.
-                            float muF = 1.f;
-                            if (!isEnv && ls.distance > 0.f)
-                            {
-                                float3 lightPosB = ls.origin + ls.dir * ls.distance;
-                                VHFResult vr = vhfLookup(sd.posW, lightPosB, sd.faceN);
-                                muF = vr.valid ? vr.mu : 1.f;
-                            }
-                            float vWeight = max(muF, lightMuMin());  // defensive μmin floor
-#if WS_CELL_POOL_FILL_ONLY
-                            // Pool inserts only from pre-pass (RTXDI-style: dedicated
-                            // fill source). Main pass uses LightBVH for fresh K-RIS in
-                            // the local stream but does NOT write to pool, so pool
-                            // content reflects only the pre-pass's sampler choice
-                            // (e.g. shading-agnostic Power for cross-pixel diversity).
-                            cellPoolInsert(poolAddrA, freshLTI, freshPL, ls.pdf, pHatFresh * vWeight, path.sg);
-#endif
-                        }
-                    }
-
-                    // (1b) Generate K-1 ADDITIONAL fresh candidates per pixel
-                    //      (RTXDI parity: localLightCandidateCount default 8).
-                    //      This is the dominant variance reducer on many-lights
-                    //      scenes — single-candidate fall-through gives no gain
-                    //      over vanilla NEE.
-                    {
-                        PathVertex vtxK = PathVertex(path.getVertexIndex(), sd.posW, sd.faceN, sd.frontFacing);
-                        const bool canNeeSampleSphereK = isCurveHit || isCurvePolyTubeHit;
-                        bool sampleUpperK = canNeeSampleSphereK || ((lobeTypes & (uint)LobeType::NonDeltaReflection) != 0);
-                        bool sampleLowerK = canNeeSampleSphereK || ((lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0);
-                        if (!kUseLightsInDielectricVolumes && path.isInsideDielectricVolume()) sampleUpperK = false;
-
-                        uint extraK = (gInitialCandidates > 1u) ? (gInitialCandidates - 1u) : 0u;
-                        for (uint k = 0u; k < extraK; ++k)
-                        {
-                            LightSampleDI lsK = {};
-                            if (!generateLightSample(vtxK, sampleUpperK, sampleLowerK, path.sg, lsK)) continue;
-                            float3 weightK = mi.eval(sd, lsK.dir, path.sg);
-                            float3 LrK = weightK * lsK.Li;
-                            if (!any(LrK > 0.f)) continue;
-                            // pHat = luminance(Lr); invPdf=1. Works for both
-                            // area lights (pdf>0) and Dirac point/directional
-                            // lights (pdf=0). See fresh-candidate site.
-                            float pHatK = luminance(LrK);
-                            if (lsK.lightType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
-                            {
-                                Ray vrayK = lsK.getVisibilityRay();
-                                float vK = 1.f;
-#if USE_VISCACHE_VISIBILITYCHECK
-                                if (visInPHatMode() == 1u)
-                                    vK = vq.traceVisibilityRayCV(vrayK, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
-                                else
-                                    vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
-#else
-                                vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
-#endif
-                                pHatK *= max(vK, lightMuMin());
-                            }
-                            uint kLTI = packLightTypeIndex(lsK.lightType, lsK.lightIndex);
-                            uint kPL  = packLightSamplePayload(lsK);
-                            // invPdf=1; pHatK already pdf-divided (lum(Lr)).
-                            local.streamingAdd(kLTI, kPL, pHatK, 1.f, path.sg);
-                            if (cellPoolEnabled())
-                            {
-                                // §9.4 step (d) FIXED — V-aware target-multiplier
-                                // form. See full rationale at the fresh-insert
-                                // site above. always-insert with pHat × V as RIS
-                                // target, sourcePdf left = ls.pdf (unbiased).
-                                // V-aware fill is decoupled from visInPHat —
-                                // the cell pool always gets V-filtered candidates.
-                                float muK = 1.f;
-                                if (lsK.lightType != (uint)LightType::EnvMap
-                                    && lsK.distance > 0.f)
-                                {
-                                    float3 lightPosBK = lsK.origin + lsK.dir * lsK.distance;
-                                    VHFResult vrK = vhfLookup(sd.posW, lightPosBK, sd.faceN);
-                                    muK = vrK.valid ? vrK.mu : 1.f;
-                                }
-                                float vWeightK = max(muK, lightMuMin());
-#if WS_CELL_POOL_FILL_ONLY
-                                cellPoolInsert(poolAddrA, kLTI, kPL, lsK.pdf, pHatK * vWeightK, path.sg);
-#endif
-                            }
-                        }
-                    }
-
-                    // (1c) §9.4 WS-cascade ReGIR — draw K candidates from the
-                    //     home cell's multi-light pool. Pool fills from main-
-                    //     pass winners (step a write-back below) and over time
-                    //     concentrates on the popular high-pHat lights for this
-                    //     region. Acts as a per-region importance prior on top
-                    //     of LightBVH's global power weighting.
-                    //     Each pool entry was inserted with its writer-side NEE
-                    //     proposal pdf, so we treat the entry as a sample drawn
-                    //     from that pdf at this reading pixel — RIS unbiases via
-                    //     pHat(reader) / sourcePdf, exactly as if the entry had
-                    //     been freshly drawn at the reader.
-                    if (gCellPoolDrawK > 0u && cellPoolEnabled())
-                    {
-                        // AoS reader — fetch one whole CellPoolSlot per
-                        // K-RIS iteration. The 12-B slot is a single
-                        // bufferLoad at one offset, so the three fields
-                        // (lightTypeIndex, payload, sourcePdf) come from
-                        // the same writer's contribution — no torn reads
-                        // under concurrent writes. Avoids the 12 KB whole-
-                        // struct copy that DXIL rejects at N=1024.
-                        uint poolSlot, poolCount;
-                        if (lookupCellPool(poolAddrA, poolSlot, poolCount))
-                        {
-                            uint kPool = min(gCellPoolDrawK, poolCount);
-                            for (uint d = 0u; d < kPool; ++d)
-                            {
-                                uint slotR = uint(sampleNext1D(path.sg) * float(poolCount)) % poolCount;
-                                CellPoolSlot ps = gCellPoolSlotBuf[slotIndex(poolSlot, slotR)];
-                                // Per-slot freshness filter — `frameStamp ==
-                                // currentFrame` means the slot was written this
-                                // frame and is valid; otherwise it's stale (from
-                                // a previous frame or previous cell occupant).
-                                // sourcePdf guard remains as defense-in-depth.
-                                // Per-slot freshness filter — `slotFrame == currentFrame & 0xFFFF`
-                                // means slot was written this frame. Modular handling of 16-bit wrap.
-                                if (slotGetFrame(ps) != slotCurrentFrame()) continue;
-                                if (ps.sourcePdf <= 0.f) continue;
-                                uint pLTI  = ps.lightTypeIndex;
-                                uint pType = unpackLightType(pLTI);
-                                uint pIdxL = unpackLightIndex(pLTI);
-                                float pSrcPdf = ps.sourcePdf;
-                                uint pPayload = ps.payload;
-                                // P3d (mode=0): M=0 → pSlotM=1 → no extra weight (identity).
-                                // PR3d (mode=1): scale K-RIS weight by M (slot's reservoir-sample count).
-                                float pSlotM = (gCellPoolMode != 0u) ? float(max(slotGetM(ps), 1u)) : 1.0f;
-                                LightSampleDI poolLs;
-                                bool poolOk = false;
-                                if (pType == (uint)LightType::Emissive)
-                                    poolOk = rebuildEmissiveLightSample(pIdxL, unpackUV(pPayload), sd, poolLs);
-                                else if (pType == (uint)LightType::Analytic)
-                                    poolOk = rebuildAnalyticLightSample(pIdxL, sd, path.sg, poolLs);
-                                else if (pType == (uint)LightType::EnvMap)
-                                    poolOk = rebuildEnvMapLightSample(pPayload, sd, poolLs);
-                                if (!poolOk) continue;
-
-                                float NdotLP = dot(sd.faceN, poolLs.dir);
-                                bool hasReflP  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
-                                bool hasTransP = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
-                                bool acceptUP = (NdotLP >  kMinCosTheta) && hasReflP;
-                                bool acceptLP = (NdotLP < -kMinCosTheta) && hasTransP;
-                                if (!acceptUP && !acceptLP) continue;
-
-                                // §9.4 MIS for pool draws — match the fresh-sample path
-                                // in block 1a (line ~1179): light-vs-BSDF MIS damps
-                                // the candidate's Li by the balance heuristic. Without
-                                // this, pool candidates have higher weight than fresh
-                                // candidates by the MIS factor, biasing the RIS toward
-                                // pool and over-weighting reused samples. Skipped for
-                                // Analytic lights (Falcor convention).
-                                if (kUseMIS && !applyRTXDI && pType != (uint)LightType::Analytic)
-                                {
-                                    float scatterPdfP = mi.evalPdf(sd, poolLs.dir, kUseBSDFSampling);
-                                    poolLs.Li *= evalMIS(1, poolLs.pdf, 1, scatterPdfP);
-                                }
-
-                                float3 weightP = mi.eval(sd, poolLs.dir, path.sg);
-                                float3 LrP = weightP * poolLs.Li;
-                                if (!any(LrP > 0.f)) continue;
-                                // pHat = luminance(Lr) at reading pixel.
-                                float pHatP = luminance(LrP);
-                                // §9.4 step (d) — V-aware target function for pool draws.
-                                // Reuses the existing visInPHat machinery: mode 1 = cache-
-                                // amortized (μ from VisCache), mode 2 = explicit shadow ray.
-                                // Applied to pool draws on top of the existing fresh-candidate
-                                // path so the per-pixel K-RIS picks visibility-aware candidates
-                                // regardless of whether they came from the pool or fresh draws.
-                                if (pType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
-                                {
-                                    Ray vrayP = poolLs.getVisibilityRay();
-                                    float vP = 1.f;
-#if USE_VISCACHE_VISIBILITYCHECK
-                                    if (visInPHatMode() == 1u)
-                                        vP = vq.traceVisibilityRayCV(vrayP, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
-                                    else
-                                        vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
-#else
-                                    vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
-#endif
-                                    pHatP *= max(vP, lightMuMin());
-                                }
-                                // §9.4 read-side — Convention B (UNBIASED, RTXDI-faithful)
-                                // with reader-evaluated pdf. Validated 2026-05-05:
-                                // closes Cornell_3AL_x4 trail by -0.18pp, wins on
-                                // BistroExt_x4 by -0.96pp, no firefly regression on
-                                // Sponza/BistroExt (Sponza_x4 +0.04 within noise).
-                                // Earlier Conv B w/ stored solid-angle pdf fireflies
-                                // because writer's r²/cos was baked in. Computing
-                                // pdf at READER via emissiveSampler.evalPdf uses
-                                // reader's geometry → position-invariant RIS weight.
-                                // Emissive only; analytic/env fall back to Conv A
-                                // (Dirac/env pdf eval may not exist).
-                                float invSrcPdf = 1.f;
-                                if (pType == (uint)LightType::Emissive)
-                                {
-                                    // Compute triangle normal from vertices —
-                                    // inner LightSampleDI lacks normalW.
-                                    const EmissiveTriangle pet = gScene.lightCollection.getTriangle(pIdxL);
-                                    float3 pe0 = pet.posW[1] - pet.posW[0];
-                                    float3 pe1 = pet.posW[2] - pet.posW[0];
-                                    TriangleLightHit poolHit;
-                                    poolHit.triangleIndex = pIdxL;
-                                    poolHit.posW = poolLs.origin + poolLs.dir * poolLs.distance;
-                                    poolHit.normalW = normalize(cross(pe0, pe1));
-                                    float readerPdf = emissiveSampler.evalPdf(sd.posW, sd.faceN, true, poolHit);
-                                    invSrcPdf = (readerPdf > 0.f) ? (1.f / readerPdf) : 0.f;
-                                }
-                                // PR3d: weight by M_slot. P3d: pSlotM=1 (no-op).
-                                local.streamingAdd(
-                                    pLTI, pPayload,
-                                    pHatP * pSlotM, invSrcPdf, path.sg);
-                            }
-                        }
-                    }
-
-#if !WS_CELL_POOL_FILL_ONLY
-                    // §9.4 RTXDI port: testCandidateVisibility (RTXDI default = true).
-                    // [Differences from literal RTXDI port — see paper §9.4 + DEVLOG
-                    //  for the complete table. Algorithmic deviations: 1) pool fill
-                    //  via main+Bayer-pre-pass NEE writes (not RTXDI's compute pre-
-                    //  pass with pdf-mipmap) — Falcor uses LightBVH; 2) Convention A
-                    //  read (`w = pHat × 1`, not RTXDI's `targetPdf × invSourcePdf`)
-                    //  — LightBVH's shading-conditional pdf would cause ratio
-                    //  fireflies under Conv B; 3) K=8 fresh + K=16 pool = 24 total
-                    //  (RTXDI uses K=24 from tile only; we keep fresh in local
-                    //  because pool-only regressed Sponza x1 +9pp); 4) MIS re-
-                    //  applied at reuse sites because we re-evaluate Li at reader.]
-                    // After the K-RIS picks its winner from the pool, trace
-                    // ONE shadow ray to verify visibility. If V=0, ZERO the
-                    // winner's targetPdf (so the reservoir's W = wSum/(pHat×M)
-                    // makes the swap skip this frame: `if (targetPdf > 0)`
-                    // gate fails). Spatial/temporal merge still get the
-                    // accumulated wSum/M mass; subsequent neighbor merges
-                    // can replace the shadowed winner with a visible one.
-                    // Less aggressive than `local.init()` (keeps reservoir
-                    // mass intact). Matches RTXDI's reject-this-sample
-                    // semantics without losing K-RIS state.
-                    // Cost: 1 shadow ray per pixel per frame, main pass only.
-                    if (local.M > 0.f && local.targetPdf > 0.f)
-                    {
-                        uint winnerType = unpackLightType(local.lightTypeIndex);
-                        uint winnerIdx  = unpackLightIndex(local.lightTypeIndex);
-                        LightSampleDI winnerLs;
-                        bool winnerOk = false;
-                        if (winnerType == (uint)LightType::Emissive)
-                            winnerOk = rebuildEmissiveLightSample(winnerIdx, unpackUV(local.payload), sd, winnerLs);
-                        else if (winnerType == (uint)LightType::Analytic)
-                            winnerOk = rebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
-                        else if (winnerType == (uint)LightType::EnvMap)
-                            winnerOk = rebuildEnvMapLightSample(local.payload, sd, winnerLs);
-                        if (winnerOk)
-                        {
-                            Ray vrayWin = winnerLs.getVisibilityRay();
-                            bool winnerVisible = vq.traceVisibilityRay(vrayWin);
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                            vcDiagCountRay(path.getPixel(), true);   // K-RIS winner V-test
-#endif
-                            if (!winnerVisible)
-                            {
-                                // Shadowed → zero the winner's pHat. wSum/M
-                                // stay intact for spatial reuse to potentially
-                                // replace the winner with a visible candidate.
-                                local.targetPdf = 0.f;
-                            }
-                        }
-                    }
-
-                    // (2) Gather home cell + jittered neighbours. Home is the
-                    // unjittered query; neighbours are tangent-plane-jittered
-                    // queries through the same resolveCell function. We
-                    // filter out queries that landed back in the home cell
-                    // by fingerprint compare.
-                    //
-                    // gUseCellInRIS gates this whole block off — when 0,
-                    // shading falls back to pure per-pixel ReSTIR DI (per-pixel
-                    // temporal + spatial reuse via gPixelReservoirs only).
-                    CellAddress homeAddr = resolveCell(sd.posW, sd.faceN);
-                    const uint nNeighbours = (gUseCellInRIS != 0u) ? spatialNeighbourCount() : 0u;
-                    for (uint i = 0u; (gUseCellInRIS != 0u) && i <= nNeighbours; ++i)
-                    {
-                        CellAddress addr;
-                        if (i == 0u)
-                        {
-                            addr = homeAddr;
-                        }
-                        else
-                        {
-                            float2 j2d = sampleNext2D(path.sg);
-                            addr = resolveJitteredCell(sd.posW, sd.faceN, i - 1u, nNeighbours, j2d);
-                            // Skip if jitter landed back in the home cell —
-                            // already covered by i==0.
-                            if (addr.fingerprint == homeAddr.fingerprint) continue;
-                        }
-                        Reservoir cell;
-                        if (!loadCell(addr, cell)) continue;
-                        if (cell.M <= 0.f) continue;
-                        // cell.W is no longer consumed for shading (selection-only
-                        // design after the v5 fix); identity is what matters.
-
-                        uint cellType = unpackLightType(cell.lightTypeIndex);
-                        uint cellIdx  = unpackLightIndex(cell.lightTypeIndex);
-                        LightSampleDI cellLs;
-                        bool cellOk = false;
-                        if (cellType == (uint)LightType::Emissive)
-                            cellOk = rebuildEmissiveLightSample(cellIdx, unpackUV(cell.payload), sd, cellLs);
-                        else if (cellType == (uint)LightType::Analytic)
-                            cellOk = rebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
-                        else if (cellType == (uint)LightType::EnvMap)
-                            cellOk = rebuildEnvMapLightSample(cell.payload, sd, cellLs);
-                        if (!cellOk) continue;
-
-                        // Hemisphere check matching legacy NEE: accept reflection
-                        // samples only when BSDF has reflection lobes; transmission
-                        // samples only when it has transmission lobes.
-                        float NdotL = dot(sd.faceN, cellLs.dir);
-                        bool hasRefl  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
-                        bool hasTrans = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
-                        bool acceptUpper = (NdotL >  kMinCosTheta) && hasRefl;
-                        bool acceptLower = (NdotL < -kMinCosTheta) && hasTrans;
-                        if (!acceptUpper && !acceptLower) continue;
-
-                        float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
-                        float3 cellLr     = cellWeight * cellLs.Li;
-                        // pHat = luminance(Lr); invPdf=1. Cell candidate is
-                        // a re-drawn light sample at the reader, with cellLs.Li
-                        // already pdf-divided. Works for Dirac lights.
-                        float pHatCell    = luminance(cellLr);
-                        if (pHatCell <= 0.f) continue;
-                        if (cellType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
-                        {
-                            Ray vrayC = cellLs.getVisibilityRay();
-                            float vC = 1.f;
-#if USE_VISCACHE_VISIBILITYCHECK
-                            if (visInPHatMode() == 1u)
-                                vC = vq.traceVisibilityRayCV(vrayC, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
-                            else
-                                vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
-#else
-                            vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
-#endif
-                            pHatCell *= max(vC, lightMuMin());
-                        }
-
-                        // Cell read mode (gCellReservoirMerge):
-                        //   0 (default) — IDENTITY hint: add cell.{lightTypeIndex,payload}
-                        //     as ONE single RIS candidate at the local pixel's pHat. Per-pixel
-                        //     W stays local; avoids spatial-block artifacts from inherited W.
-                        //   1 — full Bitterli weighted MERGE: read cell.W and cell.M and
-                        //     fold the cell as an aggregated reservoir. World-space analog
-                        //     of the per-pixel temporal/spatial reservoir; no reprojection
-                        //     needed (cell ID is camera-invariant). Used by `restir_3d`.
-                        if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
-                        {
-                            float Mcap = min(cell.M, gMCap);
-                            float w    = pHatCell * cell.W * Mcap;
-                            if (w > 0.f && !isnan(w))
-                            {
-                                local.wSum += w;
-                                local.M    += Mcap;
-                                if (sampleNext1D(path.sg) * local.wSum <= w)
-                                {
-                                    local.lightTypeIndex = cell.lightTypeIndex;
-                                    local.payload        = cell.payload;
-                                    local.targetPdf      = pHatCell;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // Identity-hint legacy path.
-                            local.streamingAdd(
-                                cell.lightTypeIndex, cell.payload,
-                                pHatCell, 1.f, path.sg);
-                        }
-                    }
-
-                    // (2.5) Per-pixel temporal+spatial reservoir layer.
-                    // Active only when enablePixelReservoir=True (default);
-                    // disabled by setting pixelReservoirEnabled() to false
-                    // for pure-WS-cell-only ablation. Provides the screen-
-                    // space spatial diversity that cell jittered queries
-                    // cannot replicate (close cells share popular winners,
-                    // close pixels' reservoirs picked diverse winners).
-                    if (pixelReservoirEnabled())
-                    {
-                        // ----- temporal: read self ----------------------------------
-                        // Normal-aware rejection: if last frame's reservoir came
-                        // from a different surface (silhouette / camera moved
-                        // across an edge), skip. Cos threshold 0.9 ≈ 26°.
-                        const float kWSNormalCos = 0.5f;   // RTXDI's normalThreshold default — looser angular reject (60° vs 26°), more spatial reuse
-                        uint pIdx = pixelIndex(path.getPixel());
-                        Reservoir prev = gPixelReservoirs[pIdx];
-                        bool prevNormalOk = true;
-                        if (prev.normalOct != 0u)
-                        {
-                            float3 prevN = unpackDirOct(prev.normalOct);
-                            prevNormalOk = (dot(sd.faceN, prevN) >= kWSNormalCos);
-                        }
-                        if (prevNormalOk && prev.M > 0.f && prev.fingerprint != 0u)
-                        {
-                            uint prevType = unpackLightType(prev.lightTypeIndex);
-                            uint prevIdx  = unpackLightIndex(prev.lightTypeIndex);
-                            LightSampleDI prevLs;
-                            bool prevOk = false;
-                            if (prevType == (uint)LightType::Emissive)
-                                prevOk = rebuildEmissiveLightSample(prevIdx, unpackUV(prev.payload), sd, prevLs);
-                            else if (prevType == (uint)LightType::Analytic)
-                                prevOk = rebuildAnalyticLightSample(prevIdx, sd, path.sg, prevLs);
-                            else if (prevType == (uint)LightType::EnvMap)
-                                prevOk = rebuildEnvMapLightSample(prev.payload, sd, prevLs);
-                            if (prevOk)
-                            {
-                                float NdotL_prev = dot(sd.faceN, prevLs.dir);
-                                bool hasReflP  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
-                                bool hasTransP = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
-                                bool acceptP = ((NdotL_prev > kMinCosTheta) && hasReflP)
-                                            || ((NdotL_prev < -kMinCosTheta) && hasTransP);
-                                if (acceptP)
-                                {
-                                    // §9.4 MIS for temporal reuse — match the
-                                    // fresh-sample path (block 1a). Without MIS
-                                    // pool/temporal/spatial candidates have higher
-                                    // weight than fresh, biasing the RIS.
-                                    if (kUseMIS && !applyRTXDI && prevType != (uint)LightType::Analytic)
-                                    {
-                                        float scatterPdfP = mi.evalPdf(sd, prevLs.dir, kUseBSDFSampling);
-                                        prevLs.Li *= evalMIS(1, prevLs.pdf, 1, scatterPdfP);
-                                    }
-                                    float3 prevW3 = mi.eval(sd, prevLs.dir, path.sg);
-                                    // pHat = luminance(Lr) at reader; consistent
-                                    // with K-RIS path. Works for Dirac lights.
-                                    float pHatPrev = luminance(prevW3 * prevLs.Li);
-                                    // §9.4 layer (b) — retrace V on reservoir reuse (RTXDI BiasCorrection
-                                    // analog). Mode 0=Off (default; matches RTXDI Basic, our shipping
-                                    // behaviour: stored W carries write-time V). Mode 1=FullTrace (≡ RTXDI
-                                    // RayTraced — unbiased, expensive). Mode 2=CacheCV (cheap CV+RRR via
-                                    // cache, same PT-canonical knobs as the regular shadow gate). Env-map
-                                    // samples have no finite-distance V — skip retrace for them.
-                                    uint reuseMode = retraceOnReuseMode();
-                                    if (reuseMode != 0u && prevType != (uint)LightType::EnvMap && pHatPrev > 0.f)
-                                    {
-                                        Ray vrayR = prevLs.getVisibilityRay();
-                                        float vR = 1.f;
-#if USE_VISCACHE_VISIBILITYCHECK
-                                        if (reuseMode == 2u)
-                                        {
-                                            // CacheCV path — vcWriteDiag inside evalRevalidationCV
-                                            // already bumps the diag rays counter; no extra count here.
-                                            vR = vq.traceVisibilityRayCV(vrayR, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
-                                        }
-                                        else
-                                        {
-                                            vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                            vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);   // FullTrace retrace-on-reuse (temporal)
-#endif
-                                        }
-#else
-                                        vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                        vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);
-#endif
-#endif
-                                        pHatPrev *= vR;
-                                    }
-                                    if (pHatPrev > 0.f)
-                                    {
-                                        float Mcap = min(prev.M, gMCap);
-                                        float w    = pHatPrev * prev.W * Mcap;
-                                        if (w > 0.f && !isnan(w))
-                                        {
-                                            local.wSum += w;
-                                            local.M    += Mcap;
-                                            if (sampleNext1D(path.sg) * local.wSum <= w)
-                                            {
-                                                local.lightTypeIndex = prev.lightTypeIndex;
-                                                local.payload        = prev.payload;
-                                                local.targetPdf      = pHatPrev;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // ----- spatial: gather K random neighbour pixels -----------
-                        // gSpatialPixelsK / gSpatialPixelsRadius are runtime
-                        // knobs (Python-tunable via spatialPixelsK + Radius).
-                        // Defaults 4 / 32 match RTXDI's 1-round k≈4-5; bumping
-                        // K is the primary lever for testing the multi-round
-                        // gap (more candidates per round) without an extra
-                        // dispatch.
-                        const uint kSpatialPixels = gSpatialPixelsK;
-                        const int  kSpatialRadius = (int)gSpatialPixelsRadius;
-                        uint2 px = path.getPixel();
-                        for (uint s = 0u; s < kSpatialPixels; ++s)
-                        {
-                            float2 r = sampleNext2D(path.sg);
-                            int2 off = int2((r - 0.5f) * 2.f * float(kSpatialRadius));
-                            if (off.x == 0 && off.y == 0) continue;
-                            int2 npx = int2(px) + off;
-                            if (npx.x < 0 || npx.y < 0 ||
-                                uint(npx.x) >= gFrameDimX || uint(npx.y) >= gFrameDimY) continue;
-                            uint nIdx = uint(npx.y) * gFrameDimX + uint(npx.x);
-                            Reservoir nbr = gPixelReservoirs[nIdx];
-                            if (nbr.M <= 0.f || nbr.fingerprint == 0u) continue;
-                            // Normal-aware rejection: skip neighbours whose
-                            // surface diverged. 0.9 ≈ 26° matches RTXDI default.
-                            if (nbr.normalOct != 0u)
-                            {
-                                float3 nbrN = unpackDirOct(nbr.normalOct);
-                                if (dot(sd.faceN, nbrN) < kWSNormalCos) continue;
-                            }
-                            uint nbrType = unpackLightType(nbr.lightTypeIndex);
-                            uint nbrIdx  = unpackLightIndex(nbr.lightTypeIndex);
-                            LightSampleDI nbrLs;
-                            bool nbrOk = false;
-                            if (nbrType == (uint)LightType::Emissive)
-                                nbrOk = rebuildEmissiveLightSample(nbrIdx, unpackUV(nbr.payload), sd, nbrLs);
-                            else if (nbrType == (uint)LightType::Analytic)
-                                nbrOk = rebuildAnalyticLightSample(nbrIdx, sd, path.sg, nbrLs);
-                            else if (nbrType == (uint)LightType::EnvMap)
-                                nbrOk = rebuildEnvMapLightSample(nbr.payload, sd, nbrLs);
-                            if (!nbrOk) continue;
-                            float NdotL_n = dot(sd.faceN, nbrLs.dir);
-                            bool hasReflN  = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
-                            bool hasTransN = (lobeTypes & (uint)LobeType::NonDeltaTransmission) != 0;
-                            bool acceptN = ((NdotL_n > kMinCosTheta) && hasReflN)
-                                        || ((NdotL_n < -kMinCosTheta) && hasTransN);
-                            if (!acceptN) continue;
-                            // §9.4 MIS for spatial reuse — see temporal block.
-                            if (kUseMIS && !applyRTXDI && nbrType != (uint)LightType::Analytic)
-                            {
-                                float scatterPdfN = mi.evalPdf(sd, nbrLs.dir, kUseBSDFSampling);
-                                nbrLs.Li *= evalMIS(1, nbrLs.pdf, 1, scatterPdfN);
-                            }
-                            float3 nbrW3 = mi.eval(sd, nbrLs.dir, path.sg);
-                            // pHat = luminance(Lr); consistent with K-RIS path.
-                            // Works for Dirac lights.
-                            float pHatN = luminance(nbrW3 * nbrLs.Li);
-                            // §9.4 layer (b) — retrace V on spatial reuse. See temporal block above.
-                            uint reuseModeN = retraceOnReuseMode();
-                            if (reuseModeN != 0u && nbrType != (uint)LightType::EnvMap && pHatN > 0.f)
-                            {
-                                Ray vrayN = nbrLs.getVisibilityRay();
-                                float vN = 1.f;
-#if USE_VISCACHE_VISIBILITYCHECK
-                                if (reuseModeN == 2u)
-                                {
-                                    // CacheCV — vcWriteDiag inside evalRevalidationCV bumps counter.
-                                    vN = vq.traceVisibilityRayCV(vrayN, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
-                                }
-                                else
-                                {
-                                    vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                    vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);   // FullTrace retrace-on-reuse (spatial)
-#endif
-                                }
-#else
-                                vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);
-#endif
-#endif
-                                pHatN *= vN;
-                            }
-                            if (pHatN <= 0.f) continue;
-                            float Mcn = min(nbr.M, gMCap);
-                            float wn  = pHatN * nbr.W * Mcn;
-                            if (wn <= 0.f || isnan(wn)) continue;
-                            local.wSum += wn;
-                            local.M    += Mcn;
-                            if (sampleNext1D(path.sg) * local.wSum <= wn)
-                            {
-                                local.lightTypeIndex = nbr.lightTypeIndex;
-                                local.payload        = nbr.payload;
-                                local.targetPdf      = pHatN;
-                            }
-                        }
-                    }
-
-                    // (3) Swap winner if the local picked a sample we can rebuild.
-                    // Skip the swap when only the original fresh sample contributed
-                    // (M==1) — no rebuild needed, original ls is already correct.
-                    // The rebuilder's offset / pdf reconstruction otherwise introduces
-                    // small numerical drift that biases the metric vs vanilla.
-                    if (local.M > 1.f && local.targetPdf > 0.f)
-                    {
-                        uint winnerType = unpackLightType(local.lightTypeIndex);
-                        uint winnerIdx  = unpackLightIndex(local.lightTypeIndex);
-                        LightSampleDI winnerLs;
-                        bool winnerOk = false;
-                        if (winnerType == (uint)LightType::Emissive)
-                            winnerOk = rebuildEmissiveLightSample(winnerIdx, unpackUV(local.payload), sd, winnerLs);
-                        else if (winnerType == (uint)LightType::Analytic)
-                            winnerOk = rebuildAnalyticLightSample(winnerIdx, sd, path.sg, winnerLs);
-                        else if (winnerType == (uint)LightType::EnvMap)
-                            winnerOk = rebuildEnvMapLightSample(local.payload, sd, winnerLs);
-
-                        if (winnerOk)
-                        {
-                            ls = winnerLs;
-                            // Apply MIS the same way generateLightSample does
-                            // (analytic lights skip MIS — Falcor convention).
-                            if (kUseMIS && !applyRTXDI && ls.lightType != (uint)LightType::Analytic)
-                            {
-                                float scatterPdf = mi.evalPdf(sd, ls.dir, kUseBSDFSampling);
-                                ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
-                            }
-
-                            float3 weight = mi.eval(sd, ls.dir, path.sg);
-                            // ReSTIR W = wSum / (p̂(y) * M). With pHat=lum(Lr) and
-                            // invPdf=1 convention, the candidate's contribution at
-                            // the reader is `weight × ls.Li` (Lr_winner). Multiply
-                            // by W to produce the unbiased pixel estimate.
-                            // CRITICAL: do NOT multiply by ls.pdf here — that
-                            // breaks Dirac lights (point/directional) where pdf=0
-                            // makes the contribution evaluate to zero.
-                            float winnerW = local.wSum / max(local.targetPdf * local.M, 1e-12f);
-                            Lr = weight * ls.Li * winnerW;
-                        }
-                    }
-
-                    // (4) Stream the per-pixel local into the home cell with M-cap
-                    // accumulation. The cell aggregates across frames (M grows to
-                    // gMCap) so its identity converges to the popular sample for
-                    // the region. Read side only consumes identity; the cell's
-                    // M/W are bookkeeping for this write-side reservoir merge.
-                    mergeIntoCell(homeAddr, local, path.sg);
-
-                    // (Pool write-back: now done at candidate-generation time
-                    //  with per-entry sourcePdf — see (1) and (1b) above.
-                    //  Winner write-back removed: it double-counted entries
-                    //  and the writer's effective proposal pdf for the winner
-                    //  isn't well-defined post-RIS.)
-
-                    // (5) Persist the merged local back to the per-pixel
-                    // reservoir for next frame's temporal reuse. Active when
-                    // pixelReservoirEnabled() returns true.
-                    if (pixelReservoirEnabled() && local.M > 0.f && local.targetPdf > 0.f)
-                    {
-                        uint pIdx = pixelIndex(path.getPixel());
-                        Reservoir px = reservoirInit(0xFFFFFFFFu);
-                        px.lightTypeIndex   = local.lightTypeIndex;
-                        px.payload          = local.payload;
-                        px.targetPdf        = local.targetPdf;
-                        px.M                = min(local.M, gMCap);
-                        px.W                = local.wSum / max(local.targetPdf * local.M, 1e-12f);
-                        px.frameLastUpdated = gFrameCount;
-                        // Stamp the shading normal so spatial gather can reject
-                        // neighbours whose surface diverged (silhouette / sharp
-                        // crease). Standard ReSTIR variance-reduction technique.
-                        px.normalOct        = packDirOct(sd.faceN);
-                        gPixelReservoirs[pIdx] = px;
-                    }
-#endif // !WS_CELL_POOL_FILL_ONLY
-
-#if WS_CELL_POOL_FILL_ONLY
-                    // §9.4 Step (b) fill-only: zero out Lr so the visibility-ray
-                    // block below skips and the path's contribution this dispatch
-                    // is exactly zero. Pool inserts above are the only side effect.
-                    Lr = float3(0.f);
-#endif
-                }
-#endif // USE_WS_RESERVOIRS
 
                 if (any(Lr > 0.f))
                 {
@@ -1876,23 +1088,11 @@ struct PathTracer
                     float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
 #endif
                     if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
-                    bool chosenVisible = visWeight > 0.f;
 #else
                     bool visible = vq.traceVisibilityRay(ray);
                     if (visible) addToPathContribution(path, Lr);
-                    bool chosenVisible = visible;
 #endif
 
-#if USE_WS_RESERVOIRS
-                    // §9.4 LOCK-IN BREAK: V=0 invalidation of per-pixel reservoir.
-                    // Active when pixelReservoirEnabled() returns true.
-                    if (path.getVertexIndex() == 1 && enabled() && pixelReservoirEnabled()
-                        && !chosenVisible && (isEmissive || isAnalytic || isEnv))
-                    {
-                        uint pIdx = pixelIndex(path.getPixel());
-                        gPixelReservoirs[pIdx] = reservoirInit(0u);
-                    }
-#endif
                 }
             }
         }

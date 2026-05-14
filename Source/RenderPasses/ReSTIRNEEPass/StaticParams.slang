@@ -56,3 +56,8 @@ static const bool kUseNRDDemodulation = USE_NRD_DEMODULATION != 0;
 static const uint kColorFormat = COLOR_FORMAT;
 static const uint kMISHeuristic = MIS_HEURISTIC;
 static const float kMISPowerExponent = MIS_POWER_EXPONENT;
+// ReSTIR NEE — K-RIS candidates per NEE call. K=1 is byte-for-byte vanilla NEE.
+#ifndef NUM_NEE_CANDIDATES
+#define NUM_NEE_CANDIDATES 1
+#endif
+static const uint kNumNEECandidates = NUM_NEE_CANDIDATES;
