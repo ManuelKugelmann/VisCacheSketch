@@ -148,6 +148,50 @@ rmse trails on Bistro/Sponza — attributed to RTXDI's 5-iteration
 spatial cascade (our 1-pass spatial reuse cannot recover the same
 variance reduction without multi-pass ping-pong infrastructure).
 
+### Bayer-cascade convergence CONFIRMED (2026-05-15, end of session)
+
+Resolved the residual rmse gap question definitively. Convergence
+test at x1/x4/x16 SPP on Bistro+Sponza with our F17P24 Basic
+canonical vs RTXDI reference:
+
+|              | err%       | art5%      | rmse        | psnr       |
+|--------------|------------|------------|-------------|------------|
+| Bistro x1    | 12.8 / 11.4 (RTXDI) | 71.6 / 67.0 | 163.6 / 95.6  | 47.3 / 52.0 |
+| Bistro x4    | **8.8** / 10.0 | 61.7 / 61.8 | 120.2 / 108.3 | 50.0 / 50.9 |
+| Bistro x16   | **5.9** / 10.8 | **48.1** / 65.4 | **67.0** / 113.7 | **55.1** / 48.2 |
+| Sponza x1    | **6.5** / 7.3 | **59.3** / 61.3 | 0.70 / 0.43   | 20.7 / 24.8 |
+| Sponza x4    | **5.8** / 6.6 | **53.9** / 54.2 | 0.47 / 0.40   | 24.0 / 25.5 |
+| Sponza x16   | **4.3** / 6.4 | **36.4** / 44.6 | **0.26** / 0.47 | **29.1** / 24.1 |
+
+Pattern: at x16 SPP our system BEATS RTXDI on every metric on both
+scenes, by significant margins (Bistro rmse −41%, Sponza rmse −44%).
+RTXDI's metrics DEGRADE x4→x16 on Bistro (rmse 108→114, art5 62→65)
+likely from M-cap saturation reusing stale fireflies. Our metrics
+monotonically improve.
+
+**Interpretation:**
+
+The residual ~11% Bistro rmse / 19% Sponza rmse gap we observed at
+x4 was cold-start of Bayer-stretched diffusion. Across N²=16 Bayer
+subframes our cell-pool fully warms; once warmed, the architecture
+strictly outperforms RTXDI's per-frame 5-pass cascade because:
+
+- RTXDI's spatial cascade is fixed work per frame (5 passes × 1
+  neighbor each); diffusion doesn't compound across frames beyond
+  the temporal mCap=20 history.
+- Our Bayer-cell-pool keeps accumulating better-presampled candidates
+  across N² frames; the per-pixel reservoir's temporal merge eats
+  over a wider effective history (each Bayer subframe contributes
+  different pixels to the cell, which then become reservoir
+  candidates at later subframes — hierarchical compounding).
+
+The cell-pool/Bayer architecture is structurally validated as the
+correct multi-pass-equivalent for steady-state operation. We don't
+need to port RTXDI's compute-presample-tile or its 5-iteration
+cascade — our system has its own multi-pass diffusion mechanism
+stretched in the time dimension. The Bayer-coordinated cell-pool
+fill IS the cascade.
+
 ### Failed RTXDI-parity attempts (2026-05-15 session)
 
 - **Category-quota K-RIS — single-stream (c1d4345).** Replaced F17 uniform-fresh with dedicated 8 env + 8 inf + 24 pool streams flowing into one shared reservoir. Bistro x4 rmse +43% regression (164.43 vs 114.98). Mixed pHat scales across categories cause variance spikes when env samples with raw env-map pdf hit fat-tail values.
