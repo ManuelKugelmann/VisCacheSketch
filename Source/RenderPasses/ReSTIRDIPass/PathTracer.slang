@@ -1968,15 +1968,60 @@ struct PathTracer
                             float m_j = 1.f;
 #if BIAS_CORRECTION == 1
                             {
-                                // See cell-merge for m_canon formula
-                                // justification. Pure M-ratio approx (same-
-                                // surface — fine for pixel-neighbours which
-                                // share geometry within the spatial radius).
                                 float pairwiseDenom = pHatN * canonM_save + nbr.targetPdf * Mcn;
                                 if (pairwiseDenom <= 0.f) continue;
                                 m_j = (nbr.targetPdf * Mcn) / pairwiseDenom;
-                                if (canonM_save + Mcn > 0.f)
+
+                                // m_canon: RTXDI's proper formula needs
+                                // canonicalWeightAtNeighbor = canon's sample's
+                                // pHat at neighbour's surface. Load neighbour
+                                // surface (VBuffer + ShadingData + Material-
+                                // Instance) and re-evaluate canonical's light
+                                // sample there. Falls back to M-ratio same-
+                                // surface approx if neighbour VBuffer entry is
+                                // missing or canon's light-sample rebuild fails
+                                // at nbr surface.
+                                float cWAtN_eff = canonTargetPdf_save;  // default fallback
+                                bool haveCWAtN = false;
+                                uint2 npx_u = uint2(uint(npx.x), uint(npx.y));
+                                HitInfo nbrHit = HitInfo(vbuffer[npx_u]);
+                                if (nbrHit.isValid() && canonTargetPdf_save > 0.f && canonM_save > 0.f)
                                 {
+                                    Ray cameraRayN = gScene.camera.computeRayPinhole(npx_u, params.frameDim);
+                                    ShadingData sd_nbr = loadShadingData(nbrHit, cameraRayN.origin, cameraRayN.dir);
+                                    let lod_nbr = ExplicitLodTextureSampler(params.lodBias);
+                                    let hints_nbr = getMaterialInstanceHints(nbrHit, true);
+                                    const IMaterialInstance mi_nbr = gScene.materials.getMaterialInstance(sd_nbr, lod_nbr, hints_nbr);
+                                    uint canonType = unpackLightType(canonLightTypeIndex_save);
+                                    uint canonIdx  = unpackLightIndex(canonLightTypeIndex_save);
+                                    LightSampleDI canonLs_at_nbr;
+                                    bool canonRebuildOk = false;
+                                    if (canonType == (uint)LightType::Emissive)
+                                        canonRebuildOk = rebuildEmissiveLightSample(canonIdx, unpackUV(canonPayload_save), sd_nbr, canonLs_at_nbr);
+                                    else if (canonType == (uint)LightType::Analytic)
+                                        canonRebuildOk = rebuildAnalyticLightSample(canonIdx, sd_nbr, path.sg, canonLs_at_nbr);
+                                    else if (canonType == (uint)LightType::EnvMap)
+                                        canonRebuildOk = rebuildEnvMapLightSample(canonPayload_save, sd_nbr, canonLs_at_nbr);
+                                    if (canonRebuildOk)
+                                    {
+                                        float3 cWeight_at_nbr = mi_nbr.eval(sd_nbr, canonLs_at_nbr.dir, path.sg);
+                                        cWAtN_eff = luminance(cWeight_at_nbr * canonLs_at_nbr.Li);
+                                        haveCWAtN = true;
+                                    }
+                                }
+                                if (haveCWAtN)
+                                {
+                                    // Proper RTXDI pairwise m_canon:
+                                    //   m_canon = cWAtC * M_canon / (cWAtN * Mcn + cWAtC * M_canon)
+                                    float cMisDenom = cWAtN_eff * Mcn + canonTargetPdf_save * canonM_save;
+                                    if (cMisDenom > 0.f)
+                                    {
+                                        canonMISAcc += (canonTargetPdf_save * canonM_save) / cMisDenom;
+                                    }
+                                }
+                                else if (canonM_save + Mcn > 0.f)
+                                {
+                                    // Same-surface fallback (M-ratio).
                                     canonMISAcc += canonM_save / (canonM_save + Mcn);
                                 }
                             }
