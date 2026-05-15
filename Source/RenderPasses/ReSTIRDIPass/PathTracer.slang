@@ -1573,11 +1573,27 @@ struct PathTracer
                             float m_c = 1.f;
 #if BIAS_CORRECTION == 1
                             {
+                                // RTXDI pairwise m_j: uses (pHat_reader for
+                                // nbr) and (nbr's stored targetPdf at its own
+                                // surface). m_j downweights when nbr's sample
+                                // doesn't fit the reader's surface.
                                 float cPairwiseDenom = pHatCell * cCanonM_save + cell.targetPdf * Mcap;
                                 if (cPairwiseDenom > 0.f)
                                 {
                                     m_c = (cell.targetPdf * Mcap) / cPairwiseDenom;
-                                    cCanonMISAcc += (pHatCell * cCanonM_save) / cPairwiseDenom;
+                                }
+                                // m_canonical: RTXDI uses canon's sample's
+                                // pHat at canon's surface (= cCanonTargetPdf)
+                                // for BOTH numerator and the canon-side
+                                // denominator term — neighbour-surface eval
+                                // not available, so same-surface approx
+                                // degenerates this to a pure M-ratio. (Was
+                                // pHatCell * cCanonM_save before — biased
+                                // when reader's pHat for nbr's sample differs
+                                // wildly from canon.targetPdf.)
+                                if (cCanonM_save + Mcap > 0.f)
+                                {
+                                    cCanonMISAcc += cCanonM_save / (cCanonM_save + Mcap);
                                 }
                             }
 #endif
@@ -1755,11 +1771,17 @@ struct PathTracer
                                         float m_t = 1.f;
 #if BIAS_CORRECTION == 1
                                         {
+                                            // See cell-merge for m_canon formula
+                                            // justification. Same-surface approx
+                                            // for temporal (same pixel) is exact.
                                             float tPairwiseDenom = pHatPrev * tCanonM_save + prev.targetPdf * Mcap;
                                             if (tPairwiseDenom > 0.f)
                                             {
                                                 m_t = (prev.targetPdf * Mcap) / tPairwiseDenom;
-                                                tCanonMISAcc += (pHatPrev * tCanonM_save) / tPairwiseDenom;
+                                            }
+                                            if (tCanonM_save + Mcap > 0.f)
+                                            {
+                                                tCanonMISAcc += tCanonM_save / (tCanonM_save + Mcap);
                                             }
                                         }
 #endif
@@ -1946,10 +1968,17 @@ struct PathTracer
                             float m_j = 1.f;
 #if BIAS_CORRECTION == 1
                             {
+                                // See cell-merge for m_canon formula
+                                // justification. Pure M-ratio approx (same-
+                                // surface — fine for pixel-neighbours which
+                                // share geometry within the spatial radius).
                                 float pairwiseDenom = pHatN * canonM_save + nbr.targetPdf * Mcn;
                                 if (pairwiseDenom <= 0.f) continue;
                                 m_j = (nbr.targetPdf * Mcn) / pairwiseDenom;
-                                canonMISAcc += (pHatN * canonM_save) / pairwiseDenom;
+                                if (canonM_save + Mcn > 0.f)
+                                {
+                                    canonMISAcc += canonM_save / (canonM_save + Mcn);
+                                }
                             }
 #endif
                             float wn  = m_j * pHatN * nbr.W * Mcn;
