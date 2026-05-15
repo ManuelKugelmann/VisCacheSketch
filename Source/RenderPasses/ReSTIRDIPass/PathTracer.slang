@@ -1265,6 +1265,85 @@ struct PathTracer
                         }
                     }
 
+                    // (1b') RTXDI-parity category-quota K-RIS sub-streams.
+                    //
+                    // RTXDI_SampleLightsForSurface (ResamplingFunctions.hlsli:926)
+                    // dedicates separate budgets per light category — 24 local +
+                    // 8 inf + 8 env + 1 BRDF — instead of routing one shared
+                    // stream through uniform selectLightType. The uniform stream
+                    // (1b) splits ~1/3 / 1/3 / 1/3 across categories, which
+                    // under-samples env+inf on scenes that have both env-map
+                    // and directional sun (Bistro/Sponza rmse +6%/+21% vs RTXDI
+                    // under F17P24). These dedicated loops match RTXDI's split.
+                    //
+                    // selectionPdf for category-quota samples is 1.0 (no
+                    // category roulette — pdf reflects only the within-category
+                    // sampling distribution). pHat = luminance(BRDF*Li) follows
+                    // the same convention as (1b). RIS weight is just pHat (the
+                    // existing K-RIS stream uses invPdf=1 and folds the pdf
+                    // division into Li already via generateLightSample).
+                    {
+                        PathVertex vtxQ = PathVertex(path.getVertexIndex(), sd.posW, sd.faceN, sd.frontFacing);
+                        // Env-map dedicated stream.
+                        for (uint k = 0u; k < kEnvCandidateCount; ++k)
+                        {
+                            LightSampleDI lsQ = {};
+                            if (!generateEnvMapSample(vtxQ, path.sg, lsQ)) continue;
+                            lsQ.lightType = (uint)LightType::EnvMap;
+                            float3 weightQ = mi.eval(sd, lsQ.dir, path.sg);
+                            float3 LrQ = weightQ * lsQ.Li;
+                            if (!any(LrQ > 0.f)) continue;
+                            float pHatQ = luminance(LrQ);
+                            // EnvMap: no V-aware pHat by convention (matches
+                            // (1b) which skips V on env). Visibility resolves
+                            // at shade time.
+                            uint qLTI = packLightTypeIndex(lsQ.lightType, lsQ.lightIndex);
+                            uint qPL  = packLightSamplePayload(lsQ);
+                            local.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
+                        }
+                        // Infinite-analytic (directional/distant) dedicated stream.
+                        // generateAnalyticLightSample handles all analytic lights
+                        // (point/spot/directional/distant). RTXDI's "infinite"
+                        // category covers directional+distant only — we accept
+                        // any analytic miss here, matching Falcor's analytic
+                        // routing. Point lights are Dirac (pdf=0); pHat covers them.
+                        for (uint k = 0u; k < kInfiniteCandidateCount; ++k)
+                        {
+                            LightSampleDI lsQ = {};
+                            if (!generateAnalyticLightSample(vtxQ, path.sg, lsQ)) continue;
+                            lsQ.lightType = (uint)LightType::Analytic;
+                            float3 weightQ = mi.eval(sd, lsQ.dir, path.sg);
+                            float3 LrQ = weightQ * lsQ.Li;
+                            if (!any(LrQ > 0.f)) continue;
+                            float pHatQ = luminance(LrQ);
+                            // Same V-aware policy as uniform stream: skip env
+                            // (n/a here), apply visInPHat for non-env.
+                            if (visInPHatMode() != 0u)
+                            {
+                                Ray vrayQ = lsQ.getVisibilityRay();
+                                float vQ = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                                if (visInPHatMode() == 1u)
+                                    vQ = vq.traceVisibilityRayCV(vrayQ, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                else
+                                    vQ = vq.traceVisibilityRay(vrayQ) ? 1.f : 0.f;
+#else
+                                vQ = vq.traceVisibilityRay(vrayQ) ? 1.f : 0.f;
+#endif
+                                pHatQ *= max(vQ, lightMuMin());
+                            }
+                            uint qLTI = packLightTypeIndex(lsQ.lightType, lsQ.lightIndex);
+                            uint qPL  = packLightSamplePayload(lsQ);
+                            local.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
+                        }
+                        // BRDF candidate stream (RTXDI's brdfCandidateCount).
+                        // Deferred — requires tracing a BRDF ray and converting
+                        // its hit/miss into a LightSampleDI. Not implemented in
+                        // this iteration; the host param exists so the budget
+                        // accounting is consistent with RTXDI parity once it's
+                        // ported. See .agents/handoff 2026-05-15.
+                    }
+
                     // (1c) §9.4 WS-cascade ReGIR — draw K candidates from the
                     //     home cell's multi-light pool. Pool fills from main-
                     //     pass winners (step a write-back below) and over time

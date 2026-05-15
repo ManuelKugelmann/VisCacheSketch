@@ -4047,6 +4047,9 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          prePassEmissiveSampler="PdfMipmap",             # pre-pass emissive sampler. PdfMipmap = RTXDI-style hierarchical 2D pdf (shading-agnostic). LightBVH = shading-conditional via per-pixel BSDF guidance.
                          emissiveSampler=None,                            # main-pass emissive sampler. None = Falcor default (LightBVH). "PdfMipmap" matches RTXDI fully — all per-pixel candidates from the same flux-proportional distribution.
                          biasCorrection=0,                                # ReSTIRDIPass bias-correction mode. 0 = Bitterli basic (M-weighted, default). 1 = Pairwise MIS (Boksansky 2022 / RTXDI BiasCorrection::Pairwise). Load-bearing for cell-reservoir reuse.
+                         envCandidateCount=0,                              # RTXDI-parity env-map dedicated K-RIS quota (RTXDI default 8). 0 = off.
+                         infiniteCandidateCount=0,                         # RTXDI-parity infinite-analytic dedicated K-RIS quota (RTXDI default 8). 0 = off.
+                         brdfCandidateCount=0,                             # RTXDI-parity BRDF dedicated K-RIS quota (RTXDI default 1). Currently shader-side TODO; param plumbed for accounting.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -4090,6 +4093,9 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             prePassEmissiveSampler=prePassEmissiveSampler,
             emissiveSampler=emissiveSampler,
             biasCorrection=biasCorrection,
+            envCandidateCount=envCandidateCount,
+            infiniteCandidateCount=infiniteCandidateCount,
+            brdfCandidateCount=brdfCandidateCount,
             visibilityCheck=False, lightSelection=False,  # pure ReSTIR track — no VisCache cache
             extraVCProps={
                 "useCellInRIS": False,             # no cell hint
@@ -4566,6 +4572,46 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
         cellPoolDrawK=24,                     # P24 = K=24 emissive from PdfMipmap presample tile
         wsCellPoolPrePass=True,
         prePassEmissiveSampler="PdfMipmap",   # pre-pass fills pool with PdfMipmap-sampled candidates
+        **kwargs2,
+    )
+
+
+def run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(step_name, frame_configs, scene_file,
+                                            poolTileSize=16, **kwargs):
+    """**RDI00 variant — 2D track, RTXDI-exact category split.** K=40
+    partitioned per RTXDI defaults (modulo BRDF, deferred): 0 emissive
+    uniform-fresh + 8 env dedicated + 8 inf-analytic dedicated + 24 emissive
+    pool (PdfMipmap). Drops the F17 uniform stream (which spreads ~1/3 of
+    its budget across each category), so env+inf each get a full 8 samples
+    instead of ~6 — matching RTXDI's RTXDI_SampleLightsForSurface partition
+    (ResamplingFunctions.hlsli:926).
+
+    Hypothesis (2026-05-15 diagnosis): F17P24 trails RTXDI rmse by +6%
+    on Bistro x4, +21% on Sponza x4 — both scenes have env-map + Sun.
+    Cornell variants (no env/sun) sit at parity. RTXDI's dedicated env+inf
+    quotas close that variance budget; missing the BRDF candidate is a
+    smaller residual we'll port later.
+
+    Naming: F0E8I8P24. F=uniform-fresh, E=env quota, I=inf quota, P=pool.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 1)
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_RTXDISplit",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=0,                  # F0 — no uniform-category stream
+        envCandidateCount=8,                  # E8 — RTXDI env default
+        infiniteCandidateCount=8,             # I8 — RTXDI inf default
+        brdfCandidateCount=0,                 # BRDF stream not yet wired (TODO)
+        cellPoolDrawK=24,                     # P24 — RTXDI local default
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",
         **kwargs2,
     )
 

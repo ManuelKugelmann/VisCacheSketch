@@ -56,3 +56,21 @@ static const bool kUseNRDDemodulation = USE_NRD_DEMODULATION != 0;
 static const uint kColorFormat = COLOR_FORMAT;
 static const uint kMISHeuristic = MIS_HEURISTIC;
 static const float kMISPowerExponent = MIS_POWER_EXPONENT;
+
+// RTXDI-parity category-quota K-RIS candidate counts. When non-zero,
+// generateInitialCandidatesFresh() adds dedicated env/inf/BRDF streams on
+// top of the gInitialCandidates uniform stream (which routes through
+// selectLightType). Set initialCandidates=0 to disable the uniform
+// stream entirely and run pure category-quota K-RIS (RTXDI parity).
+#ifndef ENV_CANDIDATE_COUNT
+#define ENV_CANDIDATE_COUNT 0
+#endif
+#ifndef INFINITE_CANDIDATE_COUNT
+#define INFINITE_CANDIDATE_COUNT 0
+#endif
+#ifndef BRDF_CANDIDATE_COUNT
+#define BRDF_CANDIDATE_COUNT 0
+#endif
+static const uint kEnvCandidateCount      = ENV_CANDIDATE_COUNT;
+static const uint kInfiniteCandidateCount = INFINITE_CANDIDATE_COUNT;
+static const uint kBrdfCandidateCount     = BRDF_CANDIDATE_COUNT;

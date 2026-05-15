@@ -40,6 +40,9 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                             extraVCProps=None,
                             useReSTIRDIPass=False,  # If True + reservoirs=True, route DI through standalone ReSTIRDIPass instead of PathTracer-integrated WS-ReSTIR (refactor in progress).
                             biasCorrection=0,        # ReSTIRDIPass bias-correction mode. 0=Bitterli basic (default; M-weighted, cheap but cross-surface-unstable). 1=Pairwise MIS (Boksansky 2022 / RTXDI BiasCorrection::Pairwise; load-bearing for cell-reservoir reuse).
+                            envCandidateCount=0,        # RTXDI-parity env-map dedicated K-RIS quota (RTXDI default 8). 0 = off (rely on uniform selectLightType in fresh stream).
+                            infiniteCandidateCount=0,   # RTXDI-parity infinite-analytic dedicated K-RIS quota (RTXDI default 8). 0 = off.
+                            brdfCandidateCount=0,       # RTXDI-parity BRDF dedicated K-RIS quota (RTXDI default 1). Currently not implemented in shader; param plumbed for budget accounting.
                             passClassName=None):  # Plugin class to instantiate. Auto-selects: "PathTracerX" if viscache else "PathTracer" (upstream vanilla). Override explicitly to pin.
     """Build a PathTracer render graph.
 
@@ -206,6 +209,12 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
             rdi_props["emissiveSampler"] = emissiveSampler
         if biasCorrection:
             rdi_props["biasCorrection"] = biasCorrection
+        if envCandidateCount:
+            rdi_props["envCandidateCount"] = envCandidateCount
+        if infiniteCandidateCount:
+            rdi_props["infiniteCandidateCount"] = infiniteCandidateCount
+        if brdfCandidateCount:
+            rdi_props["brdfCandidateCount"] = brdfCandidateCount
         restirdi = createPass("ReSTIRDIPass", rdi_props)
         g.addPass(restirdi, "ReSTIRDIPass")
         g.addEdge("VBufferRT.vbuffer", "ReSTIRDIPass.vbuffer")

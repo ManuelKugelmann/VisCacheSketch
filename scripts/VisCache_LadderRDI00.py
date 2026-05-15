@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
+    run_baseline_ReSTIRDI_R2dP2d_RTXDISplit,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
     finalize_step, kResX, kResY,
 )
@@ -77,6 +78,10 @@ for scene_file in get_scenes(default=["Sponza"]):
     # pdf, larger K budgets, alternative samplers, architectural variants)
     # are measured in RDI01+.
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
+    # RTXDI-exact category split (F0E8I8P24) — diagnoses Bistro/Sponza rmse
+    # gap vs RTXDI (2026-05-15). If category-quota closes the gap, this
+    # replaces F17P24 as the canonical 2D baseline.
+    run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===

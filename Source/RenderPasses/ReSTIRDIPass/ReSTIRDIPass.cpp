@@ -138,6 +138,9 @@ namespace
     const std::string kRTXDIOptions = "RTXDIOptions";
     const std::string kUseRestirPT = "useRestirPT";
     const std::string kBiasCorrection = "biasCorrection";
+    const std::string kEnvCandidateCount      = "envCandidateCount";
+    const std::string kInfiniteCandidateCount = "infiniteCandidateCount";
+    const std::string kBrdfCandidateCount     = "brdfCandidateCount";
 
     const std::string kUseAlphaTest = "useAlphaTest";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
@@ -244,6 +247,9 @@ void ReSTIRDIPass::parseProperties(const Properties& props)
         else if (key == kRTXDIOptions) mRTXDIOptions = value;
         else if (key == kUseRestirPT) mStaticParams.useRestirPT = value;
         else if (key == kBiasCorrection) mStaticParams.biasCorrection = value;
+        else if (key == kEnvCandidateCount)      mStaticParams.envCandidateCount      = value;
+        else if (key == kInfiniteCandidateCount) mStaticParams.infiniteCandidateCount = value;
+        else if (key == kBrdfCandidateCount)     mStaticParams.brdfCandidateCount     = value;
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
@@ -372,6 +378,9 @@ Properties ReSTIRDIPass::getProperties() const
     props[kRTXDIOptions] = mRTXDIOptions;
     props[kUseRestirPT] = mStaticParams.useRestirPT;
     props[kBiasCorrection] = mStaticParams.biasCorrection;
+    props[kEnvCandidateCount]      = mStaticParams.envCandidateCount;
+    props[kInfiniteCandidateCount] = mStaticParams.infiniteCandidateCount;
+    props[kBrdfCandidateCount]     = mStaticParams.brdfCandidateCount;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
@@ -1719,6 +1728,9 @@ DefineList ReSTIRDIPass::StaticParams::getDefines(const ReSTIRDIPass& owner) con
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
     defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
     defines.add("BIAS_CORRECTION", std::to_string(biasCorrection));
+    defines.add("ENV_CANDIDATE_COUNT",      std::to_string(envCandidateCount));
+    defines.add("INFINITE_CANDIDATE_COUNT", std::to_string(infiniteCandidateCount));
+    defines.add("BRDF_CANDIDATE_COUNT",     std::to_string(brdfCandidateCount));
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");

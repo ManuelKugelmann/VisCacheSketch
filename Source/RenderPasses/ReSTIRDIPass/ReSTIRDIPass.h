@@ -141,6 +141,29 @@ private:
         //     bearing for cell reservoir reuse.
         uint32_t    biasCorrection = 0;
 
+        // Category-quota K-RIS candidate counts (RTXDI parity:
+        // RTXDI_SampleLightsForSurface splits its initial budget across
+        // 4 dedicated sub-reservoirs — local emissive / infinite analytic /
+        // environment map / BRDF — instead of routing one shared candidate
+        // stream through uniform selectLightType). When any of these is
+        // non-zero, generateInitialCandidatesFresh() runs ADDITIONAL
+        // dedicated loops on top of the gInitialCandidates uniform stream,
+        // matching RTXDI's defaults: 8 env + 8 inf + 1 BRDF.
+        //
+        // Defaults are 0 to preserve legacy F-K_pool baselines. To match
+        // RTXDI K=41 exactly, set initialCandidates=0 (skip uniform stream)
+        // + envCandidates=8 + infiniteCandidates=8 + brdfCandidates=1 +
+        // cellPoolDrawK=24.
+        //
+        // Bistro/Sponza rmse gap analysis (2026-05-15): scenes with env-map
+        // + directional sun trail RTXDI rmse by 6–21% under F17P24. Uniform
+        // selectLightType (1/3 prob per category) gives ~6 env + ~6 inf
+        // samples vs RTXDI's 8 each — undersampled by 33%, plus we lack
+        // BRDF sampling. See .agents/handoff entry 2026-05-15.
+        uint32_t    envCandidateCount      = 0;
+        uint32_t    infiniteCandidateCount = 0;
+        uint32_t    brdfCandidateCount     = 0;
+
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
         bool        adjustShadingNormals = false;               ///< Adjust shading normals on secondary hits.
