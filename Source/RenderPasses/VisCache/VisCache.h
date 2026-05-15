@@ -508,6 +508,7 @@ private:
     ref<Texture>    mpAccumRaysNoiseErrorColdTex; ///< RGBA32Float: R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
     bool            mResetAccum = true;      ///< Clear accum textures next frame
     bool            mClearHashTable = true;  ///< Clear hash table to empty sentinel
+    bool            mPendingResetState = false;  ///< One-shot full algorithm-buffer reset (hash, reservoirs, cell pool) on next execute. Set via setProperties({"resetState": true}); auto-clears after one execute. Used by ladder timing harness to start measurement from clean post-warmup state.
 
     uint2           mFrameDims = {0, 0};
 };

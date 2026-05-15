@@ -3264,6 +3264,23 @@ def run_baseline(step_name, frame_configs, scene_file,
             N_WARMUP = 16
             for _ in range(N_WARMUP):
                 m.renderFrame()
+            # Clear algorithm-state buffers after warmup so the measured
+            # run starts from a clean post-allocation state. Task #46:
+            # VisCachePass exposes a one-shot resetState property that
+            # clears hash table + reservoirs + cell pool on next execute.
+            # Scene-load + buffer allocation cost stays amortized in
+            # warmup (uncounted), but per-pass algorithm state (which is
+            # what the algorithm is supposed to BUILD per frame) starts
+            # fresh. RTXDIPass equivalent hook is not yet wired — see
+            # task #46 for the pending follow-up.
+            try:
+                for name in ("VisCache", "VisCachePass"):
+                    p = m.activeGraph.getPass(name)
+                    if p is not None:
+                        p.setProperties({"resetState": True})
+                        break
+            except Exception:
+                pass
             try:
                 m.profiler.reset_stats()
             except Exception:
@@ -3919,6 +3936,23 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
             N_WARMUP = 16
             for _ in range(N_WARMUP):
                 m.renderFrame()
+            # Clear algorithm-state buffers after warmup so the measured
+            # run starts from a clean post-allocation state. Task #46:
+            # VisCachePass exposes a one-shot resetState property that
+            # clears hash table + reservoirs + cell pool on next execute.
+            # Scene-load + buffer allocation cost stays amortized in
+            # warmup (uncounted), but per-pass algorithm state (which is
+            # what the algorithm is supposed to BUILD per frame) starts
+            # fresh. RTXDIPass equivalent hook is not yet wired — see
+            # task #46 for the pending follow-up.
+            try:
+                for name in ("VisCache", "VisCachePass"):
+                    p = m.activeGraph.getPass(name)
+                    if p is not None:
+                        p.setProperties({"resetState": True})
+                        break
+            except Exception:
+                pass
             try:
                 m.profiler.reset_stats()
             except Exception:

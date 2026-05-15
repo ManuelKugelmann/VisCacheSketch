@@ -154,6 +154,15 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
+    // resetState: one-shot trigger to clear all algorithm-state buffers on
+    // the next execute. Used by the ladder timing harness to start the
+    // measured run from a clean post-warmup state without paying scene-load
+    // / allocation cost in the measurement. Auto-clears after one execute.
+    if (props.has("resetState"))
+    {
+        bool req = props["resetState"];
+        if (req) mPendingResetState = true;
+    }
 }
 
 ref<VisCache> VisCache::create(ref<Device> pDevice,
@@ -250,6 +259,15 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("enableDiagnostics"))             mEnableDiagnostics                   = props["enableDiagnostics"];
     if (props.has("diagMode"))                     { uint32_t m = props["diagMode"]; mDiagMode = DiagMode(m); }
     if (props.has("resetAccum"))                   mResetAccum                          = props["resetAccum"];
+    // resetState: one-shot trigger to clear all algorithm-state buffers on
+    // the next execute. Used by the ladder timing harness to start the
+    // measured run from a clean post-warmup state without paying scene-load
+    // / allocation cost in the measurement. Auto-clears after one execute.
+    if (props.has("resetState"))
+    {
+        bool req = props["resetState"];
+        if (req) mPendingResetState = true;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -521,6 +539,21 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     //   rootVar["gVHFTable"]      = dict["vhfTable"];
     //   rootVar["VisCacheParams"] = dict["vhfParamsCB"];
     // ----------------------------------------------------------------
+    // One-shot full algorithm-state reset (triggered by setProperties
+    // {"resetState": true}). Marks every per-pass buffer for clear on
+    // this execute. Used by the ladder timing harness to start measured
+    // runs from a clean post-warmup state — see task #46. Auto-disarms
+    // after one execute so subsequent frames are normal.
+    if (mPendingResetState)
+    {
+        mClearHashTable = true;
+        if (mpReservoirs)         pCtx->clearUAV(mpReservoirs->getUAV().get(),        uint4(0u));
+        if (mpPixelReservoirs)    pCtx->clearUAV(mpPixelReservoirs->getUAV().get(),   uint4(0u));
+        if (mpCellPools)          pCtx->clearUAV(mpCellPools->getUAV().get(),         uint4(0u));
+        if (mpCellPoolSlots)      pCtx->clearUAV(mpCellPoolSlots->getUAV().get(),     uint4(0u));
+        mPendingResetState = false;
+    }
+
     // Parameter validation — clamp to safe ranges before GPU upload.
     mParams.numLevels     = std::max(1u, mParams.numLevels);
     mParams.bootThreshold   = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
