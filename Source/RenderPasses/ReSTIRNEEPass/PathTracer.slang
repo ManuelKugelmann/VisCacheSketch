@@ -49,20 +49,24 @@ import Rendering.RTXDI.RTXDI;
 
 // Phase 3d: shared LightType/LightSample types from Common.
 import RenderPasses.PathTraceCommon.PathTraceCore;
-// LightSampleDI + cell-reservoir reuse infrastructure shared with ReSTIRDIPass.
-// Brings in LightSampleDI (8 fields, has lightIndex+lightUV for reservoir packing),
-// pcgHashEndpoint / pcgHash etc. from CacheCommon, the Reservoir struct +
-// loadCell/mergeIntoCell from ReservoirIO, and PairwiseMisState helpers.
+// LightSampleDI is needed unconditionally for the K-RIS NEE stream (independent
+// of cell reuse). Reservoir/ReservoirIO/VisCache are only pulled in when
+// USE_NEE_CELLS=1 — they reference VisCacheParams cbuffer fields (gEnable,
+// gCapacity, …) that only exist when USE_VISCACHE=1, and the host couples
+// USE_NEE_CELLS → USE_VISCACHE (see ReSTIRNEEPass::TracePass::getDefines).
+import RenderPasses.ReSTIRCommon.LightReservoir;
+import RenderPasses.ReSTIRCommon.PairwiseMIS;
+
+#if USE_NEE_CELLS
 // Cell-NEE: at every NEE call-site, merge K-RIS winner into the home cell
 // reservoir (keyed by posA cascade) via pairwise MIS. The cell layer is the
 // natural temporal/spatial reuse mechanism for deeper bounces — per-pixel
 // R2d only makes sense at primary hit (vertex 1).
-import RenderPasses.ReSTIRCommon.LightReservoir;
 import RenderPasses.ReSTIRCommon.Reservoir;
 import RenderPasses.ReSTIRCommon.ReservoirIO;
-import RenderPasses.ReSTIRCommon.PairwiseMIS;
 import RenderPasses.CacheCommon.CacheHash;
-import RenderPasses.VisCache.VisCache;          // vhfPosASize / vhfLevelForFootprint + cbuffer access
+import RenderPasses.VisCache.VisCache;          // vhfPosASize / vhfLevelForFootprint + VisCacheParams cbuffer
+#endif
 
 #if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gLightMuMin

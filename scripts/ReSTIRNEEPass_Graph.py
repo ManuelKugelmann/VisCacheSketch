@@ -12,6 +12,7 @@ Usage:
 
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from viscache_defaults import VISCACHE_DEFAULTS
 
 try:
     from falcor import *
@@ -20,7 +21,9 @@ except ImportError:
 
 
 def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
-                               numNEECandidates=16, emissiveSampler=None):
+                               numNEECandidates=16, emissiveSampler=None,
+                               useNEECells=False,
+                               cellReservoirFootprintPx=1):
     g = RenderGraph("ReSTIRNEEPass")
 
     vbuf = createPass("VBufferRT", {
@@ -29,11 +32,36 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
     })
     g.addPass(vbuf, "VBufferRT")
 
+    # When 3D cell-reservoir reuse is enabled, NEE pulls the gReservoirs
+    # buffer + VisCacheParams cbuffer from VisCachePass via InternalDictionary
+    # (same wiring DI uses). cellReservoirFootprintPx=1 → sub-pixel cell
+    # at primary hit; path.cellFootprintPx in the shader widens with
+    # BSDF roughness at each subsequent bounce (Sharc-style).
+    if useNEECells:
+        vc_props = {**VISCACHE_DEFAULTS,
+                    "spp": samplesPerPixel,
+                    "enableReservoirs": True,
+                    "reservoirCapacity": 1 << 20,
+                    "cellReservoirFootprintPx": cellReservoirFootprintPx,
+                    "mCap": 20.0,
+                    # NEE drives cell reads/writes inline; no per-pixel
+                    # reservoir layer needed.
+                    "enablePixelReservoir": False,
+                    # No cell pool (NEE uses K-RIS streaming inside the
+                    # shader; cells are the reuse layer).
+                    "enableCellPool": False,
+                    # Cell-NEE doesn't engage VisCache visibility yet.
+                    "enableVisCacheVisibilityCheck": False,
+                    "enableVisCacheLightSelection": False}
+        vc = createPass("VisCachePass", vc_props)
+        g.addPass(vc, "VisCache")
+
     pt_props = {
         "samplesPerPixel":   samplesPerPixel,
         "maxSurfaceBounces": maxBounces,
         "colorFormat":       "LogLuvHDR",
         "numNEECandidates":  numNEECandidates,
+        "useNEECells":       useNEECells,
     }
     if emissiveSampler is not None:
         pt_props["emissiveSampler"] = emissiveSampler

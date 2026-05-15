@@ -1659,7 +1659,12 @@ DefineList ReSTIRNEEPass::StaticParams::getDefines(const ReSTIRNEEPass& owner) c
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
     defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
     defines.add("NUM_NEE_CANDIDATES", std::to_string(numNEECandidates));
-    defines.add("USE_NEE_CELLS", useNEECells ? "1" : "0");
+    // USE_NEE_CELLS requires USE_VISCACHE (cell-reservoir read/write paths
+    // dereference VisCacheParams cbuffer + the gReservoirs buffer from
+    // VisCachePass). If VisCache isn't connected, silently disable cell-NEE
+    // so the shader compiles and the pass runs as plain K-RIS NEE.
+    const bool useNeeCellsEffective = useNEECells && owner.mVisCacheAvailable;
+    defines.add("USE_NEE_CELLS", useNeeCellsEffective ? "1" : "0");
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");
