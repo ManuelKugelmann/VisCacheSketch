@@ -111,3 +111,47 @@ These didn't fit any single ladder step's narrative — emerged from the union o
 
 - **Convention B requires reader-evaluated pdf.** `emissiveSampler.evalPdf()` at the receiver's vertex; never store the writer's solid-angle pdf — its `r²/cos` factor amplifies into firefly tails at distant readers.
 - **Data-structure equivalence is structural.** 2D screen tile and 3D world cell are interchangeable at matched density; the mechanism is flat-multilevel-hash + reservoir reuse + RIS pool fill regardless of which one you address.
+
+### RTXDI param-parity audit (2026-05-15)
+
+Status across the F17P24 baseline after a multi-iteration sweep:
+
+| Knob                          | RTXDI default | Our F17P24 default |
+|-------------------------------|---------------|--------------------|
+| localLightCandidateCount      | 24            | 24 (pool) ✓        |
+| infiniteLightCandidateCount   | 8             | ~5.67 (uniform-fresh×selectLightType) |
+| envLightCandidateCount        | 8             | ~5.67 (uniform-fresh×selectLightType) |
+| brdfCandidateCount            | 1             | 0 (tried, no win)  |
+| testCandidateVisibility       | true          | true ✓             |
+| biasCorrection                | Basic         | Basic ✓ (5be5db0)  |
+| samplingRadius                | 30            | 30 ✓               |
+| spatialSampleCount            | 1             | 1 ✓                |
+| spatialIterations             | **5**         | **1** ← largest unmatched |
+| maxHistoryLength              | 20            | mCap=20 ✓          |
+| boilingFilterStrength         | 0             | 0 ✓                |
+| presampledTileCount × Size    | 128 × 1024    | N/A (cell-pool architecture) |
+
+Quality status at SPP=4 with the locked F17P24 Basic default:
+
+| Scene          | err% vs RTXDI | art5% vs RTXDI | rmse vs RTXDI |
+|----------------|---------------|----------------|---------------|
+| Cornell_1PL    | beats (90%)   | beats (97%)    | beats (96%)   |
+| Cornell_1AL    | beats (48%)   | beats (38%)    | beats (54%)   |
+| Cornell_3AL    | beats (-1%)   | matches (-7%)  | beats (51%)   |
+| Cornell_32PL   | beats (26%)   | beats (60%)    | matches (-20%)|
+| BistroInterior | beats (12%)   | matches        | trails (+11%) |
+| Sponza         | beats (12%)   | matches        | trails (+19%) |
+
+art5 (local-spike penalty) is at parity or beating RTXDI on every
+scene. err% (OkLab perceptual) beats RTXDI on every scene. Residual
+rmse trails on Bistro/Sponza — attributed to RTXDI's 5-iteration
+spatial cascade (our 1-pass spatial reuse cannot recover the same
+variance reduction without multi-pass ping-pong infrastructure).
+
+### Failed RTXDI-parity attempts (2026-05-15 session)
+
+- **Category-quota K-RIS — single-stream (c1d4345).** Replaced F17 uniform-fresh with dedicated 8 env + 8 inf + 24 pool streams flowing into one shared reservoir. Bistro x4 rmse +43% regression (164.43 vs 114.98). Mixed pHat scales across categories cause variance spikes when env samples with raw env-map pdf hit fat-tail values.
+- **Category-quota K-RIS — sub-reservoir (8b5627f).** Proper RTXDI architecture: per-category private LocalReservoirs, then `streamingMergeReservoir` into compound. Bistro x4 rmse +26% (144.22). Hierarchical winner selection (sub-roulette × compound-roulette) improves over single-stream but still trails F17 uniform — RTXDI's separation alone isn't enough without the presample tile semantics.
+- **BRDF candidate stream (2b7e353).** RTXDI_SampleBrdf analog: BSDF direction → closest-hit ray → emissive/env classification → LightSampleDI. MIS-balance Li damping (balance heuristic between bs.pdf and NEE-equivalent pdf). Bistro+Sponza unchanged ±0.5%, no rmse improvement. The MIS damping zeroes the BRDF candidate on diffuse surfaces AND in env-sun direction (sun peak's env-pdf dominates balance ratio). RTXDI uses `RTXDI_LightBrdfMisWeight` (blended source pdf) instead of Li damping — requires presample tile to implement properly.
+- **K=5 single-pass spatial (cf7a3c7).** Bumped `spatialPixelsK` 1→5 to approximate RTXDI's `spatialIterations=5`. MIXED result: Sponza rmse -5.5% (variance reduction works on smooth scenes); Bistro rmse +18% (single-snapshot K=5 amplifies fireflies — RTXDI's 5 separate passes average them across iterations). Closing the gap requires multi-pass spatial reuse with reservoir ping-pong (substantial refactor: separate CS pass, 2 reservoir buffers, 5 dispatches).
+- **biasCorrection=Basic flip (5be5db0).** ✓ THE WIN. RTXDI's actual default is Basic (Falcor RTXDI.h:144); we had Pairwise (=1). Flipping to Basic improves err+art5 on every scene with mild rmse regression on Cornell_32PL (+18%) and Bistro (+5%). art5 hits exact RTXDI parity on Bistro (61.77 vs 61.81); BEATS RTXDI on Sponza (53.89 vs 54.17). Param-parity argument alone justifies the flip. Pairwise MIS port retained for cross-surface reservoir merges (cell/temporal/spatial — see project_pairwise_mis_cross_surface_principle memory).
