@@ -3254,25 +3254,25 @@ def run_baseline(step_name, frame_configs, scene_file,
                 m.profiler.enabled = True
             except Exception:
                 pass
-            # N_WARMUP must cover our cell-pool Bayer cycle (16 subframes
-            # at bayerN=4) so timings + quality reflect steady state, not
-            # pool warmup. Previously 2-frame warmup biased low-SPP measurements
-            # toward cold-pool cost; Bistro x1/x4/x16 mean GPU times
-            # decreased monotonically with SPP (42s/37s/20s for ours) — the
-            # symptom of insufficient warmup. RTXDI converges within ~1 frame
-            # so the longer warmup costs it nothing extra at measurement.
-            N_WARMUP = 16
-            for _ in range(N_WARMUP):
-                m.renderFrame()
-            # Clear algorithm-state buffers after warmup so the measured
-            # run starts from a clean post-allocation state. Task #46:
-            # VisCachePass exposes a one-shot resetState property that
-            # clears hash table + reservoirs + cell pool on next execute.
-            # Scene-load + buffer allocation cost stays amortized in
-            # warmup (uncounted), but per-pass algorithm state (which is
-            # what the algorithm is supposed to BUILD per frame) starts
-            # fresh. RTXDIPass equivalent hook is not yet wired — see
-            # task #46 for the pending follow-up.
+            # Warmup-before-measure ordering (revised 2026-05-15 after the
+            # timing-per-SPP-asymmetry finding):
+            #
+            #   1. resetState on VisCachePass (one-shot clear: hash table,
+            #      cell pool, reservoirs). Issues clearUAVs on first execute.
+            #   2. N_WARMUP=16 frames render WITH the clears amortized in
+            #      frame 0. This frame's clearUAV cost (128 MB total) plus
+            #      any lazy slang-shader specialization, lazy buffer alloc,
+            #      and pool/cell-pool fill all happen here — UNCOUNTED.
+            #   3. profiler.reset_stats() — but NO further clearUAVs.
+            #      Measured frames inherit the warmed steady-state buffers.
+            #   4. N measured frames at true steady state.
+            #
+            # Previous order (warmup → resetState → measured) put the
+            # clearUAVs INSIDE the measurement, polluting frame 0 with
+            # 128 MB of buffer-clear work + reset-triggered cold-frame
+            # cost. Symptom: ours x1 mean=14 s/frame on Cornell (40 s for
+            # F17P24+1AL), x16 mean=300 ms — only explainable if frame 0
+            # was extremely heavy and amortized across more frames at x16.
             try:
                 for name in ("VisCache", "VisCachePass"):
                     p = m.activeGraph.getPass(name)
@@ -3281,6 +3281,9 @@ def run_baseline(step_name, frame_configs, scene_file,
                         break
             except Exception:
                 pass
+            N_WARMUP = 16
+            for _ in range(N_WARMUP):
+                m.renderFrame()
             try:
                 m.profiler.reset_stats()
             except Exception:
@@ -3926,25 +3929,25 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                 m.profiler.enabled = True
             except Exception:
                 pass
-            # N_WARMUP must cover our cell-pool Bayer cycle (16 subframes
-            # at bayerN=4) so timings + quality reflect steady state, not
-            # pool warmup. Previously 2-frame warmup biased low-SPP measurements
-            # toward cold-pool cost; Bistro x1/x4/x16 mean GPU times
-            # decreased monotonically with SPP (42s/37s/20s for ours) — the
-            # symptom of insufficient warmup. RTXDI converges within ~1 frame
-            # so the longer warmup costs it nothing extra at measurement.
-            N_WARMUP = 16
-            for _ in range(N_WARMUP):
-                m.renderFrame()
-            # Clear algorithm-state buffers after warmup so the measured
-            # run starts from a clean post-allocation state. Task #46:
-            # VisCachePass exposes a one-shot resetState property that
-            # clears hash table + reservoirs + cell pool on next execute.
-            # Scene-load + buffer allocation cost stays amortized in
-            # warmup (uncounted), but per-pass algorithm state (which is
-            # what the algorithm is supposed to BUILD per frame) starts
-            # fresh. RTXDIPass equivalent hook is not yet wired — see
-            # task #46 for the pending follow-up.
+            # Warmup-before-measure ordering (revised 2026-05-15 after the
+            # timing-per-SPP-asymmetry finding):
+            #
+            #   1. resetState on VisCachePass (one-shot clear: hash table,
+            #      cell pool, reservoirs). Issues clearUAVs on first execute.
+            #   2. N_WARMUP=16 frames render WITH the clears amortized in
+            #      frame 0. This frame's clearUAV cost (128 MB total) plus
+            #      any lazy slang-shader specialization, lazy buffer alloc,
+            #      and pool/cell-pool fill all happen here — UNCOUNTED.
+            #   3. profiler.reset_stats() — but NO further clearUAVs.
+            #      Measured frames inherit the warmed steady-state buffers.
+            #   4. N measured frames at true steady state.
+            #
+            # Previous order (warmup → resetState → measured) put the
+            # clearUAVs INSIDE the measurement, polluting frame 0 with
+            # 128 MB of buffer-clear work + reset-triggered cold-frame
+            # cost. Symptom: ours x1 mean=14 s/frame on Cornell (40 s for
+            # F17P24+1AL), x16 mean=300 ms — only explainable if frame 0
+            # was extremely heavy and amortized across more frames at x16.
             try:
                 for name in ("VisCache", "VisCachePass"):
                     p = m.activeGraph.getPass(name)
@@ -3953,6 +3956,9 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                         break
             except Exception:
                 pass
+            N_WARMUP = 16
+            for _ in range(N_WARMUP):
+                m.renderFrame()
             try:
                 m.profiler.reset_stats()
             except Exception:
