@@ -52,6 +52,7 @@ import Rendering.RTXDI.RTXDI;
 // now (more specific scope wins); Step 2 will remove the nested types and let
 // these imports be the canonical source.
 import RenderPasses.PathTraceCommon.PathTraceCore;
+import RenderPasses.ReSTIRCommon.PairwiseMIS;
 import RenderPasses.ReSTIRCommon.LightReservoir;
 
 #if USE_WS_RESERVOIRS
@@ -1447,10 +1448,21 @@ struct PathTracer
 #endif
                             if (!winnerVisible)
                             {
-                                // Shadowed → zero the winner's pHat. wSum/M
-                                // stay intact for spatial reuse to potentially
-                                // replace the winner with a visible candidate.
-                                local.targetPdf = 0.f;
+                                // RTXDI-faithful V-fail handling per
+                                // RTXDI_StoreVisibilityInReservoir (SDK
+                                // Reservoir.hlsli:164):
+                                //   "Keep M for correct resampling, remove
+                                //    the actual sample"
+                                // Zero wSum + sample identity; keep M intact.
+                                // Earlier impl kept wSum (to let spatial reuse
+                                // recover) but that propagated inflated W
+                                // into next-frame temporal reuse → Bistro
+                                // firefly. Matching RTXDI exactly.
+                                local.targetPdf      = 0.f;
+                                local.wSum           = 0.f;
+                                local.lightTypeIndex = 0u;
+                                local.payload        = 0u;
+                                // local.M stays.
                             }
                         }
                     }
@@ -1573,28 +1585,13 @@ struct PathTracer
                             float m_c = 1.f;
 #if BIAS_CORRECTION == 1
                             {
-                                // RTXDI pairwise m_j: uses (pHat_reader for
-                                // nbr) and (nbr's stored targetPdf at its own
-                                // surface). m_j downweights when nbr's sample
-                                // doesn't fit the reader's surface.
-                                float cPairwiseDenom = pHatCell * cCanonM_save + cell.targetPdf * Mcap;
-                                if (cPairwiseDenom > 0.f)
-                                {
-                                    m_c = (cell.targetPdf * Mcap) / cPairwiseDenom;
-                                }
-                                // m_canonical: RTXDI uses canon's sample's
-                                // pHat at canon's surface (= cCanonTargetPdf)
-                                // for BOTH numerator and the canon-side
-                                // denominator term — neighbour-surface eval
-                                // not available, so same-surface approx
-                                // degenerates this to a pure M-ratio. (Was
-                                // pHatCell * cCanonM_save before — biased
-                                // when reader's pHat for nbr's sample differs
-                                // wildly from canon.targetPdf.)
-                                if (cCanonM_save + Mcap > 0.f)
-                                {
-                                    cCanonMISAcc += cCanonM_save / (cCanonM_save + Mcap);
-                                }
+                                // Cell merge: cells don't have a meaningful
+                                // "neighbour surface" (aggregate of writers),
+                                // so use the M-ratio same-surface fallback
+                                // via PairwiseMisState::computeMCanon with
+                                // cWAtN_provided=false.
+                                m_c = PairwiseMisState::computeMJ(cell.targetPdf, pHatCell, Mcap, cCanonM_save);
+                                cCanonMISAcc += PairwiseMisState::computeMCanon(0.f, cCanonTargetPdf_save, Mcap, cCanonM_save, false);
                             }
 #endif
                             float w = m_c * pHatCell * cell.W * Mcap;
@@ -1771,18 +1768,12 @@ struct PathTracer
                                         float m_t = 1.f;
 #if BIAS_CORRECTION == 1
                                         {
-                                            // See cell-merge for m_canon formula
-                                            // justification. Same-surface approx
-                                            // for temporal (same pixel) is exact.
-                                            float tPairwiseDenom = pHatPrev * tCanonM_save + prev.targetPdf * Mcap;
-                                            if (tPairwiseDenom > 0.f)
-                                            {
-                                                m_t = (prev.targetPdf * Mcap) / tPairwiseDenom;
-                                            }
-                                            if (tCanonM_save + Mcap > 0.f)
-                                            {
-                                                tCanonMISAcc += tCanonM_save / (tCanonM_save + Mcap);
-                                            }
+                                            // Temporal merge: prev frame at SAME
+                                            // pixel = same surface (static camera
+                                            // assumption). Same-surface approx
+                                            // is exact — pure M-ratio for m_canon.
+                                            m_t = PairwiseMisState::computeMJ(prev.targetPdf, pHatPrev, Mcap, tCanonM_save);
+                                            tCanonMISAcc += PairwiseMisState::computeMCanon(0.f, tCanonTargetPdf_save, Mcap, tCanonM_save, false);
                                         }
 #endif
                                         float w    = m_t * pHatPrev * prev.W * Mcap;
@@ -1968,20 +1959,17 @@ struct PathTracer
                             float m_j = 1.f;
 #if BIAS_CORRECTION == 1
                             {
-                                float pairwiseDenom = pHatN * canonM_save + nbr.targetPdf * Mcn;
-                                if (pairwiseDenom <= 0.f) continue;
-                                m_j = (nbr.targetPdf * Mcn) / pairwiseDenom;
+                                m_j = PairwiseMisState::computeMJ(nbr.targetPdf, pHatN, Mcn, canonM_save);
+                                if (m_j <= 0.f) continue;
 
-                                // m_canon: RTXDI's proper formula needs
-                                // canonicalWeightAtNeighbor = canon's sample's
-                                // pHat at neighbour's surface. Load neighbour
-                                // surface (VBuffer + ShadingData + Material-
-                                // Instance) and re-evaluate canonical's light
-                                // sample there. Falls back to M-ratio same-
-                                // surface approx if neighbour VBuffer entry is
-                                // missing or canon's light-sample rebuild fails
-                                // at nbr surface.
-                                float cWAtN_eff = canonTargetPdf_save;  // default fallback
+                                // Load neighbour surface on demand (RTXDI's
+                                // RAB_GetGBufferSurface(idx) pattern, line
+                                // 1387 of ResamplingFunctions.hlsli) to
+                                // compute canonicalWeightAtNeighbor for the
+                                // proper m_canon formula. Falls back to
+                                // M-ratio same-surface approx when nbr is
+                                // off-screen or canon-sample rebuild fails.
+                                float cWAtN_eff = 0.f;
                                 bool haveCWAtN = false;
                                 uint2 npx_u = uint2(uint(npx.x), uint(npx.y));
                                 HitInfo nbrHit = HitInfo(vbuffer[npx_u]);
@@ -2009,21 +1997,8 @@ struct PathTracer
                                         haveCWAtN = true;
                                     }
                                 }
-                                if (haveCWAtN)
-                                {
-                                    // Proper RTXDI pairwise m_canon:
-                                    //   m_canon = cWAtC * M_canon / (cWAtN * Mcn + cWAtC * M_canon)
-                                    float cMisDenom = cWAtN_eff * Mcn + canonTargetPdf_save * canonM_save;
-                                    if (cMisDenom > 0.f)
-                                    {
-                                        canonMISAcc += (canonTargetPdf_save * canonM_save) / cMisDenom;
-                                    }
-                                }
-                                else if (canonM_save + Mcn > 0.f)
-                                {
-                                    // Same-surface fallback (M-ratio).
-                                    canonMISAcc += canonM_save / (canonM_save + Mcn);
-                                }
+                                canonMISAcc += PairwiseMisState::computeMCanon(
+                                    cWAtN_eff, canonTargetPdf_save, Mcn, canonM_save, haveCWAtN);
                             }
 #endif
                             float wn  = m_j * pHatN * nbr.W * Mcn;

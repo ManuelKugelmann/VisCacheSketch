@@ -18,6 +18,13 @@ target_sources(ReSTIRCommon PRIVATE
     CellPool.slang
     CellPoolIO.slang
     ReservoirBoilingFilter.cs.slang
+
+    # Pairwise MIS bias correction (RTXDI BiasCorrection::Pairwise +
+    # Boksansky 2022 §4). Generic primitives shared across DI/NEE/PT —
+    # holds the snapshot+stream+finalize state plus the m_j and m_canon
+    # formulas. DI uses it via ReSTIRDIPass/PathTracer.slang's merge sites;
+    # NEE and PT pick it up when they add reservoir-reuse layers.
+    PairwiseMIS.slang
 )
 
 target_copy_shaders(ReSTIRCommon RenderPasses/ReSTIRCommon)
