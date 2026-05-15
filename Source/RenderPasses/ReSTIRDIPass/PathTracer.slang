@@ -1466,6 +1466,34 @@ struct PathTracer
                     // temporal + spatial reuse via gPixelReservoirs only).
                     CellAddress homeAddr = resolveCell(sd.posW, sd.faceN);
                     const uint nNeighbours = (gUseCellInRIS != 0u) ? spatialNeighbourCount() : 0u;
+                    // Cell-merge pairwise canonical-correction. Same pattern as
+                    // temporal/spatial-pixel pairwise: snapshot canonical (K-RIS
+                    // result) before the cell loop, re-init local, stream cells
+                    // with pairwise m_j + m-weighted M, re-stream canonical at
+                    // end with accumulated MIS. Cell merges cross surfaces by
+                    // construction (cells aggregate ALL pixels keyed to the
+                    // same world-space cell), so this is load-bearing — without
+                    // it the basic Bitterli merge gives Cornell rmse 2001 vs
+                    // vanilla 0.5 (catastrophic firefly).
+                    float cCanonM_save = 0.f;
+                    float cCanonWSum_save = 0.f;
+                    float cCanonTargetPdf_save = 0.f;
+                    uint  cCanonLightTypeIndex_save = 0u;
+                    uint  cCanonPayload_save = 0u;
+                    float cCanonMISAcc = 0.f;
+                    float cLocalMWeighted = 0.f;
+                    bool  cAnyStreamed = false;
+#if BIAS_CORRECTION == 1
+                    if (gUseCellInRIS != 0u)
+                    {
+                        cCanonM_save = local.M;
+                        cCanonWSum_save = local.wSum;
+                        cCanonTargetPdf_save = local.targetPdf;
+                        cCanonLightTypeIndex_save = local.lightTypeIndex;
+                        cCanonPayload_save = local.payload;
+                        local.init();
+                    }
+#endif
                     for (uint i = 0u; (gUseCellInRIS != 0u) && i <= nNeighbours; ++i)
                     {
                         CellAddress addr;
@@ -1542,23 +1570,24 @@ struct PathTracer
                         if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
-                            // Cell-merge stays on Bitterli basic for now. Cross-
-                            // surface pairwise MIS needs the same canonical-
-                            // correction treatment the spatial-pixel-merge gets
-                            // (snapshot canonical pre-merge, accumulate
-                            // m_canonical_j across cell reads, re-stream
-                            // canonical at end). Single-source m_cell without
-                            // correction biases toward canonical the same way
-                            // the spatial single-source did before correction
-                            // — tested 2026-05-15, Cornell rmse went 0.5 →
-                            // 2610 with that biased form. Cell merge gets the
-                            // proper treatment after spatial-pixel pairwise is
-                            // validated.
-                            float w = pHatCell * cell.W * Mcap;
+                            float m_c = 1.f;
+#if BIAS_CORRECTION == 1
+                            {
+                                float cPairwiseDenom = pHatCell * cCanonM_save + cell.targetPdf * Mcap;
+                                if (cPairwiseDenom > 0.f)
+                                {
+                                    m_c = (cell.targetPdf * Mcap) / cPairwiseDenom;
+                                    cCanonMISAcc += (pHatCell * cCanonM_save) / cPairwiseDenom;
+                                }
+                            }
+#endif
+                            float w = m_c * pHatCell * cell.W * Mcap;
                             if (w > 0.f && !isnan(w))
                             {
                                 local.wSum += w;
                                 local.M    += Mcap;
+                                cLocalMWeighted += m_c * Mcap;
+                                cAnyStreamed = true;
                                 if (sampleNext1D(path.sg) * local.wSum <= w)
                                 {
                                     local.lightTypeIndex = cell.lightTypeIndex;
@@ -1575,6 +1604,38 @@ struct PathTracer
                                 pHatCell, 1.f, path.sg);
                         }
                     }
+                    // Re-stream canonical with accumulated cell-merge MIS weight.
+#if BIAS_CORRECTION == 1
+                    if (gUseCellInRIS != 0u && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
+                    {
+                        if (cAnyStreamed)
+                        {
+                            float cWnCanon = cCanonMISAcc * cCanonWSum_save;
+                            if (cWnCanon > 0.f && !isnan(cWnCanon))
+                            {
+                                local.wSum += cWnCanon;
+                                local.M    += cCanonM_save;
+                                cLocalMWeighted += cCanonMISAcc * cCanonM_save;
+                                if (sampleNext1D(path.sg) * local.wSum <= cWnCanon)
+                                {
+                                    local.lightTypeIndex = cCanonLightTypeIndex_save;
+                                    local.payload        = cCanonPayload_save;
+                                    local.targetPdf      = cCanonTargetPdf_save;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            local.wSum           = cCanonWSum_save;
+                            local.M              = cCanonM_save;
+                            cLocalMWeighted      = cCanonM_save;
+                            local.targetPdf      = cCanonTargetPdf_save;
+                            local.lightTypeIndex = cCanonLightTypeIndex_save;
+                            local.payload        = cCanonPayload_save;
+                        }
+                        local.M = cLocalMWeighted;
+                    }
+#endif
 
                     // (2.5) Per-pixel temporal+spatial reservoir layer.
                     // Active only when enablePixelReservoir=True (default);
@@ -1590,6 +1651,29 @@ struct PathTracer
                         // from a different surface (silhouette / camera moved
                         // across an edge), skip. Cos threshold 0.9 ≈ 26°.
                         const float kWSNormalCos = 0.5f;   // RTXDI's normalThreshold default — looser angular reject (60° vs 26°), more spatial reuse
+
+                        // Temporal merge: snapshot canonical (K-RIS + any prior
+                        // cell-merge result), re-init local, stream prev with
+                        // pairwise m_j + m-weighted M, re-stream canonical.
+                        // Same RTXDI-Pairwise pattern the spatial merge below
+                        // uses. Cascades cleanly: temporal pairwise output
+                        // becomes spatial pairwise's canonical.
+                        float tCanonM_save = 0.f;
+                        float tCanonWSum_save = 0.f;
+                        float tCanonTargetPdf_save = 0.f;
+                        uint  tCanonLightTypeIndex_save = 0u;
+                        uint  tCanonPayload_save = 0u;
+                        float tCanonMISAcc = 0.f;
+                        float tLocalMWeighted = 0.f;
+                        bool  tPrevStreamed = false;
+#if BIAS_CORRECTION == 1
+                        tCanonM_save = local.M;
+                        tCanonWSum_save = local.wSum;
+                        tCanonTargetPdf_save = local.targetPdf;
+                        tCanonLightTypeIndex_save = local.lightTypeIndex;
+                        tCanonPayload_save = local.payload;
+                        local.init();
+#endif
                         uint pIdx = pixelIndex(path.getPixel());
                         Reservoir prev = gPixelReservoirs[pIdx];
                         bool prevNormalOk = true;
@@ -1668,11 +1752,24 @@ struct PathTracer
                                     if (pHatPrev > 0.f)
                                     {
                                         float Mcap = min(prev.M, gMCap);
-                                        float w    = pHatPrev * prev.W * Mcap;
+                                        float m_t = 1.f;
+#if BIAS_CORRECTION == 1
+                                        {
+                                            float tPairwiseDenom = pHatPrev * tCanonM_save + prev.targetPdf * Mcap;
+                                            if (tPairwiseDenom > 0.f)
+                                            {
+                                                m_t = (prev.targetPdf * Mcap) / tPairwiseDenom;
+                                                tCanonMISAcc += (pHatPrev * tCanonM_save) / tPairwiseDenom;
+                                            }
+                                        }
+#endif
+                                        float w    = m_t * pHatPrev * prev.W * Mcap;
                                         if (w > 0.f && !isnan(w))
                                         {
                                             local.wSum += w;
                                             local.M    += Mcap;
+                                            tLocalMWeighted += m_t * Mcap;
+                                            tPrevStreamed = true;
                                             if (sampleNext1D(path.sg) * local.wSum <= w)
                                             {
                                                 local.lightTypeIndex = prev.lightTypeIndex;
@@ -1684,6 +1781,42 @@ struct PathTracer
                                 }
                             }
                         }
+                        // Re-stream canonical with accumulated MIS weight for
+                        // the temporal pairwise. If no prev was streamed (cold
+                        // frame / silhouette reject), restore canonical verbatim.
+#if BIAS_CORRECTION == 1
+                        if (tCanonM_save > 0.f && tCanonTargetPdf_save > 0.f)
+                        {
+                            if (tPrevStreamed)
+                            {
+                                float tWnCanon = tCanonMISAcc * tCanonWSum_save;
+                                if (tWnCanon > 0.f && !isnan(tWnCanon))
+                                {
+                                    local.wSum += tWnCanon;
+                                    local.M    += tCanonM_save;
+                                    tLocalMWeighted += tCanonMISAcc * tCanonM_save;
+                                    if (sampleNext1D(path.sg) * local.wSum <= tWnCanon)
+                                    {
+                                        local.lightTypeIndex = tCanonLightTypeIndex_save;
+                                        local.payload        = tCanonPayload_save;
+                                        local.targetPdf      = tCanonTargetPdf_save;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // No temporal contribution; restore canonical.
+                                local.wSum           = tCanonWSum_save;
+                                local.M              = tCanonM_save;
+                                tLocalMWeighted      = tCanonM_save;
+                                local.targetPdf      = tCanonTargetPdf_save;
+                                local.lightTypeIndex = tCanonLightTypeIndex_save;
+                                local.payload        = tCanonPayload_save;
+                            }
+                            local.M = tLocalMWeighted;
+                        }
+#endif
+
                         // ----- spatial: gather K random neighbour pixels -----------
                         // gSpatialPixelsK / gSpatialPixelsRadius are runtime
                         // knobs (Python-tunable via spatialPixelsK + Radius).
@@ -1710,6 +1843,16 @@ struct PathTracer
                         uint  canonLightTypeIndex_save = 0u;
                         uint  canonPayload_save = 0u;
                         float canonMISAcc = 0.f;
+                        // m-weighted M accumulator. The standard ReSTIR finalize
+                        // formula W = wSum / (pHat × M) requires that M reflect
+                        // the same MIS partitioning as wSum. Without this, the
+                        // pairwise estimator is biased: equal-pHat-equal-M case
+                        // gives W/2 instead of W (verified analytically and
+                        // matched the empirical Cornell 2D err 4.37 → 8.03
+                        // regression on 2026-05-15). Each neighbour stream
+                        // contributes m_j × Mcn; the canonical re-stream
+                        // contributes canonMISAcc × canon.M. Sum = M_eff.
+                        float localMWeighted = 0.f;
 #if BIAS_CORRECTION == 1
                         canonM_save = local.M;
                         canonWSum_save = local.wSum;
@@ -1813,6 +1956,7 @@ struct PathTracer
                             if (wn <= 0.f || isnan(wn)) continue;
                             local.wSum += wn;
                             local.M    += Mcn;
+                            localMWeighted += m_j * Mcn;
                             if (sampleNext1D(path.sg) * local.wSum <= wn)
                             {
                                 local.lightTypeIndex = nbr.lightTypeIndex;
@@ -1835,6 +1979,7 @@ struct PathTracer
                             {
                                 local.wSum += wn_canon;
                                 local.M    += canonM_save;
+                                localMWeighted += canonMISAcc * canonM_save;
                                 if (sampleNext1D(path.sg) * local.wSum <= wn_canon)
                                 {
                                     local.lightTypeIndex = canonLightTypeIndex_save;
@@ -1848,10 +1993,15 @@ struct PathTracer
                                 // verbatim so downstream code sees the K-RIS state.
                                 local.wSum           = canonWSum_save;
                                 local.M              = canonM_save;
+                                localMWeighted       = canonM_save;
                                 local.targetPdf      = canonTargetPdf_save;
                                 local.lightTypeIndex = canonLightTypeIndex_save;
                                 local.payload        = canonPayload_save;
                             }
+                            // Overwrite local.M with the m-weighted value so the
+                            // finalize formula W = wSum / (pHat * M) uses M_eff.
+                            // (Bitterli basic path keeps local.M unchanged.)
+                            local.M = localMWeighted;
                         }
 #endif
                     }

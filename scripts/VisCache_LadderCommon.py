@@ -4544,17 +4544,12 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)                        # RTXDI maxHistoryLength
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")      # main-pass too = full RTXDI parity
-    # biasCorrection: 0 = Bitterli basic (default, baselines stay here).
-    # Pairwise MIS infrastructure is in PathTracer.slang (BIAS_CORRECTION=1
-    # in shader, snapshot-and-restream form at spatial-pixel merge) but
-    # tested 2026-05-15 — produces W_final = W/2 at the equal-pHat-equal-M
-    # case → half-bright output → bias. RTXDI SDK's
-    # RTXDI_FinalizeResampling for Pairwise mode uses different M-
-    # accounting than Basic; replicating it correctly needs SDK source
-    # reference. Until that's nailed down, baselines stay on Bitterli
-    # basic and the gap to RTXDI quality remains documented as a
-    # diagnostic signal (not papered over by tuning other params).
-    kwargs2.setdefault("biasCorrection", 0)
+    # biasCorrection=1: pairwise MIS with m-weighted M finalize. The W
+    # formula W = wSum / (pHat × M_eff) uses M_eff = Σ m_j × M_j (each
+    # source's mass weighted by its MIS partition) instead of raw
+    # Σ M_j. Validates analytically at equal-pHat-equal-M: m_j=m_canon=0.5,
+    # M_eff = 0.5×M + 0.5×M = M, W = pHat·W·M / (pHat·M) = W ✓.
+    kwargs2.setdefault("biasCorrection", 1)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",
@@ -4601,20 +4596,21 @@ def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_f
     extra["enablePixelReservoir"] = False         # drop per-pixel layer (3D track = R3d only)
     extra["cellReservoirMerge"]   = 1             # full Bitterli weighted merge
     extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
-    # 3D track needs cell-reservoir reuse to be analogous to RTXDI's per-
-    # pixel temporal reservoir. Currently held OFF — enabling without
-    # full pairwise MIS produces catastrophic fireflies (rmse 2001 on
-    # Cornell vs vanilla 0.5), and the partial-pairwise implementation
-    # (BIAS_CORRECTION=1, single-source m_j) still firefly-blows because
-    # canonical-MIS correction is missing. Status: pairwise infra in
-    # shader is ready; needs the Boksansky 2022 §4 canonical-correction
-    # finalize pass before useCellInRIS=True can be the 3D baseline.
+    # 3D track stays on useCellInRIS=False. Enabling cell-merge even with
+    # pairwise (BIAS_CORRECTION=1) still produces catastrophic fireflies
+    # because cell-reservoir aggregation across writers has a separate
+    # failure mode pairwise can't fix: cell.W = wSum / (last_targetPdf ×
+    # cell.M), and when last_targetPdf is small (writer with low BRDF for
+    # winning sample), cell.W is over-inflated. Pairwise downweights m_c
+    # but doesn't shrink the cell.W magnitude. Cornell rmse 0.5 → 2454
+    # with cell-pairwise enabled (worse than basic's 2001). Fix needs
+    # different cell storage semantics — out of scope for this baseline.
     extra["useCellInRIS"] = False
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")      # main-pass too = full RTXDI parity
-    kwargs2.setdefault("biasCorrection", 0)                 # see 2D wrapper for status
+    kwargs2.setdefault("biasCorrection", 0)                 # cell-merge not helped by pairwise alone
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R3dP3d_RTXDIBaseline",
