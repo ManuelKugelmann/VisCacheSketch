@@ -85,6 +85,12 @@ interface IVisibilityQuery
     */
     [mutating] bool traceVisibilityRay(const Ray ray);
 
+    /** Trace a closest-hit ray against the scene (used by the BRDF candidate
+        stream — RTXDI_SampleBrdf analog). Returns Falcor's HitInfo on hit;
+        check hit.isValid() to detect the miss case. hitT is only valid on hit.
+    */
+    [mutating] HitInfo traceClosestHitRay(const Ray ray, out float hitT);
+
 #if USE_VISCACHE_VISIBILITYCHECK
     /** CV+RRR visibility query via VisCache. Returns fractional visWeight in [0,1].
         \param[in] ray Shadow ray to evaluate.
@@ -1287,6 +1293,7 @@ struct PathTracer
                     // sub-reservoir architecture is the actual variance-reducer.
                     LocalReservoir envRes; envRes.init();
                     LocalReservoir infRes; infRes.init();
+                    LocalReservoir brdfRes; brdfRes.init();
                     {
                         PathVertex vtxQ = PathVertex(path.getVertexIndex(), sd.posW, sd.faceN, sd.frontFacing);
                         // Env-map sub-reservoir.
@@ -1332,10 +1339,118 @@ struct PathTracer
                             uint qPL  = packLightSamplePayload(lsQ);
                             infRes.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
                         }
-                        // BRDF sub-reservoir — deferred; needs RTXDI_SampleBrdf
-                        // equivalent (BRDF ray trace → emissive/env hit
-                        // conversion → light sample). brdfCandidateCount is
-                        // plumbed for budget accounting; shader-side TODO.
+                        // BRDF sub-reservoir — RTXDI_SampleBrdf analog
+                        // (ResamplingFunctions.hlsli:839). RTXDI's last missing
+                        // candidate source. Sample BSDF direction, trace
+                        // closest-hit ray, on emissive triangle hit translate
+                        // to LightSampleDI via rebuildEmissiveLightSample; on
+                        // miss with env active build env LightSampleDI w/
+                        // BRDF-pdf source.
+                        //
+                        // MIS convention: BSDF-drawn candidate's Li is damped
+                        // by `evalMIS(1, pdf_brdf, 1, pdf_nee)` so it mixes
+                        // cleanly with the NEE/uniform-fresh stream. Mirrors
+                        // line 1077 in reverse (NEE sample with BRDF MIS).
+                        for (uint k = 0u; k < kBrdfCandidateCount; ++k)
+                        {
+                            BSDFSample bs;
+                            if (!mi.sample(sd, path.sg, bs, kUseBSDFSampling)) continue;
+                            if (bs.pdf <= 0.f) continue;
+
+                            // Origin-offset along the geometric normal so the
+                            // BRDF ray clears the surface without false hits.
+                            Ray brdfRay;
+                            brdfRay.origin = computeRayOrigin(sd.posW, dot(sd.faceN, bs.wo) >= 0.f ? sd.faceN : -sd.faceN);
+                            brdfRay.dir    = bs.wo;
+                            brdfRay.tMin   = 0.f;
+                            brdfRay.tMax   = kRayTMax;
+                            float hitT = 0.f;
+                            HitInfo bhit = vq.traceClosestHitRay(brdfRay, hitT);
+
+                            LightSampleDI lsB = {};
+                            bool lsValid = false;
+                            float pdfNeeEquiv = 0.f;
+                            if (bhit.isValid() && bhit.getType() == HitType::Triangle)
+                            {
+                                // Emissive-triangle hit: translate to a NEE
+                                // LightSampleDI. rebuildEmissiveLightSample
+                                // populates Li = Le / pdf_emissive at the
+                                // reader's surface; we override Li below so
+                                // the BRDF candidate carries its OWN MC weight
+                                // (Le / pdf_brdf), not the NEE weight.
+                                TriangleHit th = bhit.getTriangleHit();
+                                uint triIdx = gScene.lightCollection.getTriangleIndex(th.instanceID, th.primitiveIndex);
+                                if (triIdx != LightCollection.kInvalidIndex)
+                                {
+                                    if (rebuildEmissiveLightSample(triIdx, th.barycentrics, sd, lsB))
+                                    {
+                                        // lsB.pdf is now emissive-sampling pdf
+                                        // at the reader. lsB.Li = Le / lsB.pdf.
+                                        // Convert to BRDF-sourced sample:
+                                        //   Le_raw  = lsB.Li * lsB.pdf
+                                        //   ls.Li   = Le_raw / bs.pdf (BRDF pdf, MC weight)
+                                        //   pdfNee  = lsB.pdf (for MIS denominator)
+                                        pdfNeeEquiv = lsB.pdf;
+                                        float3 LeRaw = lsB.Li * lsB.pdf;
+                                        lsB.Li = LeRaw / bs.pdf;
+                                        lsB.pdf = bs.pdf;
+                                        lsValid = any(lsB.Li > 0.f);
+                                    }
+                                }
+                            }
+                            else if (!bhit.isValid() && kUseEnvLight)
+                            {
+                                // Miss + env active: env-map hit in BRDF direction.
+                                float3 Le = gScene.envMap.eval(bs.wo);
+                                if (any(Le > 0.f))
+                                {
+                                    lsB.dir = bs.wo;
+                                    lsB.distance = kRayTMax;
+                                    lsB.origin = brdfRay.origin;
+                                    lsB.Li = Le / bs.pdf;     // MC weight via BRDF pdf
+                                    lsB.pdf = bs.pdf;
+                                    lsB.lightType = (uint)LightType::EnvMap;
+                                    lsB.lightIndex = 0u;
+                                    lsB.lightUV = float2(0.f);
+                                    // Env-pdf equivalent for MIS denominator.
+                                    pdfNeeEquiv = envMapSampler.evalPdf(bs.wo) * getEnvMapSelectionProbability();
+                                    lsValid = true;
+                                }
+                            }
+                            if (!lsValid) continue;
+
+                            // MIS-weight Li by balance heuristic so the BRDF
+                            // candidate mixes cleanly with NEE candidates in
+                            // the K-RIS roulette. With invPdf=1 below, pHat
+                            // already carries the MIS factor.
+                            if (kUseMIS && pdfNeeEquiv > 0.f)
+                            {
+                                lsB.Li *= evalMIS(1, bs.pdf, 1, pdfNeeEquiv);
+                            }
+                            float3 weightB = mi.eval(sd, lsB.dir, path.sg);
+                            float3 LrB = weightB * lsB.Li;
+                            if (!any(LrB > 0.f)) continue;
+                            float pHatB = luminance(LrB);
+                            // V-aware policy: skip env (visibility resolves at
+                            // shade); apply visInPHat for non-env.
+                            if (lsB.lightType != (uint)LightType::EnvMap && visInPHatMode() != 0u)
+                            {
+                                Ray vrayB = lsB.getVisibilityRay();
+                                float vB = 1.f;
+#if USE_VISCACHE_VISIBILITYCHECK
+                                if (visInPHatMode() == 1u)
+                                    vB = vq.traceVisibilityRayCV(vrayB, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                else
+                                    vB = vq.traceVisibilityRay(vrayB) ? 1.f : 0.f;
+#else
+                                vB = vq.traceVisibilityRay(vrayB) ? 1.f : 0.f;
+#endif
+                                pHatB *= max(vB, lightMuMin());
+                            }
+                            uint bLTI = packLightTypeIndex(lsB.lightType, lsB.lightIndex);
+                            uint bPL  = packLightSamplePayload(lsB);
+                            brdfRes.streamingAdd(bLTI, bPL, pHatB, 1.f, path.sg);
+                        }
                     }
                     // Merge sub-reservoirs into the compound `local` using
                     // ReSTIR's standard weighted-reservoir-combine. With
@@ -1364,6 +1479,14 @@ struct PathTracer
                             infRes.targetPdf, infRes.wSum,
                             infRes.targetPdf, infRes.M,
                             infRes.M, path.sg);
+                    }
+                    if (brdfRes.M > 0.f && brdfRes.targetPdf > 0.f)
+                    {
+                        local.streamingMergeReservoir(
+                            brdfRes.lightTypeIndex, brdfRes.payload,
+                            brdfRes.targetPdf, brdfRes.wSum,
+                            brdfRes.targetPdf, brdfRes.M,
+                            brdfRes.M, path.sg);
                     }
 
                     // (1c) §9.4 WS-cascade ReGIR — draw K candidates from the

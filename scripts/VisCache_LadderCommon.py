@@ -4608,6 +4608,41 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic(step_name, frame_configs, s
     )
 
 
+def run_baseline_ReSTIRDI_R2dP2d_BrdfRis(step_name, frame_configs, scene_file,
+                                         poolTileSize=16, **kwargs):
+    """**RDI00 variant — F17P24 with brdfCandidateCount=1 (RTXDI parity).**
+    Adds RTXDI's missing BRDF candidate stream: K=42 = 17 uniform-fresh
+    + 24 pool + 1 BRDF-sampled candidate. The BRDF candidate samples a
+    BSDF direction, traces a closest-hit ray, on emissive triangle hit
+    builds LightSampleDI from triangle; on miss with env active builds
+    env LightSampleDI. MIS-weighted Li (balance heuristic between BRDF
+    pdf and NEE-equivalent pdf) so it mixes cleanly with NEE candidates.
+
+    Hypothesis (2026-05-15): the remaining Bistro/Sponza rmse residual
+    (Bistro +11%, Sponza +19% vs RTXDI) is from glossy-light correlations
+    that pure light-side K-RIS misses. RTXDI's brdfCandidateCount=1
+    captures them. Tag F17P24B1.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 0)
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_BrdfRis",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=17,
+        cellPoolDrawK=24,
+        brdfCandidateCount=1,                 # ← the new RTXDI quota
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(step_name, frame_configs, scene_file,
                                             poolTileSize=16, **kwargs):
     """**RDI00 variant — 2D track, RTXDI-exact category split.** K=40

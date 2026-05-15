@@ -132,6 +132,14 @@ struct VisibilityQuery : IVisibilityQuery
         return sceneRayQuery.traceVisibilityRay(ray);
     }
 
+    /// Closest-hit query for the BRDF candidate stream (RTXDI_SampleBrdf
+    /// analog). Returns HitInfo; caller checks .isValid() and hitT.
+    HitInfo traceClosestHitRay(const Ray ray, out float hitT)
+    {
+        SceneRayQuery<kUseAlphaTest> sceneRayQuery;
+        return sceneRayQuery.traceRay(ray, hitT);
+    }
+
 #if USE_VISCACHE_VISIBILITYCHECK
     /// CV+RRR visibility query via VisCache. Returns fractional visWeight.
     float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,

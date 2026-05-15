@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
+    run_baseline_ReSTIRDI_R2dP2d_BrdfRis,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
     finalize_step, kResX, kResY,
 )
@@ -82,6 +83,14 @@ for scene_file in get_scenes(default=["Sponza"]):
     # ladder sweep + .agents/handoff for the cross-scene metric matrix
     # justifying the flip).
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
+    # F17P24+BRDF=1 hypothesis FAILED 2026-05-15: Bistro/Sponza unchanged
+    # ±0.5%, no rmse improvement. MIS damping (bs.pdf vs NEE-equivalent
+    # pdf) zeroes the BRDF candidate's contribution on diffuse surfaces
+    # AND in env-sun directions (sun peak pdf dominates). Infrastructure
+    # retained in VisCache_LadderCommon.py for future MIS-blend
+    # reformulation (RTXDI_LightBrdfMisWeight analog). Variant dropped
+    # from default ladder.
+    #     run_baseline_ReSTIRDI_R2dP2d_BrdfRis(STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===
