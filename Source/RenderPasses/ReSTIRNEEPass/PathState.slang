@@ -99,6 +99,15 @@ struct PathState
     float3      thp;                    ///< Path throughput.
     float3      L;                      ///< Accumulated path contribution.
 
+    // Path-cumulative cell footprint (pixels). Initialised at the primary
+    // hit to the base footprint (per-pixel = 1-2). Multiplied at each
+    // scatter ray by a BSDF-roughness-dependent widening factor — fine
+    // for tight specular bounces, broad for rough/diffuse. Used by NEE
+    // call-sites to pick the right 3D cell resolution for cell-reservoir
+    // reuse. Sharc-inspired (BSDF-cone-tracking) — see project_pairwise_
+    // mis_cross_surface_principle for the reuse-layer rationale.
+    float       cellFootprintPx;
+
     GuideData   guideData;              ///< Denoiser guide data.
     InteriorList interiorList;          ///< Interior list. Keeping track of a stack of materials with medium properties.
     SampleGenerator sg;                 ///< Sample generator state. Typically 4-16B.

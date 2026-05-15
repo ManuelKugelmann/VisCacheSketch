@@ -142,6 +142,11 @@ struct PathTracer
     // Additional specialization.
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
+    // 3D cell-reservoir reuse for NEE — base footprint at the primary hit.
+    // ~per-pixel coverage (1-2 px). path.cellFootprintPx grows from here
+    // at each scatter by a BSDF-roughness-dependent factor.
+    static const float kNeeCellBaseFootprintPx = 2.0f;
+
     // LightType + LightSample lifted to namespace level in
     // `RenderPasses.PathTraceCommon.PathTraceCore` (imported above).
 
@@ -298,6 +303,10 @@ struct PathTracer
         path.setActive();
         path.id = pathID;
         path.thp = float3(1.f);
+        // Initialise cumulative cell footprint at primary hit: ~per-pixel.
+        // Each bounce in generateScatterRay multiplies by a BSDF-roughness-
+        // dependent widening factor so deeper bounces use coarser cells.
+        path.cellFootprintPx = kNeeCellBaseFootprintPx;
 
         const uint2 pixel = path.getPixel();
 
@@ -476,6 +485,14 @@ struct PathTracer
             // We classify specular events as diffuse if the roughness is above some threshold.
             float roughness = mi.getProperties(sd).roughness;
             bool isDiffuse = bs.isLobe(LobeType::DiffuseReflection) || roughness > params.specularRoughnessThreshold;
+
+            // Widen path's cumulative cell-footprint by a roughness-dependent
+            // factor. Smooth spec bounces (roughness ≈ 0) preserve the cone
+            // (factor ≈ 1); rough/diffuse bounces broaden it. Used downstream
+            // by NEE to pick a coarser cell at deeper bounces, matching the
+            // path's actual spatial coherence (Sharc-style adaptive resolution).
+            // Delta lobes get the no-widen behaviour automatically (roughness=0).
+            path.cellFootprintPx *= (1.f + 4.f * roughness);
 
             if (isDiffuse)
             {
