@@ -91,6 +91,12 @@ kResY = 512
 _TRACE_GPU_KEYS = (
     "/onFrameRender/RenderGraphExe::execute()/PathTracer/tracePass",
     "/PathTracer/tracePass",
+    "/onFrameRender/RenderGraphExe::execute()/PathTracerX/tracePass",
+    "/PathTracerX/tracePass",
+    "/onFrameRender/RenderGraphExe::execute()/ReSTIRDIPass/tracePass",
+    "/ReSTIRDIPass/tracePass",
+    "/onFrameRender/RenderGraphExe::execute()/ReSTIRNEEPass/tracePass",
+    "/ReSTIRNEEPass/tracePass",
     "/onFrameRender/RenderGraphExe::execute()/RTXDIPass/FinalShading",
     "/onFrameRender/RenderGraphExe::execute()/RTXDIPass",
     "/RTXDIPass",
@@ -4081,6 +4087,15 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
     # PathTracer-integrated WS-ReSTIR (deprecated; will be deleted in the
     # Phase 3 PathTracer cleanup).
     use_restirdi_pass = os.environ.get("USE_RESTIRDIPASS", "1") != "0"
+    # Timing-mode toggle: when LADDER_TIMING_MODE=1 (env var), disable
+    # diagnostics so the measured GPU times reflect the algorithm cost
+    # without VisCache's per-frame diagnostic-texture writes. Default
+    # behaviour (LADDER_TIMING_MODE unset) keeps diagnostics on so the
+    # per-variant plates stay populated for inter-variant quality
+    # comparisons. Per user directive 2026-05-15: "skip diagnostics for
+    # explicit timing runs, can keep them for inter variant timings".
+    _timing_mode = os.environ.get("LADDER_TIMING_MODE", "0") not in ("0", "")
+    _diagnostics_for_run = not _timing_mode
     def _build(actual_spp):
         return render_graph_PathTracer(
             viscache=True, reservoirs=True, maxBounces=maxBounces,
@@ -4126,6 +4141,10 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                 # gated (cache-amortized in steady state, but cold for first
                 # frames before pre-pass warms it).
                 "bayerN": 4,
+                # Diagnostics gating: enabled by default for inter-variant
+                # quality plates; disabled when LADDER_TIMING_MODE=1 so
+                # measured GPU times don't include diagnostic-texture writes.
+                "enableDiagnostics": _diagnostics_for_run,
                 # §9.4 RTXDI BoilingFilter — DISABLED 2026-05-05.
                 # The dispatch fired and the build was clean, but shader writes
                 # to gPixelReservoirs never landed (host-side clearUAV on the
