@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
+    run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic,
     run_baseline_ReSTIRDI_R2dP2d_RTXDISplit,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
     finalize_step, kResX, kResY,
@@ -78,6 +79,11 @@ for scene_file in get_scenes(default=["Sponza"]):
     # pdf, larger K budgets, alternative samplers, architectural variants)
     # are measured in RDI01+.
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
+    # F17P24 with biasCorrection=Basic (RTXDI's actual default; our F17P24
+    # uses Pairwise=1). Tests whether the residual Bistro/Sponza rmse gap
+    # is from the pairwise vs basic divergence — the only knob left
+    # differing from RTXDI's defaults after F17P24.
+    run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic(STEP, [(0, 0, 1)], scene_file, **common)
     # RTXDISplit (F0E8I8P24) — second attempt with proper SUB-RESERVOIR
     # architecture (RTXDI_SampleLightsForSurface analog). Env+inf samples
     # stream into category-private LocalReservoirs, then merge into the

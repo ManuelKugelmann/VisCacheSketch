@@ -4576,6 +4576,35 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
     )
 
 
+def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic(step_name, frame_configs, scene_file,
+                                                     poolTileSize=16, **kwargs):
+    """**RDI00 variant — F17P24 with RTXDI-exact biasCorrection=Basic (0).**
+    Identical to RTXDIBaseline_F17P24 except biasCorrection switches from
+    1 (Pairwise) → 0 (Basic, M-weighted). RTXDI's default IS Basic
+    (Falcor RTXDI.h:144); we historically defaulted to Pairwise. This
+    variant tests whether the residual Bistro/Sponza rmse gap is a
+    pairwise-MIS-vs-basic divergence (the only remaining knob differing
+    from RTXDI's defaults after F17P24).
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 0)   # ← key difference: Basic, not Pairwise
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline_Basic",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=17,
+        cellPoolDrawK=24,
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(step_name, frame_configs, scene_file,
                                             poolTileSize=16, **kwargs):
     """**RDI00 variant — 2D track, RTXDI-exact category split.** K=40
