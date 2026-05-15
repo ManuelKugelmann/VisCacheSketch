@@ -1080,9 +1080,76 @@ struct PathTracer
                     }
                     if (pHatBest > 0.f)
                     {
-                        // W = mean(pHat_j) / pHat_winner unbiases the RIS estimator:
-                        //   f(winner) * W = E[(1/K) · Σ f(x_j)]  (single-sample RIS form)
-                        float W = sumW / (pHatBest * float(kNumNEECandidates));
+                        // K-RIS local state — treated as canonical for the
+                        // optional cell-reservoir merge below.
+                        float M_eff = float(kNumNEECandidates);
+                        float wSum_eff = sumW;
+                        float pHat_eff = pHatBest;
+#if USE_NEE_CELLS == 1
+                        // 3D cell-reservoir merge at this NEE vertex.
+                        // Cell resolved at path's cumulative footprint
+                        // (fine ≈ per-pixel at vertex 1, coarsens per
+                        // bounce by BSDF-roughness — Sharc-style).
+                        CellAddress cellAddr = resolveCellForFootprint(sd.posW, sd.faceN, path.cellFootprintPx);
+                        Reservoir cell;
+                        if (loadCell(cellAddr, cell) && cell.M > 0.f && cell.W > 0.f)
+                        {
+                            // Rebuild cell's stored sample at THIS reader.
+                            LightSampleDI cellLs;
+                            bool cellOk = false;
+                            uint cellType = unpackLightType(cell.lightTypeIndex);
+                            uint cellIdx  = unpackLightIndex(cell.lightTypeIndex);
+                            if (cellType == (uint)LightType::Emissive)
+                                cellOk = rebuildEmissiveLightSample(cellIdx, unpackUV(cell.payload), sd, cellLs);
+                            else if (cellType == (uint)LightType::Analytic)
+                                cellOk = rebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
+                            else if (cellType == (uint)LightType::EnvMap)
+                                cellOk = rebuildEnvMapLightSample(cell.payload, sd, cellLs);
+                            if (cellOk)
+                            {
+                                float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
+                                float pHatCell    = luminance(cellWeight * cellLs.Li);
+                                if (pHatCell > 0.f)
+                                {
+                                    // Pairwise MIS between canonical (K-RIS) and cell.
+                                    float Mcap = min(cell.M, gMCap);
+                                    float canonM = M_eff;
+                                    float m_c     = PairwiseMisState::computeMJ(cell.targetPdf, pHatCell, Mcap, canonM);
+                                    float m_canon = PairwiseMisState::computeMCanon(0.f, pHat_eff, Mcap, canonM, false);
+                                    float wn_cell  = m_c * pHatCell * cell.W * Mcap;
+                                    float wn_canon = m_canon * wSum_eff;
+                                    float total    = wn_cell + wn_canon;
+                                    if (total > 0.f && !isnan(total))
+                                    {
+                                        // RIS roll: keep canonical or replace with cell winner.
+                                        if (sampleNext1D(path.sg) * total < wn_cell)
+                                        {
+                                            lsBest    = cellLs;
+                                            pHatBest  = pHatCell;
+                                            weightBest = cellWeight;
+                                            pHat_eff  = pHatCell;
+                                        }
+                                        wSum_eff = total;
+                                        M_eff    = m_c * Mcap + m_canon * canonM;
+                                    }
+                                }
+                            }
+                        }
+                        // Write merged result back to the cell (every NEE call
+                        // at every vertex contributes to the cell's accumulated
+                        // wSum/M). This is the temporal+spatial reuse mechanism
+                        // — across frames AND across pixels that resolve to the
+                        // same world-space cell.
+                        LocalReservoir merged;
+                        merged.init();
+                        merged.lightTypeIndex = packLightTypeIndex(lsBest.lightType, lsBest.lightIndex);
+                        merged.payload        = packLightSamplePayload(lsBest);
+                        merged.targetPdf      = pHat_eff;
+                        merged.M              = M_eff;
+                        merged.wSum           = wSum_eff;
+                        mergeIntoCell(cellAddr, merged, path.sg);
+#endif // USE_NEE_CELLS
+                        float W = wSum_eff / max(pHat_eff * M_eff, 1e-12f);
                         ls = lsBest;
                         ls.Li *= W;
                         // Stash the winner's BRDF eval so the shading site below

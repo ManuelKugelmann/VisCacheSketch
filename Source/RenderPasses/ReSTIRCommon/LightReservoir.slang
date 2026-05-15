@@ -184,3 +184,15 @@ bool coreRebuildEmissiveLightSample(uint triangleIndex, float2 u, const ShadingD
     return any(ls.Li > 0.f);
 #endif
 }
+
+
+// Pack a LightSampleDI's surface payload to the 32-bit reservoir slot.
+//   Emissive: barys (16:16 unorm via packUV).
+//   EnvMap:   oct-packed direction (16:16) — direction carries the identity.
+//   Analytic: 0 (lightIndex carries identity, no surface UV).
+uint packLightSamplePayload(LightSampleDI inLs)
+{
+    if (inLs.lightType == (uint)LightType::Emissive) return packUV(inLs.lightUV);
+    if (inLs.lightType == (uint)LightType::EnvMap)   return packDirOct(inLs.dir);
+    return 0u;
+}

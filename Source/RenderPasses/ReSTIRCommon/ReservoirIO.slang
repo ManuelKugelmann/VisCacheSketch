@@ -148,6 +148,24 @@ CellAddress resolveCell(float3 posA, float3 faceN)
     return a;
 }
 
+// Per-call footprint variant. Used by NEE at deeper bounces where the
+// effective cell footprint widens with path-cumulative BSDF roughness
+// (Sharc-style cone tracking). Computes the analytical entry level from
+// the explicit footprintPx² instead of using gCellReservoirFootprintPx.
+CellAddress resolveCellForFootprint(float3 posA, float3 faceN, float footprintPx)
+{
+    float sidePx = max(footprintPx, 1.f);
+    int lvl = vhfLevelForFootprint(posA, sidePx * sidePx);
+    lvl = clamp(lvl, 0, int(gNumLevels) - 1);
+    float cs = max(vhfPosASize(lvl), 1e-6f);
+    int3 q  = jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
+    uint nb = (gNormalAddr != 0u) ? normalBin(faceN) : 0u;
+    CellAddress a;
+    a.slot        = addressHash(q, nb) & (gCapacity - 1u);
+    a.fingerprint = fingerprintHash(q, nb);
+    return a;
+}
+
 // ---------------------------------------------------------------------------
 // Local thread-private reservoir for RIS. Identical struct to Reservoir
 // minus persistent-only fields; kept separate to make the merge code clearer.

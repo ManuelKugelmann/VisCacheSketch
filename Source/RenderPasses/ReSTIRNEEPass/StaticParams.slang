@@ -61,3 +61,11 @@ static const float kMISPowerExponent = MIS_POWER_EXPONENT;
 #define NUM_NEE_CANDIDATES 1
 #endif
 static const uint kNumNEECandidates = NUM_NEE_CANDIDATES;
+
+// 3D cell-reservoir reuse at every NEE call-site. 1 = enable (host must
+// bind gReservoirs). 0 = pure online K-RIS (no reservoir, no reuse).
+// Default 0 until host-side binding is wired in ReSTIRNEEPass.cpp.
+#ifndef USE_NEE_CELLS
+#define USE_NEE_CELLS 0
+#endif
+static const uint kUseNeeCells = USE_NEE_CELLS;
