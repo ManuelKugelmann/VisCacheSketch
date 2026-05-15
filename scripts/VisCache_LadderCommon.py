@@ -4512,11 +4512,28 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
 # ---------------------------------------------------------------------------
 def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_file,
                                                poolTileSize=16, **kwargs):
-    """**RDI00 baseline — 2D track.** Per-pixel reservoir (R2d) + screen-tile
-    pool (P2d). K=24-from-pool (RTXDI localLightCandidateCount), mCap=20
-    (RTXDI maxHistoryLength), pdfmipmap pre-pass (RTXDI presample-tile equiv),
-    vblind, no visibility cache. This is the cache-less RTXDI-parity floor
-    along the 2D architecture branch — later ladder steps improve on it.
+    """**RDI00 baseline — 2D track.** Per-pixel R2d reservoir (no R3d cell
+    layer). K=24 fresh main-pass LightBVH candidates per pixel; the per-pixel
+    R2d reservoir aggregates the K-RIS winner across frames + spatial
+    neighbours. No cell-pool, no pre-pass. mCap=20, vblind, no visibility
+    cache.
+
+    **Sampler note vs RTXDI:** RTXDI's strict architecture pulls K=24
+    candidates from a PdfMipmap presample tile. The closest architectural
+    mirror in our code is `R2dP2d_F00P24_vblind` (RDI01) — K=24 from
+    PdfMipmap-fed cell-pool with screen-tile addressing. That variant
+    matches RTXDI's sampling structure but exhibits a known firefly mode:
+    pool-K-only K-RIS without V-aware target pdf retains high-pHat-but-
+    occluded candidates through temporal reuse (Bistro x4 rmse 268 vs
+    vanilla 192, RTXDI 108). The baseline here uses fresh LightBVH instead
+    — it loses the architectural mirror but reaches RTXDI quality without
+    the firefly mode. The "RTXDI sampling-architecture mirror" experiment
+    lives in RDI01.
+
+    Both baselines (2D and 3D) thus share the same K=24 fresh-LightBVH
+    sampling and differ only in reservoir architecture: 2D = per-pixel R2d,
+    3D = pure-R3d sub-pixel cell. This makes "architecture-axis" gains in
+    RDI01+ readable as deltas vs a consistent sampler floor.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["cellReservoirFootprintPx"] = 0   # R3d OFF (2D track)
@@ -4527,10 +4544,9 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",
         addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
-        initialCandidates=0,
-        cellPoolDrawK=24,
-        wsCellPoolPrePass=True,
-        prePassEmissiveSampler="PdfMipmap",
+        initialCandidates=24,
+        cellPoolDrawK=0,
+        wsCellPoolPrePass=False,
         **kwargs2,
     )
 
