@@ -3973,6 +3973,18 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
             except Exception:
                 pass
 
+            # Per-pass timing breakdown diagnostic — activate via env var
+            # LADDER_TIMING_BREAKDOWN=1. Logs all /gpu_time average values
+            # with the variant + spp tag so per-pass costs can be compared
+            # across pipelines (ours vs RTXDI). Falcor's profiler exposes
+            # only top-level pass aggregates — for sub-dispatch breakdown
+            # within a raygen, use PIX / NSight Graphics instead.
+            if os.environ.get("LADDER_TIMING_BREAKDOWN", "0") not in ("0", ""):
+                print(f"\n[timing-breakdown] {tag_suffix}_x{spp} ({scene_name})", flush=True)
+                for k, val in sorted(_gpu_times.items(), key=lambda kv: -kv[1]):
+                    if val > 0.01:
+                        print(f"  {val:9.3f} ms  {k}", flush=True)
+
             spp_gpu_csv = {}
             pt = _gpu_tracepass_lookup(_gpu_times)
             if pt is not None:
