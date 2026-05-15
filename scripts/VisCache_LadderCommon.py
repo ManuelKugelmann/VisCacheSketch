@@ -3248,7 +3248,14 @@ def run_baseline(step_name, frame_configs, scene_file,
                 m.profiler.enabled = True
             except Exception:
                 pass
-            N_WARMUP = 2
+            # N_WARMUP must cover our cell-pool Bayer cycle (16 subframes
+            # at bayerN=4) so timings + quality reflect steady state, not
+            # pool warmup. Previously 2-frame warmup biased low-SPP measurements
+            # toward cold-pool cost; Bistro x1/x4/x16 mean GPU times
+            # decreased monotonically with SPP (42s/37s/20s for ours) — the
+            # symptom of insufficient warmup. RTXDI converges within ~1 frame
+            # so the longer warmup costs it nothing extra at measurement.
+            N_WARMUP = 16
             for _ in range(N_WARMUP):
                 m.renderFrame()
             try:
@@ -3896,7 +3903,14 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                 m.profiler.enabled = True
             except Exception:
                 pass
-            N_WARMUP = 2
+            # N_WARMUP must cover our cell-pool Bayer cycle (16 subframes
+            # at bayerN=4) so timings + quality reflect steady state, not
+            # pool warmup. Previously 2-frame warmup biased low-SPP measurements
+            # toward cold-pool cost; Bistro x1/x4/x16 mean GPU times
+            # decreased monotonically with SPP (42s/37s/20s for ours) — the
+            # symptom of insufficient warmup. RTXDI converges within ~1 frame
+            # so the longer warmup costs it nothing extra at measurement.
+            N_WARMUP = 16
             for _ in range(N_WARMUP):
                 m.renderFrame()
             try:
@@ -4132,6 +4146,14 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
     import re as _re
     if not _re.search(r"_F\d{2}P\d{2}", tag_prefix):
         tag_prefix = f"{tag_prefix}_F{initialCandidates:02d}P{cellPoolDrawK:02d}"
+    # Append Bayer-mode tag when non-default. Default canonical is bayerN=4
+    # ("4x4", 16 subframes/cell-cycle); bayerN=1 ("1x1", every pixel every
+    # frame), bayerN=2 ("2x2", 4 subframes). Caller passes "bayerN" inside
+    # extraVCProps. Tag convention matches BAYER_NxN constants at top of
+    # this module.
+    _bayer_override = (extraVCProps or {}).get("bayerN", 4)
+    if _bayer_override != 4:
+        tag_prefix = f"{tag_prefix}_{_bayer_override}x{_bayer_override}"
     vmode_tag = {0: "vblind", 1: "vcache", 2: "vevaluate"}.get(visInPHat, f"v{visInPHat}")
     tag_suffix = f"{tag_prefix}_{vmode_tag}"
     # Retrace-on-reuse mode shows up in the tag so the (Basic-equiv) and
