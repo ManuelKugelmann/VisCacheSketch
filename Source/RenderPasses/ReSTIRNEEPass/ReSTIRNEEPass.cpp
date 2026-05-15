@@ -132,6 +132,7 @@ namespace
     const std::string kRTXDIOptions = "RTXDIOptions";
     const std::string kUseRestirPT = "useRestirPT";
     const std::string kNumNEECandidates = "numNEECandidates";
+    const std::string kUseNEECells = "useNEECells";
 
     const std::string kUseAlphaTest = "useAlphaTest";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
@@ -237,6 +238,7 @@ void ReSTIRNEEPass::parseProperties(const Properties& props)
         else if (key == kRTXDIOptions) mRTXDIOptions = value;
         else if (key == kUseRestirPT) mStaticParams.useRestirPT = value;
         else if (key == kNumNEECandidates) mStaticParams.numNEECandidates = value;
+        else if (key == kUseNEECells) mStaticParams.useNEECells = value;
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
@@ -364,6 +366,7 @@ Properties ReSTIRNEEPass::getProperties() const
     props[kRTXDIOptions] = mRTXDIOptions;
     props[kUseRestirPT] = mStaticParams.useRestirPT;
     props[kNumNEECandidates] = mStaticParams.numNEECandidates;
+    props[kUseNEECells] = mStaticParams.useNEECells;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
@@ -1292,6 +1295,16 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             // §9 dir/dist addressing knobs — consumed by VisCache when enabled.
             mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
+            // Cell-reservoir reuse: load buffer + cbuffer fields exposed by
+            // VisCache's InternalDictionary (parallel keys to ReSTIRDIPass.cpp:1330).
+            mpVHFReservoirs = dict.keyExists("reservoirBuffer")
+                ? dict.getValue<ref<Buffer>>("reservoirBuffer") : nullptr;
+            mVCParams.enable          = getU("vhfParam_wsEnable", 0u);
+            mVCParams.capacity        = getU("vhfParam_wsCapacity", 0u);
+            mVCParams.cellLevelJitter = getU("vhfParam_wsCellLevelJitter", 0u);
+            mVCParams.normalAddr      = getU("vhfParam_wsNormalAddr", 0u);
+            mVCParams.mCap            = getF("vhfParam_wsMCap", 20.0f);
+            mVCParams.cellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
@@ -1541,6 +1554,18 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
         // §9 dir/dist addressing knobs — VisCache addressing anisotropy.
         vc["gDirSolidAngleScale"]            = mVCParams.dirSolidAngleScale;
         vc["gDistSolidAngleScale"]           = mVCParams.distSolidAngleScale;
+        // Cell-reservoir reuse for NEE (USE_NEE_CELLS=1 in shader).
+        vc["gEnable"]                        = mVCParams.enable;
+        vc["gCapacity"]                      = mVCParams.capacity;
+        vc["gCellLevelJitter"]               = mVCParams.cellLevelJitter;
+        vc["gNormalAddr"]                    = mVCParams.normalAddr;
+        vc["gMCap"]                          = mVCParams.mCap;
+        vc["gCellReservoirFootprintPx"]      = mVCParams.cellReservoirFootprintPx;
+    }
+    // Bind the cell reservoir buffer at root var when present.
+    if (mpVHFReservoirs)
+    {
+        var["gReservoirs"] = mpVHFReservoirs;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.
@@ -1634,6 +1659,7 @@ DefineList ReSTIRNEEPass::StaticParams::getDefines(const ReSTIRNEEPass& owner) c
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
     defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
     defines.add("NUM_NEE_CANDIDATES", std::to_string(numNEECandidates));
+    defines.add("USE_NEE_CELLS", useNEECells ? "1" : "0");
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");

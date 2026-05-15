@@ -150,6 +150,7 @@ private:
         // with target pdf p̂ = unshadowed contribution luminance. No buffer-
         // backed reservoirs (no temporal/spatial reuse) — purely online RIS.
         uint32_t    numNEECandidates = 16;                      ///< Number of light-sample candidates per NEE call (K). 1 = vanilla NEE.
+        bool        useNEECells = false;                        ///< Enable 3D cell-reservoir reuse at every NEE call-site. Requires VisCache pass to provide gReservoirs buffer.
 
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
@@ -257,7 +258,18 @@ private:
              uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
              // §9 dir/dist addressing knobs — used by VisCache when enabled.
              float    dirSolidAngleScale=1.0f;
-             float    distSolidAngleScale=1.0f; } mVCParams;
+             float    distSolidAngleScale=1.0f;
+             // Cell-reservoir reuse for NEE (USE_NEE_CELLS=1).
+             uint32_t enable=0;
+             uint32_t capacity=0;
+             uint32_t cellLevelJitter=0;
+             uint32_t normalAddr=0;
+             float    mCap=20.0f;
+             uint32_t cellReservoirFootprintPx=0; } mVCParams;
+
+    // Cell reservoir buffer hosted by VisCache, exposed via InternalDictionary.
+    // Bound to `gReservoirs` in the trace pass when USE_NEE_CELLS=1.
+    ref<Buffer> mpVHFReservoirs;
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.

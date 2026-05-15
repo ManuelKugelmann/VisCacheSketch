@@ -4554,8 +4554,16 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",
         addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
-        initialCandidates=0,                  # F00 = pure pool, RTXDI architectural mirror
-        cellPoolDrawK=24,                     # P24 = K=24 from PdfMipmap presample tile
+        # RTXDI samples 41 total candidates per pixel (Falcor RTXDI.h:136-139):
+        #   24 localLightCandidateCount + 8 infiniteLightCandidateCount
+        #   + 8 envLightCandidateCount + 1 brdfCandidateCount.
+        # We split this as: 24 pool (emissive-only, PdfMipmap pre-pass) +
+        # 17 fresh main-pass-LightBVH (covers env+infinite+brdf gap via
+        # type selection probabilities). Total = 41 = RTXDI total. The
+        # outer NEE call (always 1 fresh) is counted in the 17, so
+        # extraK = 16 additional fresh candidates beyond the outer.
+        initialCandidates=17,                 # F17 = env+inf+brdf coverage to match RTXDI total
+        cellPoolDrawK=24,                     # P24 = K=24 emissive from PdfMipmap presample tile
         wsCellPoolPrePass=True,
         prePassEmissiveSampler="PdfMipmap",   # pre-pass fills pool with PdfMipmap-sampled candidates
         **kwargs2,
