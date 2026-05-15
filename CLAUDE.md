@@ -79,6 +79,8 @@ Paper: `viscachepaper/sections/*.md` → [GitHub Pages](https://ManuelKugelmann.
 
 Scripts in `scripts/VisCache_Ladder*.py`; shared infra in `VisCache_LadderCommon.py`.
 
+- **SPP convention (CRITICAL):** `Nspp = accumulate N frames × 1 SPP/frame`, never `1 frame × N SPP/frame`. Every ladder runner that exposes SPP uses `force_actual_spp=1` so the harness sets `actual_spp=1, num_frames=spp` (VisCache_LadderCommon.py:3225-3230, 4159, 4858, 4973). Rationale: this mirrors how RTXDI / real-time renderers operate — one final sample per pixel per frame, accumulated over time via temporal-reuse + AccumulatePass. Internal multi-SPP per dispatch (`samplesPerPixel=N` on a single frame) would skip spatial cascade / temporal merge per sample and produce non-comparable measurements. **Do not change this convention; do not add ladders that violate it.**
+
 - **Step 00** (`VisCache_Ladder00.py`): Vanilla baselines (no VisCache). Renders x1 SPP (error reference) + x4096 SPP (ground truth for noise measurement)
 - **Step 01** (`VisCache_Ladder01.py`): Cold-start tiling artifact demo. Single frame, coarse cells, mitigations (footprint scale, warmup write-only) ablated off
 - **Step 02** (`VisCache_Ladder02.py`): `PRESET_MINIMAL` + `QUANT_SMALL`, always-trace. Isolates cache addressing accuracy
