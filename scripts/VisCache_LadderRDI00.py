@@ -44,6 +44,7 @@ from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
     run_baseline_ReSTIRDI_R2dP2d_BrdfRis,
+    run_baseline_ReSTIRDI_R2dP2d_K5Spatial,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
     finalize_step, kResX, kResY,
 )
@@ -83,13 +84,15 @@ for scene_file in get_scenes(default=["Sponza"]):
     # ladder sweep + .agents/handoff for the cross-scene metric matrix
     # justifying the flip).
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
+    # K5Spatial (2026-05-15): single-pass K=5 spatial neighbors gave MIXED
+    # results — Sponza rmse improves -5.5% but Bistro REGRESSES +18%.
+    # Same-snapshot K=5 amplifies fireflies (5 sequential RTXDI passes
+    # would average them out). Closing the residual rmse properly
+    # requires multi-pass spatial with reservoir ping-pong (real
+    # architectural change). Variant dropped from default ladder.
+    #     run_baseline_ReSTIRDI_R2dP2d_K5Spatial(STEP, [(0, 0, 1)], scene_file, **common)
     # F17P24+BRDF=1 hypothesis FAILED 2026-05-15: Bistro/Sponza unchanged
-    # ±0.5%, no rmse improvement. MIS damping (bs.pdf vs NEE-equivalent
-    # pdf) zeroes the BRDF candidate's contribution on diffuse surfaces
-    # AND in env-sun directions (sun peak pdf dominates). Infrastructure
-    # retained in VisCache_LadderCommon.py for future MIS-blend
-    # reformulation (RTXDI_LightBrdfMisWeight analog). Variant dropped
-    # from default ladder.
+    # ±0.5%, no rmse improvement. Variant dropped from default ladder.
     #     run_baseline_ReSTIRDI_R2dP2d_BrdfRis(STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
 

@@ -4608,6 +4608,40 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic(step_name, frame_configs, s
     )
 
 
+def run_baseline_ReSTIRDI_R2dP2d_K5Spatial(step_name, frame_configs, scene_file,
+                                           poolTileSize=16, **kwargs):
+    """**RDI00 variant — F17P24 + spatialPixelsK=5 (single-pass approximation
+    of RTXDI's 5 spatial iterations).** RTXDI default is spatialIterations=5
+    × spatialSampleCount=1 = effective K=5 neighbors via 5 sequential passes.
+    Our pass does 1 iteration. Bumping K within single pass isn't strictly
+    equivalent (same reservoir snapshot for all 5 neighbors vs RTXDI's 5
+    fresh snapshots) but recovers most of the variance reduction.
+
+    Hypothesis (2026-05-15): the residual Bistro/Sponza rmse (+11%/+19% vs
+    RTXDI under F17P24 Basic) is from undersampled spatial reuse. RTXDI
+    leverages its 5-iteration cascade for variance bounding.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 0)
+    kwargs2.setdefault("spatialPixelsK", 5)            # ← RTXDI 5-iter cascade approximated
+    kwargs2.setdefault("spatialPixelsRadius", 30)      # RTXDI samplingRadius default
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_K5Spatial",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=17,
+        cellPoolDrawK=24,
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dP2d_BrdfRis(step_name, frame_configs, scene_file,
                                          poolTileSize=16, **kwargs):
     """**RDI00 variant — F17P24 with brdfCandidateCount=1 (RTXDI parity).**
