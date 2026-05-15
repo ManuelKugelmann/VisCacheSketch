@@ -982,6 +982,10 @@ struct PathTracer
         {
             LightSample ls = {};
             bool validSample = false;
+            // K-RIS NEE caches the winner's BRDF eval so the shading site
+            // doesn't repeat mi.eval. Stays false on the K=1 / RTXDI paths.
+            float3 cachedNeeBrdfWeight = 0.f.xxx;
+            bool cachedNeeBrdfValid = false;
 
             if (applyRTXDI)
             {
@@ -1011,7 +1015,11 @@ struct PathTracer
                 }
                 else
                 {
+                    // Stream K light candidates with target pdf p̂ = luminance(BRDF·Li).
+                    // Each candidate's BRDF eval is cached so the winner doesn't pay
+                    // for it again at the shading site below.
                     LightSample lsBest = {};
+                    float3 weightBest = 0.f.xxx;
                     float pHatBest = 0.f;
                     float sumW = 0.f;
                     [loop]
@@ -1022,26 +1030,29 @@ struct PathTracer
                         float3 weightK = mi.eval(sd, lsK.dir, path.sg);
                         float pHatK = luminance(weightK * lsK.Li);
                         if (pHatK <= 0.f) continue;
-                        // Source pdfs differ across light types (env / emissive /
-                        // analytic), and Dirac lights report pdf=0. luminance(Lr)
-                        // already folds in the per-sample weight (Falcor's
-                        // generateLightSample returns Li = Le/p), so the RIS
-                        // weight here is simply pHat — same convention used by
-                        // ReSTIRDIPass for its primary-hit K-RIS stream.
+                        // Falcor's generateLightSample returns Li = Le / p_emit, so
+                        // luminance(BRDF·Li) already folds in the per-sample weight.
+                        // RIS weight is simply pHat — same convention as ReSTIRDIPass.
                         sumW += pHatK;
                         if (sampleNext1D(path.sg) * sumW < pHatK)
                         {
                             lsBest = lsK;
+                            weightBest = weightK;
                             pHatBest = pHatK;
                         }
                     }
                     if (pHatBest > 0.f)
                     {
                         // W = mean(pHat_j) / pHat_winner unbiases the RIS estimator:
-                        //   f(winner) * W = E[(1/K) * Σ f(x_j)]  (single-sample RIS form)
+                        //   f(winner) * W = E[(1/K) · Σ f(x_j)]  (single-sample RIS form)
                         float W = sumW / (pHatBest * float(kNumNEECandidates));
                         ls = lsBest;
                         ls.Li *= W;
+                        // Stash the winner's BRDF eval so the shading site below
+                        // skips the redundant mi.eval(sd, ls.dir, path.sg). At K=16
+                        // this halves the BSDF-eval cost per NEE event.
+                        cachedNeeBrdfWeight = weightBest;
+                        cachedNeeBrdfValid = true;
                         validSample = true;
                     }
                 }
@@ -1057,7 +1068,7 @@ struct PathTracer
                     ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
                 }
 
-                float3 weight = mi.eval(sd, ls.dir, path.sg);
+                float3 weight = cachedNeeBrdfValid ? cachedNeeBrdfWeight : mi.eval(sd, ls.dir, path.sg);
                 float3 Lr = weight * ls.Li;
 
 

@@ -1289,7 +1289,7 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             mVCParams.bayerN       = getU("vhfParam_bayerN", 1u);
             mVCParams.warmupFirst  = getU("vhfParam_warmupFirst", 0u);
             mVCParams.warmupRun    = getU("vhfParam_warmupRun", 0u);
-            // §9 dir/dist addressing knobs — still consumed by VisCache (non-WS-ReSTIR).
+            // §9 dir/dist addressing knobs — consumed by VisCache when enabled.
             mVCParams.dirSolidAngleScale    = getF("vhfParam_dirSolidAngleScale", 1.0f);
             mVCParams.distSolidAngleScale   = getF("vhfParam_distSolidAngleScale", 1.0f);
         }
@@ -1661,11 +1661,10 @@ DefineList ReSTIRNEEPass::StaticParams::getDefines(const ReSTIRNEEPass& owner) c
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
     defines.add("VISCACHE_BAYER_N", std::to_string(owner.mVisCacheBayerN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
-    // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).
     defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
-    // §9.4 WS-ReSTIR DI moved to ReSTIRDIPass / ReSTIRDIReferencePass / ReSTIRNEEPass —
-    // ReSTIRNEEPass no longer carries the in-tree implementation. Define stays at 0 so
-    // any leftover gates compile out.
+    // No WS-reservoir layer in this pass — these compile-out flags keep any
+    // shared slang (CV-visibility helpers etc.) from referencing missing
+    // symbols at the import boundary.
     defines.add("USE_WS_RESERVOIRS", "0");
     defines.add("WS_CELL_POOL_FILL_ONLY", "0");
 

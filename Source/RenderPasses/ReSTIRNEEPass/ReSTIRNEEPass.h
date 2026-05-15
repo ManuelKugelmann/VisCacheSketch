@@ -229,7 +229,7 @@ private:
     ref<Buffer> mpVHFParamsCB;   ///< cbuffer VisCacheParams — bound directly to keep struct in sync
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
-    bool mVisCacheLightSelection = false;   ///< §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR)
+    bool mVisCacheLightSelection = false;   ///< §9.1 cached μ in NEE target p̂
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)
     uint32_t mVisCacheBayerN = 1;           ///< Bayer N×N gate (1=full frame, 2=2×2/4 subframes, 4=4×4/16 subframes); see Falcor/LOCAL_FIXES.md #14
 
@@ -255,7 +255,7 @@ private:
              float cameraPosX=0, cameraPosY=0, cameraPosZ=0;
              float pixelSize1=0.001f;
              uint32_t bayerN=1, warmupFirst=0, warmupRun=0;
-             // §9 dir/dist addressing knobs — used by VisCache regardless of WS-ReSTIR.
+             // §9 dir/dist addressing knobs — used by VisCache when enabled.
              float    dirSolidAngleScale=1.0f;
              float    distSolidAngleScale=1.0f; } mVCParams;
 

@@ -33,8 +33,10 @@ block (around the `// Sample a light.` comment). When
 5. Single shadow ray traced on the winner (Falcor's standard visibility
    path; respects `USE_VISCACHE_VISIBILITYCHECK` if VisCache is wired).
 
-`K = 1` falls through to a `validSample = generateLightSample(...)` call —
-byte-for-byte vanilla NEE.
+`K = 1` is compile-time-equivalent to vanilla NEE: the K-RIS branch is
+guarded by `if (kNumNEECandidates <= 1u)`, a compile-time constant, so
+Slang DCEs the else branch. Runtime output matches PathTracerX (verified
+by render-diff regression at K=1; see *Validation* below).
 
 ## C++ knob
 
@@ -45,11 +47,14 @@ byte-for-byte vanilla NEE.
 ## Known approximations (deferred)
 
 - **MIS pdf**: the K-RIS sample has effective pdf
-  `p_RIS = p_src(winner) / W`. The current code feeds the winner's original
-  `ls.pdf` into `evalMIS` rather than `p_RIS`. This biases the BSDF/NEE MIS
-  combination slightly toward NEE, but keeps the estimator itself unbiased.
-  Acceptable starting point; tighten later if metrics show systematic NEE
-  oversampling.
+  `p_RIS = p_src(winner) / W > p_src(winner)` (we oversample high-pHat
+  regions). The current code feeds the winner's original `ls.pdf = p_src`
+  into `evalMIS`, which yields a smaller `w_NEE` than the variance-optimal
+  combination would. Net effect: **NEE is under-weighted in the MIS
+  combination** (and the symmetric path — BSDF samples that hit a light
+  — is unaware of the K-RIS pdf entirely, so BSDF contributions are
+  over-weighted). The estimator stays unbiased; only the combination's
+  variance is sub-optimal. Tighten when metrics show MIS-related noise.
 - **Visibility-blind target pdf**: pHat omits the shadow term. Variance
   reduction is good for diffuse-dominant scenes; in heavy-occlusion
   configurations a V-aware p̂ (extra K shadow rays per vertex) would help
