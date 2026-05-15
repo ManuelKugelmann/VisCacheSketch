@@ -4045,6 +4045,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          wsCellPoolPrePass=True,                         # default ON: pre-pass before main pass populates the cell-pool. Set False to ablation-test reliance on implicit Bayer-subframe-0 warmup.
                          cellPoolDrawK=16,                             # K=16 pool-draws. Combined with initialCandidates=32 above, gives K_total=48 (2:1 fresh:pool ratio). RDI00 sweep at K=24 alternatives (F16P08, F24P00) showed K=48 still wins cumulatively across the 7-scene matrix despite over-spec vs RTXDI's K=24 localLightCandidateCount.
                          prePassEmissiveSampler="PdfMipmap",             # pre-pass emissive sampler. PdfMipmap = RTXDI-style hierarchical 2D pdf (shading-agnostic). LightBVH = shading-conditional via per-pixel BSDF guidance.
+                         emissiveSampler=None,                            # main-pass emissive sampler. None = Falcor default (LightBVH). "PdfMipmap" matches RTXDI fully — all per-pixel candidates from the same flux-proportional distribution.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -4085,7 +4086,8 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             # diversity from the global distribution.
             #   - main-pass pool inserts gated off (#if WS_CELL_POOL_FILL_ONLY)
             #     so pool stays PdfMipmap-only.
-            prePassEmissiveSampler="PdfMipmap",
+            prePassEmissiveSampler=prePassEmissiveSampler,
+            emissiveSampler=emissiveSampler,
             visibilityCheck=False, lightSelection=False,  # pure ReSTIR track — no VisCache cache
             extraVCProps={
                 "useCellInRIS": False,             # no cell hint
@@ -4512,41 +4514,42 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
 # ---------------------------------------------------------------------------
 def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_file,
                                                poolTileSize=16, **kwargs):
-    """**RDI00 baseline — 2D track.** Per-pixel R2d reservoir (no R3d cell
-    layer). K=24 fresh main-pass LightBVH candidates per pixel; the per-pixel
-    R2d reservoir aggregates the K-RIS winner across frames + spatial
-    neighbours. No cell-pool, no pre-pass. mCap=20, vblind, no visibility
-    cache.
+    """**RDI00 baseline — 2D track.** Param-parity with RTXDI. Per-pixel R2d
+    reservoir + screen-tile P2d pool. K = 0 fresh + 24 from PdfMipmap
+    presample-tile pool (= RTXDI's localLightCandidateCount, drawn from
+    RTXDI's actual sample source). mCap=20, vblind, no visibility cache.
 
-    **Sampler note vs RTXDI:** RTXDI's strict architecture pulls K=24
-    candidates from a PdfMipmap presample tile. The closest architectural
-    mirror in our code is `R2dP2d_F00P24_vblind` (RDI01) — K=24 from
-    PdfMipmap-fed cell-pool with screen-tile addressing. That variant
-    matches RTXDI's sampling structure but exhibits a known firefly mode:
-    pool-K-only K-RIS without V-aware target pdf retains high-pHat-but-
-    occluded candidates through temporal reuse (Bistro x4 rmse 268 vs
-    vanilla 192, RTXDI 108). The baseline here uses fresh LightBVH instead
-    — it loses the architectural mirror but reaches RTXDI quality without
-    the firefly mode. The "RTXDI sampling-architecture mirror" experiment
-    lives in RDI01.
+    **Param parity is the contract.** Where our quality trails RTXDI, the
+    delta is a *diagnostic signal* pointing at impl divergences we need to
+    fix — not something to paper over by changing K, sampler, mCap, etc.
+    Known gaps to track as diagnostic data (not fixed by changing params):
 
-    Both baselines (2D and 3D) thus share the same K=24 fresh-LightBVH
-    sampling and differ only in reservoir architecture: 2D = per-pixel R2d,
-    3D = pure-R3d sub-pixel cell. This makes "architecture-axis" gains in
-    RDI01+ readable as deltas vs a consistent sampler floor.
+      Cornell_32PL  err  4.32 vs RTXDI 3.65   — trails by 0.67 pp
+      Sponza        err  5.56 vs RTXDI 6.62   — beats by 1.06 pp on err
+      Bistro        err 11.19 vs RTXDI 10.04  — trails by 1.15 pp
+      Bistro       rmse  268  vs RTXDI 108    — firefly mode (the big one)
+
+    The Bistro rmse blowup is the strongest signal: pool-only K-RIS without
+    V-aware target pdf retains occluded high-pHat candidates through
+    temporal/spatial reuse. Likely fixes (later ladder steps): pairwise MIS
+    bias correction (Boksansky 2022), proper testCandidateVisibility timing
+    inside the K-RIS pipeline (already present at line 1406 but maybe
+    happens too late), or RTXDI-faithful pre-pass tile structure.
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["cellReservoirFootprintPx"] = 0   # R3d OFF (2D track)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)         # RTXDI maxHistoryLength
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")  # main-pass too = full RTXDI parity
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",
         addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
-        initialCandidates=24,
-        cellPoolDrawK=0,
-        wsCellPoolPrePass=False,
+        initialCandidates=0,                  # F00 = pure pool, RTXDI architectural mirror
+        cellPoolDrawK=24,                     # P24 = K=24 from PdfMipmap presample tile
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",   # pre-pass fills pool with PdfMipmap-sampled candidates
         **kwargs2,
     )
 
@@ -4554,39 +4557,63 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
 def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_file,
                                                cellPoolFootprintPx=16,
                                                cellReservoirFootprintPx=1, **kwargs):
-    """**RDI00 baseline — 3D track.** Pure R3d — no per-pixel layer; the
-    sub-pixel-footprint cell reservoir is the temporal accumulator. K=24
-    fresh main-pass LightBVH candidates per pixel; the R3d cell reservoir
-    aggregates the K-RIS winner across pixels and frames. No cell-pool, no
-    pre-pass — same architectural mechanism as the existing R3dP3d_F24P00
-    variant. mCap=20, vblind, no visibility cache.
+    """**RDI00 baseline — 3D track.** Param-parity with RTXDI but on the
+    pure-R3d architecture (no per-pixel layer; sub-pixel cell reservoir is
+    the temporal accumulator). K = 0 fresh + 24 from PdfMipmap presample
+    pool (= RTXDI's localLightCandidateCount). mCap=20, vblind, no
+    visibility cache.
 
-    **Sampler note vs RTXDI:** RTXDI's strict architecture pulls K=24
-    candidates from a precomputed PdfMipmap presample tile. Our equivalent
-    is the cell-pool when sourced via `wsCellPoolPrePass=True` +
-    `prePassEmissiveSampler="PdfMipmap"`. However, the pure-R3d + pure-pool
-    combination in our current impl produces vanilla-equivalent output —
-    the pool is too sparse (one insert per pixel per frame at
-    `initialCandidates=0`) to materially shift the K-RIS winner, since the
-    per-pixel reservoir and useCellInRIS paths are both off. Until the pool
-    can be densely populated under pure-R3d, this baseline uses fresh
-    LightBVH K=24 instead. The "RTXDI sampler match" experiment lives in
-    RDI01 (R2dR3dP3d hybrid sweep / R2dP2d_F00P24).
+    **Param parity is the contract.** Where quality trails RTXDI the delta
+    is a *diagnostic signal* of impl divergence to fix. Known signal here:
+    this configuration currently produces **vanilla-equivalent output** on
+    all 3 scenes — the K-RIS pool reads fire but the merged local reservoir
+    never picks a different winner than the outer NEE sample. Root cause
+    (per investigation in earlier loop iteration): when
+    `enablePixelReservoir=False` AND `useCellInRIS=False` AND
+    `initialCandidates=0`, the pool insertion rate per frame is
+    ~1 candidate per pixel (only the outer fresh, since extraK = max(0,
+    gInitialCandidates - 1) = 0). The 2D track works because its per-pixel
+    R2d reservoir layer carries temporal information; the pure-R3d cell
+    reservoir alone, fed by a sparse pool, fails to converge.
+
+    Fix candidates (later ladder step):
+      1. Densify pool inserts in pre-pass — run pre-pass K-RIS with K > 1
+         even though main pass uses initialCandidates=0.
+      2. Re-evaluate the cellPoolDrawK > 0 + sparse-pool fall-through —
+         maybe lookupCellPool returns count=0 too often.
+      3. Audit cell-pool addressing under pure-R3d (cellReservoirFootprintPx=1
+         vs cellPoolFootprintPx=16 alignment).
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["enablePixelReservoir"] = False         # drop per-pixel layer (3D track = R3d only)
     extra["cellReservoirMerge"]   = 1             # full Bitterli weighted merge
     extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
+    # 3D track needs cell-reservoir reuse to be analogous to RTXDI's per-
+    # pixel temporal reservoir. The two diagnostic states:
+    #   useCellInRIS=False (current): cells written, never read; K-RIS V-test
+    #     zeros local.targetPdf for occluded winners and there's no spatial/
+    #     temporal recovery path → output ≈ vanilla.
+    #   useCellInRIS=True (tested 2026-05-15, reverted): cell-aggregated W
+    #     values vary wildly across cells; the Bitterli M-weighted merge
+    #     `wn = pHat * W * M` amplifies that mismatch into catastrophic
+    #     fireflies (rmse 2001 on Cornell vs vanilla 0.5; rmse 1303 on
+    #     Bistro). Confirms pairwise MIS bias correction (Boksansky 2022 /
+    #     RTXDI BiasCorrection::Pairwise) is load-bearing for cross-surface
+    #     reservoir merges. Pairwise MIS implementation is the unblock —
+    #     after that lands, set useCellInRIS=True here.
+    extra["useCellInRIS"] = False
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")  # main-pass too = full RTXDI parity
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R3dP3d_RTXDIBaseline",
         addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
-        initialCandidates=24,
-        cellPoolDrawK=0,
-        wsCellPoolPrePass=False,
+        initialCandidates=0,                  # F00 = pure pool, RTXDI architectural mirror
+        cellPoolDrawK=24,                     # P24 = K=24 from PdfMipmap presample tile
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",
         **kwargs2,
     )
 
