@@ -49,6 +49,20 @@ import Rendering.RTXDI.RTXDI;
 
 // Phase 3d: shared LightType/LightSample types from Common.
 import RenderPasses.PathTraceCommon.PathTraceCore;
+// LightSampleDI + cell-reservoir reuse infrastructure shared with ReSTIRDIPass.
+// Brings in LightSampleDI (8 fields, has lightIndex+lightUV for reservoir packing),
+// pcgHashEndpoint / pcgHash etc. from CacheCommon, the Reservoir struct +
+// loadCell/mergeIntoCell from ReservoirIO, and PairwiseMisState helpers.
+// Cell-NEE: at every NEE call-site, merge K-RIS winner into the home cell
+// reservoir (keyed by posA cascade) via pairwise MIS. The cell layer is the
+// natural temporal/spatial reuse mechanism for deeper bounces — per-pixel
+// R2d only makes sense at primary hit (vertex 1).
+import RenderPasses.ReSTIRCommon.LightReservoir;
+import RenderPasses.ReSTIRCommon.Reservoir;
+import RenderPasses.ReSTIRCommon.ReservoirIO;
+import RenderPasses.ReSTIRCommon.PairwiseMIS;
+import RenderPasses.CacheCommon.CacheHash;
+import RenderPasses.VisCache.VisCache;          // vhfPosASize / vhfLevelForFootprint + cbuffer access
 
 #if USE_VISCACHE && USE_VISCACHE_LIGHTSELECTION
 import RenderPasses.VisCache.VisCache;   // vhfLookup, VHFResult, gLightMuMin
@@ -563,7 +577,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
+    bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
 
@@ -579,6 +593,8 @@ struct PathTracer
         ls.origin = vertex.getRayOrigin(lightSample.dir);
         ls.distance = kRayTMax;
         ls.dir = lightSample.dir;
+        ls.lightIndex = 0u;                  // EnvMap: no per-light identity
+        ls.lightUV    = float2(0.f);         // direction carries the identity (oct-packed in payload)
 
         return any(ls.Li > 0.f);
     }
@@ -590,7 +606,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere, inout SampleGenerator sg, out LightSample ls)
+    bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
         if (!kUseEmissiveLights) return false;
@@ -607,6 +623,8 @@ struct PathTracer
         float3 toLight = lightPos - ls.origin;
         ls.distance = length(toLight);
         ls.dir = normalize(toLight);
+        ls.lightIndex = tls.triangleIndex;   // identity = emissive triangle index
+        ls.lightUV    = tls.uv;              // barycentric on the triangle
 
         return any(ls.Li > 0.f);
     }
@@ -618,7 +636,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
+    bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {}; // Default initialization to avoid divergence at returns.
 
@@ -642,6 +660,8 @@ struct PathTracer
         // Do not worry about adjusting the ray length to avoid self-intersections at the light.
         ls.distance = lightSample.distance;
         ls.dir = lightSample.dir;
+        ls.lightIndex = lightIndex;          // identity = analytic light index
+        ls.lightUV    = float2(0.f);         // analytic lights have no surface UV
 
         return any(ls.Li > 0.f);
     }
@@ -711,7 +731,7 @@ struct PathTracer
         \param[out] ls Struct describing valid samples.
         \return True if the sample is valid and has nonzero contribution, false otherwise.
     */
-    bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSample ls)
+    bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSampleDI ls)
     {
         ls = {};
 
@@ -980,7 +1000,7 @@ struct PathTracer
         path.setLightSampled(false, false);
         if (applyNEE || applyRTXDI)
         {
-            LightSample ls = {};
+            LightSampleDI ls = {};
             bool validSample = false;
             // K-RIS NEE caches the winner's BRDF eval so the shading site
             // doesn't repeat mi.eval. Stays false on the K=1 / RTXDI paths.
@@ -1018,14 +1038,14 @@ struct PathTracer
                     // Stream K light candidates with target pdf p̂ = luminance(BRDF·Li).
                     // Each candidate's BRDF eval is cached so the winner doesn't pay
                     // for it again at the shading site below.
-                    LightSample lsBest = {};
+                    LightSampleDI lsBest = {};
                     float3 weightBest = 0.f.xxx;
                     float pHatBest = 0.f;
                     float sumW = 0.f;
                     [loop]
                     for (uint k = 0u; k < kNumNEECandidates; ++k)
                     {
-                        LightSample lsK = {};
+                        LightSampleDI lsK = {};
                         if (!generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, path.sg, lsK)) continue;
                         float3 weightK = mi.eval(sd, lsK.dir, path.sg);
                         float pHatK = luminance(weightK * lsK.Li);
