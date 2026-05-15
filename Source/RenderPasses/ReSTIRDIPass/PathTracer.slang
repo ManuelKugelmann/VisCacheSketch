@@ -1542,25 +1542,19 @@ struct PathTracer
                         if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
-                            // See spatial-pixel-merge for the bias-correction
-                            // mode explanation. Cell merges cross surfaces by
-                            // construction (cell aggregates ALL pixels keyed
-                            // to the same world-space cell), so BIAS_CORRECTION
-                            // is load-bearing here — the Bitterli basic merge
-                            // produces catastrophic weight blow-up when cell.W
-                            // gets large from accumulated mass at writers whose
-                            // stored pHat (cell's targetPdf) is small.
-                            float m_cell = 1.f;
-#if BIAS_CORRECTION == 1
-                            {
-                                float canonM = local.M;
-                                float pairwiseDenom = pHatCell * canonM + cell.targetPdf * Mcap;
-                                m_cell = (pairwiseDenom > 0.f)
-                                    ? (cell.targetPdf * Mcap) / pairwiseDenom
-                                    : 0.f;
-                            }
-#endif
-                            float w = m_cell * pHatCell * cell.W * Mcap;
+                            // Cell-merge stays on Bitterli basic for now. Cross-
+                            // surface pairwise MIS needs the same canonical-
+                            // correction treatment the spatial-pixel-merge gets
+                            // (snapshot canonical pre-merge, accumulate
+                            // m_canonical_j across cell reads, re-stream
+                            // canonical at end). Single-source m_cell without
+                            // correction biases toward canonical the same way
+                            // the spatial single-source did before correction
+                            // — tested 2026-05-15, Cornell rmse went 0.5 →
+                            // 2610 with that biased form. Cell merge gets the
+                            // proper treatment after spatial-pixel pairwise is
+                            // validated.
+                            float w = pHatCell * cell.W * Mcap;
                             if (w > 0.f && !isnan(w))
                             {
                                 local.wSum += w;
@@ -1700,6 +1694,30 @@ struct PathTracer
                         const uint kSpatialPixels = gSpatialPixelsK;
                         const int  kSpatialRadius = (int)gSpatialPixelsRadius;
                         uint2 px = path.getPixel();
+                        // Pairwise MIS canonical-correction (Boksansky 2022 §4).
+                        // Snapshot the local reservoir = "canonical" (K-RIS +
+                        // any prior cell/temporal merges). Re-init local; the
+                        // spatial loop will stream neighbours into the fresh
+                        // local with pairwise m_j weights, accumulating the
+                        // canonical's MIS contribution as m_canon_acc. At the
+                        // end we re-stream canonical with that accumulated
+                        // weight — fully unbiased pairwise MIS combine.
+                        // BIAS_CORRECTION=0 path keeps the simpler Bitterli
+                        // basic merge (skips snapshot / re-init / re-stream).
+                        float canonM_save = 0.f;
+                        float canonWSum_save = 0.f;
+                        float canonTargetPdf_save = 0.f;
+                        uint  canonLightTypeIndex_save = 0u;
+                        uint  canonPayload_save = 0u;
+                        float canonMISAcc = 0.f;
+#if BIAS_CORRECTION == 1
+                        canonM_save = local.M;
+                        canonWSum_save = local.wSum;
+                        canonTargetPdf_save = local.targetPdf;
+                        canonLightTypeIndex_save = local.lightTypeIndex;
+                        canonPayload_save = local.payload;
+                        local.init();
+#endif
                         for (uint s = 0u; s < kSpatialPixels; ++s)
                         {
                             float2 r = sampleNext2D(path.sg);
@@ -1776,22 +1794,19 @@ struct PathTracer
                             float Mcn = min(nbr.M, gMCap);
                             // Bias correction:
                             //   0 = Bitterli basic (M-weighted) — pHat_reader * W_j * M_j
-                            //   1 = Pairwise MIS (Boksansky 2022, RTXDI BiasCorrection::Pairwise)
-                            //       Replaces the implicit `m_j = M_j/ΣM_k` with the proper
-                            //       Talbot pairwise weight using stored pHat_j(y_j) from
-                            //       nbr.targetPdf. Required for cross-surface merges where
-                            //       pHat_reader and pHat_j diverge — otherwise basic-mode
-                            //       weight blow-up amplifies fireflies (catastrophic when
-                            //       merging cell reservoirs; modest variance penalty when
-                            //       merging similar-surface pixel reservoirs).
+                            //   1 = Pairwise MIS (Boksansky 2022 §4 / RTXDI Pairwise)
+                            //       m_j = pHat_j*M_j / (pHat_reader*M_canon + pHat_j*M_j)
+                            //       Uses snapshotted canonM_save (not the running local.M)
+                            //       so all pairwise weights see the same canonical. After
+                            //       the loop we re-stream canonical with accumulated
+                            //       m_canonical_j weight — fully unbiased Talbot pairwise.
                             float m_j = 1.f;
 #if BIAS_CORRECTION == 1
                             {
-                                float canonM = local.M;
-                                float pairwiseDenom = pHatN * canonM + nbr.targetPdf * Mcn;
-                                m_j = (pairwiseDenom > 0.f)
-                                    ? (nbr.targetPdf * Mcn) / pairwiseDenom
-                                    : 0.f;
+                                float pairwiseDenom = pHatN * canonM_save + nbr.targetPdf * Mcn;
+                                if (pairwiseDenom <= 0.f) continue;
+                                m_j = (nbr.targetPdf * Mcn) / pairwiseDenom;
+                                canonMISAcc += (pHatN * canonM_save) / pairwiseDenom;
                             }
 #endif
                             float wn  = m_j * pHatN * nbr.W * Mcn;
@@ -1805,6 +1820,40 @@ struct PathTracer
                                 local.targetPdf      = pHatN;
                             }
                         }
+                        // Re-stream canonical with the accumulated MIS weight
+                        // (Boksansky 2022 §4). RIS weight for canonical's sample:
+                        //   wn_canon = canonMISAcc * canonical.W * canonical.targetPdf * canonical.M
+                        //            = canonMISAcc * canonWSum_save
+                        // (since canonical.W*M*pHat = wSum by the W definition).
+                        // The streaming pick at the end gives canonical its proper
+                        // chance to win against all neighbours we already streamed.
+#if BIAS_CORRECTION == 1
+                        if (canonM_save > 0.f && canonTargetPdf_save > 0.f)
+                        {
+                            float wn_canon = canonMISAcc * canonWSum_save;
+                            if (wn_canon > 0.f && !isnan(wn_canon))
+                            {
+                                local.wSum += wn_canon;
+                                local.M    += canonM_save;
+                                if (sampleNext1D(path.sg) * local.wSum <= wn_canon)
+                                {
+                                    local.lightTypeIndex = canonLightTypeIndex_save;
+                                    local.payload        = canonPayload_save;
+                                    local.targetPdf      = canonTargetPdf_save;
+                                }
+                            }
+                            else
+                            {
+                                // No valid neighbours streamed; restore canonical
+                                // verbatim so downstream code sees the K-RIS state.
+                                local.wSum           = canonWSum_save;
+                                local.M              = canonM_save;
+                                local.targetPdf      = canonTargetPdf_save;
+                                local.lightTypeIndex = canonLightTypeIndex_save;
+                                local.payload        = canonPayload_save;
+                            }
+                        }
+#endif
                     }
 
                     // (3) Swap winner if the local picked a sample we can rebuild.

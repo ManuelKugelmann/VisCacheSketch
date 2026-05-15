@@ -4544,16 +4544,16 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)                        # RTXDI maxHistoryLength
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")      # main-pass too = full RTXDI parity
-    # biasCorrection: 0 = Bitterli basic (default, kept for baselines).
-    # Pairwise MIS infrastructure landed (BIAS_CORRECTION=1 in shader,
-    # spatial-pixel + cell-merge sites) but tested 2026-05-15 with worse
-    # results than basic on all 3 scenes — single-source pairwise without
-    # canonical-MIS correction biases toward canonical (K-RIS local pre-
-    # merge) because neighbour wSum is downweighted while canonical wSum
-    # gets full weight. Boksansky 2022 §4 specifies the canonical
-    # correction: accumulate m_canonical_j across neighbours, then
-    # re-stream canonical's contribution at finalize with that weight.
-    # That refactor is the next step before pairwise can be the baseline.
+    # biasCorrection: 0 = Bitterli basic (default, baselines stay here).
+    # Pairwise MIS infrastructure is in PathTracer.slang (BIAS_CORRECTION=1
+    # in shader, snapshot-and-restream form at spatial-pixel merge) but
+    # tested 2026-05-15 — produces W_final = W/2 at the equal-pHat-equal-M
+    # case → half-bright output → bias. RTXDI SDK's
+    # RTXDI_FinalizeResampling for Pairwise mode uses different M-
+    # accounting than Basic; replicating it correctly needs SDK source
+    # reference. Until that's nailed down, baselines stay on Bitterli
+    # basic and the gap to RTXDI quality remains documented as a
+    # diagnostic signal (not papered over by tuning other params).
     kwargs2.setdefault("biasCorrection", 0)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
