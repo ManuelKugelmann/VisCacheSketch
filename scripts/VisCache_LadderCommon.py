@@ -2998,7 +2998,14 @@ def run_variants(step_name, frame_configs, scene_file, variants=None,
                 events = m.profiler.events
                 for k, v in events.items():
                     if "/gpu_time" in k and isinstance(v, dict):
-                        avg = v.get("average", -1.0)
+                        # Use stats.mean (history-buffer arithmetic mean) NOT
+                        # events.average (EMA with sigma=0.98). resetStats()
+                        # clears the history buffer that feeds stats.mean but
+                        # does NOT reset the EMA — so events.average would
+                        # leak warmup-period values into the measurement.
+                        # Verified 2026-05-15 against Falcor Profiler.cpp:222.
+                        stats = v.get("stats", {})
+                        avg = stats.get("mean", -1.0) if isinstance(stats, dict) else -1.0
                         if avg is not None and avg > 0:
                             gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
             except Exception as _e:
@@ -3297,7 +3304,14 @@ def run_baseline(step_name, frame_configs, scene_file,
                 events = m.profiler.events
                 for k, v in events.items():
                     if "/gpu_time" in k and isinstance(v, dict):
-                        avg = v.get("average", -1.0)
+                        # Use stats.mean (history-buffer arithmetic mean) NOT
+                        # events.average (EMA with sigma=0.98). resetStats()
+                        # clears the history buffer that feeds stats.mean but
+                        # does NOT reset the EMA — so events.average would
+                        # leak warmup-period values into the measurement.
+                        # Verified 2026-05-15 against Falcor Profiler.cpp:222.
+                        stats = v.get("stats", {})
+                        avg = stats.get("mean", -1.0) if isinstance(stats, dict) else -1.0
                         if avg is not None and avg > 0:
                             spp_gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
             except Exception:
@@ -3973,7 +3987,14 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
                 events = m.profiler.events
                 for k, v in events.items():
                     if "/gpu_time" in k and isinstance(v, dict):
-                        avg = v.get("average", -1.0)
+                        # Use stats.mean (history-buffer arithmetic mean) NOT
+                        # events.average (EMA with sigma=0.98). resetStats()
+                        # clears the history buffer that feeds stats.mean but
+                        # does NOT reset the EMA — so events.average would
+                        # leak warmup-period values into the measurement.
+                        # Verified 2026-05-15 against Falcor Profiler.cpp:222.
+                        stats = v.get("stats", {})
+                        avg = stats.get("mean", -1.0) if isinstance(stats, dict) else -1.0
                         if avg is not None and avg > 0:
                             _gpu_times[k.rsplit("/gpu_time", 1)[0]] = float(avg)
             except Exception:

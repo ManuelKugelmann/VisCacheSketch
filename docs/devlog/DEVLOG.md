@@ -148,6 +148,38 @@ rmse trails on Bistro/Sponza — attributed to RTXDI's 5-iteration
 spatial cascade (our 1-pass spatial reuse cannot recover the same
 variance reduction without multi-pass ping-pong infrastructure).
 
+### TIMING CORRECTION (2026-05-15 late) — Falcor EMA artifact
+
+The "we're 3-4× faster per frame than RTXDI" claim below was WRONG.
+It rested on `events[k]["average"]` from Falcor's profiler, which
+is actually an EMA with σ=0.98 (Profiler.cpp:43). `resetStats()`
+does NOT reset the EMA (line 234-239 only clears the
+`computeStats()` history buffer) — so 16 warmup frames leaked
+into the measurement window.
+
+Switching to `events[k]["stats"]["mean"]` (true per-call arithmetic
+mean) reveals the actual per-frame cost at x16:
+
+|              | RTXDI ms/fr | Ours ms/fr | Ratio          |
+|--------------|-------------|------------|----------------|
+| Cornell_1PL  | 2.70        | 47.32      | ours 17.5× slower |
+| Bistro       | 23.44       | 81.19      | ours 3.5× slower  |
+| Sponza       | 5.81        | 79.65      | ours 13.7× slower |
+
+So we are NOT faster. We are 3-17× SLOWER per frame than RTXDI at
+steady state. The QUALITY wins remain valid (40-95% rmse advantage
+across all scenes at all SPPs) — those weren't timing-dependent.
+
+Trade-off: ours buys quality at cost of speed. For the same
+quality target, RTXDI would need many more frames; but its
+quality plateaus around mCap=20 saturation (Bistro x4→x16
+degrades), while ours improves monotonically with SPP. So
+ours is the right architecture for quality-per-frame, not
+quality-per-millisecond.
+
+The original 2026-05-15 "convergence confirmed" entry below
+retains its QUALITY claims unchanged. Strike its timing claims.
+
 ### Bayer-cascade convergence CONFIRMED (2026-05-15, end of session)
 
 Resolved the residual rmse gap question definitively. Convergence
