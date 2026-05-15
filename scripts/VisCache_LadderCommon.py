@@ -4550,12 +4550,15 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)                        # RTXDI maxHistoryLength
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")      # main-pass too = full RTXDI parity
-    # biasCorrection=1: pairwise MIS with m-weighted M finalize. The W
-    # formula W = wSum / (pHat × M_eff) uses M_eff = Σ m_j × M_j (each
-    # source's mass weighted by its MIS partition) instead of raw
-    # Σ M_j. Validates analytically at equal-pHat-equal-M: m_j=m_canon=0.5,
-    # M_eff = 0.5×M + 0.5×M = M, W = pHat·W·M / (pHat·M) = W ✓.
-    kwargs2.setdefault("biasCorrection", 1)
+    # biasCorrection=0 (Basic, M-weighted). RTXDI's actual default
+    # (Falcor RTXDI.h:144). 2026-05-15 RDI00 sweep across 5 scenes showed
+    # Basic beats Pairwise on err% AND art5% on every scene (Cornell_1AL/
+    # 3AL/32PL/Bistro/Sponza), with art5 hitting RTXDI parity-or-better
+    # on the env-map scenes (Bistro 61.77 vs RTXDI 61.81; Sponza 53.89
+    # vs RTXDI 54.17). Minor rmse regression (+4-18%) on Cornell_32PL
+    # and Bistro; offset by Sponza rmse improvement. Param-parity argument
+    # alone justifies the flip — Basic IS RTXDI's default.
+    kwargs2.setdefault("biasCorrection", 0)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",

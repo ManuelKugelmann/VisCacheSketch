@@ -43,8 +43,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
-    run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic,
-    run_baseline_ReSTIRDI_R2dP2d_RTXDISplit,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
     finalize_step, kResX, kResY,
 )
@@ -78,20 +76,12 @@ for scene_file in get_scenes(default=["Sponza"]):
     # Improvements over these baselines (visibility cache, V-aware target
     # pdf, larger K budgets, alternative samplers, architectural variants)
     # are measured in RDI01+.
+    # RTXDIBaseline (F17P24) now defaults to biasCorrection=Basic — RTXDI's
+    # actual default. Pairwise/Sub-reservoir variants both retained in
+    # VisCache_LadderCommon.py for diagnostic comparisons (see 2026-05-15
+    # ladder sweep + .agents/handoff for the cross-scene metric matrix
+    # justifying the flip).
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
-    # F17P24 with biasCorrection=Basic (RTXDI's actual default; our F17P24
-    # uses Pairwise=1). Tests whether the residual Bistro/Sponza rmse gap
-    # is from the pairwise vs basic divergence — the only knob left
-    # differing from RTXDI's defaults after F17P24.
-    run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_Basic(STEP, [(0, 0, 1)], scene_file, **common)
-    # RTXDISplit (F0E8I8P24) — second attempt with proper SUB-RESERVOIR
-    # architecture (RTXDI_SampleLightsForSurface analog). Env+inf samples
-    # stream into category-private LocalReservoirs, then merge into the
-    # compound `local` via streamingMergeReservoir. Hierarchical winner
-    # selection (sub-roulette × compound-roulette) suppresses fat-tail
-    # candidate adoption that the first single-reservoir attempt
-    # (+43% Bistro rmse, see .agents/handoff 2026-05-15) ran into.
-    run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===
