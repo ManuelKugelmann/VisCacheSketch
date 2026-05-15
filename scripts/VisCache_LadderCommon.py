@@ -4485,6 +4485,97 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
 
 
 # ---------------------------------------------------------------------------
+# RDI00 BASELINE variants — RTXDI-parity floor for the visibility-cache-less
+# track. Every knob mirrors RTXDI's defaults:
+#   K       = 24       (RTXDI localLightCandidateCount)
+#   mCap    = 20       (RTXDI maxHistoryLength)
+#   K-RIS pool source = PdfMipmap pre-pass (RTXDI presample-tile equivalent)
+#   visibility cache  = OFF (vblind, no visibilityCheck, no lightSelection)
+#   spatial: K=1, radius=30 (matches _run_baseline_restir defaults)
+#
+# These are NOT competitors with RTXDI — they are the *baseline floor* that
+# later ladder steps (RDI01+) improve upon (visibility cache, V-aware target
+# pdf, larger K budgets, alternative samplers, etc). Both 2D (per-pixel
+# reservoir + screen-tile pool) and 3D (cell reservoir + world-cell pool)
+# variants ship as baselines so the architecture-axis is held when measuring
+# RDI01+ feature gains.
+#
+# Sampler note: Falcor's EmissivePdfMipmapSampler and RTXDI's presample
+# pdf-mipmap share algorithm (4-way hierarchical descent, Z-curve layout,
+# flux importance function) but Falcor post-multiplies the descent pdf by
+# `flux/totalFlux`, giving exact flux-proportional sampling, whereas RTXDI
+# returns the raw mipchain-descent pdf (approximately flux-proportional,
+# small box-filter rounding). Both produce a flux-weighted distribution;
+# the divergence is bug-level and Falcor's variant is arguably more
+# accurate. We keep Falcor's PdfMipmap and treat it as the RTXDI-equivalent
+# sampler for the baseline.
+# ---------------------------------------------------------------------------
+def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_file,
+                                               poolTileSize=16, **kwargs):
+    """**RDI00 baseline — 2D track.** Per-pixel reservoir (R2d) + screen-tile
+    pool (P2d). K=24-from-pool (RTXDI localLightCandidateCount), mCap=20
+    (RTXDI maxHistoryLength), pdfmipmap pre-pass (RTXDI presample-tile equiv),
+    vblind, no visibility cache. This is the cache-less RTXDI-parity floor
+    along the 2D architecture branch — later ladder steps improve on it.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0   # R3d OFF (2D track)
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)         # RTXDI maxHistoryLength
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=0,
+        cellPoolDrawK=24,
+        wsCellPoolPrePass=True,
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
+def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_file,
+                                               cellPoolFootprintPx=16,
+                                               cellReservoirFootprintPx=1, **kwargs):
+    """**RDI00 baseline — 3D track.** Pure R3d — no per-pixel layer; the
+    sub-pixel-footprint cell reservoir is the temporal accumulator. K=24
+    fresh main-pass LightBVH candidates per pixel; the R3d cell reservoir
+    aggregates the K-RIS winner across pixels and frames. No cell-pool, no
+    pre-pass — same architectural mechanism as the existing R3dP3d_F24P00
+    variant. mCap=20, vblind, no visibility cache.
+
+    **Sampler note vs RTXDI:** RTXDI's strict architecture pulls K=24
+    candidates from a precomputed PdfMipmap presample tile. Our equivalent
+    is the cell-pool when sourced via `wsCellPoolPrePass=True` +
+    `prePassEmissiveSampler="PdfMipmap"`. However, the pure-R3d + pure-pool
+    combination in our current impl produces vanilla-equivalent output —
+    the pool is too sparse (one insert per pixel per frame at
+    `initialCandidates=0`) to materially shift the K-RIS winner, since the
+    per-pixel reservoir and useCellInRIS paths are both off. Until the pool
+    can be densely populated under pure-R3d, this baseline uses fresh
+    LightBVH K=24 instead. The "RTXDI sampler match" experiment lives in
+    RDI01 (R2dR3dP3d hybrid sweep / R2dP2d_F00P24).
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["enablePixelReservoir"] = False         # drop per-pixel layer (3D track = R3d only)
+    extra["cellReservoirMerge"]   = 1             # full Bitterli weighted merge
+    extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R3dP3d_RTXDIBaseline",
+        addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
+        initialCandidates=24,
+        cellPoolDrawK=0,
+        wsCellPoolPrePass=False,
+        **kwargs2,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Backward-compat aliases for the old restir_2d / restir_3d names.
 # Old ladder steps that import these continue to work.
 # ---------------------------------------------------------------------------
