@@ -4634,6 +4634,39 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
 # accurate. We keep Falcor's PdfMipmap and treat it as the RTXDI-equivalent
 # sampler for the baseline.
 # ---------------------------------------------------------------------------
+def run_baseline_ReSTIRDI_R2dP2d_NoPrepass(step_name, frame_configs, scene_file,
+                                           poolTileSize=16, **kwargs):
+    """**RDI00 diagnostic — F17P24 with PathTracerPrePass DISABLED.**
+    Tests the hypothesis that the prepass is redundant at steady state:
+    main-pass K-RIS already inserts winners into the cell pool via
+    cellPoolInsert (PathTracer.slang:1197). Pre-pass adds an extra raygen
+    dispatch per frame that just re-does that work.
+
+    Hypothesis (2026-05-15): disabling the prepass should cut a meaningful
+    fraction of per-frame GPU time while quality holds at x16 (Bayer cycle
+    has 16 subframes to fill the pool via main-pass writes alone).
+
+    Tag: NoPrepass_F17P24.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 0)
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_NoPrepass",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=17,
+        cellPoolDrawK=24,
+        wsCellPoolPrePass=False,              # ← key difference: no prepass dispatch
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_file,
                                                poolTileSize=16, **kwargs):
     """**RDI00 baseline — 2D track.** Param-parity with RTXDI. Per-pixel R2d

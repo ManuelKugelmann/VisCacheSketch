@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
+    run_baseline_ReSTIRDI_R2dP2d_NoPrepass,
     run_baseline_ReSTIRDI_R2dP2d_BrdfRis,
     run_baseline_ReSTIRDI_R2dP2d_K5Spatial,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
@@ -84,6 +85,11 @@ for scene_file in get_scenes(default=["Sponza"]):
     # ladder sweep + .agents/handoff for the cross-scene metric matrix
     # justifying the flip).
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
+    # Diagnostic: prepass-disabled variant — tests whether the extra
+    # raygen dispatch per frame is redundant given main-pass writes the
+    # pool too. Should drop per-frame time meaningfully without degrading
+    # x16 quality.
+    run_baseline_ReSTIRDI_R2dP2d_NoPrepass(STEP, [(0, 0, 1)], scene_file, **common)
     # K5Spatial (2026-05-15): single-pass K=5 spatial neighbors gave MIXED
     # results — Sponza rmse improves -5.5% but Bistro REGRESSES +18%.
     # Same-snapshot K=5 amplifies fireflies (5 sequential RTXDI passes
