@@ -4046,6 +4046,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          cellPoolDrawK=16,                             # K=16 pool-draws. Combined with initialCandidates=32 above, gives K_total=48 (2:1 fresh:pool ratio). RDI00 sweep at K=24 alternatives (F16P08, F24P00) showed K=48 still wins cumulatively across the 7-scene matrix despite over-spec vs RTXDI's K=24 localLightCandidateCount.
                          prePassEmissiveSampler="PdfMipmap",             # pre-pass emissive sampler. PdfMipmap = RTXDI-style hierarchical 2D pdf (shading-agnostic). LightBVH = shading-conditional via per-pixel BSDF guidance.
                          emissiveSampler=None,                            # main-pass emissive sampler. None = Falcor default (LightBVH). "PdfMipmap" matches RTXDI fully — all per-pixel candidates from the same flux-proportional distribution.
+                         biasCorrection=0,                                # ReSTIRDIPass bias-correction mode. 0 = Bitterli basic (M-weighted, default). 1 = Pairwise MIS (Boksansky 2022 / RTXDI BiasCorrection::Pairwise). Load-bearing for cell-reservoir reuse.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -4088,6 +4089,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             #     so pool stays PdfMipmap-only.
             prePassEmissiveSampler=prePassEmissiveSampler,
             emissiveSampler=emissiveSampler,
+            biasCorrection=biasCorrection,
             visibilityCheck=False, lightSelection=False,  # pure ReSTIR track — no VisCache cache
             extraVCProps={
                 "useCellInRIS": False,             # no cell hint
@@ -4540,8 +4542,19 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
     extra["cellReservoirFootprintPx"] = 0   # R3d OFF (2D track)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
-    kwargs2.setdefault("mCap", 20.0)         # RTXDI maxHistoryLength
-    kwargs2.setdefault("emissiveSampler", "PdfMipmap")  # main-pass too = full RTXDI parity
+    kwargs2.setdefault("mCap", 20.0)                        # RTXDI maxHistoryLength
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")      # main-pass too = full RTXDI parity
+    # biasCorrection: 0 = Bitterli basic (default, kept for baselines).
+    # Pairwise MIS infrastructure landed (BIAS_CORRECTION=1 in shader,
+    # spatial-pixel + cell-merge sites) but tested 2026-05-15 with worse
+    # results than basic on all 3 scenes — single-source pairwise without
+    # canonical-MIS correction biases toward canonical (K-RIS local pre-
+    # merge) because neighbour wSum is downweighted while canonical wSum
+    # gets full weight. Boksansky 2022 §4 specifies the canonical
+    # correction: accumulate m_canonical_j across neighbours, then
+    # re-stream canonical's contribution at finalize with that weight.
+    # That refactor is the next step before pairwise can be the baseline.
+    kwargs2.setdefault("biasCorrection", 0)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R2dP2d_RTXDIBaseline",
@@ -4589,23 +4602,19 @@ def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_f
     extra["cellReservoirMerge"]   = 1             # full Bitterli weighted merge
     extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
     # 3D track needs cell-reservoir reuse to be analogous to RTXDI's per-
-    # pixel temporal reservoir. The two diagnostic states:
-    #   useCellInRIS=False (current): cells written, never read; K-RIS V-test
-    #     zeros local.targetPdf for occluded winners and there's no spatial/
-    #     temporal recovery path → output ≈ vanilla.
-    #   useCellInRIS=True (tested 2026-05-15, reverted): cell-aggregated W
-    #     values vary wildly across cells; the Bitterli M-weighted merge
-    #     `wn = pHat * W * M` amplifies that mismatch into catastrophic
-    #     fireflies (rmse 2001 on Cornell vs vanilla 0.5; rmse 1303 on
-    #     Bistro). Confirms pairwise MIS bias correction (Boksansky 2022 /
-    #     RTXDI BiasCorrection::Pairwise) is load-bearing for cross-surface
-    #     reservoir merges. Pairwise MIS implementation is the unblock —
-    #     after that lands, set useCellInRIS=True here.
+    # pixel temporal reservoir. Currently held OFF — enabling without
+    # full pairwise MIS produces catastrophic fireflies (rmse 2001 on
+    # Cornell vs vanilla 0.5), and the partial-pairwise implementation
+    # (BIAS_CORRECTION=1, single-source m_j) still firefly-blows because
+    # canonical-MIS correction is missing. Status: pairwise infra in
+    # shader is ready; needs the Boksansky 2022 §4 canonical-correction
+    # finalize pass before useCellInRIS=True can be the 3D baseline.
     extra["useCellInRIS"] = False
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
-    kwargs2.setdefault("emissiveSampler", "PdfMipmap")  # main-pass too = full RTXDI parity
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")      # main-pass too = full RTXDI parity
+    kwargs2.setdefault("biasCorrection", 0)                 # see 2D wrapper for status
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix="ReSTIRDI_R3dP3d_RTXDIBaseline",

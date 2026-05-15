@@ -133,6 +133,14 @@ private:
         bool        useRTXDI = false;                           ///< Use RTXDI for direct illumination.
         bool        useRestirPT = false;                        ///< Enable ReSTIR-PT path-reservoir reuse (restirpt_2d). v1: per-pixel addressing, parity target = Source/RenderPasses/ReSTIRPTPass/.
 
+        // Bias correction mode for temporal+spatial reservoir merges.
+        // 0 = Bitterli basic (M-weighted) — current default; cheap but
+        //     unstable when merging across surfaces with mismatched pHat.
+        // 1 = Pairwise MIS (Boksansky 2022 / RTXDI BiasCorrection::Pairwise) —
+        //     adds Talbot m_j weight using stored neighbour pHat; load-
+        //     bearing for cell reservoir reuse.
+        uint32_t    biasCorrection = 0;
+
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
         bool        adjustShadingNormals = false;               ///< Adjust shading normals on secondary hits.

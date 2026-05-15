@@ -39,6 +39,7 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                             visibilityCheck=None, lightSelection=None,
                             extraVCProps=None,
                             useReSTIRDIPass=False,  # If True + reservoirs=True, route DI through standalone ReSTIRDIPass instead of PathTracer-integrated WS-ReSTIR (refactor in progress).
+                            biasCorrection=0,        # ReSTIRDIPass bias-correction mode. 0=Bitterli basic (default; M-weighted, cheap but cross-surface-unstable). 1=Pairwise MIS (Boksansky 2022 / RTXDI BiasCorrection::Pairwise; load-bearing for cell-reservoir reuse).
                             passClassName=None):  # Plugin class to instantiate. Auto-selects: "PathTracerX" if viscache else "PathTracer" (upstream vanilla). Override explicitly to pin.
     """Build a PathTracer render graph.
 
@@ -203,6 +204,8 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
         }
         if emissiveSampler is not None:
             rdi_props["emissiveSampler"] = emissiveSampler
+        if biasCorrection:
+            rdi_props["biasCorrection"] = biasCorrection
         restirdi = createPass("ReSTIRDIPass", rdi_props)
         g.addPass(restirdi, "ReSTIRDIPass")
         g.addEdge("VBufferRT.vbuffer", "ReSTIRDIPass.vbuffer")

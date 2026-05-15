@@ -1542,7 +1542,25 @@ struct PathTracer
                         if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
-                            float w    = pHatCell * cell.W * Mcap;
+                            // See spatial-pixel-merge for the bias-correction
+                            // mode explanation. Cell merges cross surfaces by
+                            // construction (cell aggregates ALL pixels keyed
+                            // to the same world-space cell), so BIAS_CORRECTION
+                            // is load-bearing here — the Bitterli basic merge
+                            // produces catastrophic weight blow-up when cell.W
+                            // gets large from accumulated mass at writers whose
+                            // stored pHat (cell's targetPdf) is small.
+                            float m_cell = 1.f;
+#if BIAS_CORRECTION == 1
+                            {
+                                float canonM = local.M;
+                                float pairwiseDenom = pHatCell * canonM + cell.targetPdf * Mcap;
+                                m_cell = (pairwiseDenom > 0.f)
+                                    ? (cell.targetPdf * Mcap) / pairwiseDenom
+                                    : 0.f;
+                            }
+#endif
+                            float w = m_cell * pHatCell * cell.W * Mcap;
                             if (w > 0.f && !isnan(w))
                             {
                                 local.wSum += w;
@@ -1756,7 +1774,27 @@ struct PathTracer
                             }
                             if (pHatN <= 0.f) continue;
                             float Mcn = min(nbr.M, gMCap);
-                            float wn  = pHatN * nbr.W * Mcn;
+                            // Bias correction:
+                            //   0 = Bitterli basic (M-weighted) — pHat_reader * W_j * M_j
+                            //   1 = Pairwise MIS (Boksansky 2022, RTXDI BiasCorrection::Pairwise)
+                            //       Replaces the implicit `m_j = M_j/ΣM_k` with the proper
+                            //       Talbot pairwise weight using stored pHat_j(y_j) from
+                            //       nbr.targetPdf. Required for cross-surface merges where
+                            //       pHat_reader and pHat_j diverge — otherwise basic-mode
+                            //       weight blow-up amplifies fireflies (catastrophic when
+                            //       merging cell reservoirs; modest variance penalty when
+                            //       merging similar-surface pixel reservoirs).
+                            float m_j = 1.f;
+#if BIAS_CORRECTION == 1
+                            {
+                                float canonM = local.M;
+                                float pairwiseDenom = pHatN * canonM + nbr.targetPdf * Mcn;
+                                m_j = (pairwiseDenom > 0.f)
+                                    ? (nbr.targetPdf * Mcn) / pairwiseDenom
+                                    : 0.f;
+                            }
+#endif
+                            float wn  = m_j * pHatN * nbr.W * Mcn;
                             if (wn <= 0.f || isnan(wn)) continue;
                             local.wSum += wn;
                             local.M    += Mcn;

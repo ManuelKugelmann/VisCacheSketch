@@ -137,6 +137,7 @@ namespace
     const std::string kUseRTXDI = "useRTXDI";
     const std::string kRTXDIOptions = "RTXDIOptions";
     const std::string kUseRestirPT = "useRestirPT";
+    const std::string kBiasCorrection = "biasCorrection";
 
     const std::string kUseAlphaTest = "useAlphaTest";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
@@ -242,6 +243,7 @@ void ReSTIRDIPass::parseProperties(const Properties& props)
         else if (key == kUseRTXDI) mStaticParams.useRTXDI = value;
         else if (key == kRTXDIOptions) mRTXDIOptions = value;
         else if (key == kUseRestirPT) mStaticParams.useRestirPT = value;
+        else if (key == kBiasCorrection) mStaticParams.biasCorrection = value;
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
@@ -369,6 +371,7 @@ Properties ReSTIRDIPass::getProperties() const
     props[kUseRTXDI] = mStaticParams.useRTXDI;
     props[kRTXDIOptions] = mRTXDIOptions;
     props[kUseRestirPT] = mStaticParams.useRestirPT;
+    props[kBiasCorrection] = mStaticParams.biasCorrection;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
@@ -1715,6 +1718,7 @@ DefineList ReSTIRDIPass::StaticParams::getDefines(const ReSTIRDIPass& owner) con
     defines.add("USE_RUSSIAN_ROULETTE", useRussianRoulette ? "1" : "0");
     defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
     defines.add("USE_RESTIRPT", useRestirPT ? "1" : "0");
+    defines.add("BIAS_CORRECTION", std::to_string(biasCorrection));
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");
