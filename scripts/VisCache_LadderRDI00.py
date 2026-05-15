@@ -78,15 +78,14 @@ for scene_file in get_scenes(default=["Sponza"]):
     # pdf, larger K budgets, alternative samplers, architectural variants)
     # are measured in RDI01+.
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
-    # RTXDISplit (F0E8I8P24) hypothesis FAILED 2026-05-15: Bistro x4 rmse
-    # 164.43 vs F17P24 baseline 114.98 (+43% regression). Single-reservoir
-    # mix of env-only + inf-only + emissive-pool samples creates variance
-    # spikes from heterogeneous pHat scales. RTXDI's win is the SEPARATE
-    # sub-reservoirs (local/inf/env each RIS'd alone, then 4-way merged via
-    # RTXDI_CombineReservoirs) — not the quota numbers per se. Variant
-    # kept available in VisCache_LadderCommon.py but removed from RDI00
-    # default. See .agents/handoff 2026-05-15.
-    #     run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(STEP, [(0, 0, 1)], scene_file, **common)
+    # RTXDISplit (F0E8I8P24) — second attempt with proper SUB-RESERVOIR
+    # architecture (RTXDI_SampleLightsForSurface analog). Env+inf samples
+    # stream into category-private LocalReservoirs, then merge into the
+    # compound `local` via streamingMergeReservoir. Hierarchical winner
+    # selection (sub-roulette × compound-roulette) suppresses fat-tail
+    # candidate adoption that the first single-reservoir attempt
+    # (+43% Bistro rmse, see .agents/handoff 2026-05-15) ran into.
+    run_baseline_ReSTIRDI_R2dP2d_RTXDISplit(STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
 
 # === Cross-variant overview plot + ladder progress refresh ===

@@ -1265,26 +1265,31 @@ struct PathTracer
                         }
                     }
 
-                    // (1b') RTXDI-parity category-quota K-RIS sub-streams.
+                    // (1b') RTXDI-parity category-SUB-RESERVOIR K-RIS.
                     //
                     // RTXDI_SampleLightsForSurface (ResamplingFunctions.hlsli:926)
-                    // dedicates separate budgets per light category — 24 local +
-                    // 8 inf + 8 env + 1 BRDF — instead of routing one shared
-                    // stream through uniform selectLightType. The uniform stream
-                    // (1b) splits ~1/3 / 1/3 / 1/3 across categories, which
-                    // under-samples env+inf on scenes that have both env-map
-                    // and directional sun (Bistro/Sponza rmse +6%/+21% vs RTXDI
-                    // under F17P24). These dedicated loops match RTXDI's split.
+                    // builds separate reservoirs per category (local / inf / env /
+                    // BRDF), each with its own internal RIS over its dedicated
+                    // sample budget. Then a 4-way RTXDI_CombineReservoirs roll
+                    // merges them. Mathematically the wSum is identical to one
+                    // big mixed reservoir, BUT the WINNER selection is
+                    // hierarchical: each sub-reservoir's roulette picks a
+                    // representative winner from its OWN pHat distribution, and
+                    // the compound roulette picks among those representatives.
+                    // This suppresses fat-tail single-candidate dominance —
+                    // critical for env-map regions with tiny pdf × big Le where
+                    // single-reservoir RIS would adopt rare-but-huge candidates
+                    // and propagate them through temporal reuse (fireflies).
                     //
-                    // selectionPdf for category-quota samples is 1.0 (no
-                    // category roulette — pdf reflects only the within-category
-                    // sampling distribution). pHat = luminance(BRDF*Li) follows
-                    // the same convention as (1b). RIS weight is just pHat (the
-                    // existing K-RIS stream uses invPdf=1 and folds the pdf
-                    // division into Li already via generateLightSample).
+                    // First attempt (commit c1d4345, reverted in 08de92c) tried
+                    // streaming env+inf samples directly into `local` alongside
+                    // emissive — produced +43% rmse regression on Bistro x4. The
+                    // sub-reservoir architecture is the actual variance-reducer.
+                    LocalReservoir envRes; envRes.init();
+                    LocalReservoir infRes; infRes.init();
                     {
                         PathVertex vtxQ = PathVertex(path.getVertexIndex(), sd.posW, sd.faceN, sd.frontFacing);
-                        // Env-map dedicated stream.
+                        // Env-map sub-reservoir.
                         for (uint k = 0u; k < kEnvCandidateCount; ++k)
                         {
                             LightSampleDI lsQ = {};
@@ -1294,19 +1299,12 @@ struct PathTracer
                             float3 LrQ = weightQ * lsQ.Li;
                             if (!any(LrQ > 0.f)) continue;
                             float pHatQ = luminance(LrQ);
-                            // EnvMap: no V-aware pHat by convention (matches
-                            // (1b) which skips V on env). Visibility resolves
-                            // at shade time.
+                            // EnvMap: no V-aware pHat by convention.
                             uint qLTI = packLightTypeIndex(lsQ.lightType, lsQ.lightIndex);
                             uint qPL  = packLightSamplePayload(lsQ);
-                            local.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
+                            envRes.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
                         }
-                        // Infinite-analytic (directional/distant) dedicated stream.
-                        // generateAnalyticLightSample handles all analytic lights
-                        // (point/spot/directional/distant). RTXDI's "infinite"
-                        // category covers directional+distant only — we accept
-                        // any analytic miss here, matching Falcor's analytic
-                        // routing. Point lights are Dirac (pdf=0); pHat covers them.
+                        // Infinite-analytic sub-reservoir.
                         for (uint k = 0u; k < kInfiniteCandidateCount; ++k)
                         {
                             LightSampleDI lsQ = {};
@@ -1316,8 +1314,6 @@ struct PathTracer
                             float3 LrQ = weightQ * lsQ.Li;
                             if (!any(LrQ > 0.f)) continue;
                             float pHatQ = luminance(LrQ);
-                            // Same V-aware policy as uniform stream: skip env
-                            // (n/a here), apply visInPHat for non-env.
                             if (visInPHatMode() != 0u)
                             {
                                 Ray vrayQ = lsQ.getVisibilityRay();
@@ -1334,14 +1330,40 @@ struct PathTracer
                             }
                             uint qLTI = packLightTypeIndex(lsQ.lightType, lsQ.lightIndex);
                             uint qPL  = packLightSamplePayload(lsQ);
-                            local.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
+                            infRes.streamingAdd(qLTI, qPL, pHatQ, 1.f, path.sg);
                         }
-                        // BRDF candidate stream (RTXDI's brdfCandidateCount).
-                        // Deferred — requires tracing a BRDF ray and converting
-                        // its hit/miss into a LightSampleDI. Not implemented in
-                        // this iteration; the host param exists so the budget
-                        // accounting is consistent with RTXDI parity once it's
-                        // ported. See .agents/handoff 2026-05-15.
+                        // BRDF sub-reservoir — deferred; needs RTXDI_SampleBrdf
+                        // equivalent (BRDF ray trace → emissive/env hit
+                        // conversion → light sample). brdfCandidateCount is
+                        // plumbed for budget accounting; shader-side TODO.
+                    }
+                    // Merge sub-reservoirs into the compound `local` using
+                    // ReSTIR's standard weighted-reservoir-combine. With
+                    // pHat_reader == pHat_writer (same surface, same frame, no
+                    // cross-pixel) and M_cap = M_other (no temporal cap intra-
+                    // frame), this reduces to RTXDI_CombineReservoirs:
+                    //   risWeight_added = wSum_other  (each sub-reservoir
+                    //                                  contributes its raw
+                    //                                  streaming wSum to the
+                    //                                  compound roulette)
+                    // M_compound = M_local + Σ M_sub. The compound winner is
+                    // then ONE of: a `local` winner, an env-sub winner, or an
+                    // inf-sub winner — selected proportionally to category wSums.
+                    if (envRes.M > 0.f && envRes.targetPdf > 0.f)
+                    {
+                        local.streamingMergeReservoir(
+                            envRes.lightTypeIndex, envRes.payload,
+                            envRes.targetPdf, envRes.wSum,
+                            envRes.targetPdf, envRes.M,
+                            envRes.M, path.sg);
+                    }
+                    if (infRes.M > 0.f && infRes.targetPdf > 0.f)
+                    {
+                        local.streamingMergeReservoir(
+                            infRes.lightTypeIndex, infRes.payload,
+                            infRes.targetPdf, infRes.wSum,
+                            infRes.targetPdf, infRes.M,
+                            infRes.M, path.sg);
                     }
 
                     // (1c) §9.4 WS-cascade ReGIR — draw K candidates from the
