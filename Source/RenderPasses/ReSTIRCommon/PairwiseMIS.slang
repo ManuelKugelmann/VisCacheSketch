@@ -92,4 +92,31 @@ struct PairwiseMisState
         float denom = cWAtN * Mcn + cWAtC * MCanon;
         return (denom > 0.f) ? (cWAtC * MCanon / denom) : 0.f;
     }
+
+    // RTXDI's MFactor (RtxdiMath.hlsli:104). Used to downweight neighbour M
+    // when the stored pHat asymmetry vs reader's pHat is large. Returns ≤ 1.
+    //   q0 = "source side" pHat (stored at nbr or canon's surface)
+    //   q1 = "target side" pHat (evaluated at reader)
+    //   When q1/q0 < 1 (reader cares less than the source did), MFactor
+    //   collapses heavily via the 8th power — keeps cross-surface neighbours
+    //   with mismatched pHat from inflating effective M.
+    static float mFactor(float q0, float q1)
+    {
+        if (q0 <= 0.f) return 1.f;
+        float r = min(q1 / q0, 1.f);
+        return clamp(pow(r, 8.f), 0.f, 1.f);
+    }
+
+    // Effective M for a streamed neighbour, downweighted by the worse of the
+    // two pHat asymmetries (nbr-sample asymmetry vs canon-sample asymmetry).
+    // Matches RTXDI's `M = nbr.M * min(MFactor(nWAtN, nWAtC), MFactor(cWAtN, cWAtC))`
+    // formula at ResamplingFunctions.hlsli:273-275. When neighbour surface
+    // eval isn't available, only the nbr-side MFactor fires (cWAt asymmetry
+    // assumed 1 = same-surface).
+    static float effectiveMcn(float Mcn, float nWAtN, float nWAtC, float cWAtN, float cWAtC, bool cWAtN_provided)
+    {
+        float mfN = mFactor(nWAtN, nWAtC);
+        float mfC = cWAtN_provided ? mFactor(cWAtN, cWAtC) : 1.f;
+        return Mcn * min(mfN, mfC);
+    }
 };

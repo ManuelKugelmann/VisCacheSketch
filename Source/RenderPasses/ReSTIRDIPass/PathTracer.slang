@@ -631,15 +631,10 @@ struct PathTracer
     }
 
 #if USE_WS_RESERVOIRS
-    /** §9.4 Pack the chosen LightSampleDI's surface payload according to type.
-        Emissive: barys (16:16 unorm). EnvMap: dir (oct 16:16). Analytic: 0.
-    */
-    uint packLightSamplePayload(const LightSampleDI inLs)
-    {
-        if (inLs.lightType == (uint)LightType::Emissive) return packUV(inLs.lightUV);
-        if (inLs.lightType == (uint)LightType::EnvMap)   return packDirOct(inLs.dir);
-        return 0u;
-    }
+    // packLightSamplePayload now lives in ReSTIRCommon/LightReservoir.slang
+    // (free function at module scope, shared with ReSTIRNEEPass) — see
+    // commit 03e524e. DI's local copy removed to avoid ambiguous-call
+    // collision when both are visible.
 
     /** §9.4 Re-materialise a LightSampleDI for the env map from a stored
         oct-packed direction, evaluated at the given shading point.
@@ -1959,15 +1954,12 @@ struct PathTracer
                             float m_j = 1.f;
 #if BIAS_CORRECTION == 1
                             {
-                                m_j = PairwiseMisState::computeMJ(nbr.targetPdf, pHatN, Mcn, canonM_save);
-                                if (m_j <= 0.f) continue;
-
                                 // Load neighbour surface on demand (RTXDI's
-                                // RAB_GetGBufferSurface(idx) pattern, line
+                                // RAB_GetGBufferSurface(idx) pattern at line
                                 // 1387 of ResamplingFunctions.hlsli) to
                                 // compute canonicalWeightAtNeighbor for the
-                                // proper m_canon formula. Falls back to
-                                // M-ratio same-surface approx when nbr is
+                                // proper m_canon and MFactor formulas. Falls
+                                // back to same-surface approx when nbr is
                                 // off-screen or canon-sample rebuild fails.
                                 float cWAtN_eff = 0.f;
                                 bool haveCWAtN = false;
@@ -1997,6 +1989,16 @@ struct PathTracer
                                         haveCWAtN = true;
                                     }
                                 }
+                                // MFactor M-downweighting (RTXDI Resampling
+                                // Functions.hlsli:273-275): when stored pHat
+                                // asymmetries are large, the effective M is
+                                // downweighted via min(MFactor_a, MFactor_b)^8.
+                                // Keeps cross-surface neighbours with very
+                                // mismatched pHat from inflating M_eff.
+                                Mcn = PairwiseMisState::effectiveMcn(
+                                    Mcn, nbr.targetPdf, pHatN, cWAtN_eff, canonTargetPdf_save, haveCWAtN);
+                                m_j = PairwiseMisState::computeMJ(nbr.targetPdf, pHatN, Mcn, canonM_save);
+                                if (m_j <= 0.f) continue;
                                 canonMISAcc += PairwiseMisState::computeMCanon(
                                     cWAtN_eff, canonTargetPdf_save, Mcn, canonM_save, haveCWAtN);
                             }
