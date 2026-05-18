@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_rtxdi,
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
+    run_baseline_ReSTIRDI_R2dP2d_PureKRIS,
     run_baseline_ReSTIRDI_R2dP2d_NoPrepass,
     run_baseline_ReSTIRDI_R2dP2d_BrdfRis,
     run_baseline_ReSTIRDI_R2dP2d_K5Spatial,
@@ -90,6 +91,10 @@ for scene_file in get_scenes(default=["Sponza"]):
     # pool too. Should drop per-frame time meaningfully without degrading
     # x16 quality.
     run_baseline_ReSTIRDI_R2dP2d_NoPrepass(STEP, [(0, 0, 1)], scene_file, **common)
+    # Timing diagnostic: stripped to pure K-RIS + temporal merge (no
+    # spatial-pixel, no cell-pool, no prepass). Tells us how much of our
+    # per-frame cost lives in the diffusion layers.
+    run_baseline_ReSTIRDI_R2dP2d_PureKRIS(STEP, [(0, 0, 1)], scene_file, **common)
     # K5Spatial (2026-05-15): single-pass K=5 spatial neighbors gave MIXED
     # results — Sponza rmse improves -5.5% but Bistro REGRESSES +18%.
     # Same-snapshot K=5 amplifies fireflies (5 sequential RTXDI passes

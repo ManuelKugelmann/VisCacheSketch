@@ -4634,6 +4634,43 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
 # accurate. We keep Falcor's PdfMipmap and treat it as the RTXDI-equivalent
 # sampler for the baseline.
 # ---------------------------------------------------------------------------
+def run_baseline_ReSTIRDI_R2dP2d_PureKRIS(step_name, frame_configs, scene_file,
+                                          poolTileSize=16, **kwargs):
+    """**RDI00 timing diagnostic — pure K-RIS + temporal merge only.**
+    Strips spatial-pixel reuse (spatialPixelsK=0), cell-pool reads
+    (cellPoolDrawK=0), prepass (wsCellPoolPrePass=False), and reduces
+    K_fresh from 17 to 8. Tests how much of our 5x per-frame slowdown
+    vs RTXDI comes from the spatial/cell/pool layers vs the bare K-RIS
+    sampling loop.
+
+    Quality will degrade (we're stripping the diffusion mechanisms),
+    but timing should approach RTXDI's. The delta in timing tells us
+    where the cost lives.
+
+    Tag: PureKRIS_F08P00.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    extra["useCellInRIS"] = False
+    extra["enableCellPool"] = False               # no pool buffer at all
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 0)
+    kwargs2["spatialPixelsK"] = 0                 # ← no spatial-pixel merge
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_PureKRIS",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=8,                      # F8 — cut from 17
+        cellPoolDrawK=0,                          # no pool reads
+        wsCellPoolPrePass=False,                  # no prepass
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dP2d_NoPrepass(step_name, frame_configs, scene_file,
                                            poolTileSize=16, **kwargs):
     """**RDI00 diagnostic — F17P24 with PathTracerPrePass DISABLED.**
