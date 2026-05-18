@@ -148,6 +148,35 @@ rmse trails on Bistro/Sponza — attributed to RTXDI's 5-iteration
 spatial cascade (our 1-pass spatial reuse cannot recover the same
 variance reduction without multi-pass ping-pong infrastructure).
 
+### Diagnostics dominate per-frame cost (2026-05-18)
+
+Following the EMA-fix retraction below, running with
+`LADDER_TIMING_MODE=1` (disables VisCache diagnostic-texture writes)
+reveals that diagnostics account for ~90% of our per-frame GPU time:
+
+|              | Diag ON  | Diag OFF | savings |
+|--------------|----------|----------|---------|
+| Bistro x16   | 81 ms    | 7.98 ms  | -90%    |
+| Sponza x16   | 80 ms    | 8.31 ms  | -90%    |
+
+Quality unchanged with diagnostics off (rmse delta < 0.1% across
+all SPPs/scenes) — they're texture writes for per-variant quality
+plates, not algorithm participation.
+
+Updated comparison to RTXDI (all diagnostics off):
+
+|              | RTXDI   | Ours    | Ratio        |
+|--------------|---------|---------|--------------|
+| Bistro x16   | 3.23 ms | 7.98 ms | 2.5x slower  |
+| Sponza x16   | 3.14 ms | 8.31 ms | 2.6x slower  |
+
+The remaining 2.5x cost vs RTXDI is the real algorithm gap. The
+13× and 17× claims from the EMA-corrected entry below included
+diagnostic overhead that doesn't represent the algorithm.
+
+Use LADDER_TIMING_MODE=1 for pure timing benchmarks. Default
+(diagnostics on) is correct for quality plates + ladder analysis.
+
 ### TIMING CORRECTION (2026-05-15 late) — Falcor EMA artifact
 
 The "we're 3-4× faster per frame than RTXDI" claim below was WRONG.
