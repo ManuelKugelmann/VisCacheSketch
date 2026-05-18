@@ -148,6 +148,39 @@ rmse trails on Bistro/Sponza — attributed to RTXDI's 5-iteration
 spatial cascade (our 1-pass spatial reuse cannot recover the same
 variance reduction without multi-pass ping-pong infrastructure).
 
+### Timing investigation summary (2026-05-18)
+
+After EMA→stats.mean, reset-before-warmup, diagnostics-off, and
+x64 measurement, the honest steady-state per-frame numbers:
+
+  Bistro x64:  RTXDI 1.56 ms,  Ours 8.62 ms  (5.5x slower)
+  Sponza x64:  RTXDI 1.62 ms,  Ours 8.74 ms  (5.4x slower)
+
+Quality at same SPP:
+  Bistro x64:  RTXDI err 11.4 rmse 98   Ours err 4.3 rmse 44 (~2.5x better)
+  Sponza x64:  RTXDI err 6.6  rmse 0.38 Ours err 2.4 rmse 0.13 (~2.7x better)
+
+Cost-center analysis (un-instrumented; would need PIX/NSight for
+true sub-pass breakdown):
+ - K=17 uniform-fresh K-RIS = 17 × mi.eval(BSDF) per pixel
+ - K=24 pool reads with atomic load + reservoir-CAS per slot
+ - 3 sequential reservoir merges (cell + temporal + spatial-pixel)
+   each with pairwise-MIS-style canonical re-stream when BIAS_CORRECTION=1
+ - VisCacheParams cbuffer access patterns (gNormalAddr, gJitterFilter
+   branches in hot paths)
+ - PathTracerPrePass redundant work (NoPrepass saves 25-33%)
+
+State of RTXDI parity claim:
+ - Parameter parity   ✓ matched (K=41, mCap=20, biasCorrection=Basic, PdfMipmap)
+ - Quality parity     ✓ EXCEEDED (2.5-2.8x better err+rmse)
+ - Speed parity       ✗ 5x slower per frame (steady state)
+ - Convergence        ✓ better (monotonic; RTXDI saturates at mCap=20)
+
+The architectural trade is: we buy quality with frames-of-compute.
+Cell-pool + Bayer + reservoir-CAS is structurally heavier per frame
+but more sample-efficient. The quality wins persist across all
+scenes at all SPPs once measurement is clean.
+
 ### Diagnostics dominate per-frame cost (2026-05-18)
 
 Following the EMA-fix retraction below, running with
