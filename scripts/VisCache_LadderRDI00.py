@@ -45,6 +45,7 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline,
     run_baseline_ReSTIRDI_R2dP2d_PoolOnly,
     run_baseline_ReSTIRDI_R2dP2d_PureKRIS,
+    run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04,
     run_baseline_ReSTIRDI_R2dP2d_NoPrepass,
     run_baseline_ReSTIRDI_R2dP2d_BrdfRis,
     run_baseline_ReSTIRDI_R2dP2d_K5Spatial,
@@ -96,6 +97,8 @@ for scene_file in get_scenes(default=["Sponza"]):
     # spatial-pixel, no cell-pool, no prepass). Tells us how much of our
     # per-frame cost lives in the diffusion layers.
     run_baseline_ReSTIRDI_R2dP2d_PureKRIS(STEP, [(0, 0, 1)], scene_file, **common)
+    # K-cost scaling probe: K=4 PureKRIS — half the K-RIS work of F8.
+    run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04(STEP, [(0, 0, 1)], scene_file, **common)
     # Timing diagnostic: all 24 from pool, no fresh K-RIS. Tests whether
     # the 17 per-pixel PdfMipmap descents (expensive) are the dominant
     # cost — pool reads should be much cheaper.

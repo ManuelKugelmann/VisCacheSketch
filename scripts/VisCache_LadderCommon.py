@@ -4634,6 +4634,36 @@ def run_baseline_ReSTIRDI_R3dP3d_noPre(step_name, frame_configs, scene_file,
 # accurate. We keep Falcor's PdfMipmap and treat it as the RTXDI-equivalent
 # sampler for the baseline.
 # ---------------------------------------------------------------------------
+def run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04(step_name, frame_configs, scene_file,
+                                              poolTileSize=16, **kwargs):
+    """**RDI00 timing diagnostic — PureKRIS with K=4 instead of K=8.**
+    Tests whether K-RIS cost scales linearly with K: halving K should
+    cut time ~half if per-candidate cost dominates.
+
+    Tag: PureKRIS_F04P00.
+    """
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    extra["cellReservoirFootprintPx"] = 0
+    extra["useCellInRIS"] = False
+    extra["enableCellPool"] = False
+    kwargs2 = dict(kwargs)
+    kwargs2["extraVCProps"] = extra
+    kwargs2.setdefault("mCap", 20.0)
+    kwargs2.setdefault("emissiveSampler", "PdfMipmap")
+    kwargs2.setdefault("biasCorrection", 0)
+    kwargs2["spatialPixelsK"] = 0
+    return _run_baseline_restir(
+        step_name, frame_configs, scene_file,
+        tag_prefix="ReSTIRDI_R2dP2d_PureKRIS_F04",
+        addr_mode_kwargs={"poolAddrMode": 1, "poolTileSize": poolTileSize},
+        initialCandidates=4,                  # ← half of PureKRIS's K=8
+        cellPoolDrawK=0,
+        wsCellPoolPrePass=False,
+        prePassEmissiveSampler="PdfMipmap",
+        **kwargs2,
+    )
+
+
 def run_baseline_ReSTIRDI_R2dP2d_PoolOnly(step_name, frame_configs, scene_file,
                                           poolTileSize=16, **kwargs):
     """**RDI00 timing diagnostic — F0P24: all 24 from pool, no fresh.**
