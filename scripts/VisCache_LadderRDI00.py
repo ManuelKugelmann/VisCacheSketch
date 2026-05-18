@@ -60,7 +60,7 @@ for scene_file in get_scenes(default=["Sponza"]):
 
     common = dict(
         resX=res, resY=res,
-        capture_spps=(1, 4, 16),                 # x1 cold-start; x4 canonical; x16 verifies Bayer-cascade convergence to RTXDI
+        capture_spps=(1, 4, 16, 64),             # x64 added for higher-precision timing — 64 measured frames vs 16
         mogwai_globals=globals(),
     )
 
