@@ -1304,6 +1304,8 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             mVCParams.cellLevelJitter = getU("vhfParam_wsCellLevelJitter", 0u);
             mVCParams.mCap            = getF("vhfParam_wsMCap", 20.0f);
             mVCParams.cellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
+            mVCParams.reservoirK              = getU("vhfParam_wsReservoirK", 1u);
+            mVCParams.cellLevelOffsetWrite    = getU("vhfParam_wsCellLevelOffsetWrite", 0u);
         }
         mVisCacheVisibilityCheck = mVisCacheAvailable &&
             dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
@@ -1557,6 +1559,8 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
         vc["gCellLevelJitter"]               = mVCParams.cellLevelJitter;
         vc["gMCap"]                          = mVCParams.mCap;
         vc["gCellReservoirFootprintPx"]      = mVCParams.cellReservoirFootprintPx;
+        vc["gReservoirK"]                    = mVCParams.reservoirK;
+        vc["gCellLevelOffsetWrite"]          = mVCParams.cellLevelOffsetWrite;
     }
     // Bind the cell reservoir buffer at root var when present.
     if (mpVHFReservoirs)

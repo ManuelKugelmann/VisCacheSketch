@@ -129,6 +129,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("mCap"))                        mParams.mCap                        = props["mCap"];
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
     if (props.has("reservoirK"))                  mParams.reservoirK                  = props["reservoirK"];
+    if (props.has("cellLevelOffsetWrite"))        mParams.cellLevelOffsetWrite        = props["cellLevelOffsetWrite"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
@@ -230,6 +231,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("mCap"))                        mParams.mCap                        = props["mCap"];
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
     if (props.has("reservoirK"))                  mParams.reservoirK                  = props["reservoirK"];
+    if (props.has("cellLevelOffsetWrite"))        mParams.cellLevelOffsetWrite        = props["cellLevelOffsetWrite"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
@@ -322,6 +324,7 @@ Properties VisCache::getProperties() const
     p["mCap"]                        = mParams.mCap;
     p["spatialNeighbours"]           = mParams.spatialNeighbours;
     p["reservoirK"]                  = mParams.reservoirK;
+    p["cellLevelOffsetWrite"]        = mParams.cellLevelOffsetWrite;
     p["lightMuMin"]                  = mParams.lightMuMin;
     p["initialCandidates"]           = mParams.initialCandidates;
     // (jitterFilter / jitterCell removed — see jitterFilter / jitterCell.)
@@ -854,7 +857,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     uint32_t cpCap = 1u;
     while (cpCap < std::max(1u, mParams.cellPoolCapacity)) cpCap <<= 1;
     mParams.cellPoolCapacity = cpCap;
-    gpu._wsPad7            = 0u;  // (was gpu.cellPoolEnable; collapsed into cellPoolFootprintPx>0)
+    gpu.cellLevelOffsetWrite = std::min(3u, mParams.cellLevelOffsetWrite);
     gpu.cellPoolCapacity   = cpCap;
     gpu.cellPoolDrawK      = mParams.cellPoolDrawK;
     gpu.spatialPixelsK     = mParams.spatialPixelsK;
@@ -995,6 +998,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsMCap"]          = mParams.mCap;
     dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.spatialNeighbours);
     dict["vhfParam_wsReservoirK"]      = std::max(1u, std::min(8u, mParams.reservoirK));
+    dict["vhfParam_wsCellLevelOffsetWrite"] = std::min(3u, mParams.cellLevelOffsetWrite);
     dict["vhfParam_wsLightMuMin"]    = mParams.lightMuMin;
     dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.initialCandidates);
     // (vhfParam_wsJitterFilter / jitterCell removed — WS-ReSTIR reads
@@ -1384,6 +1388,7 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("mCap", mParams.mCap, 1.f, 200.f, 1.f);
         g.var("spatialNeighbours (extended)", mParams.spatialNeighbours, 0u, 4u);
         g.var("reservoirK (slots per cell)", mParams.reservoirK, 1u, 8u);
+        g.var("cellLevelOffsetWrite (multi-level)", mParams.cellLevelOffsetWrite, 0u, 3u);
         g.var("lightMuMin (ε floor)", mParams.lightMuMin, 0.f, 1.f, 0.01f);
         g.var("initialCandidates (K fresh / pixel)", mParams.initialCandidates, 1u, 64u);
         // (jitterFilter / jitterCell removed — WS-ReSTIR shares

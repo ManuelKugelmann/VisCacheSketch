@@ -277,6 +277,7 @@ private:
              float    mCap=30.f;
              uint32_t spatialNeighbours=4;
              uint32_t reservoirK=1;
+             uint32_t cellLevelOffsetWrite=0;
              float    lightMuMin=0.01f;
              uint32_t initialCandidates=8;
              // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)

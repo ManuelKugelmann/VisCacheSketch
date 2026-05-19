@@ -70,10 +70,7 @@ def _R3dP3d_KN(N: int, step_name, frame_configs, scene_file,
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")
-    # K-slot requires pairwise MIS (biasCorrection=1) for proper m_j weighting
-    # of each slot's independent stream. At biasCorrection=0, K candidates
-    # inflate local.M without proportional wSum → W gets diluted → bias.
-    kwargs2.setdefault("biasCorrection", 1)
+    kwargs2.setdefault("biasCorrection", 0)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix=f"ReSTIRDI_R3dP3d_K{N}fp{cellReservoirFootprintPx}",
@@ -87,7 +84,8 @@ def _R3dP3d_KN(N: int, step_name, frame_configs, scene_file,
 
 
 def _R3dP3d_F8P0_KN(N: int, step_name, frame_configs, scene_file,
-                    cellPoolFootprintPx=16, cellReservoirFootprintPx=8, **kwargs):
+                    cellPoolFootprintPx=16, cellReservoirFootprintPx=8,
+                    cellLevelOffsetWrite=0, **kwargs):
     """R3dP3d F8P0 with reservoirK=N. Pure fresh K-RIS (no pool draws);
     cell-RIS is THE primary aggregation mechanism. Documented ideal K-slot
     architecture per .plans/unified-reservoir-addressing.md final-status section.
@@ -97,17 +95,16 @@ def _R3dP3d_F8P0_KN(N: int, step_name, frame_configs, scene_file,
     extra["cellReservoirMerge"] = 1
     extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
     extra["reservoirK"] = N
+    extra["cellLevelOffsetWrite"] = cellLevelOffsetWrite
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")
-    # K-slot requires pairwise MIS (biasCorrection=1) for proper m_j weighting
-    # of each slot's independent stream. At biasCorrection=0, K candidates
-    # inflate local.M without proportional wSum → W gets diluted → bias.
-    kwargs2.setdefault("biasCorrection", 1)
+    kwargs2.setdefault("biasCorrection", 0)
+    lo_tag = f"lo{cellLevelOffsetWrite}" if cellLevelOffsetWrite > 0 else ""
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix=f"ReSTIRDI_R3dP3d_F8P0_K{N}fp{cellReservoirFootprintPx}",
+        tag_prefix=f"ReSTIRDI_R3dP3d_F8P0_K{N}fp{cellReservoirFootprintPx}{lo_tag}",
         addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         initialCandidates=8,    # 8 fresh K-RIS candidates per pixel per frame
         cellPoolDrawK=0,        # NO pool draws — cell-RIS is the primary aggregation
@@ -145,6 +142,16 @@ for scene_file in get_scenes(default=["Sponza"]):
     _R3dP3d_F8P0_KN(1, STEP, [(0, 0, 1)], scene_file, **common)
     _R3dP3d_F8P0_KN(4, STEP, [(0, 0, 1)], scene_file, **common)
     _R3dP3d_F8P0_KN(8, STEP, [(0, 0, 1)], scene_file, **common)
+
+    # Step C — multi-level cascade write+read. K=4/8 × lo=1/2: each cell
+    # access mirrors home + N coarser cells. Coarser cells aggregate K
+    # writers from neighbouring primary pixels — extra effective candidates
+    # without extra K-RIS cost. NEE-ready (same primitive composes with
+    # path-cumulative footprint in ReSTIRNEEPass).
+    for lvlOff in (1, 2):
+        for K in (4, 8):
+            _R3dP3d_F8P0_KN(K, STEP, [(0, 0, 1)], scene_file,
+                            cellLevelOffsetWrite=lvlOff, **common)
 
 finalize_step(STEP, carried_winners=[])
 _HEADLESS_SCRIPT_DONE = True

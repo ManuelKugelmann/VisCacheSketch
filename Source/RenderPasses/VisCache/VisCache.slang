@@ -278,7 +278,10 @@ cbuffer VisCacheParams
                                 ///< bit-identical to ReSTIRDIReferencePass.
     uint   gVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
     // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-    uint   _wsPad7;             ///< (was gCellPoolEnable; collapsed into gCellPoolFootprintPx>0 2026-05-19)
+    uint   gCellLevelOffsetWrite; ///< Step C multi-level cascade: # extra coarser levels mirror-written
+                                  ///< + mirror-read at each cell access. 0 = home cell only (default).
+                                  ///< 1..3 = mirror home + that many coarser levels. Read path
+                                  ///< streams one merged candidate per level (loadCellMerged at K>1).
     uint   gCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
                                 ///< 0 = pool off (alt off-switch alongside gCellPoolFootprintPx=0).
     uint   gCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).

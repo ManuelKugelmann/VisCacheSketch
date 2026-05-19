@@ -164,7 +164,8 @@ public:
                                        ///< all-slots-merge read).
         uint32_t visInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-        uint32_t _wsPad7;            ///< (reserved — was cellPoolEnable; collapsed into cellPoolFootprintPx>0 2026-05-19)
+        uint32_t cellLevelOffsetWrite; ///< Step C: # extra coarser levels mirror-written + mirror-read.
+                                       ///< 0 = home only (default). 1..3 = home + N coarser. NEE-ready.
         uint32_t cellPoolCapacity;   ///< Power-of-two pool slot count. 0 = pool off (alt off-switch
                                        ///< alongside cellPoolFootprintPx=0).
         uint32_t cellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled,
@@ -327,6 +328,9 @@ public:
                                                         ///< 2-8 = K-slot architecture (atomic-counter insert,
                                                         ///< all-slots-merge read). See
                                                         ///< .plans/unified-reservoir-addressing.md.
+        uint32_t cellLevelOffsetWrite        = 0u;    ///< Step C multi-level cascade.
+                                                        ///< 0 = home cell only (default). 1..3 = mirror-write +
+                                                        ///< mirror-read at home + that many coarser cells.
         float    lightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
         uint32_t initialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).

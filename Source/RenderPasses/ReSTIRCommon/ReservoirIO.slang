@@ -154,13 +154,24 @@ uint fingerprintHash(int3 q)
 // the home cell (zero jitter) and jittered neighbour queries — same code path.
 // ---------------------------------------------------------------------------
 struct CellAddress { uint slot; uint fingerprint; };
-CellAddress resolveCell(float3 posA, float3 faceN)
+
+// Resolve a cell at an explicit cascade level. All posA-keyed resolution
+// routes through this helper so multi-level cascade (step C) can address
+// any level by offset without duplicating the hash/jitter math.
+CellAddress resolveCellAtLevel(float3 posA, int lvl)
 {
-    int3 q  = quantizePosA(posA);
+    lvl = clamp(lvl, 0, int(gNumLevels) - 1);
+    float cs = max(vhfPosASize(lvl), 1e-6f);
+    int3 q  = jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
     CellAddress a;
     a.slot        = addressHash(q) & (gCapacity - 1u);
     a.fingerprint = fingerprintHash(q);
     return a;
+}
+
+CellAddress resolveCell(float3 posA, float3 faceN)
+{
+    return resolveCellAtLevel(posA, levelForReservoir(posA));
 }
 
 // Per-call footprint variant. Used by NEE at deeper bounces where the
@@ -171,14 +182,35 @@ CellAddress resolveCellForFootprint(float3 posA, float3 faceN, float footprintPx
 {
     float sidePx = max(footprintPx, 1.f);
     int lvl = vhfLevelForFootprint(posA, sidePx * sidePx);
-    lvl = clamp(lvl, 0, int(gNumLevels) - 1);
-    float cs = max(vhfPosASize(lvl), 1e-6f);
-    int3 q  = jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
-    CellAddress a;
-    a.slot        = addressHash(q) & (gCapacity - 1u);
-    a.fingerprint = fingerprintHash(q);
-    return a;
+    return resolveCellAtLevel(posA, lvl);
 }
+
+// Step C multi-level cascade — resolve home cell at base+offset. Caller
+// loops `offset = 0..cellLevelOffsetWriteCount()-1` for both write
+// (mirror-write into each level) and read (loadCellMerged at each level,
+// stream as ONE candidate per level — K slots within a level are already
+// merged inside loadCellMerged). Coarser levels naturally aggregate
+// across multiple primary-hit pixels' home cells, providing extra writers
+// that single-bounce DI fp=1 cannot accumulate at the home level.
+CellAddress resolveCellAtLevelOffset(float3 posA, float3 faceN, int levelOffset)
+{
+    return resolveCellAtLevel(posA, levelForReservoir(posA) + levelOffset);
+}
+
+// NEE-ready footprint variant. ReSTIRNEEPass routes through this so its
+// path-cumulative footprintPx still drives the base level, with the offset
+// stacked on top.
+CellAddress resolveCellForFootprintAtLevelOffset(float3 posA, float3 faceN, float footprintPx, int levelOffset)
+{
+    float sidePx = max(footprintPx, 1.f);
+    int baseLvl = vhfLevelForFootprint(posA, sidePx * sidePx);
+    return resolveCellAtLevel(posA, baseLvl + levelOffset);
+}
+
+// Number of cascade levels mirrored on each cell access. 1 = home only
+// (today's behaviour). 2 = home + 1 coarser. Capped at 4 to bound read
+// cost (each level = one loadCellMerged + one streamingAdd).
+uint cellLevelOffsetWriteCount() { return min(gCellLevelOffsetWrite, 3u) + 1u; }
 
 // ---------------------------------------------------------------------------
 // Local thread-private reservoir for RIS. Identical struct to Reservoir
@@ -301,11 +333,8 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
         entry.frameLastUpdated = gFrameCount;
 
         // Atomic counter selects slot. First K writes fill 0..K-1; subsequent
-        // writes ALWAYS commit, picking a uniformly-random slot to replace.
-        // Newer writers always overwrite; older slots decay out. Simpler
-        // than weighted-reservoir-sampling (Vitter '85) and gives fresher
-        // samples — important for static-camera convergence where older
-        // samples would otherwise dominate.
+        // writes replace a uniformly-random slot with probability K/(n+1)
+        // (standard weighted-reservoir-sampling of writers — Vitter '85).
         uint n;
         InterlockedAdd(gReservoirCounters[addr.slot], 1u, n);
         uint K = inCellSlotCount();
@@ -316,7 +345,9 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
         }
         else
         {
-            // Random-replace phase: always commit, pick random slot to evict.
+            // Replacement phase: probability K/(n+1) to keep; choose random
+            // slot to evict. sampleNext1D ∈ [0,1).
+            if (sampleNext1D(sg) * float(n + 1u) >= float(K)) return;  // skip
             slotIdx = uint(sampleNext1D(sg) * float(K));
             if (slotIdx >= K) slotIdx = K - 1u;  // guard against rounding
         }
@@ -400,31 +431,65 @@ bool loadCell(CellAddress addr, out Reservoir cell)
     return true;
 }
 
-// K-slot read primitive: fetch one slot by index. K reservoirs at a cell
-// address are stored chunked at slots [addr.slot * K + 0 .. + K-1]. Callers
-// iterate slots and stream each as an independent K-RIS candidate at the
-// reader's pHat (not pre-merged — K candidates contribute K-fold variance
-// reduction).
+// K-slot read: reads all K slots at the cell bucket and reservoir-sample-
+// merges them into one returned Reservoir. The K slots represent the
+// in-cell neighbourhood (per .plans/unified-reservoir-addressing.md).
 //
-// Returns false when the slot is empty (fingerprint mismatch / cold cell /
-// M==0). Caller skips on false.
+// Standard weighted reservoir merge across K writers:
+//   wSum_i = M_i * pHat_i * W_i           (per slot's contribution)
+//   wSumTotal = sum of wSum_i               (total weight)
+//   M_total = sum of M_i                    (accumulated count)
+//   selected = sampleNext1D(sg) * wSumTotal → pick slot by weight
+//   merged.W = wSumTotal / (selected.pHat * M_total)
 //
-// Usage pattern (see .plans/unified-reservoir-addressing.md):
-//   for (uint i = 0u; i < inCellSlotCount(); ++i) {
-//       Reservoir slot;
-//       if (!loadCellSlot(addr, i, slot)) continue;
-//       // rebuild slot.{lightTypeIndex, payload} at reader's site,
-//       // compute pHat_reader, optionally m_j pairwise MIS,
-//       // streamingAdd(slot.identity, m_j * pHat_reader, invPdf=1, sg);
-//   }
-bool loadCellSlot(CellAddress addr, uint slotIdx, out Reservoir slot)
+// Slots with fingerprint mismatch (collision) or M==0 (cold) are skipped.
+// At K=1 this would degenerate to today's loadCell with one slot; we keep
+// the no-SG loadCell above for that path (parity-preserving).
+bool loadCellMerged<S : ISampleGenerator>(CellAddress addr, inout S sg, out Reservoir merged)
 {
-    slot = reservoirInit(0u);
+    merged = reservoirInit(0u);
     if (!cellReservoirEnabled()) return false;
     if (gCapacity == 0u) return false;
-    slot = gReservoirs[kSlotAddr(addr.slot, slotIdx)];
-    if (slot.fingerprint != addr.fingerprint) return false;
-    if (slot.M <= 0.f) return false;
+
+    uint K = inCellSlotCount();
+    float wSumTotal = 0.f;
+    float Mtotal = 0.f;
+    uint  selTypeIdx = 0u;
+    uint  selPayload = 0u;
+    float selTargetPdf = 0.f;
+    bool  anyValid = false;
+
+    for (uint i = 0u; i < K; ++i)
+    {
+        Reservoir s = gReservoirs[kSlotAddr(addr.slot, i)];
+        if (s.fingerprint != addr.fingerprint) continue;   // skip cold/collision
+        if (s.M <= 0.f) continue;
+        float pHat_i = max(s.targetPdf, 1e-12f);
+        float wSum_i = s.W * pHat_i * s.M;
+        if (wSum_i <= 0.f) continue;
+
+        wSumTotal += wSum_i;
+        Mtotal    += s.M;
+        anyValid  = true;
+
+        // Probabilistic select: keep this slot's sample with prob wSum_i/wSumTotal.
+        if (sampleNext1D(sg) * wSumTotal <= wSum_i)
+        {
+            selTypeIdx   = s.lightTypeIndex;
+            selPayload   = s.payload;
+            selTargetPdf = s.targetPdf;
+        }
+    }
+
+    if (!anyValid) return false;
+
+    merged = reservoirInit(addr.fingerprint);
+    merged.lightTypeIndex   = selTypeIdx;
+    merged.payload          = selPayload;
+    merged.targetPdf        = selTargetPdf;
+    merged.M                = min(Mtotal, gMCap);
+    merged.W                = wSumTotal / (max(selTargetPdf, 1e-12f) * merged.M);
+    merged.frameLastUpdated = gFrameCount;
     return true;
 }
 

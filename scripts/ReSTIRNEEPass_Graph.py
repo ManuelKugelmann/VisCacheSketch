@@ -23,7 +23,9 @@ except ImportError:
 def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                                numNEECandidates=16, emissiveSampler=None,
                                useNEECells=False,
-                               cellReservoirFootprintPx=1):
+                               cellReservoirFootprintPx=1,
+                               reservoirK=1,
+                               cellLevelOffsetWrite=0):
     g = RenderGraph("ReSTIRNEEPass")
 
     vbuf = createPass("VBufferRT", {
@@ -43,6 +45,8 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                     "enableReservoirs": True,
                     "reservoirCapacity": 1 << 20,
                     "cellReservoirFootprintPx": cellReservoirFootprintPx,
+                    "reservoirK": reservoirK,
+                    "cellLevelOffsetWrite": cellLevelOffsetWrite,
                     "mCap": 20.0,
                     # NEE drives cell reads/writes inline; no per-pixel
                     # reservoir layer needed.

@@ -1103,16 +1103,21 @@ struct PathTracer
                         // because gMCap caps M but not wSum (cell.W = wSum/(pHat*M)
                         // grows monotonically across many writers per cell).
                         CellAddress cellAddr = resolveCellForFootprint(sd.posW, sd.faceN, path.cellFootprintPx);
-                        // K-slot slot iteration: K=1 → runs once (single-slot,
-                        // today's behavior). K>1 → K independent candidates per
-                        // cell, each rebuilt at reader and streamed with invPdf=1.
-                        // Surface mismatch handled by cell hash (normal axis) +
-                        // RIS weighting (mismatched slots get low pHat at reader,
-                        // naturally downweighted by the streaming-merge math).
-                        for (uint kSlotIdx = 0u; kSlotIdx < inCellSlotCount(); ++kSlotIdx)
+                        // Step C multi-level cascade — fold one merged candidate
+                        // per cascade level. Coarser cells aggregate K writers
+                        // from neighbouring path-vertex bounces (NEE's natural
+                        // multi-writer regime where K-slot pays off).
+                        uint nLvlsRead = cellLevelOffsetWriteCount();
+                        for (uint lvl = 0u; lvl < nLvlsRead; ++lvl)
                         {
+                            CellAddress addrL = (lvl == 0u) ? cellAddr
+                                : resolveCellForFootprintAtLevelOffset(sd.posW, sd.faceN, path.cellFootprintPx, int(lvl));
                             Reservoir cell;
-                            if (!loadCellSlot(cellAddr, kSlotIdx, cell)) continue;
+                            // K-slot dispatch: K=1 single-slot read, K>1 in-cell merge.
+                            bool gotCell = isMultiSlot()
+                                ? loadCellMerged(addrL, path.sg, cell)
+                                : loadCell(addrL, cell);
+                            if (!gotCell || cell.M <= 0.f) continue;
                             // Rebuild cell's stored sample at THIS reader.
                             LightSampleDI cellLs;
                             bool cellOk = false;
@@ -1124,36 +1129,34 @@ struct PathTracer
                                 cellOk = coreRebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
                             else if (cellType == (uint)LightType::EnvMap)
                                 cellOk = coreRebuildEnvMapLightSample(cell.payload, sd, envMapSampler, cellLs);
-                            if (cellOk)
+                            if (!cellOk) continue;
+                            float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
+                            float pHatCell    = luminance(cellWeight * cellLs.Li);
+                            if (pHatCell <= 0.f) continue;
+                            // Stream cell identity as ONE extra RIS candidate at
+                            // the reader's pHat with invPdf=1. No cell.W
+                            // involvement → no unbounded-growth bias. K-RIS
+                            // canonical already contributed (M=K, wSum=sumW).
+                            float w = pHatCell;
+                            float total = wSum_eff + w;
+                            if (total > 0.f && !isnan(total))
                             {
-                                float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
-                                float pHatCell    = luminance(cellWeight * cellLs.Li);
-                                if (pHatCell > 0.f)
+                                if (sampleNext1D(path.sg) * total < w)
                                 {
-                                    // Stream cell identity as ONE RIS candidate at
-                                    // reader's pHat, invPdf=1. K independent slots
-                                    // each contribute one such candidate.
-                                    float w = pHatCell;
-                                    float total = wSum_eff + w;
-                                    if (total > 0.f && !isnan(total))
-                                    {
-                                        if (sampleNext1D(path.sg) * total < w)
-                                        {
-                                            lsBest     = cellLs;
-                                            pHatBest   = pHatCell;
-                                            weightBest = cellWeight;
-                                            pHat_eff   = pHatCell;
-                                        }
-                                        wSum_eff = total;
-                                        M_eff   += 1.f;
-                                    }
+                                    lsBest     = cellLs;
+                                    pHatBest   = pHatCell;
+                                    weightBest = cellWeight;
+                                    pHat_eff   = pHatCell;
                                 }
+                                wSum_eff = total;
+                                M_eff   += 1.f;
                             }
                         }
                         // Write the FRESH K-RIS canonical (NOT the merged
                         // local) back to the cell. Cells aggregate K-RIS
                         // observations from many pixels × frames × vertices;
                         // M caps at gMCap so the merge is bounded.
+                        // Step C: mirror-write into base..base+N levels.
                         {
                             LocalReservoir local;
                             local.init();
@@ -1162,7 +1165,13 @@ struct PathTracer
                             local.targetPdf      = pHatBestCanon;
                             local.M              = float(kNumNEECandidates);
                             local.wSum           = sumW;
-                            mergeIntoCell(cellAddr, local, path.sg);
+                            uint nLvlsW = cellLevelOffsetWriteCount();
+                            for (uint lvl = 0u; lvl < nLvlsW; ++lvl)
+                            {
+                                CellAddress addrL = (lvl == 0u) ? cellAddr
+                                    : resolveCellForFootprintAtLevelOffset(sd.posW, sd.faceN, path.cellFootprintPx, int(lvl));
+                                mergeIntoCell(addrL, local, path.sg);
+                            }
                         }
 #endif // USE_NEE_CELLS
                         float W = wSum_eff / max(pHat_eff * M_eff, 1e-12f);

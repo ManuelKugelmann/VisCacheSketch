@@ -1714,11 +1714,15 @@ struct PathTracer
                     float cCanonMISAcc = 0.f;
                     float cLocalMWeighted = 0.f;
                     bool  cAnyStreamed = false;
+                    // Step C multi-level cascade: home query expands into nLvls
+                    // queries (home + (nLvls-1) coarser levels). Jittered
+                    // neighbours still fire nNeighbours times. Total iterations:
+                    // (nLvls - 1) + nNeighbours + 1 = nLvls + nNeighbours.
+                    uint nLvls = cellLevelOffsetWriteCount();
+                    uint totalQueries = (nLvls - 1u) + nNeighbours;
+                    bool runCellLoop = (nNeighbours > 0u || isMultiSlot() || nLvls > 1u);
 #if BIAS_CORRECTION == 1
-                    // Fire snapshot+re-init also when K-slot is active (each slot
-                    // streams as one candidate with m_j weighting; canonical
-                    // needs to be saved and re-streamed at end).
-                    if (nNeighbours > 0u || isMultiSlot())
+                    if (nNeighbours > 0u)
                     {
                         cCanonM_save = local.M;
                         cCanonWSum_save = local.wSum;
@@ -1730,34 +1734,39 @@ struct PathTracer
 #endif
                     // K-slot evolution: when K>1, fire home cell (i=0) even with
                     // nNeighbours=0 — in-cell K slots ARE the neighbourhood per
-                    // .plans/unified-reservoir-addressing.md. Extended-jittered
-                    // neighbours (i=1..N) only fire when nNeighbours>0 (additive).
-                    for (uint i = 0u; (nNeighbours > 0u || isMultiSlot()) && i <= nNeighbours; ++i)
+                    // .plans/unified-reservoir-addressing.md. Step C adds coarser
+                    // levels (i=1..nLvls-1). Jittered neighbours (i=nLvls..) only
+                    // fire when nNeighbours>0 (additive).
+                    for (uint i = 0u; runCellLoop && i <= totalQueries; ++i)
                     {
                         CellAddress addr;
                         if (i == 0u)
                         {
                             addr = homeAddr;
                         }
+                        else if (i < nLvls)
+                        {
+                            // Step C coarser-level home cell.
+                            addr = resolveCellAtLevelOffset(sd.posW, sd.faceN, int(i));
+                            if (addr.fingerprint == homeAddr.fingerprint) continue;
+                        }
                         else
                         {
+                            uint jIdx = i - nLvls;
                             float2 j2d = sampleNext2D(path.sg);
-                            addr = resolveJitteredCell(sd.posW, sd.faceN, i - 1u, nNeighbours, j2d);
+                            addr = resolveJitteredCell(sd.posW, sd.faceN, jIdx, nNeighbours, j2d);
                             // Skip if jitter landed back in the home cell —
                             // already covered by i==0.
                             if (addr.fingerprint == homeAddr.fingerprint) continue;
                         }
-                        // K-slot slot iteration: at K=1 runs once (slot 0); at K>1
-                        // iterates all K slots, streaming each as an independent
-                        // K-RIS candidate. K independent contributors → K-fold
-                        // variance reduction. Surface-mismatch handled by cell hash
-                        // (normal axis) + RIS weighting at reader's pHat — no
-                        // per-slot filter needed (cell.normalACoarse already
-                        // separates surfaces in addressing).
-                        for (uint kSlotIdx = 0u; kSlotIdx < inCellSlotCount(); ++kSlotIdx)
-                        {
                         Reservoir cell;
-                        if (!loadCellSlot(addr, kSlotIdx, cell)) continue;
+                        // K-slot dispatch: at K=1, single-slot read (today's behavior).
+                        // At K>1, in-cell K-slot merge collapses K reservoirs into one.
+                        bool gotCell = isMultiSlot()
+                            ? loadCellMerged(addr, path.sg, cell)
+                            : loadCell(addr, cell);
+                        if (!gotCell) continue;
+                        if (cell.M <= 0.f) continue;
                         // cell.W is no longer consumed for shading (selection-only
                         // design after the v5 fix); identity is what matters.
 
@@ -1818,34 +1827,6 @@ struct PathTracer
                         // already does the K-slot weighted merge internally —
                         // streaming as a single identity candidate at reader's
                         // pHat is the bias-correct consumption.
-#if BIAS_CORRECTION == 1
-                        if (isMultiSlot())
-                        {
-                            // K-slot selection-only stream with pairwise MIS m_j.
-                            // Each slot is one candidate (invPdf=1, no cell.W);
-                            // m_j weights it relative to canonical to handle the
-                            // mismatched writer-pHat vs reader-pHat case
-                            // (RTXDI bias-correction analog).
-                            float Mcap = min(cell.M, gMCap);
-                            float m_j = PairwiseMisState::computeMJ(cell.targetPdf, pHatCell, Mcap, cCanonM_save);
-                            cCanonMISAcc += PairwiseMisState::computeMCanon(0.f, cCanonTargetPdf_save, Mcap, cCanonM_save, false);
-                            float w = m_j * pHatCell;
-                            if (w > 0.f && !isnan(w))
-                            {
-                                local.wSum += w;
-                                local.M    += 1.f;          // one candidate per slot
-                                cLocalMWeighted += m_j;
-                                cAnyStreamed = true;
-                                if (sampleNext1D(path.sg) * local.wSum <= w)
-                                {
-                                    local.lightTypeIndex = cell.lightTypeIndex;
-                                    local.payload        = cell.payload;
-                                    local.targetPdf      = pHatCell;
-                                }
-                            }
-                        }
-                        else
-#endif
                         if (!isMultiSlot() && gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
@@ -1878,16 +1859,15 @@ struct PathTracer
                         }
                         else
                         {
-                            // Identity-hint legacy path (K=1, biasCorrection=0).
+                            // Identity-hint legacy path.
                             local.streamingAdd(
                                 cell.lightTypeIndex, cell.payload,
                                 pHatCell, 1.f, path.sg);
                         }
-                        }  // end K-slot inner loop (slotIdx 0..K-1)
                     }
                     // Re-stream canonical with accumulated cell-merge MIS weight.
 #if BIAS_CORRECTION == 1
-                    if ((nNeighbours > 0u || isMultiSlot()) && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
+                    if (nNeighbours > 0u && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
                     {
                         if (cAnyStreamed)
                         {
@@ -2411,7 +2391,16 @@ struct PathTracer
                     // gMCap) so its identity converges to the popular sample for
                     // the region. Read side only consumes identity; the cell's
                     // M/W are bookkeeping for this write-side reservoir merge.
-                    mergeIntoCell(homeAddr, local, path.sg);
+                    // Step C: mirror-write into base..base+N levels.
+                    {
+                        uint nLvlsW = cellLevelOffsetWriteCount();
+                        for (uint lvl = 0u; lvl < nLvlsW; ++lvl)
+                        {
+                            CellAddress addrL = (lvl == 0u) ? homeAddr
+                                : resolveCellAtLevelOffset(sd.posW, sd.faceN, int(lvl));
+                            mergeIntoCell(addrL, local, path.sg);
+                        }
+                    }
 
                     // (Pool write-back: now done at candidate-generation time
                     //  with per-entry sourcePdf — see (1) and (1b) above.

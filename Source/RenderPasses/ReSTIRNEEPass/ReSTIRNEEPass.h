@@ -263,7 +263,9 @@ private:
              uint32_t capacity=0;
              uint32_t cellLevelJitter=0;
              float    mCap=20.0f;
-             uint32_t cellReservoirFootprintPx=0; } mVCParams;
+             uint32_t cellReservoirFootprintPx=0;
+             uint32_t reservoirK=1;
+             uint32_t cellLevelOffsetWrite=0; } mVCParams;
 
     // Cell reservoir buffer hosted by VisCache, exposed via InternalDictionary.
     // Bound to `gReservoirs` in the trace pass when USE_NEE_CELLS=1.
