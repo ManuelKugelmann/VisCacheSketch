@@ -75,26 +75,39 @@ Bayer-gated ownership (Bayer requires the single-writer-per-slot
 assumption which breaks at multi-bounce). One atomic per insert, on
 a small counter — cheap on modern GPUs (Ampere+ L2-resident atomics).
 
-### Read: all-slots-are-neighbourhood
+### Read: all-slots-as-neighbourhood, with optional extended neighbourhood
+
+The K reservoirs in a cell are its **primary** neighbourhood by construction
+— exactly the K reservoir-sampled writers who contributed to this cell.
+Extended neighbourhood (jittered-cell reuse from today's code path) is
+**additive**: optionally layered on top to gather more samples from
+nearby cells.
 
 ```
-// Old: separate spatial-reuse pass with jittered addressing
-my_res = load(my_addr)
-for i in 1..N_neighbours:
-    n_addr = resolveJitteredCell(my_addr, i, jitter)
-    n_res = load(n_addr)                    // N separate fetches
-    merge(my_res, n_res)
-
-// New: K-slot read IS spatial reuse
+// New: K-slot read = primary neighbourhood (in-cell)
 cell = load(my_addr)                        // ONE fetch, K reservoirs
 my_res = init()
 for i in 0..K-1:
     merge(my_res, cell.slot[i])
+
+// Optional: extended neighbourhood (additive, configurable)
+for i in 1..N_extendedNeighbours:           // 0 by default
+    n_addr = resolveJitteredCell(my_addr, i, jitter)
+    n_cell = load(n_addr)                   // load whole neighbour cell
+    for j in 0..K-1:
+        merge(my_res, n_cell.slot[j])       // all K slots in neighbour
 ```
 
-The K reservoirs in a cell are its neighbourhood by construction — they
-are exactly the K reservoir-sampled writers who contributed to this cell.
-Spatial reuse degenerates into "read your cell, merge all slots".
+`N_extendedNeighbours = 0` is the default — no extra jittered fetches.
+`N_extendedNeighbours > 0` adds the prior code path's spatial-reuse
+mechanism on top. Both can be active: K=4 in-cell + 2 jittered extended
+cells = 12 reservoirs merged.
+
+Degenerate cases for backward equivalence:
+- **K=1, N_extended=0** ≡ today's R3d single-slot, no spatial reuse
+- **K=1, N_extended=4** ≡ today's R3d with `spatialNeighbours=4` (jittered)
+- **K=4, N_extended=0** ≡ new pure-chunking spatial reuse
+- **K=4, N_extended=4** ≡ K-slot + extended jittered combined (most coverage)
 
 ## Design coordinate system
 
@@ -128,20 +141,45 @@ Future variants the architecture naturally supports:
 
 ## Implementation impact
 
-### Drops
+### Repurposes / extends (no drops)
 
-- `gPixelReservoirs` and `gReservoirs` as separate buffers — one buffer
-  per address-function variant; possibly one shared buffer with pluggable
-  index function.
-- `spatialNeighbours` cbuffer field (Phase D after current 2026-05-19
-  flatten) — collapsed into K.
-- `spatialNeighbourCount()` shader helper — becomes constant K.
-- `resolveJitteredCell()` + tangent-plane jitter math — no jittered
-  neighbour addressing.
-- Separate spatial-reuse code blocks in `PathTracer.slang` — replaced by
-  the slot-merge loop inside the read step.
-- `cellReservoirMerge` (0=identity, 1=Bitterli weighted) — merge is
-  always weighted in the K-slot all-slots read.
+Extended-neighbourhood machinery stays as an additive option, so today's
+code paths are preserved as the `K=1, N_extended > 0` degenerate case.
+
+- `spatialNeighbours` cbuffer field — **kept**. Renamed in spirit to
+  `extendedNeighbours` (count of jittered neighbour cells beyond the
+  in-cell K). Semantics unchanged for K=1 (today's behavior); composes
+  with K>1 chunking.
+- `spatialNeighbourCount()` shader helper — kept; meaning shifts to
+  "extended neighbourhood count" rather than total neighbour count.
+- `resolveJitteredCell()` + tangent-plane jitter math — kept; used only
+  when `extendedNeighbours > 0`.
+- `cellReservoirMerge` (0=identity, 1=Bitterli weighted) — kept as a
+  per-slot merge mode. K-slot read defaults to weighted merge but the
+  identity-only mode stays available for diagnostic/ablation.
+
+### Refactored
+
+- Single buffer for reservoirs with embedded K slots. Layout becomes
+  `Cell { uint count, Reservoir[K] }`. Total buffer size = bucket_count
+  × sizeof(Cell). For K=1 this is bit-identical to today's single-slot
+  buffer layout (just an extra 4B counter per cell, which can be
+  optimized out when K=1 via a compile-time `#if K==1` guard).
+- `mpPixelReservoirs` and `mpReservoirs` either unified into one
+  address-function-pluggable buffer, OR kept as two distinct buffer
+  bindings sharing the same Cell struct. (Latter is the safer
+  incremental refactor.)
+- Reservoir-read loop in `PathTracer.slang`: gains the `for i in 0..K-1`
+  inner loop over `cell.slot[i]`. Outer extended-neighbourhood loop
+  (existing, jittered) is preserved.
+
+### Adds
+
+- `K` cbuffer field (new) — slots per cell, small (4–8) constant.
+  Default `K=1` for backward equivalence; ladder steps raise it.
+- Atomic-counter insert path. When K=1, optimized to direct write
+  (no atomic) to match today's single-slot semantics.
+- In-cell slot-merge loop on read.
 
 ### Adds
 
@@ -233,51 +271,90 @@ measurement; possible 5-20% per-frame reduction in tracePass.
 
 ## Validation plan
 
-Each step is a separate ladder run (`RDI00_KSlot??`) to isolate effects:
+Each step compares the evolved `ReSTIRDIPass` against the frozen
+`ReSTIRDIPass_v1_baseline`. Pass-criterion at each step: rmse drift
+≤ noise floor (~0.2%) for parity steps; per-frame ms equal or better
+than v1_baseline at the same `K` × `extendedNeighbours` budget for
+perf steps.
 
-1. **Equivalence check**: `R3d-1-1x1` and `R3d-4-2x2-strict-ownership`
-   should give bit-identical rmse on Sponza (4×1 reservoirs vs 1×4
-   reservoirs same data). Confirms chunking is a no-op on the
-   single-bounce / strict-ownership path.
-2. **Pure chunking probe**: same as (1) but measure ms — should show
-   cache-locality benefit even at no algorithmic change.
-3. **Cross-slot read enabled**: `R3d-4-2x2-all-slots-merge`. First
-   genuine algorithmic change; verify rmse stays within RNG noise of
-   today's R3d-1-1x1 + spatialNeighbours=4.
-4. **Coarser cell**: `R3d-4-4x4-all-slots-merge`. Tests surface-mismatch
+**Parity steps** (algorithm must match v1_baseline exactly):
+
+1. **K=1, extended=0** matches `R3d-1-1x1_F00P24` baseline. Reservoir
+   reads slot[0] only; no atomic counter (direct write at K=1);
+   no jittered fetches. Bit-identical rmse expected.
+2. **K=1, extended=4** matches `R3d-1-1x1_F00P24` with today's
+   `spatialNeighbours=4`. Single-slot cells + jittered extended
+   neighbourhood. Bit-identical rmse expected.
+3. **K=4, extended=0, strict ownership** (Bayer-mapped writer→slot for
+   ablation only; production uses atomic-counter). Verifies storage-
+   layout equivalence when each pixel deterministically owns one slot.
+   rmse should match (1) within RNG noise.
+
+**Algorithmic steps** (genuinely new behavior):
+
+4. **K=4, extended=0, atomic-counter insert + all-slots-merge read,
+   fp=2x2**. First genuine K-slot variant. rmse expected within RNG
+   noise of (2) (similar effective neighbourhood size); ms should
+   improve from cache locality.
+5. **K=4, extended=4, fp=2x2**. All-slots in-cell + jittered extended
+   cells. Largest effective neighbourhood; tests upper bound of
+   variance reduction.
+6. **Coarser cell**: K=4, fp=4x4 and K=8, fp=4x4. Tests surface-mismatch
    risk; rmse expected to rise on Bistro's geometry-heavy regions.
-5. **Pool extension**: drop separate WSCellPool (P3d-1024 raw samples) and
-   replace with `P3d-K-fp-d{drawK}` for K=4-8 reservoir-sampled writer
-   contributions per pool cell. Tests whether reservoir-pool subsumes
-   raw-sample-pool.
-6. **Multi-bounce**: wire into `ReSTIRNEEPass` (the c13939f5 cells path)
-   and measure quality lift vs today's single-slot cell reservoir.
-
-Success criterion per step: rmse drift ≤ noise floor (~0.2%) AND
-per-frame ms equal or better than today's canonical at the same K
-budget.
+7. **Pool extension**: replace `P3d-1024-raw-samples-d24` with
+   `P3d-K-reservoirs-fp-d{K}` for K=4-8. Tests whether reservoir-pool
+   subsumes raw-sample-pool, or stays a distinct mechanism for
+   variance-rich many-lights scenes.
+8. **Multi-bounce**: wire K-slot into `ReSTIRNEEPass` (the c13939f5
+   cells path). Atomic counter handles multi-bounce's unpredictable
+   writer count per cell; measure quality lift vs today's single-slot
+   cell reservoir.
 
 ## Migration path
 
-This is a v2-of-WS-ReSTIR architecture, not an in-place refactor of
-the existing code. Recommended approach:
+Natural evolution of the existing `ReSTIRDIPass`, not a parallel plugin.
+The K-slot architecture is a strict superset of today's design (K=1,
+N_extended=0..4 reproduces today's variants bit-identically), so the
+existing pass can evolve in place while a frozen copy serves as the
+parity yardstick.
 
-1. Land it as a separate plugin (`ReSTIRDIPassV2` or
-   `ReSTIRDIPassKSlot`) alongside existing `ReSTIRDIPass`, similar
-   to how `ReSTIRDIReferencePass` coexists.
-2. New plugin builds on top of existing `ReSTIRCommon` slang utilities;
-   adds the K-slot chunked cell struct + atomic-counter insert + all-
-   slots merge as new helpers.
-3. Wire a new ladder set (`RDI00_KSlot*`) that compares old vs new
-   across the equivalence + algorithmic-change steps above.
-4. If perf/quality both win across the 3-scene matrix (Bistro / Sponza
-   / Cornell_32PL), promote new plugin to canonical and deprecate old.
-5. If old wins in some regime (e.g., R2dP2d sticks with direct
-   addressing being faster than chunked at K=1), keep both.
+1. **Archive today's `ReSTIRDIPass` as `ReSTIRDIPass_v1_baseline`** —
+   verbatim copy of the current implementation, registered as a distinct
+   plugin DLL. Frozen yardstick (same pattern as `ReSTIRDIReferencePass`
+   created in tick 11 of 9585297a's session). Bug-fixes/upstream-syncs
+   only; never algorithm changes.
+2. **Evolve `ReSTIRDIPass` toward K-slot in place**. Each step is
+   verifiable against the v1_baseline parity yardstick:
+   a. Introduce `K` cbuffer field, default K=1. Cell struct
+      `{uint count, Reservoir[K]}` with `#if K==1` optimization to
+      degenerate to today's storage layout.
+   b. Wire atomic-counter insert path; gate behind `K>1` (K=1 keeps
+      direct write).
+   c. Wire in-cell slot-merge read loop; gate behind `K>1` (K=1 reads
+      just slot[0] as today).
+   d. At each step: ladder rmse delta vs v1_baseline must be within
+      RNG noise floor (~0.2%).
+3. **Add ladder steps `RDI00_KSlot*`** for the genuinely new variants
+   (K>1) — chunking-only, all-slots-merge, all-slots+extended,
+   coarse-cell-with-K-slots, multi-bounce K-slot for NEE/PT.
+4. **Promote when both perf and quality win across the 3-scene matrix
+   at the chosen K**. The canonical baseline tags (R2dP2d_F17P24 /
+   R3dP3d_F00P24) stay the same names but the underlying pass is now
+   the K-slot-capable evolution; they pin K=1 to keep parity with
+   v1_baseline.
+5. **v1_baseline can be deprecated** once a few rounds of ladder runs
+   confirm the evolved `ReSTIRDIPass` at K=1 stays parity-identical to
+   v1_baseline across all of RDI00 (Sponza, Bistro, Cornell variants).
 
-No forward-only-migration burden on the existing R2dP2d / R3dP3d
-canonical baselines — they continue to exist and be benchmarked
-against the new variants.
+Same pattern applies to `ReSTIRNEEPass` and `ReSTIRPTPass` (forks of
+the same fork lineage) — each gets a `_v1_baseline` archive snapshot
+and an in-place evolution toward K-slot when the design proves out on
+DI first.
+
+Net effect: the historical canonical baselines (`R2dP2d_F17P24` etc.)
+remain reproducible against their v1_baseline counterparts forever,
+while the canonical pass evolves to support the full unified design
+space. No two-implementations-doing-the-same-thing smell.
 
 ## Open questions
 
