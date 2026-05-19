@@ -79,12 +79,14 @@ g_gt = render_graph_PathTracer(viscache=False, maxBounces=MAX_BOUNCES,
                                passClassName="PathTracer")
 _run("gt", g_gt, FRAMES_GT, f"x{SPP_GT}")
 
-# 3. ReSTIR DI without VisCache shadow CV / light-selection. The
-#    PathTracer_Graph still wires VisCache as the buffer host (reservoirs
-#    live there), but its in-shader features are off.
+# 3. ReSTIR DI at maxBounces=1 — DI is a primary-hit algorithm by design
+#    (K-RIS + per-pixel reservoir + temporal + spatial reuse at vertex 1
+#    only; vertices 2+ would fall back to plain NEE and add no DI value).
+#    Running DI at maxBounces=3 just inflates the path tracer without
+#    exercising the algorithm. VisCache shadow CV / light-selection off.
 g_rdi = render_graph_PathTracer(
     viscache=True, reservoirs=True, useReSTIRDIPass=True,
-    maxBounces=MAX_BOUNCES, samplesPerPixel=SPP_LOW, useJitter=True,
+    maxBounces=1, samplesPerPixel=SPP_LOW, useJitter=True,
     visibilityCheck=False, lightSelection=False,
 )
 _run("restirdi", g_rdi, FRAMES_LOW, f"x{SPP_LOW}")

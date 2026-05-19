@@ -318,11 +318,16 @@ N_extended=0..4 reproduces today's variants bit-identically), so the
 existing pass can evolve in place while a frozen copy serves as the
 parity yardstick.
 
-1. **Archive today's `ReSTIRDIPass` as `ReSTIRDIPass_v1_baseline`** —
-   verbatim copy of the current implementation, registered as a distinct
-   plugin DLL. Frozen yardstick (same pattern as `ReSTIRDIReferencePass`
-   created in tick 11 of 9585297a's session). Bug-fixes/upstream-syncs
-   only; never algorithm changes.
+1. **Use existing `ReSTIRDIReferencePass` as the v1 baseline** — no new
+   plugin needed. The reference pass already exists (created tick 11 of
+   9585297a's session) and is functionally identical to current
+   `ReSTIRDIPass` after the 2026-05-19 cleanup commits applied to both
+   in parallel. Freeze it at its current state going forward: no further
+   mechanical refactors touch it; algorithm + params pinned. It serves
+   as the bit-identical parity yardstick for the K-slot evolution.
+
+   Net plugin tree stays at today's count (ReSTIRDIPass active +
+   ReSTIRDIReferencePass frozen). No third plugin alongside.
 2. **Evolve `ReSTIRDIPass` toward K-slot in place**. Each step is
    verifiable against the v1_baseline parity yardstick:
    a. Introduce `K` cbuffer field, default K=1. Cell struct
@@ -342,9 +347,10 @@ parity yardstick.
    R3dP3d_F00P24) stay the same names but the underlying pass is now
    the K-slot-capable evolution; they pin K=1 to keep parity with
    v1_baseline.
-5. **v1_baseline can be deprecated** once a few rounds of ladder runs
-   confirm the evolved `ReSTIRDIPass` at K=1 stays parity-identical to
-   v1_baseline across all of RDI00 (Sponza, Bistro, Cornell variants).
+5. **`ReSTIRDIReferencePass` remains as the long-term parity yardstick**.
+   Unlike a session-scoped archive, it's already in the codebase and
+   serves the same role for all future refactors (not just this one).
+   Don't deprecate it after K-slot lands — it's the permanent reference.
 
 Same pattern applies to `ReSTIRNEEPass` and `ReSTIRPTPass` (forks of
 the same fork lineage) — each gets a `_v1_baseline` archive snapshot

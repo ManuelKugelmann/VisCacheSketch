@@ -22,3 +22,31 @@ must be a bug-fix or upstream Falcor sync, never an algorithm change.
 The reference is here precisely to detect drift when the active pass
 diverges. If the active pass intentionally departs (e.g., DI-only strip,
 ParameterBlock unification), document it in the active pass's PORT_NOTES.md.
+
+## 2026-05-19 — declared K-slot evolution v1 baseline
+
+This pass is the parity yardstick for the upcoming K-slot reservoir
+architecture (see `.plans/unified-reservoir-addressing.md`). Going
+forward:
+
+- `ReSTIRDIPass` evolves toward K-slot reservoirs: cell struct gains
+  `K` slot count, atomic-counter insert path, all-slots-merge read.
+  At K=1 (the default) it must remain bit-identical to this reference.
+- `ReSTIRDIReferencePass` (this) is **strictly frozen** at the current
+  algorithm. No further mechanical refactors touch it. Cleanup commits
+  from earlier in this session that touched both passes in parallel
+  (4f78aee, 4b32125, 695282e and earlier) were the last syncs; from
+  this point onward, only the active pass evolves.
+
+Parity validation across K-slot rollout:
+
+| K-slot sub-step | Parity check against this pass |
+|---|---|
+| K=1 cbuffer field added | bit-identical rmse on RDI00 |
+| K=1 atomic-counter insert (gated) | bit-identical rmse on RDI00 |
+| K=1 in-cell merge (gated, reads slot[0]) | bit-identical rmse on RDI00 |
+| K>1 variants | new algorithm, parity not expected (new ladder steps) |
+
+If at any step `ReSTIRDIPass` at K=1 drifts from this reference's
+rmse beyond the RNG noise floor (~0.2%), the K-slot evolution has
+introduced a regression. Fix before proceeding.
