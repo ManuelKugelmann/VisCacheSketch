@@ -1463,7 +1463,9 @@ struct PathTracer
                     // temporal + spatial reuse via gPixelReservoirs only).
                     CellAddress homeAddr = resolveCell(sd.posW, sd.faceN);
                     const uint nNeighbours = spatialNeighbourCount();
-                    for (uint i = 0u; (nNeighbours > 0u) && i <= nNeighbours; ++i)
+                    // K-slot evolution: when K>1, fire home cell (i=0) even with
+                    // nNeighbours=0 — in-cell K slots ARE the neighbourhood.
+                    for (uint i = 0u; (nNeighbours > 0u || isMultiSlot()) && i <= nNeighbours; ++i)
                     {
                         CellAddress addr;
                         if (i == 0u)
@@ -1542,7 +1544,8 @@ struct PathTracer
                         //     fold the cell as an aggregated reservoir. World-space analog
                         //     of the per-pixel temporal/spatial reservoir; no reprojection
                         //     needed (cell ID is camera-invariant). Used by `restir_3d`.
-                        if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
+                        // K-slot evolution: K>1 → force identity-hint (selection-only).
+                        if (!isMultiSlot() && gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
                             float w    = pHatCell * cell.W * Mcap;

@@ -1725,7 +1725,11 @@ struct PathTracer
                         local.init();
                     }
 #endif
-                    for (uint i = 0u; (nNeighbours > 0u) && i <= nNeighbours; ++i)
+                    // K-slot evolution: when K>1, fire home cell (i=0) even with
+                    // nNeighbours=0 — in-cell K slots ARE the neighbourhood per
+                    // .plans/unified-reservoir-addressing.md. Extended-jittered
+                    // neighbours (i=1..N) only fire when nNeighbours>0 (additive).
+                    for (uint i = 0u; (nNeighbours > 0u || isMultiSlot()) && i <= nNeighbours; ++i)
                     {
                         CellAddress addr;
                         if (i == 0u)
@@ -1803,7 +1807,12 @@ struct PathTracer
                         //     fold the cell as an aggregated reservoir. World-space analog
                         //     of the per-pixel temporal/spatial reservoir; no reprojection
                         //     needed (cell ID is camera-invariant). Used by `restir_3d`.
-                        if (gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
+                        // K-slot evolution: when K>1, force identity-hint path
+                        // regardless of cellReservoirMerge. K-slot's loadCellMerged
+                        // already does the K-slot weighted merge internally —
+                        // streaming as a single identity candidate at reader's
+                        // pHat is the bias-correct consumption.
+                        if (!isMultiSlot() && gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
                             float m_c = 1.f;
