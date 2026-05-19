@@ -450,7 +450,67 @@ delivers a real quality win. If not, K-slot is best-suited for
 multi-bounce paths in NEE/PT where the pool isn't the dominant
 mechanism.
 
-### 2026-05-19 cross-scene K-slot characterization
+### 2026-05-19 v3 design — multi-level K-slot leveraging VisCache cascade
+
+After the v2 cross-scene results (Sponza wins, Bistro/Cornell regress at
+fp>1 due to surface mixing), the natural next architecture is **two-level
+K-slot riding VisCache's existing posA cascade**:
+
+```
+WRITE (per pixel per frame):
+  level 0 (fine, fp=1px):    single-slot insert (today's behavior)
+  level 1 (one coarser):     K-slot insert via atomic counter
+
+READ (per pixel per frame):
+  primary    = loadCell(level=0, my_cell)          # own pixel history
+  neighbours = loadCellMerged(level=1, my_cell, K) # K writers' spatial samples
+  merge_into_local(primary, neighbours)
+```
+
+**Why it solves the cell-coherence problem**:
+- Fine level (fp=1) — one writer per cell — no surface mixing. Provides
+  RTXDI-equivalent per-pixel reservoir. "My own sample, no contamination."
+- Coarse level (fp ~ 2-4 pixels typically) — multiple writers per cell —
+  K-slot pool of nearby pixels. The RIS weighting at reader's pHat
+  naturally downweights mismatched-surface contributions, so cross-cell
+  contamination is handled by the math (not avoided architecturally).
+
+**Why it's free architecturally**:
+- VisCache already has `numLevels` posA cascade (default 8 levels).
+- Each level has its own cell addressing via `resolveCellAtLevel`.
+- No new buffer machinery: extend `gReservoirs` to hold cells at multiple
+  levels, indexed by `hash(level, addr)`. Cascade hash separates levels
+  naturally.
+
+**Implementation steps**:
+1. Buffer: extend `gReservoirs` to span 2 levels. Either two bindings
+   (`gReservoirsFine` / `gReservoirsCoarse`) or one buffer with level-offset
+   indexing. Single-buffer is cleaner if cascade hash gives non-colliding
+   addresses across levels.
+2. Write: `mergeIntoCell` becomes two calls — single-slot at level 0,
+   K-slot atomic-counter at level 1.
+3. Read: replace jittered-neighbour spatial merge with two-level fetch
+   (load level 0 for primary, loadCellMerged level 1 for neighbourhood).
+4. Footprint policy: `coarseLevelOffset = 1` default. Tunable knob.
+5. Multi-bounce: every level naturally has more writers per cell at
+   higher bounces. Bounce-cone convergence is intrinsic to the cascade —
+   no Sharc-style explicit growth needed.
+
+**Expected outcomes**:
+- Sponza: keeps v2's win (coarse level still aggregates similar writers).
+- Bistro/Cornell: v2 regression goes away (fine level is bias-free; coarse
+  level's contribution is RIS-weighted at reader's pHat — mismatched
+  surfaces auto-downweighted, not blindly aggregated).
+- Multi-bounce paths (NEEPass/PTPass): K-slot benefit emerges naturally
+  via the cascade's per-level cell coverage.
+
+**Scope estimate**: ~2-3 commits of work in a dedicated session.
+v2's infrastructure (atomic counter, kSlotAddr, loadCellMerged) generalizes
+directly — just add level-offset indexing. Per-slot normal filter from
+v2's last commit becomes redundant (cell hash + RIS weighting handle the
+surface separation).
+
+### 2026-05-19 cross-scene K-slot characterization (v2)
 
 **K-slot is scene-dependent, not a universal quality win.** Results at x64:
 

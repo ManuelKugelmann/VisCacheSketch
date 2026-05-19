@@ -1485,7 +1485,7 @@ struct PathTracer
                         // branch is dead here by pinning of reservoirK=1 default;
                         // kept symmetrical with active pass to ease parity diff.
                         bool gotCell = isMultiSlot()
-                            ? loadCellMerged(addr, path.sg, cell)
+                            ? loadCellMergedFiltered(addr, sd.faceN, true, path.sg, cell)
                             : loadCell(addr, cell);
                         if (!gotCell) continue;
                         if (cell.M <= 0.f) continue;

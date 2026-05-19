@@ -1746,9 +1746,11 @@ struct PathTracer
                         }
                         Reservoir cell;
                         // K-slot dispatch: at K=1, single-slot read (today's behavior).
-                        // At K>1, in-cell K-slot merge collapses K reservoirs into one.
+                        // At K>1, in-cell K-slot merge collapses K reservoirs into one,
+                        // with normal-aware filtering to skip slots from disparate
+                        // surfaces (fixes Bistro/Cornell cross-scene regression).
                         bool gotCell = isMultiSlot()
-                            ? loadCellMerged(addr, path.sg, cell)
+                            ? loadCellMergedFiltered(addr, sd.faceN, true, path.sg, cell)
                             : loadCell(addr, cell);
                         if (!gotCell) continue;
                         if (cell.M <= 0.f) continue;

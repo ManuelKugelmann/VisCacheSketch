@@ -1104,9 +1104,10 @@ struct PathTracer
                         // grows monotonically across many writers per cell).
                         CellAddress cellAddr = resolveCellForFootprint(sd.posW, sd.faceN, path.cellFootprintPx);
                         Reservoir cell;
-                        // K-slot dispatch: K=1 single-slot read, K>1 in-cell merge.
+                        // K-slot dispatch: K=1 single-slot read, K>1 in-cell merge with
+                        // normal-aware filtering (skip slots from disparate surfaces).
                         bool gotCell = isMultiSlot()
-                            ? loadCellMerged(cellAddr, path.sg, cell)
+                            ? loadCellMergedFiltered(cellAddr, sd.faceN, true, path.sg, cell)
                             : loadCell(cellAddr, cell);
                         if (gotCell && cell.M > 0.f)
                         {

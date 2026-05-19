@@ -415,6 +415,21 @@ bool loadCell(CellAddress addr, out Reservoir cell)
 // the no-SG loadCell above for that path (parity-preserving).
 bool loadCellMerged<S : ISampleGenerator>(CellAddress addr, inout S sg, out Reservoir merged)
 {
+    // Default overload: no surface filtering. Use loadCellMergedFiltered
+    // for normal-aware slot rejection.
+    float3 dummyN = float3(0.f, 0.f, 0.f);
+    return loadCellMergedFiltered(addr, dummyN, false, sg, merged);
+}
+
+// K-slot read with optional reader-surface filtering. When filterByNormal=true,
+// each slot's stored normalOct is decoded and compared against readerFaceN; slots
+// with cos(angle) < 0.5 (~60°) are skipped. Prevents cross-surface contamination
+// on geometry-heavy scenes (Bistro / Cornell point lights regress without this
+// filter because cells aggregate writers from disparate surfaces).
+bool loadCellMergedFiltered<S : ISampleGenerator>(CellAddress addr, float3 readerFaceN,
+                                                   bool filterByNormal, inout S sg,
+                                                   out Reservoir merged)
+{
     merged = reservoirInit(0u);
     if (!cellReservoirEnabled()) return false;
     if (gCapacity == 0u) return false;
@@ -427,11 +442,20 @@ bool loadCellMerged<S : ISampleGenerator>(CellAddress addr, inout S sg, out Rese
     float selTargetPdf = 0.f;
     bool  anyValid = false;
 
+    // Normal-aware filter threshold: cos(60°) = 0.5. Matches the WS-ReSTIR
+    // temporal-reuse threshold (RTXDI normalThreshold default).
+    const float kKSlotNormalCos = 0.5f;
+
     for (uint i = 0u; i < K; ++i)
     {
         Reservoir s = gReservoirs[kSlotAddr(addr.slot, i)];
         if (s.fingerprint != addr.fingerprint) continue;   // skip cold/collision
         if (s.M <= 0.f) continue;
+        if (filterByNormal && s.normalOct != 0u)
+        {
+            float3 slotN = unpackDirOct(s.normalOct);
+            if (dot(slotN, readerFaceN) < kKSlotNormalCos) continue;
+        }
         float pHat_i = max(s.targetPdf, 1e-12f);
         float wSum_i = s.W * pHat_i * s.M;
         if (wSum_i <= 0.f) continue;
