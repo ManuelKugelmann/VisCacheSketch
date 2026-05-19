@@ -476,25 +476,47 @@ READ (per pixel per frame):
   contamination is handled by the math (not avoided architecturally).
 
 **Why it's free architecturally**:
-- VisCache already has `numLevels` posA cascade (default 8 levels).
-- Each level has its own cell addressing via `resolveCellAtLevel`.
-- No new buffer machinery: extend `gReservoirs` to hold cells at multiple
-  levels, indexed by `hash(level, addr)`. Cascade hash separates levels
-  naturally.
+- VisCache's `numLevels` posA cascade (default 8) already provides
+  multi-level addressing via `resolveCellAtLevel(posW, faceN, level)`.
+- Each level hashes to different slots in the existing flat `gReservoirs`
+  buffer — `(pos_quantized_at_level, normal, level)` → unique slot.
+- **No new buffers, no new structs**. Cells at different levels coexist
+  in the same hash table by virtue of the cascade's level-aware hash.
 
-**Implementation steps**:
-1. Buffer: extend `gReservoirs` to span 2 levels. Either two bindings
-   (`gReservoirsFine` / `gReservoirsCoarse`) or one buffer with level-offset
-   indexing. Single-buffer is cleaner if cascade hash gives non-colliding
-   addresses across levels.
-2. Write: `mergeIntoCell` becomes two calls — single-slot at level 0,
-   K-slot atomic-counter at level 1.
-3. Read: replace jittered-neighbour spatial merge with two-level fetch
-   (load level 0 for primary, loadCellMerged level 1 for neighbourhood).
-4. Footprint policy: `coarseLevelOffset = 1` default. Tunable knob.
-5. Multi-bounce: every level naturally has more writers per cell at
-   higher bounces. Bounce-cone convergence is intrinsic to the cascade —
-   no Sharc-style explicit growth needed.
+**Implementation**:
+```
+CellAddress addr0 = resolveCellAtLevel(sd.posW, sd.faceN, baseLevel);
+CellAddress addr1 = resolveCellAtLevel(sd.posW, sd.faceN, baseLevel + 1);
+
+// Write (per pixel per frame):
+mergeIntoCell(addr0, local, sg);          // K=1 single-slot at fine level
+mergeIntoCellMultiSlot(addr1, local, sg); // K-slot atomic-counter at coarse
+
+// Read (per pixel per frame):
+Reservoir main, nbrs;
+loadCell(addr0, main);                     // primary, per-pixel safety
+loadCellMerged(addr1, sg, nbrs);           // K-slot spatial neighbourhood
+
+// Stream both into local with pairwise MIS for surface-mismatch handling.
+```
+
+**Tunables**:
+- `coarseLevelOffset` (default +1) — controls how broad the "spatial
+  neighbourhood" footprint is. Larger offset = wider but more
+  surface-mixing risk.
+- `biasCorrection=1` required at K>1 read — pairwise MIS m_j handles
+  mismatched-writer-pHat downweight (RTXDI's bias-correction analog).
+
+**Per-bounce footprint policy** (for NEE/PT multi-bounce):
+- baseLevel naturally grows with `cellFootprintPx` parameter (Sharc-style
+  per-bounce growth already wired in NEEPass).
+- coarseLevelOffset stays constant at +1 — the cascade's geometric level
+  spacing handles the relative growth automatically.
+
+**v2 cleanup**: per-slot normal filter (`loadCellMergedFiltered`) introduced
+in v2's last commit becomes redundant. Cell hash addressing already
+separates by normal (60° default); MIS pairwise downweight handles
+intra-cell residual mismatch. Filter to be reverted when v3 lands.
 
 **Expected outcomes**:
 - Sponza: keeps v2's win (coarse level still aggregates similar writers).
