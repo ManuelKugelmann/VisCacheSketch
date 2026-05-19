@@ -1574,7 +1574,6 @@ void ReSTIRDIPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         vc["gDistBCoarse"]                   = mVCParams.distBCoarse;
         vc["gDistBFine"]                     = mVCParams.distBFine;
         vc["gNormalACoarse"]                 = mVCParams.normalACoarse;
-        vc["gNormalAFine"]                   = mVCParams.normalAFine;
         vc["gBootThresholdFactorFootprintPx"] = mVCParams.bootThresholdFactorFootprintPx;
         vc["gForceDescendFootprintPx"]       = mVCParams.forceDescendFootprintPx;
         vc["gCascadeWindowForward"]          = mVCParams.cascadeWindowForward;
@@ -1586,7 +1585,6 @@ void ReSTIRDIPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         vc["gBootThresholdFine"]             = mVCParams.bootThresholdFine;
         vc["gJitterFilter"]                  = mVCParams.jitterFilter;
         vc["gJitterCell"]                    = mVCParams.jitterCell;
-        vc["gDiagAccumWindow"]               = mVCParams.diagAccumWindow;
         vc["gFrameCount"]                    = mVCParams.frameCount;
         vc["gSpp"]                           = mVCParams.spp;
         vc["gCameraPosX"]                    = mVCParams.cameraPosX;
@@ -1603,7 +1601,6 @@ void ReSTIRDIPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         vc["gMCap"]                        = mVCParams.mCap;
         vc["gSpatialNeighbours"]           = mVCParams.spatialNeighbours;
         vc["gLightMuMin"]                  = mVCParams.lightMuMin;
-        vc["gLightSoftness"]               = mVCParams.lightSoftness;
         vc["gInitialCandidates"]           = mVCParams.initialCandidates;
         // (gJitterFilter / gJitterCell cbuffer fields are now padding;
         //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)

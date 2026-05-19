@@ -257,8 +257,6 @@ void MinimalPathTracer::execute(RenderContext* pRenderContext, const RenderData&
         var["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         var["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
         var["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
-        var["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        var["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
     // Get dimensions of ray dispatch.

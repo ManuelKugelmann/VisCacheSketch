@@ -339,8 +339,6 @@ void RTXDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& 
         rootVar["VisCacheParams"]["gDistBCoarse"]    = mVCParams.distBCoarse;
         rootVar["VisCacheParams"]["gDistBFine"]      = mVCParams.distBFine;
         rootVar["VisCacheParams"]["gNormalACoarse"]  = mVCParams.normalACoarse;
-        rootVar["VisCacheParams"]["gNormalAFine"]    = mVCParams.normalAFine;
-        rootVar["VisCacheParams"]["gDiagAccumWindow"] = mVCParams.diagAccumWindow;
     }
 
     auto var = rootVar["gFinalShading"];

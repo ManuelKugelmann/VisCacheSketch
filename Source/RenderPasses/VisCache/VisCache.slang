@@ -201,7 +201,7 @@ cbuffer VisCacheParams
     float  gDistBCoarse;     ///< distance coarsest cell size (world units, dirdist mode)
     float  gDistBFine;       ///< distance finest cell size (auto-derived)
     float  gNormalACoarse;   ///< normal coarsest cell size (degrees, like dirBCoarse)
-    float  gNormalAFine;     ///< normal finest cell size (auto-derived)
+    float  _wsPad3;          ///< (was gNormalAFine, removed 2026-05-19; unused by any shader)
     float  gBootThresholdFactorFootprintPx;  ///< K: footprint trust scale. 0 = off (pure bootThreshold),
                              ///< 1 = log2(cellPixels) floor, >1 = aggressive.
     uint   gForceDescendFootprintPx; ///< Cell-footprint (px²) above which vhfLookup always
@@ -248,7 +248,7 @@ cbuffer VisCacheParams
                                       ///< (uniform gBootThreshold across all levels, legacy).
     float  gJitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
     float  gJitterCell;      ///< F: per-cell-index-seed jitter scale [Binder 2018] (per-cell shift, hard boundaries). 0 = off.
-    uint   gDiagAccumWindow; ///< EMA window size for accumulated diagnostics (0 = all frames)
+    uint   _wsPad4;          ///< (was gDiagAccumWindow, removed 2026-05-19; unused by any shader)
     uint   gFrameCount;      ///< Current frame index for per-frame RNG variation
     uint   gSpp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
     float  gCameraPosX;      ///< Camera world-space X (for footprint estimation)
@@ -264,7 +264,7 @@ cbuffer VisCacheParams
     float  gMCap;               ///< Temporal M-cap for reservoir merge.
     uint   gSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
     float  gLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
-    float  gLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
+    float  _wsPad5;             ///< (was gLightSoftness, removed 2026-05-19; unused by any shader)
     uint   _wsPad2;             ///< (was gNormalAddr — feature dropped 2026-05-18; never enabled in any ladder)
     uint   gInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
     uint   gFrameDimX;          ///< Frame width  (for indexing per-pixel reservoir buffer).

@@ -1225,8 +1225,6 @@ void VisCache::runDecayPass(RenderContext* pCtx)
     vars["VisCacheParams"]["gDistBCoarse"]    = mParams.distBCoarse;
     vars["VisCacheParams"]["gDistBFine"]      = (N > 1) ? deriveFine(mParams.distBCoarse, N) : mParams.distBCoarse;
     vars["VisCacheParams"]["gNormalACoarse"]  = mParams.normalACoarse;
-    vars["VisCacheParams"]["gNormalAFine"]    = (N > 1) ? deriveFine(mParams.normalACoarse, N) : mParams.normalACoarse;
-    vars["VisCacheParams"]["gDiagAccumWindow"] = mParams.diagAccumWindow;
 
     mpDecayPass->execute(pCtx, stride, 1u, 1u);
 }
