@@ -165,6 +165,10 @@ cycle, profiler `stats.mean`, EMA bypassed).
 | 09cf651 | wsCellPoolPrePass=False canonical (R2dP2d + R3dP3d) | identical |
 | 662700b | Cross-variant prepass A/B (RDI00_PrepassAB)   | verified 6/6  |
 | ccbf5b1 | 3 dead cbuffer fields removed (NormalAFine, DiagAccumWindow, LightSoftness) | identical |
+| e338acb | LADDER_TIMING_BREAKDOWN env var bypasses capture-file cache | tool fix |
+| 4f78aee | Orphan C++ struct fields dropped (Phase A; followup to ccbf5b1, −53 LOC) | identical |
+| 4b32125 | useCellInRIS dropped — collapsed into (spatialNeighbours > 0) (Phase B) | drift −0.20% (RNG floor) |
+| 695282e | enableCellPool dropped — collapsed into (cellPoolFootprintPx > 0) (Phase C-light) | drift −0.17% (RNG floor) |
 
 **Final verified per-variant numbers, x64**
 
