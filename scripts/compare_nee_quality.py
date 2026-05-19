@@ -91,27 +91,43 @@ g_rdi = render_graph_PathTracer(
 )
 _run("restirdi", g_rdi, FRAMES_LOW, f"x{SPP_LOW}")
 
-# 4a. ReSTIR NEE K=16 at maxBounces=1 — single-bounce transition variant.
-#     Algorithmically equivalent to restirdi (K-RIS only at primary hit, no
-#     temporal/spatial reuse), so the gap vs restirdi exposes the impact of
-#     DI's reservoir-reuse machinery vs NEE's single-shot K-RIS.
+# Variant naming follows the project taxonomy:
+#   F## = Fresh K-RIS candidate count (initialCandidates).
+#   P## = Pool draw K (cellPoolDrawK).
+#   R2d = per-pixel reservoir; R3d = world-space cell reservoir.
+#   _b1 = single-bounce-only (matches DI's native primary-hit scope);
+#         unsuffixed = multi-bounce at MAX_BOUNCES.
+#
+# Honest read on current "ReSTIR" NEE: F16 / F16_b1 are PURE K-RIS — no
+# reservoir reuse, not really ReSTIR. F16R3d is genuinely ReSTIR-like
+# (3D cell reservoir persists across frames AND pixels). A faithful
+# ReSTIR-NEE-as-multibounce-DI would add per-vertex R2d (or hit-point
+# hashed reservoir) + temporal/spatial reuse — not yet implemented.
+
+# 4a. F16_b1 — fresh K-RIS at primary hit only, no reservoir. Algorithmically
+#     pure-RIS (Talbot 2005) baseline. The gap vs restirdi exposes the value
+#     of DI's reservoir-reuse machinery on top of identical K-RIS.
 g_nee_b1 = render_graph_ReSTIRNEEPass(maxBounces=1,
                                       samplesPerPixel=SPP_LOW, useJitter=True,
                                       numNEECandidates=NEE_K)
-_run("restirnee_b1", g_nee_b1, FRAMES_LOW, f"x{SPP_LOW}")
+_run("nee_F16_b1", g_nee_b1, FRAMES_LOW, f"x{SPP_LOW}")
 
-# 4b. ReSTIR NEE K=16 (no VisCache at all)
+# 4b. F16 multi-bounce — fresh K-RIS at every non-Delta vertex.
 g_nee = render_graph_ReSTIRNEEPass(maxBounces=MAX_BOUNCES,
                                    samplesPerPixel=SPP_LOW, useJitter=True,
                                    numNEECandidates=NEE_K)
-_run("restirnee", g_nee, FRAMES_LOW, f"x{SPP_LOW}")
+_run("nee_F16", g_nee, FRAMES_LOW, f"x{SPP_LOW}")
 
-# 5. ReSTIR NEE K=16 + 3D cell-reservoir reuse at every NEE call (USE_NEE_CELLS=1).
+# 5. F16R3d — F16 + 3D cell-reservoir reuse at every NEE call. Cell merge
+#    currently uses identity-stream (DI's gCellReservoirMerge=0 mode). Full
+#    Bitterli weighted merge (DI's gCellReservoirMerge=1) needs M-cap-aware
+#    reservoir math to avoid cell.W positive-feedback explosion across the
+#    multi-vertex writes per pixel.
 g_nee_cells = render_graph_ReSTIRNEEPass(maxBounces=MAX_BOUNCES,
                                          samplesPerPixel=SPP_LOW, useJitter=True,
                                          numNEECandidates=NEE_K,
                                          useNEECells=True)
-_run("restirnee_cells", g_nee_cells, FRAMES_LOW, f"x{SPP_LOW}")
+_run("nee_F16R3d", g_nee_cells, FRAMES_LOW, f"x{SPP_LOW}")
 
 print("[compare] all variants captured.")
 exit()

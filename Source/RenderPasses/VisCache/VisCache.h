@@ -158,7 +158,10 @@ public:
                                        ///< candidate (K=1) gives no variance benefit beyond vanilla NEE.
         uint32_t _wsPad0;              ///< (reserved — was jitterFilter; WS-ReSTIR now reuses VisCache's gJitterFilter)
         uint32_t _wsPad1;              ///< (reserved — was jitterCell; WS-ReSTIR now reuses VisCache's gJitterCell)
-        uint32_t _wsPad6;              ///< (reserved — was useCellInRIS; collapsed into spatialNeighbours>0 2026-05-19)
+        uint32_t reservoirK;           ///< K slots per reservoir cell. Default 1 = single-slot
+                                       ///< (today's behavior, bit-identical to ReSTIRDIReferencePass).
+                                       ///< K>1 = K-slot architecture (atomic-counter insert,
+                                       ///< all-slots-merge read).
         uint32_t visInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
         uint32_t _wsPad7;            ///< (reserved — was cellPoolEnable; collapsed into cellPoolFootprintPx>0 2026-05-19)
@@ -313,10 +316,17 @@ public:
                                                         ///< Higher = more temporal stability but per-pixel
                                                         ///< reservoir lock-in bias (occluded picks stay dark
                                                         ///< on emissive scenes). Mitigated by spatial reuse.
-        uint32_t spatialNeighbours           = 4u;    ///< Cell-RIS spatial neighbour cells per pixel (0..4).
-                                                        ///< 0 = cell-RIS off-switch (was useCellInRIS, dropped
-                                                        ///< 2026-05-19); the merge-loop home cell is included in
-                                                        ///< the count when >0.
+        uint32_t spatialNeighbours           = 4u;    ///< Extended-neighbourhood cells gathered via jittered
+                                                        ///< addressing (0..4). 0 = no extended fetches.
+                                                        ///< Composes additively with reservoirK > 1: in-cell
+                                                        ///< K slots are the primary neighbourhood; jittered
+                                                        ///< extended cells add more reservoirs on top.
+        uint32_t reservoirK                  = 1u;    ///< K slots per reservoir cell (chunking factor).
+                                                        ///< 1 = today's single-slot behavior, bit-identical to
+                                                        ///< ReSTIRDIReferencePass parity yardstick.
+                                                        ///< 2-8 = K-slot architecture (atomic-counter insert,
+                                                        ///< all-slots-merge read). See
+                                                        ///< .plans/unified-reservoir-addressing.md.
         float    lightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
         uint32_t initialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).

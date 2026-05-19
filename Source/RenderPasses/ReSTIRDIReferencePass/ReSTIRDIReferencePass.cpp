@@ -1298,6 +1298,7 @@ bool ReSTIRDIReferencePass::beginFrame(RenderContext* pRenderContext, const Rend
             mVCParams.capacity          = getU("vhfParam_wsCapacity", 0u);
             mVCParams.mCap              = getF("vhfParam_wsMCap", 30.f);
             mVCParams.spatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
+            mVCParams.reservoirK        = getU("vhfParam_wsReservoirK", 1u);  // default 1 = single-slot (yardstick stays here)
             mVCParams.lightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
             mVCParams.initialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
             // (jitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
@@ -1583,6 +1584,7 @@ void ReSTIRDIReferencePass::tracePass(RenderContext* pRenderContext, const Rende
         vc["gCapacity"]                    = mVCParams.capacity;
         vc["gMCap"]                        = mVCParams.mCap;
         vc["gSpatialNeighbours"]           = mVCParams.spatialNeighbours;
+        vc["gReservoirK"]                  = mVCParams.reservoirK;
         vc["gLightMuMin"]                  = mVCParams.lightMuMin;
         vc["gInitialCandidates"]           = mVCParams.initialCandidates;
         // (gJitterFilter / gJitterCell cbuffer fields are now padding;

@@ -49,16 +49,28 @@ def main():
     gt = gt_matches[-1]
     print(f"[gt] {os.path.basename(gt)}")
 
-    # Single-bounce arms (vanilla_b1, restirdi, restirnee_K16_b1) form a
-    # like-for-like trio — all do K-RIS only at primary hit (or none for
-    # vanilla). Multi-bounce arms (vanilla, restirnee_K16, restirnee_K16_cells)
-    # exercise K-RIS at every vertex through MAX_BOUNCES.
-    variants = [("vanilla_b1",          "vanilla_b1_x4"),
-                ("restirdi",            "restirdi_x4"),
-                ("restirnee_K16_b1",    "restirnee_b1_x4"),
-                ("vanilla",             "vanilla_x4"),
-                ("restirnee_K16",       "restirnee_x4"),
-                ("restirnee_K16_cells", "restirnee_cells_x4")]
+    # Variant naming follows the project taxonomy: F## = fresh K-RIS count,
+    # R2d = per-pixel reservoir (DI), R3d = world-space cell reservoir. _b1
+    # marks single-bounce-only (matches DI's native primary-hit scope).
+    #
+    # Single-bounce trio (vanilla_b1, restirdi, nee_F16_b1) — like-for-like:
+    #   - vanilla_b1   : K=1 NEE at primary hit, no resampling
+    #   - restirdi     : F16 + R2d per-pixel + temporal + spatial + (optional pool)
+    #   - nee_F16_b1   : pure F16 K-RIS at primary hit (NOT ReSTIR — no reuse)
+    # The vanilla_b1 → restirdi gap shows what R2d-reuse buys on top of K-RIS;
+    # the nee_F16_b1 → restirdi gap isolates that reuse machinery's value
+    # since both have identical F16 fresh streams.
+    #
+    # Multi-bounce arms exercise F16 at every non-Delta vertex through
+    # MAX_BOUNCES. nee_F16R3d adds 3D cell-reservoir reuse (identity-stream
+    # merge); a proper "ReSTIR NEE = ReSTIR DI for multi-bounce" still needs
+    # per-vertex temporal/spatial reuse with Bitterli weighted merge.
+    variants = [("vanilla_b1",     "vanilla_b1_x4"),
+                ("restirdi",       "restirdi_x4"),
+                ("nee_F16_b1",     "nee_F16_b1_x4"),
+                ("vanilla",        "vanilla_x4"),
+                ("nee_F16",        "nee_F16_x4"),
+                ("nee_F16R3d",     "nee_F16R3d_x4")]
 
     vanilla_path = find_exr("vanilla_x4")
 

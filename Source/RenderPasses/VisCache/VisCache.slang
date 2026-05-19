@@ -272,7 +272,10 @@ cbuffer VisCacheParams
     uint   gFrameDimY;          ///< Frame height.
     uint   _wsPad0;               ///< (was gJitterFilter — now reused via VisCache's gJitterFilter)
     uint   _wsPad1;               ///< (was gJitterCell   — now reused via VisCache's gJitterCell)
-    uint   _wsPad6;             ///< (was gUseCellInRIS; collapsed into gSpatialNeighbours>0 2026-05-19)
+    uint   gReservoirK;         ///< K slots per reservoir cell (chunking factor). Default 1 = today's
+                                ///< single-slot behavior; K>1 = K-slot architecture per
+                                ///< .plans/unified-reservoir-addressing.md. K=1 path must remain
+                                ///< bit-identical to ReSTIRDIReferencePass.
     uint   gVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
     // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
     uint   _wsPad7;             ///< (was gCellPoolEnable; collapsed into gCellPoolFootprintPx>0 2026-05-19)

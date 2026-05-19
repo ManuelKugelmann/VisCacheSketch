@@ -128,6 +128,7 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("reservoirCapacity"))           mParams.reservoirCapacity           = props["reservoirCapacity"];
     if (props.has("mCap"))                        mParams.mCap                        = props["mCap"];
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
+    if (props.has("reservoirK"))                  mParams.reservoirK                  = props["reservoirK"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
@@ -228,6 +229,7 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("reservoirCapacity"))           mParams.reservoirCapacity           = props["reservoirCapacity"];
     if (props.has("mCap"))                        mParams.mCap                        = props["mCap"];
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
+    if (props.has("reservoirK"))                  mParams.reservoirK                  = props["reservoirK"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
@@ -319,6 +321,7 @@ Properties VisCache::getProperties() const
     p["reservoirCapacity"]           = mParams.reservoirCapacity;
     p["mCap"]                        = mParams.mCap;
     p["spatialNeighbours"]           = mParams.spatialNeighbours;
+    p["reservoirK"]                  = mParams.reservoirK;
     p["lightMuMin"]                  = mParams.lightMuMin;
     p["initialCandidates"]           = mParams.initialCandidates;
     // (jitterFilter / jitterCell removed — see jitterFilter / jitterCell.)
@@ -800,7 +803,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.initialCandidates  = std::max(1u, mParams.initialCandidates);
     gpu._wsPad0              = 0u;
     gpu._wsPad1              = 0u;
-    gpu._wsPad6            = 0u;  // (was gpu.useCellInRIS; collapsed into gSpatialNeighbours>0)
+    gpu.reservoirK         = std::max(1u, std::min(8u, mParams.reservoirK));  // K-slot chunking: 1..8
     gpu.visInPHat          = std::min(mParams.visInPHat, 2u);
 
     // WS-cascade ReGIR cell pool — capacity rounded up to next pow2 for bitmask indexing.
@@ -946,6 +949,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsCapacity"]      = mParams.reservoirCapacity;
     dict["vhfParam_wsMCap"]          = mParams.mCap;
     dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.spatialNeighbours);
+    dict["vhfParam_wsReservoirK"]      = std::max(1u, std::min(8u, mParams.reservoirK));
     dict["vhfParam_wsLightMuMin"]    = mParams.lightMuMin;
     dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.initialCandidates);
     // (vhfParam_wsJitterFilter / jitterCell removed — WS-ReSTIR reads
@@ -1333,7 +1337,8 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("cellLevelJitter (stochastic LOD)", mParams.cellLevelJitter, 0u, 4u);
         g.var("reservoirCapacity (slots, pow2)", mParams.reservoirCapacity, 1u << 12, 1u << 24);
         g.var("mCap", mParams.mCap, 1.f, 200.f, 1.f);
-        g.var("spatialNeighbours", mParams.spatialNeighbours, 0u, 4u);
+        g.var("spatialNeighbours (extended)", mParams.spatialNeighbours, 0u, 4u);
+        g.var("reservoirK (slots per cell)", mParams.reservoirK, 1u, 8u);
         g.var("lightMuMin (ε floor)", mParams.lightMuMin, 0.f, 1.f, 0.01f);
         g.var("initialCandidates (K fresh / pixel)", mParams.initialCandidates, 1u, 64u);
         // (jitterFilter / jitterCell removed — WS-ReSTIR shares
