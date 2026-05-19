@@ -450,6 +450,18 @@ delivers a real quality win. If not, K-slot is best-suited for
 multi-bounce paths in NEE/PT where the pool isn't the dominant
 mechanism.
 
+### v3 framing (single sentence)
+
+**Cells hold K reservoirs (chunked). Multi-level cascade addresses cells.
+Writes use atomic counter per cell. Reads iterate the K slots of each
+level's cell, streaming each slot as a candidate at reader's pHat with
+pairwise MIS m_j.**
+
+That's the entire architecture. No new data type, no new buffer, no
+new abstraction. K=1 = today's single-reservoir-per-cell. K>1 = chunked
+storage of K reservoirs at the same hash address — explicit collision
+management replacing last-writer-wins.
+
 ### 2026-05-19 v3 design — multi-level K-slot leveraging VisCache cascade
 
 After the v2 cross-scene results (Sponza wins, Bistro/Cornell regress at
