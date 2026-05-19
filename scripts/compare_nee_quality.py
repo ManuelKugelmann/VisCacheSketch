@@ -85,5 +85,12 @@ g_nee = render_graph_ReSTIRNEEPass(maxBounces=MAX_BOUNCES,
                                    numNEECandidates=NEE_K)
 _run("restirnee", g_nee, FRAMES_LOW, f"x{SPP_LOW}")
 
+# 5. ReSTIR NEE K=16 + 3D cell-reservoir reuse at every NEE call (USE_NEE_CELLS=1).
+g_nee_cells = render_graph_ReSTIRNEEPass(maxBounces=MAX_BOUNCES,
+                                         samplesPerPixel=SPP_LOW, useJitter=True,
+                                         numNEECandidates=NEE_K,
+                                         useNEECells=True)
+_run("restirnee_cells", g_nee_cells, FRAMES_LOW, f"x{SPP_LOW}")
+
 print("[compare] all variants captured.")
 exit()

@@ -33,7 +33,8 @@ def main():
 
     variants = [("vanilla", "vanilla_x4"),
                 ("restirdi", "restirdi_x4"),
-                ("restirnee_K16", "restirnee_x4")]
+                ("restirnee_K16", "restirnee_x4"),
+                ("restirnee_K16_cells", "restirnee_cells_x4")]
 
     print(f"\n=== quality comparison @ x4 SPP vs GT@x1024 — scene={SCENE} ===")
     cols = ["variant", "rmse", "psnr_db", "relmse", "smape", "ms_ssim", "flip"]

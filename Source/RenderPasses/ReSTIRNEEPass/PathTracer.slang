@@ -1090,13 +1090,21 @@ struct PathTracer
                         float wSum_eff = sumW;
                         float pHat_eff = pHatBest;
 #if USE_NEE_CELLS == 1
-                        // 3D cell-reservoir merge at this NEE vertex.
-                        // Cell resolved at path's cumulative footprint
-                        // (fine ≈ per-pixel at vertex 1, coarsens per
-                        // bounce by BSDF-roughness — Sharc-style).
+                        // Preserve the K-RIS canonical so the cell write-back
+                        // below uses the FRESH per-vertex observation, not the
+                        // post-merge state (which would double-count the cell).
+                        LightSampleDI lsBestCanon = lsBest;
+                        float pHatBestCanon       = pHatBest;
+                        // 3D cell-reservoir read at this NEE vertex.
+                        // IDENTITY-ONLY: the cell stores "which light works
+                        // for this region"; reader recomputes pHat at its own
+                        // surface. Mirrors ReSTIRDIPass's selection-only design
+                        // — using cell.W directly causes unbounded variance
+                        // because gMCap caps M but not wSum (cell.W = wSum/(pHat*M)
+                        // grows monotonically across many writers per cell).
                         CellAddress cellAddr = resolveCellForFootprint(sd.posW, sd.faceN, path.cellFootprintPx);
                         Reservoir cell;
-                        if (loadCell(cellAddr, cell) && cell.M > 0.f && cell.W > 0.f)
+                        if (loadCell(cellAddr, cell) && cell.M > 0.f)
                         {
                             // Rebuild cell's stored sample at THIS reader.
                             LightSampleDI cellLs;
@@ -1104,54 +1112,53 @@ struct PathTracer
                             uint cellType = unpackLightType(cell.lightTypeIndex);
                             uint cellIdx  = unpackLightIndex(cell.lightTypeIndex);
                             if (cellType == (uint)LightType::Emissive)
-                                cellOk = rebuildEmissiveLightSample(cellIdx, unpackUV(cell.payload), sd, cellLs);
+                                cellOk = coreRebuildEmissiveLightSample(cellIdx, unpackUV(cell.payload), sd, emissiveSampler, cellLs);
                             else if (cellType == (uint)LightType::Analytic)
-                                cellOk = rebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
+                                cellOk = coreRebuildAnalyticLightSample(cellIdx, sd, path.sg, cellLs);
                             else if (cellType == (uint)LightType::EnvMap)
-                                cellOk = rebuildEnvMapLightSample(cell.payload, sd, cellLs);
+                                cellOk = coreRebuildEnvMapLightSample(cell.payload, sd, envMapSampler, cellLs);
                             if (cellOk)
                             {
                                 float3 cellWeight = mi.eval(sd, cellLs.dir, path.sg);
                                 float pHatCell    = luminance(cellWeight * cellLs.Li);
                                 if (pHatCell > 0.f)
                                 {
-                                    // Pairwise MIS between canonical (K-RIS) and cell.
-                                    float Mcap = min(cell.M, gMCap);
-                                    float canonM = M_eff;
-                                    float m_c     = PairwiseMisState::computeMJ(cell.targetPdf, pHatCell, Mcap, canonM);
-                                    float m_canon = PairwiseMisState::computeMCanon(0.f, pHat_eff, Mcap, canonM, false);
-                                    float wn_cell  = m_c * pHatCell * cell.W * Mcap;
-                                    float wn_canon = m_canon * wSum_eff;
-                                    float total    = wn_cell + wn_canon;
+                                    // Stream cell identity as ONE extra RIS
+                                    // candidate at the reader's pHat with
+                                    // invPdf=1. No cell.W involvement → no
+                                    // unbounded-growth bias. K-RIS canonical
+                                    // already contributed (M=K, wSum=sumW).
+                                    float w = pHatCell;
+                                    float total = wSum_eff + w;
                                     if (total > 0.f && !isnan(total))
                                     {
-                                        // RIS roll: keep canonical or replace with cell winner.
-                                        if (sampleNext1D(path.sg) * total < wn_cell)
+                                        if (sampleNext1D(path.sg) * total < w)
                                         {
-                                            lsBest    = cellLs;
-                                            pHatBest  = pHatCell;
+                                            lsBest     = cellLs;
+                                            pHatBest   = pHatCell;
                                             weightBest = cellWeight;
-                                            pHat_eff  = pHatCell;
+                                            pHat_eff   = pHatCell;
                                         }
                                         wSum_eff = total;
-                                        M_eff    = m_c * Mcap + m_canon * canonM;
+                                        M_eff   += 1.f;
                                     }
                                 }
                             }
                         }
-                        // Write merged result back to the cell (every NEE call
-                        // at every vertex contributes to the cell's accumulated
-                        // wSum/M). This is the temporal+spatial reuse mechanism
-                        // — across frames AND across pixels that resolve to the
-                        // same world-space cell.
-                        LocalReservoir merged;
-                        merged.init();
-                        merged.lightTypeIndex = packLightTypeIndex(lsBest.lightType, lsBest.lightIndex);
-                        merged.payload        = packLightSamplePayload(lsBest);
-                        merged.targetPdf      = pHat_eff;
-                        merged.M              = M_eff;
-                        merged.wSum           = wSum_eff;
-                        mergeIntoCell(cellAddr, merged, path.sg);
+                        // Write the FRESH K-RIS canonical (NOT the merged
+                        // local) back to the cell. Cells aggregate K-RIS
+                        // observations from many pixels × frames × vertices;
+                        // M caps at gMCap so the merge is bounded.
+                        {
+                            LocalReservoir local;
+                            local.init();
+                            local.lightTypeIndex = packLightTypeIndex(lsBestCanon.lightType, lsBestCanon.lightIndex);
+                            local.payload        = packLightSamplePayload(lsBestCanon);
+                            local.targetPdf      = pHatBestCanon;
+                            local.M              = float(kNumNEECandidates);
+                            local.wSum           = sumW;
+                            mergeIntoCell(cellAddr, local, path.sg);
+                        }
 #endif // USE_NEE_CELLS
                         float W = wSum_eff / max(pHat_eff * M_eff, 1e-12f);
                         ls = lsBest;

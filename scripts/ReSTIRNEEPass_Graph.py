@@ -85,6 +85,14 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
 
     g.markOutput("ToneMapper.dst")
     g.markOutput("AccumulatePass.output")
+
+    # VisCachePass has no edges into the NEE path (cell-reservoir buffer flows
+    # via InternalDictionary, not as a render-graph edge). Mark one of its
+    # diagnostic outputs so Falcor's graph compiler doesn't prune the pass as
+    # dead — that prune would also skip its dict-publish, leaving NEE with
+    # mVisCacheAvailable=false and USE_NEE_CELLS silently gated off.
+    if useNEECells:
+        g.markOutput("VisCache.vcAccumMeanVarMatCount")
     return g
 
 
