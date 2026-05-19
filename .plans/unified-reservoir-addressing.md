@@ -450,7 +450,48 @@ delivers a real quality win. If not, K-slot is best-suited for
 multi-bounce paths in NEE/PT where the pool isn't the dominant
 mechanism.
 
-### 2026-05-19 F8P0 measurement — K-slot delivers a quality win
+### 2026-05-19 cross-scene K-slot characterization
+
+**K-slot is scene-dependent, not a universal quality win.** Results at x64:
+
+| Scene         | F8P0 K=1 | F8P0 K=4 | Δ K=4 | Canonical F00P24 |
+|---------------|----------|----------|-------|------------------|
+| Sponza        | 0.231    | 0.186    | **−19%** | 0.176 |
+| BistroInterior| 39.804   | 92.423   | **+132%** | 65.761 |
+| Cornell_32PL  | 0.245    | 0.973    | **+297%** | 0.283 |
+
+K-slot's in-cell aggregation:
+- **WINS** on Sponza — env-map dominated, smooth lighting; nearby pixels
+  share important lights → cell aggregation reduces variance.
+- **LOSES** on Bistro / Cornell_32PL — discrete emissive lights with
+  strong spatial dependence; nearby pixels have DIFFERENT important
+  lights → cell aggregation mixes incompatible samples.
+
+This is the classic "spatial reuse with surface-dependent visibility"
+limitation that applies to all spatial-reuse schemes — RTXDI mitigates
+it via screen-space radius gating + visibility-test of selected
+candidates. K-slot lacks both today.
+
+**Surprising secondary finding**: F8P0 K=1 itself beats canonical F00P24
+on Bistro (39.8 < 65.7) and Cornell_32PL (0.245 < 0.283). 8 fresh K-RIS
+candidates outperform 24 pool draws when BRDF-conditional sampling
+matters more than world-spatial aggregation. The pool's "shading-
+agnostic emissive samples from PdfMipmap" miss surface-specific
+relevance that fresh K-RIS captures.
+
+So the architectural picture is more nuanced than initially thought:
+1. F8P0 architecture itself is **competitive with canonical F00P24**
+   across scenes; sometimes better.
+2. K-slot's contribution is a **separate axis on top** — Sponza
+   happens to benefit, geometry-heavy scenes don't.
+
+K-slot is best deployed via **scene-adaptive or surface-aware
+filtering**: don't merge cell candidates whose original-writer surface
+disagrees with reader surface beyond some threshold. That requires
+storing writer normal/material/curvature in the slot — bigger record,
+more bookkeeping. Not in K-slot scope.
+
+### 2026-05-19 F8P0 measurement — K-slot delivers a quality win (Sponza only)
 
 Ran the F8P0 + K=variant ladder (commit forthcoming). Sponza x64:
 
