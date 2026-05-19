@@ -271,7 +271,7 @@ cbuffer VisCacheParams
     uint   gFrameDimY;          ///< Frame height.
     uint   _wsPad0;               ///< (was gJitterFilter — now reused via VisCache's gJitterFilter)
     uint   _wsPad1;               ///< (was gJitterCell   — now reused via VisCache's gJitterCell)
-    uint   gUseCellInRIS;       ///< 1 = WS cell candidate active; 0 = pure per-pixel ReSTIR.
+    uint   _wsPad6;             ///< (was gUseCellInRIS; collapsed into gSpatialNeighbours>0 2026-05-19)
     uint   gVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
     // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
     uint   gCellPoolEnable;     ///< 1 = pool buffer active. Master gate for ReGIR step (a)+.

@@ -279,7 +279,6 @@ private:
              float    lightMuMin=0.01f;
              uint32_t initialCandidates=8;
              // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)
-             uint32_t useCellInRIS=1;
              uint32_t visInPHat=1;
              // §9.4 WS-cascade ReGIR cell pool
              uint32_t cellPoolEnable=0;

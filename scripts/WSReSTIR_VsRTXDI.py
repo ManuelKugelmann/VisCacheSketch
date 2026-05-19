@@ -36,17 +36,17 @@ VARIANTS = [
         viscache=True, reservoirs=True, maxBounces=0,
         initialCandidates=8, mCap=5.0, visInPHat=0,
         visibilityCheck=True, lightSelection=True,
-        extraVCProps={"jitterFilter": 0.3, "useCellInRIS": False})),
+        extraVCProps={"jitterFilter": 0.3})),
     ("ws_cache",       lambda: render_graph_PathTracer(
         viscache=True, reservoirs=True, maxBounces=0,
         initialCandidates=8, mCap=5.0, visInPHat=1,
         visibilityCheck=True, lightSelection=True,
-        extraVCProps={"jitterFilter": 0.3, "useCellInRIS": False})),
+        extraVCProps={"jitterFilter": 0.3})),
     ("ws_explicit",    lambda: render_graph_PathTracer(
         viscache=True, reservoirs=True, maxBounces=0,
         initialCandidates=8, mCap=5.0, visInPHat=2,
         visibilityCheck=True, lightSelection=True,
-        extraVCProps={"jitterFilter": 0.3, "useCellInRIS": False})),
+        extraVCProps={"jitterFilter": 0.3})),
     ("rtxdi",          lambda: render_graph_RTXDI(viscache=False)),
 ]
 WARMUP_FRAMES  = 32     # let temporal reservoir M-cap saturate

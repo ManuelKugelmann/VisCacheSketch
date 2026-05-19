@@ -61,7 +61,6 @@ def run_R3dP3d_PrepassOn(step_name, frame_configs, scene_file,
     extra["enablePixelReservoir"] = False
     extra["cellReservoirMerge"] = 1
     extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
-    extra["useCellInRIS"] = False
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)

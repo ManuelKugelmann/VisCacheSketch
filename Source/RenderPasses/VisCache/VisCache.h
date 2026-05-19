@@ -157,7 +157,7 @@ public:
                                        ///< candidate (K=1) gives no variance benefit beyond vanilla NEE.
         uint32_t _wsPad0;              ///< (reserved — was jitterFilter; WS-ReSTIR now reuses VisCache's gJitterFilter)
         uint32_t _wsPad1;              ///< (reserved — was jitterCell; WS-ReSTIR now reuses VisCache's gJitterCell)
-        uint32_t useCellInRIS;       ///< 1 = include WS cell candidate(s); 0 = pure per-pixel ReSTIR.
+        uint32_t _wsPad6;              ///< (reserved — was useCellInRIS; collapsed into spatialNeighbours>0 2026-05-19)
         uint32_t visInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
         uint32_t cellPoolEnable;     ///< 1 = pool buffer active. Step (a)+ master gate.
@@ -319,10 +319,6 @@ public:
         //  VisCache's gJitterFilter / gJitterCell via the shared
         //  jitterQuantize() machinery. Set the latter via the
         //  jitterFilter / jitterCell Params.)
-        bool     useCellInRIS                = true;  ///< Include WS cell candidate(s) in per-pixel RIS.
-                                                        ///< Off = pure per-pixel ReSTIR DI (per-pixel temporal
-                                                        ///< + spatial reuse only). Useful as an ablation: WS
-                                                        ///< layer's value vs the boundary artifacts it adds.
         uint32_t visInPHat                   = 0u;    ///< Visibility-aware target function (off by default).
                                                         ///< RTXDI-faithful behavior is BLIND RIS (this default) +
                                                         ///< V=0 reservoir invalidation after the winner's shadow

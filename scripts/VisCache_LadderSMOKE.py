@@ -61,7 +61,6 @@ WSRESTIR_KW = dict(
     poolAddrMode=1, poolTileSize=16,                # 2D pool (matches restir_2d)
 )
 WSRESTIR_VC = {
-    "useCellInRIS": False,
     "enablePixelReservoir": True,
     "cellReservoirMerge": 0,
     **PT_CANONICAL_VC,                                  # PT-DI canonical cache config layered on top

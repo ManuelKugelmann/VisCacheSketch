@@ -1458,12 +1458,12 @@ struct PathTracer
                     // filter out queries that landed back in the home cell
                     // by fingerprint compare.
                     //
-                    // gUseCellInRIS gates this whole block off — when 0,
+                    // gSpatialNeighbours==0 gates this whole block off — when 0,
                     // shading falls back to pure per-pixel ReSTIR DI (per-pixel
                     // temporal + spatial reuse via gPixelReservoirs only).
                     CellAddress homeAddr = resolveCell(sd.posW, sd.faceN);
-                    const uint nNeighbours = (gUseCellInRIS != 0u) ? spatialNeighbourCount() : 0u;
-                    for (uint i = 0u; (gUseCellInRIS != 0u) && i <= nNeighbours; ++i)
+                    const uint nNeighbours = spatialNeighbourCount();
+                    for (uint i = 0u; (nNeighbours > 0u) && i <= nNeighbours; ++i)
                     {
                         CellAddress addr;
                         if (i == 0u)

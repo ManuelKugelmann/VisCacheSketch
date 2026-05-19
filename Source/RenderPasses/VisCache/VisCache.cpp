@@ -132,7 +132,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
-    if (props.has("useCellInRIS"))                mParams.useCellInRIS                = props["useCellInRIS"];
     if (props.has("visInPHat"))                   mParams.visInPHat                   = props["visInPHat"];
     if (props.has("enableCellPool"))              mParams.enableCellPool              = props["enableCellPool"];
     if (props.has("cellPoolCapacity"))            mParams.cellPoolCapacity            = props["cellPoolCapacity"];
@@ -234,7 +233,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
-    if (props.has("useCellInRIS"))                mParams.useCellInRIS                = props["useCellInRIS"];
     if (props.has("visInPHat"))                   mParams.visInPHat                   = props["visInPHat"];
     if (props.has("enableCellPool"))              mParams.enableCellPool              = props["enableCellPool"];
     if (props.has("cellPoolCapacity"))            mParams.cellPoolCapacity            = props["cellPoolCapacity"];
@@ -326,7 +324,6 @@ Properties VisCache::getProperties() const
     p["lightMuMin"]                  = mParams.lightMuMin;
     p["initialCandidates"]           = mParams.initialCandidates;
     // (jitterFilter / jitterCell removed — see jitterFilter / jitterCell.)
-    p["useCellInRIS"]                = mParams.useCellInRIS;
     p["visInPHat"]                   = mParams.visInPHat;
     p["enableCellPool"]              = mParams.enableCellPool;
     p["cellPoolCapacity"]            = mParams.cellPoolCapacity;
@@ -805,7 +802,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.initialCandidates  = std::max(1u, mParams.initialCandidates);
     gpu._wsPad0              = 0u;
     gpu._wsPad1              = 0u;
-    gpu.useCellInRIS       = mParams.useCellInRIS ? 1u : 0u;
+    gpu._wsPad6            = 0u;  // (was gpu.useCellInRIS; collapsed into gSpatialNeighbours>0)
     gpu.visInPHat          = std::min(mParams.visInPHat, 2u);
 
     // WS-cascade ReGIR cell pool — capacity rounded up to next pow2 for bitmask indexing.
@@ -955,7 +952,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.initialCandidates);
     // (vhfParam_wsJitterFilter / jitterCell removed — WS-ReSTIR reads
     //  the existing vhfParam_jitterFilter / jitterCell values instead.)
-    dict["vhfParam_wsUseCellInRIS"]      = mParams.useCellInRIS ? 1u : 0u;
     dict["vhfParam_wsVisInPHat"]         = std::min(mParams.visInPHat, 2u);
 
     // §9.4 WS-cascade ReGIR cell-pool — buffer + cbuffer values.
@@ -1345,7 +1341,6 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("initialCandidates (K fresh / pixel)", mParams.initialCandidates, 1u, 64u);
         // (jitterFilter / jitterCell removed — WS-ReSTIR shares
         //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)
-        g.checkbox("useCellInRIS (off = pure per-pixel)", mParams.useCellInRIS);
         g.var("visInPHat (0=blind 1=cache 2=trace)", mParams.visInPHat, 0u, 2u);
         // ╔══════════════════════════════════════════════════════════════╗
         // ║ DISABLED 2026-05-05 — BoilingFilter GUI controls              ║

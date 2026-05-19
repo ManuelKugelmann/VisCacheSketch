@@ -4206,7 +4206,6 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
             brdfCandidateCount=brdfCandidateCount,
             visibilityCheck=False, lightSelection=False,  # pure ReSTIR track — no VisCache cache
             extraVCProps={
-                "useCellInRIS": False,             # no cell hint
                 "enablePixelReservoir": True,      # per-pixel reservoir ON
                 "cellReservoirMerge": 0,
                 # Bayer 4×4 stratification matches RTXDI's per-frame presample
@@ -4650,7 +4649,6 @@ def run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04(step_name, frame_configs, scene_fi
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["cellReservoirFootprintPx"] = 0
-    extra["useCellInRIS"] = False
     extra["enableCellPool"] = False
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
@@ -4717,7 +4715,6 @@ def run_baseline_ReSTIRDI_R2dP2d_PureKRIS(step_name, frame_configs, scene_file,
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["cellReservoirFootprintPx"] = 0
-    extra["useCellInRIS"] = False
     extra["enableCellPool"] = False               # no pool buffer at all
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
@@ -4993,7 +4990,7 @@ def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_f
     all 3 scenes — the K-RIS pool reads fire but the merged local reservoir
     never picks a different winner than the outer NEE sample. Root cause
     (per investigation in earlier loop iteration): when
-    `enablePixelReservoir=False` AND `useCellInRIS=False` AND
+    `enablePixelReservoir=False` AND `spatialNeighbours=0` AND
     `initialCandidates=0`, the pool insertion rate per frame is
     ~1 candidate per pixel (only the outer fresh, since extraK = max(0,
     gInitialCandidates - 1) = 0). The 2D track works because its per-pixel
@@ -5012,7 +5009,7 @@ def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_f
     extra["enablePixelReservoir"] = False         # drop per-pixel layer (3D track = R3d only)
     extra["cellReservoirMerge"]   = 1             # full Bitterli weighted merge
     extra["cellReservoirFootprintPx"] = cellReservoirFootprintPx
-    # 3D track stays on useCellInRIS=False. Enabling cell-merge even with
+    # 3D track stays on spatialNeighbours=0. Enabling cell-merge even with
     # pairwise (BIAS_CORRECTION=1) still produces catastrophic fireflies
     # because cell-reservoir aggregation across writers has a separate
     # failure mode pairwise can't fix: cell.W = wSum / (last_targetPdf ×
@@ -5021,7 +5018,7 @@ def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_f
     # but doesn't shrink the cell.W magnitude. Cornell rmse 0.5 → 2454
     # with cell-pairwise enabled (worse than basic's 2001). Fix needs
     # different cell storage semantics — out of scope for this baseline.
-    extra["useCellInRIS"] = False
+    # (useCellInRIS dropped 2026-05-19 — collapsed into spatialNeighbours==0)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)

@@ -1692,11 +1692,11 @@ struct PathTracer
                     // filter out queries that landed back in the home cell
                     // by fingerprint compare.
                     //
-                    // gUseCellInRIS gates this whole block off — when 0,
+                    // gSpatialNeighbours==0 gates this whole block off — when 0,
                     // shading falls back to pure per-pixel ReSTIR DI (per-pixel
                     // temporal + spatial reuse via gPixelReservoirs only).
                     CellAddress homeAddr = resolveCell(sd.posW, sd.faceN);
-                    const uint nNeighbours = (gUseCellInRIS != 0u) ? spatialNeighbourCount() : 0u;
+                    const uint nNeighbours = spatialNeighbourCount();
                     // Cell-merge pairwise canonical-correction. Same pattern as
                     // temporal/spatial-pixel pairwise: snapshot canonical (K-RIS
                     // result) before the cell loop, re-init local, stream cells
@@ -1715,7 +1715,7 @@ struct PathTracer
                     float cLocalMWeighted = 0.f;
                     bool  cAnyStreamed = false;
 #if BIAS_CORRECTION == 1
-                    if (gUseCellInRIS != 0u)
+                    if (nNeighbours > 0u)
                     {
                         cCanonM_save = local.M;
                         cCanonWSum_save = local.wSum;
@@ -1725,7 +1725,7 @@ struct PathTracer
                         local.init();
                     }
 #endif
-                    for (uint i = 0u; (gUseCellInRIS != 0u) && i <= nNeighbours; ++i)
+                    for (uint i = 0u; (nNeighbours > 0u) && i <= nNeighbours; ++i)
                     {
                         CellAddress addr;
                         if (i == 0u)
@@ -1838,7 +1838,7 @@ struct PathTracer
                     }
                     // Re-stream canonical with accumulated cell-merge MIS weight.
 #if BIAS_CORRECTION == 1
-                    if (gUseCellInRIS != 0u && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
+                    if (nNeighbours > 0u && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
                     {
                         if (cAnyStreamed)
                         {
