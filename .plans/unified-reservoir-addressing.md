@@ -450,6 +450,38 @@ delivers a real quality win. If not, K-slot is best-suited for
 multi-bounce paths in NEE/PT where the pool isn't the dominant
 mechanism.
 
+### 2026-05-19 F8P0 measurement — K-slot delivers a quality win
+
+Ran the F8P0 + K=variant ladder (commit forthcoming). Sponza x64:
+
+| F8P0 variant   | rmse | Δ vs K=1 F8P0 baseline |
+|----------------|------|------------------------|
+| K=1 F8P0       | 0.231 | (baseline)           |
+| K=4 F8P0       | 0.186 | **−19%**             |
+| K=8 F8P0       | 0.183 | **−21%**             |
+
+K-slot scales quality with K when used as primary aggregation. The
+architectural hypothesis is confirmed: F00P24's pool aggregation
+saturates the gain K-slot can provide; F8P0 leaves room for K-slot
+to deliver.
+
+Absolute comparison:
+- Canonical F00P24 (24 pool draws): rmse 0.176
+- F8P0 + K=8:                       rmse 0.183 (+4% vs canonical)
+- F8P0 + K=4:                       rmse 0.186 (+5% vs canonical)
+
+F8P0+K=8 closes most of the gap to the canonical pool-heavy variant
+with only 8 fresh candidates per pixel + 8 stored cell slots per
+footprint — total K-budget of 16 vs canonical's 24. Per-sample
+efficiency favors K-slot.
+
+The K-slot evolution has delivered a measurable, reproducible quality
+win in the architecture it was designed for. Future work:
+- K=16 / cache-line straddle (256B cells)
+- F-K-budget sweep at fixed total candidates (F8K8 vs F16K0 vs F0K16)
+- Multi-bounce K-slot in NEEPass/PTPass (c13939f5 territory)
+- Hybrid pool + K-slot (decide which aggregates which way)
+
 ## 2026-05-19 implementation status (historical detail)
 
 Steps 1-7 of the migration path landed across commits `7dd79fa` ..

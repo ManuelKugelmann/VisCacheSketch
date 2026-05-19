@@ -1883,6 +1883,40 @@ struct PathTracer
                     }
 #endif
 
+                    // K-slot V-test (post-cell-loop). When isMultiSlot() and the
+                    // cell-RIS loop has potentially swapped local's identity to a
+                    // cell candidate (parallel to the K-RIS winner V-test at line
+                    // ~1649), re-trace visibility for the current winner. Without
+                    // this, occluded pixels where the K-RIS winner was zeroed get
+                    // "rescued" by V-untested cell candidates → systematic bias.
+                    // Only fires at K>1 with visInPHat=0 (RTXDI-faithful blind p̂).
+                    if (isMultiSlot() && visInPHatMode() == 0u && local.M > 0.f && local.targetPdf > 0.f)
+                    {
+                        uint cwinType = unpackLightType(local.lightTypeIndex);
+                        uint cwinIdx  = unpackLightIndex(local.lightTypeIndex);
+                        LightSampleDI cwinLs;
+                        bool cwinOk = false;
+                        if (cwinType == (uint)LightType::Emissive)
+                            cwinOk = rebuildEmissiveLightSample(cwinIdx, unpackUV(local.payload), sd, cwinLs);
+                        else if (cwinType == (uint)LightType::Analytic)
+                            cwinOk = rebuildAnalyticLightSample(cwinIdx, sd, path.sg, cwinLs);
+                        else if (cwinType == (uint)LightType::EnvMap)
+                            cwinOk = rebuildEnvMapLightSample(local.payload, sd, cwinLs);
+                        if (cwinOk)
+                        {
+                            Ray vrayCW = cwinLs.getVisibilityRay();
+                            bool cwinVisible = vq.traceVisibilityRay(vrayCW);
+                            if (!cwinVisible)
+                            {
+                                local.targetPdf      = 0.f;
+                                local.wSum           = 0.f;
+                                local.lightTypeIndex = 0u;
+                                local.payload        = 0u;
+                                // local.M stays — RTXDI pattern for V-fail.
+                            }
+                        }
+                    }
+
                     // (2.5) Per-pixel temporal+spatial reservoir layer.
                     // Active only when enablePixelReservoir=True (default);
                     // disabled by setting pixelReservoirEnabled() to false
