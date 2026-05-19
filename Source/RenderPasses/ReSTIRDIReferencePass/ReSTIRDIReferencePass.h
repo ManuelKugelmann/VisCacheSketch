@@ -267,6 +267,7 @@ private:
 
     // §9.4 WS-ReSTIR DI buffers (sourced from VisCache via dict).
     ref<Buffer> mpVHFReservoirs;
+    ref<Buffer> mpVHFReservoirCounters;
     ref<Buffer> mpVHFPixelReservoirs;          ///< Per-pixel temporal reservoir buffer.
     ref<Buffer> mpVHFCellPools;              ///< Multi-light cell pool — header (fingerprint, count).
     ref<Buffer> mpVHFCellPoolSlots;          ///< Multi-light cell pool — flat slot buffer (split for DXC at N=1024).

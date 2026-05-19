@@ -1321,6 +1321,8 @@ bool ReSTIRDIReferencePass::beginFrame(RenderContext* pRenderContext, const Rend
         bool wasWSReservoirs = mVisCacheReservoirs;
         mpVHFReservoirs = (mVisCacheAvailable && dict.keyExists("reservoirBuffer"))
             ? dict.getValue<ref<Buffer>>("reservoirBuffer") : nullptr;
+        mpVHFReservoirCounters = (mVisCacheAvailable && dict.keyExists("reservoirCountersBuffer"))
+            ? dict.getValue<ref<Buffer>>("reservoirCountersBuffer") : nullptr;
         mpVHFPixelReservoirs = (mVisCacheAvailable && dict.keyExists("pixelReservoirBuffer"))
             ? dict.getValue<ref<Buffer>>("pixelReservoirBuffer") : nullptr;
         mpVHFCellPools = (mVisCacheAvailable && dict.keyExists("cellPoolBuffer"))
@@ -1608,6 +1610,7 @@ void ReSTIRDIReferencePass::tracePass(RenderContext* pRenderContext, const Rende
     if (mVisCacheReservoirs)
     {
         var["gReservoirs"]      = mpVHFReservoirs;
+        if (mpVHFReservoirCounters) var["gReservoirCounters"] = mpVHFReservoirCounters;
         if (mpVHFPixelReservoirs) var["gPixelReservoirs"] = mpVHFPixelReservoirs;
         if (mpVHFCellPools)     var["gCellPools"]       = mpVHFCellPools;
         if (mpVHFCellPoolSlots) var["gCellPoolSlotBuf"] = mpVHFCellPoolSlots;

@@ -1297,6 +1297,8 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             // VisCache's InternalDictionary (parallel keys to ReSTIRDIPass.cpp:1330).
             mpVHFReservoirs = dict.keyExists("reservoirBuffer")
                 ? dict.getValue<ref<Buffer>>("reservoirBuffer") : nullptr;
+            mpVHFReservoirCounters = dict.keyExists("reservoirCountersBuffer")
+                ? dict.getValue<ref<Buffer>>("reservoirCountersBuffer") : nullptr;
             mVCParams.enable          = getU("vhfParam_wsEnable", 0u);
             mVCParams.capacity        = getU("vhfParam_wsCapacity", 0u);
             mVCParams.cellLevelJitter = getU("vhfParam_wsCellLevelJitter", 0u);
@@ -1560,6 +1562,7 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
     if (mpVHFReservoirs)
     {
         var["gReservoirs"] = mpVHFReservoirs;
+        if (mpVHFReservoirCounters) var["gReservoirCounters"] = mpVHFReservoirCounters;
     }
     // VisCache diagnostics — bind UAVs at root var level (PixelStats pattern)
     // so all RT stages can write per-pixel heatmap data inline during tracing.

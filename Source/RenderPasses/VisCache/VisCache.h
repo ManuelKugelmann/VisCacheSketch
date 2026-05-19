@@ -431,8 +431,11 @@ private:
     ref<Buffer>         mpParamsBuffer;  ///< VisCacheParams cbuffer (32 bytes, exported via dict)
     ref<Buffer>         mpStatsBuffer;   ///< 5x uint32 atomic counters
     ref<Buffer>         mpStagingBuffer; ///< CPU readback for stats
-    ref<Buffer>         mpReservoirs;  ///< RWStructuredBuffer<Reservoir>, sized by reservoirCapacity. Allocated on demand.
-    uint32_t            mReservoirCapacityCommitted = 0u; ///< Capacity used to allocate mpReservoirs (re-alloc on resize).
+    ref<Buffer>         mpReservoirs;  ///< RWStructuredBuffer<Reservoir>, sized by reservoirCapacity × reservoirK. Allocated on demand.
+    uint32_t            mReservoirCapacityCommitted = 0u; ///< Capacity (cell buckets) used to allocate mpReservoirs (re-alloc on resize).
+    uint32_t            mReservoirKCommitted = 0u;       ///< K (slots per cell) used to allocate mpReservoirs (re-alloc on K change).
+    ref<Buffer>         mpReservoirCounters;             ///< RWStructuredBuffer<uint>, K-slot atomic counter. 1 element when K=1, reservoirCapacity when K>1.
+    uint32_t            mReservoirCountersCommitted = 0u;
     // §9.4 per-pixel temporal reservoir (RTXDI-style). One slot per pixel,
     // persists across frames so temporal-M accumulation kicks in.
     ref<Buffer>         mpPixelReservoirs;

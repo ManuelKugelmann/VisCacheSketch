@@ -446,12 +446,16 @@ void VisCache::allocateBuffers()
         uint32_t wsCap = 1u;
         while (wsCap < std::max(1u, mParams.reservoirCapacity)) wsCap <<= 1;
         mParams.reservoirCapacity = wsCap;
+        const uint32_t K = std::max(1u, std::min(8u, mParams.reservoirK));
+        const uint32_t reservoirSlots = wsCap * K;
 
-        if (!mpReservoirs || mReservoirCapacityCommitted != wsCap)
+        if (!mpReservoirs
+            || mReservoirCapacityCommitted != wsCap
+            || mReservoirKCommitted != K)
         {
             mpReservoirs = mpDevice->createStructuredBuffer(
                 kWSReservoirSize,
-                wsCap,
+                reservoirSlots,
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
                 MemoryType::DeviceLocal,
                 nullptr,
@@ -459,12 +463,14 @@ void VisCache::allocateBuffers()
             );
             mpReservoirs->setName("VHF_WSReservoirs");
             mReservoirCapacityCommitted = wsCap;
+            mReservoirKCommitted = K;
         }
     }
     else
     {
         mpReservoirs = nullptr;
         mReservoirCapacityCommitted = 0u;
+        mReservoirKCommitted = 0u;
     }
 }
 
@@ -536,6 +542,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     {
         mClearHashTable = true;
         if (mpReservoirs)         pCtx->clearUAV(mpReservoirs->getUAV().get(),        uint4(0u));
+        if (mpReservoirCounters)  pCtx->clearUAV(mpReservoirCounters->getUAV().get(), uint4(0u));
         if (mpPixelReservoirs)    pCtx->clearUAV(mpPixelReservoirs->getUAV().get(),   uint4(0u));
         if (mpCellPools)          pCtx->clearUAV(mpCellPools->getUAV().get(),         uint4(0u));
         if (mpCellPoolSlots)      pCtx->clearUAV(mpCellPoolSlots->getUAV().get(),     uint4(0u));
@@ -547,19 +554,29 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     mParams.bootThreshold   = std::clamp(mParams.bootThreshold, 1u, 0xFFFFu);
 
     // §9.4 WS-reservoir buffer: lazy (re)allocate to follow runtime toggle/capacity changes.
+    // K-slot architecture: when reservoirK > 1, buffer is K× larger so each
+    // cell bucket holds K consecutive Reservoir slots. At K=1 the layout is
+    // identical to today (1 reservoir per bucket). The cbuffer field
+    // gReservoirK drives the shader-side stride.
     {
         uint32_t wsCap = 1u;
         while (wsCap < std::max(1u, mParams.reservoirCapacity)) wsCap <<= 1;
         mParams.reservoirCapacity = wsCap;
-        const bool needs = mParams.enableReservoirs && (!mpReservoirs || mReservoirCapacityCommitted != wsCap);
+        const uint32_t K = std::max(1u, std::min(8u, mParams.reservoirK));
+        const uint32_t reservoirSlots = wsCap * K;
+        const bool needs = mParams.enableReservoirs
+                        && (!mpReservoirs
+                            || mReservoirCapacityCommitted != wsCap
+                            || mReservoirKCommitted != K);
         if (needs)
         {
             mpReservoirs = mpDevice->createStructuredBuffer(
-                kWSReservoirSize, wsCap,
+                kWSReservoirSize, reservoirSlots,
                 ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
                 MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
             mpReservoirs->setName("VHF_WSReservoirs");
             mReservoirCapacityCommitted = wsCap;
+            mReservoirKCommitted = K;
             // Zero-init so fingerprint=0 (empty sentinel) holds across all slots.
             pCtx->clearUAV(mpReservoirs->getUAV().get(), uint4(0u));
         }
@@ -567,6 +584,33 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
         {
             mpReservoirs = nullptr;
             mReservoirCapacityCommitted = 0u;
+            mReservoirKCommitted = 0u;
+        }
+    }
+
+    // K-slot atomic counter buffer: one uint per cell bucket. Allocated only
+    // when K > 1; at K=1 a 1-element dummy is allocated so the shader binding
+    // is always valid (writes never fire at K=1, but the binding must exist).
+    {
+        const uint32_t K = std::max(1u, std::min(8u, mParams.reservoirK));
+        const uint32_t counterSlots = (K > 1u) ? mParams.reservoirCapacity : 1u;
+        const bool needs = mParams.enableReservoirs
+                        && (!mpReservoirCounters
+                            || mReservoirCountersCommitted != counterSlots);
+        if (needs)
+        {
+            mpReservoirCounters = mpDevice->createStructuredBuffer(
+                sizeof(uint32_t), counterSlots,
+                ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess,
+                MemoryType::DeviceLocal, nullptr, /*createCounter=*/false);
+            mpReservoirCounters->setName("VHF_WSReservoirCounters");
+            mReservoirCountersCommitted = counterSlots;
+            pCtx->clearUAV(mpReservoirCounters->getUAV().get(), uint4(0u));
+        }
+        else if (!mParams.enableReservoirs && mpReservoirCounters)
+        {
+            mpReservoirCounters = nullptr;
+            mReservoirCountersCommitted = 0u;
         }
     }
 
@@ -940,6 +984,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // export frameDim*=0 so the shader's `pixelReservoirEnabled()` returns
     // false and all per-pixel reservoir code paths skip — pure WS-cell mode.
     dict["reservoirBuffer"]        = mpReservoirs;
+    dict["reservoirCountersBuffer"] = mpReservoirCounters;
     dict["pixelReservoirBuffer"]   = mpPixelReservoirs;
     dict["vhfParam_wsFrameDimX"]     = mParams.enablePixelReservoir ? mFrameDims.x : 0u;
     dict["vhfParam_wsFrameDimY"]     = mParams.enablePixelReservoir ? mFrameDims.y : 0u;

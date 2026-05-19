@@ -34,6 +34,12 @@ import Utils.Sampling.SampleGenerator;
 RWStructuredBuffer<Reservoir> gReservoirs;
 // Per-pixel temporal reservoir (W*H slots, indexed by pixel coords).
 RWStructuredBuffer<Reservoir> gPixelReservoirs;
+// K-slot atomic counter per cell (allocated only when reservoirK > 1).
+// Indexed by cell address; counter drives slot selection on insert
+// (slot = atomicAdd(counter, 1) → fill phase if < K, else reservoir-
+// sample replace). Bound to a 1-element dummy buffer at K=1 so the
+// shader binding is always valid; reads/writes never fire at K=1.
+RWStructuredBuffer<uint> gReservoirCounters;
 
 // PathTracer.slang doesn't import VisCache directly, so route the gates
 // through helpers that have visibility on the cbuffer globals.
@@ -49,6 +55,10 @@ float lightMuMin() { return gLightMuMin; }
 // insert, all-slots-merge read).
 uint inCellSlotCount() { return max(1u, gReservoirK); }
 bool isMultiSlot() { return gReservoirK > 1u; }
+// K-strided slot address: cell bucket × K + per-slot offset. At K=1 this
+// equals cellSlot (today's layout). At K>1 the gReservoirs buffer is
+// allocated K× larger and slots within a cell are contiguous.
+uint kSlotAddr(uint cellSlot, uint slotIdx) { return cellSlot * inCellSlotCount() + slotIdx; }
 uint retraceOnReuseMode() { return gRetraceOnReuseMode; } ///< 0=Off, 1=FullTrace, 2=CacheCV — RTXDI BiasCorrection analog for reservoir reuse.
 
 // ---------------------------------------------------------------------------
@@ -274,15 +284,42 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
     // K-slot evolution dispatch (per .plans/unified-reservoir-addressing.md).
     // K=1 (default): falls through to the single-slot read-merge-write path
     // below — bit-identical to ReSTIRDIReferencePass.
-    // K>1: TODO step 5 — atomic-counter slot selection, single-write into one
-    // of K slots, no read-merge phase. Currently unreachable (gReservoirK is
-    // clamped to 1..8 at the C++ side but the only ladder-set value is 1
-    // until K-slot ladder steps land).
+    // K>1: atomic-counter slot selection, single-write into one of K slots.
+    // Read-merge phase is skipped at insert time; the read path merges all
+    // K slots when consuming the cell.
     if (isMultiSlot())
     {
-        // TODO: atomic-counter K-slot insert. Returns early — K>1 buffer
-        // layout not yet wired; falling through would corrupt the single-
-        // slot buffer's layout. Until step 5 lands, K>1 is a no-op.
+        // Materialise the local reservoir's chosen sample as a Reservoir to
+        // store. Same field mapping as the K=1 fill phase below.
+        Reservoir entry = reservoirInit(addr.fingerprint);
+        entry.lightTypeIndex   = local.lightTypeIndex;
+        entry.payload          = local.payload;
+        entry.targetPdf        = local.targetPdf;
+        entry.M                = local.M;
+        float pHatLocal        = max(local.targetPdf, 1e-12f);
+        entry.W                = (local.M > 0.f) ? (local.wSum / (pHatLocal * local.M)) : 0.f;
+        entry.frameLastUpdated = gFrameCount;
+
+        // Atomic counter selects slot. First K writes fill 0..K-1; subsequent
+        // writes replace a uniformly-random slot with probability K/(n+1)
+        // (standard weighted-reservoir-sampling of writers — Vitter '85).
+        uint n;
+        InterlockedAdd(gReservoirCounters[addr.slot], 1u, n);
+        uint K = inCellSlotCount();
+        uint slotIdx;
+        if (n < K)
+        {
+            slotIdx = n;   // fill phase
+        }
+        else
+        {
+            // Replacement phase: probability K/(n+1) to keep; choose random
+            // slot to evict. sampleNext1D ∈ [0,1).
+            if (sampleNext1D(sg) * float(n + 1u) >= float(K)) return;  // skip
+            slotIdx = uint(sampleNext1D(sg) * float(K));
+            if (slotIdx >= K) slotIdx = K - 1u;  // guard against rounding
+        }
+        gReservoirs[kSlotAddr(addr.slot, slotIdx)] = entry;
         return;
     }
 
@@ -354,6 +391,14 @@ bool loadCell(CellAddress addr, out Reservoir cell)
     cell = reservoirInit(0u);
     if (!cellReservoirEnabled()) return false;
     if (gCapacity == 0u) return false;
+    if (isMultiSlot())
+    {
+        // K>1 read = merge all K slots in the cell. Step 6 (TODO) wires
+        // this body. Returning cold-miss for now keeps the K>1 mode
+        // safely no-op on reads (cell-RIS spatial merge is ineffective
+        // until step 6 lands, but no data corruption).
+        return false;
+    }
     Reservoir r = gReservoirs[addr.slot];
     if (r.fingerprint != addr.fingerprint) return false;
     cell = r;

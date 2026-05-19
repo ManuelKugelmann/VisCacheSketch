@@ -268,6 +268,7 @@ private:
     // Cell reservoir buffer hosted by VisCache, exposed via InternalDictionary.
     // Bound to `gReservoirs` in the trace pass when USE_NEE_CELLS=1.
     ref<Buffer> mpVHFReservoirs;
+    ref<Buffer> mpVHFReservoirCounters;
 
     // VisCache diagnostics — bound at root var level (PixelStats pattern) so all
     // RT stages (raygen/closestHit/miss/anyHit) can write per-pixel heatmap data.
