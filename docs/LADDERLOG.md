@@ -54,6 +54,7 @@ Both row 1 col 3 : error Δ vs GT and row 1 col 9: noise Δ vs GT use the same c
 | TIMING (warmup-fixed) | re-run with N_WARMUP=2 frames-before-reset on 3 scenes × x{4, 16} | **Wall-clock story is 2.5× better than the prior warmup-confounded TIMING reported.** With warmup-fix: Sponza canonical x4 vanilla=44.27 ms / cache=18.53 ms → **58.2% saved** (was 23%); x16 vanilla=34.66 / cache=17.17 → **50.5% saved** (was 6%). **BistroInt FLIPPED from -290% to +12.6% saved** at x4 (was a catastrophic loss; actually a real win once warmup is stripped). **Cornell_32PL still loses** — vanilla is 2.6 ms (ray-tracing-trivial), cache adds 8+ ms fixed → no recovery on a scene small enough that cache infrastructure dominates. Cache wins now correlate with rays_traced_pct savings × per-scene per-pixel-cost product as expected; the prior story was wrong on absolute and direction. **Methodology fix locked in:** run_variants + run_baseline + _run_baseline_variant all render N_WARMUP=2 warmup frames before profiler reset_stats. | corrected per-scene wall-clock table; pitch headline: "50–58% wall-clock saved on Sponza canonical, 7–13% on BistroInt; Cornell_32PL is the edge case where cache infrastructure exceeds vanilla's tiny render cost" |
 | TIMING_MB2 | multibounce wall-clock attempt (run_variants harness) | **Cross-run absolute timing unreliable.** TIMING_MB2 reproduced Sponza b=0 cache canonical at 342 ms — same scene, same config as the corrected TIMING which gave 18.53 ms. **18× discrepancy** for nominally-identical workload across separate Mogwai invocations. Vanilla side similarly unstable (TIMING_VAN had Sponza b=0 = 44 ms; TIMING_VAN_MB has 2.86 ms). Likely cause: GPU clock/thermal state varies session-to-session; the warmup fix amortizes within-session warmup but doesn't normalize across-session GPU-state differences. **Practical implication:** absolute ms numbers need to be taken from a single Mogwai invocation that runs both vanilla and cache. The prior TIMING run (3 scenes, vanilla via run_baseline + cache via run_variants in one Mogwai per scene) is the cleanest data we have. **Cross-step / cross-run comparisons are NOT reliable**; only ratios within a single render loop are. Within-loop, vanilla b=0=2.86 ms / b=4=24.35 ms ratio (8.5×) makes sense and validates the multibounce work-scaling. The cache absolutes are unusable here. | methodology: extend run_variants to support viscache=True/False as a variant axis so both paths render in one loop (task #52); TIMING/TIMING_VAN single-bounce numbers stand as the headline |
 | TIMING_HONEST | single-Mogwai vanilla-vs-cache, identical render loops back-to-back | **First-iteration result was misleading; steady-state (the design operating point) shows the real story.** The cache is designed for 1-SPP-per-frame + frame-accumulation real-time rendering. Initial TIMING_HONEST with SPP=4 + N_WARMUP=4-8 was MEASURING THE COLD-START AVERAGE (b=0 +3.6%, b=4 -11%), undersells. **Re-run at the design point** (SPP=1, N_WARMUP=64 frames so cache reaches cell-maturity equilibrium, RENDER_FRAMES=16 measure window): **Sponza b=0 vanilla=5.75 / cache=2.86 → +50.3% saved**, b=4 vanilla=3.67 / cache=4.45 → -21.0% (multibounce per-bounce cell churn still costs more than rays saved on Sponza). **The +50% wall-clock claim is real on the design operating point**; multibounce is the remaining implementation gap. **Algorithm framing**: the cache is *tuned for* frame-accumulation; cold-start averages aren't the right benchmark, equilibrium is. **Methodology corollary** for future TIMING work: SPP=1, N_WARMUP=64+, measure post-warmup window. | corrected pitch headline: "even unoptimized, 50% wall-clock saved on Sponza single-bounce DI at the design operating point (1-SPP-per-frame + frame-accumulation, steady-state); multibounce wall-clock pending GPU-engineering work" |
+| RDI00_KSlot | K-slot reservoir (K∈{1,4,8}) × step C `cellLevelOffsetWrite` (lo∈{0,1,2}) across 4 scenes, F00P24/F8P0 architectures, DI + NEE | **K-slot pays off only with step C and only on smooth-light scenes.** DI Sponza F8P0 K=4 lo=2 rmse 0.183 (vs lo=0 catastrophic 0.301; lo=1 marginal); K=8 lo=1/2 0.180. Step C lo=0 stores K duplicates of the same primary-bounce K-RIS winner per cell → no aggregation. Step C lo>0 mirror-writes into coarser cells which aggregate writers from many primary pixels → genuine K-fold variance reduction. DI Bistro/Cornell_32PL: K-slot regime-mismatched (discrete lights → cell mixes incompatible samples); F8P0 K=1 is the cross-scene winner there. NEE 4-scene: wins on Cornell_3AL (K=8 lo=0 −30% rmse), Bistro (K=4 lo=1 −32%), Sponza (anti-correlated trade-off blob −13%); loses on Cornell_32PL (+166%). **Slot iteration (step A) was algebraically wrong — each slot has its own W, streaming as raw candidates double-counts; `loadCellMerged` is the correct read primitive.** Defaults parity-safe: `reservoirK=1, cellLevelOffsetWrite=0`. | per-pass+scene opt-in prescription documented in [`project_kslot_archcontext`](../../memory/project_kslot_archcontext.md) memory; commits 4e70f76 + c273eb0 |
 
 ---
 
@@ -1077,6 +1078,47 @@ The cleaner architectural picture for RDI01+:
 (2b) was kept for engineering convenience, not cost-optimization.
 RTXDI parity at the *architectural-equivalence* level requires
 (2a), not (2b).
+
+---
+
+## Step RDI00_KSlot — K-slot v3 step C multi-level cascade (2026-05-19)
+
+**Architecture under test:** K reservoirs per cell (chunking factor `reservoirK`), atomic-counter insert with random-replace on overflow, `loadCellMerged` read (Bitterli-merges K slots into ONE candidate at reader's pHat — *not* slot iteration, which double-counted). Step C adds `cellLevelOffsetWrite` parameter — mirror-write + mirror-read at home + N coarser cascade levels. Tests whether coarser-level cells (which aggregate writers from many primary-pixel home cells) deliver the K-fold variance reduction that home-cell-only K-slot at fp=1 cannot.
+
+**DI cross-scene picture (F8P0 architecture, x64 SPP, lower=better rmse):**
+
+| variant | Sponza | Bistro | Cornell_32PL | Cornell_3AL |
+|---|---|---|---|---|
+| RTXDIBaseline (K=1) | 0.176 | 65.76 | 0.283 | 0.046 |
+| F8P0 K=1 | 0.231 | **39.80** ✅ | **0.245** ✅ | 0.047 |
+| F8P0 K=4 lo=0 | 0.301 | 92.5 | 0.97 | 0.049 |
+| **F8P0 K=4 lo=2** | **0.183** ✅ | 91.3 | 0.97 | 0.048 |
+| **F8P0 K=8 lo=2** | **0.180** ✅ | 152 | 0.98 | 0.049 |
+| K=8 fp=1 (with pool) | 0.722 | 320 | 1.97 | 0.068 |
+
+Step C lo=2 delivers Sponza-only on DI (rmse 0.301 → 0.183, K=4 architecture viable; lo=0 catastrophic, lo=1 marginal). Neutral on Cornell_3AL (signal too low to differentiate). Negative on Bistro/Cornell_32PL where K-slot itself is regime-mismatched (discrete-light scenes — cell mixes incompatible samples). F8P0 K=1 (no K-slot) is the cross-scene winner on Bistro and Cornell_32PL — F8P0 architecture itself is the win there, K-slot doesn't add.
+
+**NEE 4-scene K-slot (x4 SPP, GT@x1024, linear-HDR rmse):**
+
+| scene | regime | nee_F16 | best K-slot | Δ |
+|---|---|---|---|---|
+| Cornell_3AL | smooth area lights | 0.226 | K=8 lo=0: 0.159 | **−30%** ✅ |
+| Sponza | env-map smooth | 0.207 | K=8 lo=0: 0.228 | rmse +10%, blob −13% (anti-corr) |
+| Bistro | discrete emissive geom | 29.7 | K=4 lo=1: 20.2 | **−32%** ✅ |
+| Cornell_32PL | discrete point lights | 0.226 | K=4 lo=0: 0.601 | +166% ❌ |
+
+NEE K-slot helps on 3 of 4 scenes. Step C lo>0 is scene-class dependent on NEE — Bistro deep-geometry benefits from explicit cascade widening (path-cumulative footprint alone insufficient); Cornell_3AL/Sponza prefer lo=0 because path-cumulative footprint already provides implicit multi-scale at deeper bounces.
+
+**Tuning prescription (scene-aware):**
+- DI smooth (env-map): `reservoirK=4..8 + cellLevelOffsetWrite=2`
+- NEE smooth area lights / env-map: `reservoirK=4..8 + cellLevelOffsetWrite=0`
+- NEE deep-geometry (Bistro): `reservoirK=4 + cellLevelOffsetWrite=1`
+- Discrete point lights: K-slot contraindicated
+- Default cbuffer: `reservoirK=1, cellLevelOffsetWrite=0` (parity-safe)
+
+**Key insights:** (1) Slot iteration was algebraically wrong — each slot has its own W; streaming K slots as raw candidates double-counts. `loadCellMerged` is the correct primitive. (2) Step C is the addressing mechanism that lets K-slot's promise materialize on DI — without coarser cells, K-slot at fp=1 primary bounce stores K duplicates of the same write, not K independent samples. (3) Per architectural memory `project_kslot_archcontext`, K-slot trades temporal aggregation (K=1 merges across ~20 frames @ M cap) for spatial K-fold per-frame; static-camera primary-bounce DI is temporal-dominant by default, so K-slot only wins on DI where the multi-level cascade unlocks genuinely independent writers.
+
+Commits: 4e70f76 (v3 step C plumbing — DI + NEE wiring, primitives, ladder script, NEE comparator harness), c273eb0 (NEE linear-HDR metric workaround for HD-resolution captures).
 
 ---
 
