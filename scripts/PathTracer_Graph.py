@@ -92,8 +92,6 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
             vc_props["enableVisCacheVisibilityCheck"] = bool(visibilityCheck)
         if lightSelection is not None:
             vc_props["enableVisCacheLightSelection"] = bool(lightSelection)
-        if extraVCProps:
-            vc_props.update(extraVCProps)
         if reservoirs:
             vc_props.update({
                 "enableReservoirs":   True,
@@ -121,6 +119,11 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                 "poolTileSize":       poolTileSize,
                 "cellPoolFootprintPx": pool_fp,
             })
+        # Apply extraVCProps LAST so callers can override any kwarg-driven
+        # default (e.g. spatialNeighbours, reservoirK). Per docstring:
+        # "for arbitrary one-off overrides".
+        if extraVCProps:
+            vc_props.update(extraVCProps)
         vc = createPass("VisCachePass", vc_props)
         g.addPass(vc, "VisCache")
 

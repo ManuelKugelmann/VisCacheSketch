@@ -362,6 +362,56 @@ remain reproducible against their v1_baseline counterparts forever,
 while the canonical pass evolves to support the full unified design
 space. No two-implementations-doing-the-same-thing smell.
 
+## 2026-05-19 implementation status
+
+Steps 1-7 of the migration path landed across commits `7dd79fa` ..
+`57d1354` (plus `b8b2eb9` and `6632e66` for the design doc itself).
+All K=1 variants verified bit-identical to ReSTIRDIReferencePass via
+Sponza A/B (rmse drift ≤0.20%, RNG noise floor).
+
+**Structural completion**: the K-slot machinery is in place —
+gReservoirK cbuffer field, gReservoirCounters atomic buffer (allocated
+only at K>1), kSlotAddr indexing helper, isMultiSlot() dispatch,
+mergeIntoCell K>1 atomic-counter-insert body, loadCellMerged K-slot
+read body. ReSTIRDIPass / ReSTIRDIReferencePass / ReSTIRNEEPass all
+have the binding plumbing.
+
+**Algorithmic exercising remains deferred**: the K>1 read path
+(`loadCellMerged`) is only invoked inside the cell-RIS spatial merge
+loop (gated on `spatialNeighbours > 0`). Two issues block direct K>1
+quality validation:
+
+1. The cell-RIS spatial merge at biasCorrection=0 (RTXDI-faithful)
+   has a known catastrophic firefly mode: cell.W is undefined when
+   different writers contribute samples with mismatched last_pHat —
+   pairwise downweights m_c but doesn't shrink cell.W. With
+   `spatialNeighbours=4` enabled on R3dP3d_F00P24, rmse explodes
+   to 1090-2139 vs canonical 0.176. This is the same bug documented
+   in `VisCache_LadderCommon.py:5012-5021`; it predates K-slot.
+
+2. R3dP3d_F00P24 canonical (`spatialNeighbours=0`) is effectively
+   "pool K-RIS only" — cell reservoirs are written via
+   `mergeIntoCell` but never read back for shading or temporal
+   reuse. With cell-RIS disabled there's no consumer for the
+   K-slot in-cell data; K=1/4/8 produce identical output.
+
+Two paths forward to genuinely characterize K>1 quality:
+
+**(a) Fix the cell-RIS bias first**, then re-enable
+`spatialNeighbours>0` and observe K-slot's contribution to variance
+reduction in the spatial merge.
+
+**(b) Add a new "temporal-cell-reuse" path** that reads the cell
+reservoir from the previous frame as a temporal source, analogous
+to per-pixel temporal reuse but keyed by world-cell instead of
+pixel.xy. This bypasses the spatial-merge bias entirely and
+exercises K-slot via the natural "in-cell K writers across frames
+form temporal multi-sample".
+
+Both are out of K-slot scope. The K-slot pieces are ready to be
+consumed when either path lands. Until then, the architecture is
+plumbing-correct and parity-validated at K=1 — sleeping potential.
+
 ## Open questions
 
 - **Slot selection determinism**: atomic counter is deterministic-per-
