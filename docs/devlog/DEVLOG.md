@@ -163,6 +163,8 @@ cycle, profiler `stats.mean`, EMA bypassed).
 | f8b548e | USE_VISCACHE_NORMAL_ADDR gate                 | identical     |
 | b7d1a86 | gNormalAddr removed entirely (–71 LOC)        | identical     |
 | 09cf651 | wsCellPoolPrePass=False canonical (R2dP2d + R3dP3d) | identical |
+| 662700b | Cross-variant prepass A/B (RDI00_PrepassAB)   | verified 6/6  |
+| ccbf5b1 | 3 dead cbuffer fields removed (NormalAFine, DiagAccumWindow, LightSoftness) | identical |
 
 **Final verified per-variant numbers, x64**
 
