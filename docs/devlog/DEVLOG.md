@@ -173,18 +173,28 @@ cycle, profiler `stats.mean`, EMA bypassed).
 | PureKRIS F8 (no prepass at all)| 3.75      | 3.69      | 45.1        | 0.147       |
 | R3dP3d prepass-off (canonical) | **2.95**  | 3.12      | 65.8        | 0.176       |
 
-**Clean A/B at current HEAD** (RDI00_PrepassAB ladder, same K=41, same
-biasCorrection=Basic, only `wsCellPoolPrePass` flipped, x64):
+**Clean A/B at current HEAD — cross-variant, cross-scene** (RDI00_PrepassAB
+ladder, same K=41, same biasCorrection=Basic within each pair, only
+`wsCellPoolPrePass` flipped, x64):
 
-| Scene  | PrepassOn ms | PrepassOff ms | Δ        | rmse delta |
-|--------|--------------|---------------|----------|------------|
-| Bistro | 7.00         | **5.11**      | **−27%** | identical (43.71) |
-| Sponza | 6.04         | **4.39**      | **−27%** | identical (0.133) |
+| Scene        | Variant         | On ms | Off ms | Δ       | rmse delta |
+|--------------|-----------------|-------|--------|---------|------------|
+| Bistro       | R2dP2d F17P24   | 7.00  | 5.11   | −27.0%  | +0.01%     |
+| Bistro       | R3dP3d F00P24   | 4.70  | 2.76   | **−41.1%** | −0.00%  |
+| Sponza       | R2dP2d F17P24   | 6.04  | 4.39   | −27.4%  | +0.05%     |
+| Sponza       | R3dP3d F00P24   | 4.79  | 3.04   | **−36.6%** | +0.00%  |
+| Cornell_32PL | R2dP2d F17P24   | 3.01  | 2.32   | −23.2%  | +0.00%     |
+| Cornell_32PL | R3dP3d F00P24   | 2.51  | 1.80   | **−28.3%** | +0.00%  |
 
-**Prepass-off is a universal x64 win on both scenes**, not scene-dependent.
-The earlier "Sponza +20% regression" number was a contaminated baseline
+**Prepass-off is a universal x64 win across 6/6 scene-variant cells**
+(−23% to −41%). R3dP3d benefits MORE than R2dP2d on every scene because
+its F00 (no fresh K-RIS) made the prepass a larger fraction of total
+cost. rmse delta ≤±0.05% everywhere — well within measurement noise,
+proving algorithm-neutrality.
+
+The earlier "Sponza +20% regression" was a contaminated baseline
 (different measurement context, EMA vs stats.mean, different warmup
-state) — corrected by the clean A/B above.
+state) — corrected by the clean cross-variant A/B above.
 
 At low SPP (x4), prepass-on can win on heavy scenes (Bistro x4: 7.67
 vs 11.23 ms) because the prepass IS the pool-warmup mechanism. With
