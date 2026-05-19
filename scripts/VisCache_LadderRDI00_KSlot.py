@@ -70,7 +70,10 @@ def _R3dP3d_KN(N: int, step_name, frame_configs, scene_file,
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")
-    kwargs2.setdefault("biasCorrection", 0)
+    # K-slot requires pairwise MIS (biasCorrection=1) for proper m_j weighting
+    # of each slot's independent stream. At biasCorrection=0, K candidates
+    # inflate local.M without proportional wSum → W gets diluted → bias.
+    kwargs2.setdefault("biasCorrection", 1)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix=f"ReSTIRDI_R3dP3d_K{N}fp{cellReservoirFootprintPx}",
@@ -98,7 +101,10 @@ def _R3dP3d_F8P0_KN(N: int, step_name, frame_configs, scene_file,
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
     kwargs2.setdefault("emissiveSampler", "PdfMipmap")
-    kwargs2.setdefault("biasCorrection", 0)
+    # K-slot requires pairwise MIS (biasCorrection=1) for proper m_j weighting
+    # of each slot's independent stream. At biasCorrection=0, K candidates
+    # inflate local.M without proportional wSum → W gets diluted → bias.
+    kwargs2.setdefault("biasCorrection", 1)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
         tag_prefix=f"ReSTIRDI_R3dP3d_F8P0_K{N}fp{cellReservoirFootprintPx}",

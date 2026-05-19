@@ -1715,7 +1715,10 @@ struct PathTracer
                     float cLocalMWeighted = 0.f;
                     bool  cAnyStreamed = false;
 #if BIAS_CORRECTION == 1
-                    if (nNeighbours > 0u)
+                    // Fire snapshot+re-init also when K-slot is active (each slot
+                    // streams as one candidate with m_j weighting; canonical
+                    // needs to be saved and re-streamed at end).
+                    if (nNeighbours > 0u || isMultiSlot())
                     {
                         cCanonM_save = local.M;
                         cCanonWSum_save = local.wSum;
@@ -1815,6 +1818,34 @@ struct PathTracer
                         // already does the K-slot weighted merge internally —
                         // streaming as a single identity candidate at reader's
                         // pHat is the bias-correct consumption.
+#if BIAS_CORRECTION == 1
+                        if (isMultiSlot())
+                        {
+                            // K-slot selection-only stream with pairwise MIS m_j.
+                            // Each slot is one candidate (invPdf=1, no cell.W);
+                            // m_j weights it relative to canonical to handle the
+                            // mismatched writer-pHat vs reader-pHat case
+                            // (RTXDI bias-correction analog).
+                            float Mcap = min(cell.M, gMCap);
+                            float m_j = PairwiseMisState::computeMJ(cell.targetPdf, pHatCell, Mcap, cCanonM_save);
+                            cCanonMISAcc += PairwiseMisState::computeMCanon(0.f, cCanonTargetPdf_save, Mcap, cCanonM_save, false);
+                            float w = m_j * pHatCell;
+                            if (w > 0.f && !isnan(w))
+                            {
+                                local.wSum += w;
+                                local.M    += 1.f;          // one candidate per slot
+                                cLocalMWeighted += m_j;
+                                cAnyStreamed = true;
+                                if (sampleNext1D(path.sg) * local.wSum <= w)
+                                {
+                                    local.lightTypeIndex = cell.lightTypeIndex;
+                                    local.payload        = cell.payload;
+                                    local.targetPdf      = pHatCell;
+                                }
+                            }
+                        }
+                        else
+#endif
                         if (!isMultiSlot() && gCellReservoirMerge == 1u && cell.M > 0.f && cell.W > 0.f)
                         {
                             float Mcap = min(cell.M, gMCap);
@@ -1847,7 +1878,7 @@ struct PathTracer
                         }
                         else
                         {
-                            // Identity-hint legacy path.
+                            // Identity-hint legacy path (K=1, biasCorrection=0).
                             local.streamingAdd(
                                 cell.lightTypeIndex, cell.payload,
                                 pHatCell, 1.f, path.sg);
@@ -1856,7 +1887,7 @@ struct PathTracer
                     }
                     // Re-stream canonical with accumulated cell-merge MIS weight.
 #if BIAS_CORRECTION == 1
-                    if (nNeighbours > 0u && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
+                    if ((nNeighbours > 0u || isMultiSlot()) && cCanonM_save > 0.f && cCanonTargetPdf_save > 0.f)
                     {
                         if (cAnyStreamed)
                         {
