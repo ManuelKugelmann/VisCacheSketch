@@ -86,7 +86,6 @@ public:
         float    distBCoarse;     ///< distance coarsest cell (world units, dirdist)
         float    distBFine;       ///< distance finest cell (auto-derived)
         float    normalACoarse;   ///< normal coarsest bin scale (oct [0,2] multiplier, 3=60°/bin)
-        float    normalAFine;     ///< normal finest bin scale (auto-derived)
         float    bootThresholdFactorFootprintPx;  ///< K: footprint trust scale. 0 = off (pure bootThreshold),
                                   ///< 1 = log2(cellPixels) floor, >1 = aggressive.
         uint32_t forceDescendFootprintPx; ///< Cell-footprint (px²) above which vhfLookup refuses
@@ -138,7 +137,6 @@ public:
                                            ///< without costing Bistro rays.
         float    jitterFilter;    ///< F: per-position-seed jitter scale (soft cell boundaries, 3D filter kernel). 0 = off.
         float    jitterCell;      ///< F: per-cell-index-seed jitter scale (Binder 2018, hard boundaries shift per cell). 0 = off.
-        uint32_t diagAccumWindow; ///< EMA window for accumulated diagnostics (0 = all frames)
         uint32_t frameCount;      ///< Current frame index for per-frame RNG variation
         uint32_t spp;             ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
         float    cameraPosW[3];   ///< Camera world position (for footprint estimation)
@@ -153,9 +151,6 @@ public:
         float    mCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
         uint32_t spatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
         float    lightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
-        float    lightSoftness;      ///< 0..1 softening of cached μ in target p̂.
-                                       ///< 0 = uniform (no cache effect), 1 = full trust.
-                                       ///< Effective μ = max(lerp(1, μ, softness), lightMuMin).
         uint32_t _wsPad2;            ///< (reserved — was normalAddr; feature dropped 2026-05-18, never enabled in any ladder)
         uint32_t initialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
                                        ///< Drives variance reduction on many-lights scenes — single
@@ -214,7 +209,6 @@ public:
         float    dirBCoarse  = 90.0f;       ///< direction coarsest cell (degrees, dirdist mode)
         float    distBCoarse     = 10.0f;       ///< distance coarsest cell (world units, dirdist mode)
         float    normalACoarse   = 60.0f;      ///< normal coarsest cell (degrees, 60°≈6 bins, 90°≈4 bins, 360°=collapsed)
-        uint32_t diagAccumWindow = 128u;        ///< EMA window for accumulated diagnostics (0 = all frames)
         uint32_t spp             = 1u;          ///< Samples per pixel (matches PathTracer; used as RNG frame stride)
         bool     autoTuneCells   = true;        ///< Auto-derive posACoarse from scene bounds
         bool     quantSceneScale = false;       ///< Interpret posA/posB/distB as fractions of scene BB
@@ -319,9 +313,6 @@ public:
                                                         ///< on emissive scenes). Mitigated by spatial reuse.
         uint32_t spatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
         float    lightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
-        float    lightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.
-                                                        ///< 0 disables (uniform — cache has no effect on selection),
-                                                        ///< 1 = full trust (current behavior). 0.5 = √μ-like soft.
         uint32_t initialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).
         // (jitterFilter / jitterCell removed — WS-ReSTIR reuses

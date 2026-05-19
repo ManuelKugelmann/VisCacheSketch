@@ -224,7 +224,7 @@ private:
              uint32_t numLevels=0, flags=1;
              float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
              float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
-             float normalACoarse=0, normalAFine=0;
+             float normalACoarse=0;
              float bootThresholdFactorFootprintPx=0;
              uint32_t forceDescendFootprintPx=0;
              uint32_t cascadeWindowForward=12;
@@ -235,7 +235,6 @@ private:
              uint32_t mlAlphaFloorN=0;
              uint32_t bootThresholdFine=0;
              float jitterFilter=0, jitterCell=0;
-             uint32_t diagAccumWindow=128;
              uint32_t frameCount=0, spp=1;
              float cameraPosX=0, cameraPosY=0, cameraPosZ=0;
              float pixelSize1=0.001f;
@@ -247,7 +246,6 @@ private:
              float    mCap=30.f;
              uint32_t spatialNeighbours=4;
              float    lightMuMin=0.01f;
-             float    lightSoftness=1.f;
              uint32_t initialCandidates=8;
              // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)
              uint32_t useCellInRIS=1;

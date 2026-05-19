@@ -85,7 +85,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("dirBCoarse"))       mParams.dirBCoarse       = props["dirBCoarse"];
     if (props.has("distBCoarse"))      mParams.distBCoarse      = props["distBCoarse"];
     if (props.has("normalACoarse"))    mParams.normalACoarse    = props["normalACoarse"];
-    if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
     if (props.has("enableDecayAutoTune")) mParams.enableDecayAutoTune = props["enableDecayAutoTune"];
@@ -130,7 +129,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("mCap"))                        mParams.mCap                        = props["mCap"];
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
-    if (props.has("lightSoftness"))               mParams.lightSoftness               = props["lightSoftness"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
@@ -190,7 +188,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("dirBCoarse"))       mParams.dirBCoarse       = props["dirBCoarse"];
     if (props.has("distBCoarse"))      mParams.distBCoarse      = props["distBCoarse"];
     if (props.has("normalACoarse"))    mParams.normalACoarse    = props["normalACoarse"];
-    if (props.has("diagAccumWindow"))  mParams.diagAccumWindow  = props["diagAccumWindow"];
     if (props.has("spp"))              mParams.spp              = props["spp"];
     if (props.has("decayPeriod"))      mParams.decayPeriod      = props["decayPeriod"];
     if (props.has("enableDecayAutoTune")) mParams.enableDecayAutoTune = props["enableDecayAutoTune"];
@@ -234,7 +231,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("mCap"))                        mParams.mCap                        = props["mCap"];
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
-    if (props.has("lightSoftness"))               mParams.lightSoftness               = props["lightSoftness"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
@@ -284,7 +280,6 @@ Properties VisCache::getProperties() const
     p["dirBCoarse"]  = mParams.dirBCoarse;
     p["distBCoarse"]     = mParams.distBCoarse;
     p["normalACoarse"]   = mParams.normalACoarse;
-    p["diagAccumWindow"] = mParams.diagAccumWindow;
     p["spp"]           = mParams.spp;
     p["autoTuneCells"] = mParams.autoTuneCells;
     p["quantSceneScale"] = mParams.quantSceneScale;
@@ -329,7 +324,6 @@ Properties VisCache::getProperties() const
     p["mCap"]                        = mParams.mCap;
     p["spatialNeighbours"]           = mParams.spatialNeighbours;
     p["lightMuMin"]                  = mParams.lightMuMin;
-    p["lightSoftness"]               = mParams.lightSoftness;
     p["initialCandidates"]           = mParams.initialCandidates;
     // (jitterFilter / jitterCell removed — see jitterFilter / jitterCell.)
     p["useCellInRIS"]                = mParams.useCellInRIS;
@@ -767,8 +761,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.distBCoarse    = distBCoarseScaled;
     gpu.distBFine      = (mParams.numLevels > 1) ? deriveFine(distBCoarseScaled, mParams.numLevels, kDistBFineFloor * sceneScale, kBRampScale) : distBCoarseScaled;
     gpu.normalACoarse  = mParams.normalACoarse;
-    gpu.normalAFine    = (mParams.numLevels > 1) ? deriveFine(mParams.normalACoarse, mParams.numLevels) : mParams.normalACoarse;
-    gpu.diagAccumWindow = mParams.diagAccumWindow;
     gpu.frameCount      = mFrameCount;
     gpu.spp             = std::max(1u, mParams.spp);
 
@@ -809,7 +801,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.mCap               = mParams.mCap;
     gpu.spatialNeighbours  = std::min(4u, mParams.spatialNeighbours);
     gpu.lightMuMin         = mParams.lightMuMin;
-    gpu.lightSoftness      = std::clamp(mParams.lightSoftness, 0.f, 1.f);
     gpu._wsPad2            = 0u;  // (was gpu.normalAddr)
     gpu.initialCandidates  = std::max(1u, mParams.initialCandidates);
     gpu._wsPad0              = 0u;
@@ -860,12 +851,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] bayerN={} (Bayer N×N → N²={} subframes/cycle) warmupFirst={} warmupRun={}",
                 gpu.bayerN, gpu.bayerN * gpu.bayerN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
-        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} R3dFootprintPx={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f}",
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} R3dFootprintPx={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f}",
                 mParams.enableReservoirs, mParams.reservoirCapacity,
                 mParams.cellReservoirFootprintPx, mParams.cellLevelJitter,
                 mParams.mCap, std::min(4u, mParams.spatialNeighbours),
                 std::max(1u, mParams.initialCandidates),
-                mParams.lightMuMin, mParams.lightSoftness);
+                mParams.lightMuMin);
         logInfo("[VisCache] WS-ReGIR pool: enabled={} capacity={} drawK={}",
                 mParams.enableCellPool, mParams.cellPoolCapacity, mParams.cellPoolDrawK);
         logInfo("[VisCache] diagnostics={} diagMode={}",
@@ -907,8 +898,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_distBCoarse"]    = gpu.distBCoarse;
     dict["vhfParam_distBFine"]      = gpu.distBFine;
     dict["vhfParam_normalACoarse"]  = gpu.normalACoarse;
-    dict["vhfParam_normalAFine"]    = gpu.normalAFine;
-    dict["vhfParam_diagAccumWindow"] = mParams.diagAccumWindow;
 
     // Feature + ablation toggles — downstream passes read these
     dict["vhfEnableVisibilityCheck"] = mParams.enableVisCacheVisibilityCheck;
@@ -963,7 +952,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsMCap"]          = mParams.mCap;
     dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.spatialNeighbours);
     dict["vhfParam_wsLightMuMin"]    = mParams.lightMuMin;
-    dict["vhfParam_wsLightSoftness"] = std::clamp(mParams.lightSoftness, 0.f, 1.f);
     dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.initialCandidates);
     // (vhfParam_wsJitterFilter / jitterCell removed — WS-ReSTIR reads
     //  the existing vhfParam_jitterFilter / jitterCell values instead.)
@@ -1335,7 +1323,6 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("Pos B coarse",            mParams.posBCoarse,    0.01f, 100.0f, 0.01f);
         g.var("Dir B coarse (deg)",      mParams.dirBCoarse, 1.0f, 360.0f, 1.0f);
         g.var("Dist B coarse",           mParams.distBCoarse,    0.01f, 100.0f, 0.1f);
-        g.var("Diag accum window",       mParams.diagAccumWindow, 0u, 1024u);
     }
 
     widget.var("Decay period max", mParams.decayPeriodMax, 15u, 2000u);
@@ -1355,7 +1342,6 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("mCap", mParams.mCap, 1.f, 200.f, 1.f);
         g.var("spatialNeighbours", mParams.spatialNeighbours, 0u, 4u);
         g.var("lightMuMin (ε floor)", mParams.lightMuMin, 0.f, 1.f, 0.01f);
-        g.var("lightSoftness (0=uniform, 1=full)", mParams.lightSoftness, 0.f, 1.f, 0.05f);
         g.var("initialCandidates (K fresh / pixel)", mParams.initialCandidates, 1u, 64u);
         // (jitterFilter / jitterCell removed — WS-ReSTIR shares
         //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)

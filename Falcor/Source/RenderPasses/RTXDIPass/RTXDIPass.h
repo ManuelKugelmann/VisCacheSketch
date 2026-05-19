@@ -91,8 +91,7 @@ private:
              uint32_t numLevels=0, flags=1;
              float posACoarse=0, posAFine=0, posBCoarse=0, posBFine=0;
              float dirBCoarse=0, dirBFine=0, distBCoarse=0, distBFine=0;
-             float normalACoarse=0, normalAFine=0;
-             uint32_t diagAccumWindow=128; } mVCParams;
+             float normalACoarse=0; } mVCParams;
     bool mVisCacheAvailable = false;
     bool mVisCacheVisibilityCheck = false;  ///< CV+RRR gating for shadow rays
     bool mVisCacheDirDistAddr = false;      ///< G: dir+dist addressing (vs endpoint pairs)

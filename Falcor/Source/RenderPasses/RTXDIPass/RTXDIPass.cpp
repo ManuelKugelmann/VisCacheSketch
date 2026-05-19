@@ -155,8 +155,6 @@ void RTXDIPass::execute(RenderContext* pRenderContext, const RenderData& renderD
         mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
         mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
         mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
-        mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
-        mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
     }
     mVisCacheVisibilityCheck = mVisCacheAvailable &&
         dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");

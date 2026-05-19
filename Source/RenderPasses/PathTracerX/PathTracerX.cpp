@@ -1258,7 +1258,6 @@ bool PathTracerX::beginFrame(RenderContext* pRenderContext, const RenderData& re
             mVCParams.distBCoarse    = dict.getValue<float>("vhfParam_distBCoarse");
             mVCParams.distBFine      = dict.getValue<float>("vhfParam_distBFine");
             mVCParams.normalACoarse  = dict.getValue<float>("vhfParam_normalACoarse");
-            mVCParams.normalAFine    = dict.getValue<float>("vhfParam_normalAFine");
             mVCParams.bootThresholdFactorFootprintPx = dict.getValue<float>("vhfParam_bootThresholdFactorFootprintPx");
             // New cbuffer fields — must be present in vhfParam_* dict for downstream binding.
             // Use keyExists() guards for backward compat with older VisCache pass versions.
@@ -1274,7 +1273,6 @@ bool PathTracerX::beginFrame(RenderContext* pRenderContext, const RenderData& re
             mVCParams.bootThresholdFine             = getU("vhfParam_bootThresholdFine", 0u);
             mVCParams.jitterFilter   = getF("vhfParam_jitterFilter", 0.f);
             mVCParams.jitterCell     = getF("vhfParam_jitterCell",   0.f);
-            mVCParams.diagAccumWindow = dict.getValue<uint32_t>("vhfParam_diagAccumWindow");
             // Per-frame fields (camera + frame counter) populated each frame
             // by VisCache::execute() — read from same dict.
             mVCParams.frameCount   = getU("vhfParam_frameCount", 0u);
