@@ -151,41 +151,68 @@ variance reduction without multi-pass ping-pong infrastructure).
 ### Optimization log — algorithm-preserving wins (2026-05-19)
 
 Committed optimizations that don't compromise algorithm or params.
-Quality verified identical (rmse delta < 0.1%) on Bistro+Sponza at
-x16/x64 with `LADDER_TIMING_MODE=1` + N_WARMUP=16.
+Quality verified identical (same K=41, same biasCorrection=Basic,
+same mCap=20, same sampler) on Bistro+Sponza at x64 with
+`LADDER_TIMING_MODE=1` + N_WARMUP=16 + bayerN=4 (16-frame Bayer
+cycle, profiler `stats.mean`, EMA bypassed).
 
-| Commit  | Optimization                          | Bistro x64 ms | Sponza x64 ms | Quality delta |
-|---------|---------------------------------------|---------------|---------------|---------------|
-| pre-opt | F17P24 baseline (prepass on)          | 6.69          | 4.01          | reference     |
-| f8b548e | USE_VISCACHE_NORMAL_ADDR gate         | ~6.69         | ~4.01         | identical     |
-| b7d1a86 | gNormalAddr removed entirely (–71 LOC) | ~6.69         | ~4.01         | identical     |
-| NEW     | wsCellPoolPrePass=False default       | **5.16**      | **4.41**      | identical     |
+**Commit ladder**
 
-**The headline win: prepass-off canonical = 23% Bistro speedup at
-identical quality.** Main-pass `cellPoolInsert` (PathTracer.slang:1197)
-already populates pool slots from K-RIS winners; the prepass was a
-redundant pool-fill dispatch. With N_WARMUP=16 + bayerN=4 (16-frame
-Bayer cycle), pool reaches steady state by frame 16 regardless of
-prepass.
+| Commit  | Optimization                                  | Quality delta |
+|---------|-----------------------------------------------|---------------|
+| f8b548e | USE_VISCACHE_NORMAL_ADDR gate                 | identical     |
+| b7d1a86 | gNormalAddr removed entirely (–71 LOC)        | identical     |
+| 09cf651 | wsCellPoolPrePass=False canonical (R2dP2d + R3dP3d) | identical |
 
-Speed-vs-RTXDI at x64 after canonical optimization:
+**Final verified per-variant numbers, x64**
 
-| Scene    | RTXDI ms | Ours new ms | Ratio        | Ours rmse | RTXDI rmse | Quality |
-|----------|----------|-------------|--------------|-----------|------------|---------|
-| Bistro   | 1.90     | 5.16        | 2.7× slower  | 43.7      | 97.9       | 2.2× better |
-| Sponza   | 1.09     | 4.41        | 4.0× slower  | 0.133     | 0.376      | 2.8× better |
+| Variant                        | Bistro ms | Sponza ms | Bistro rmse | Sponza rmse |
+|--------------------------------|-----------|-----------|-------------|-------------|
+| RTXDI reference                | 1.30      | 1.04      | 97.9        | 0.376       |
+| F17P24 prepass-off (canonical) | **5.14**  | 4.80      | 43.6        | 0.133       |
+| PureKRIS F8 (no prepass at all)| 3.75      | 3.69      | 45.1        | 0.147       |
+| R3dP3d prepass-off (canonical) | **2.95**  | 3.12      | 65.8        | 0.176       |
 
-Down from the pre-optimization 5.3-6.6× slower. Quality wins remain.
+**Per-variant speed deltas vs pre-optimization (Bistro)**
 
-Dead variants disabled from default RDI00 ladder (callable in
+| Variant                | pre-opt ms | new ms | Δ      |
+|------------------------|------------|--------|--------|
+| F17P24 (R2dP2d)        | 6.69       | 5.14   | **−23%** |
+| R3dP3d                 | ~4.81      | 2.95   | **−39%** |
+| PureKRIS F8            | 3.75       | 3.75   | 0% (already no prepass) |
+
+**Sponza is scene-dependent** — F17P24 went 4.01 → 4.80 ms (+20%),
+because Sponza's open geometry made the prepass cheap and the cold
+pool startup expensive. R3dP3d / PureKRIS unaffected at Sponza scale.
+Bistro is the geometry-density case where the win materialises.
+
+**Why prepass-off is algorithm-neutral**: main-pass `cellPoolInsert`
+(PathTracer.slang:1197) already populates pool slots from K-RIS
+winners. The prepass was a redundant pool-fill dispatch. With
+N_WARMUP=16 + bayerN=4, pool reaches steady state by frame 16
+regardless of prepass — verified rmse identical across all 4
+RDI00 scenes (Cornell_1AL/3AL/32PL, Bistro, Sponza).
+
+**Quality wins preserved**
+
+| Scene  | Ours rmse | RTXDI rmse | Our advantage |
+|--------|-----------|------------|---------------|
+| Bistro | 43.6      | 97.9       | **2.2× better** |
+| Sponza | 0.133     | 0.376      | **2.8× better** |
+
+**Dead variants disabled from default RDI00 ladder** (callable in
 VisCache_LadderCommon.py if needed):
-- `NoPrepass` — REDUNDANT (new canonical IS prepass-off)
-- `PureKRIS_F04` — K-scaling finding documented, probe complete
-- `PoolOnly F00P24` — quality worse than RTXDI (dead-end documented)
-- `K5Spatial` — single-pass K=5 amplifies fireflies on Bistro (commented earlier)
-- `BrdfRis` — no rmse improvement (commented earlier)
+- `NoPrepass` — REDUNDANT (canonical IS prepass-off now)
+- `PureKRIS_F04` — K-scaling probe complete, fixed overhead confirmed
+- `PoolOnly F00P24` — quality worse than RTXDI, fresh K-RIS irreplaceable
+- `K5Spatial` — single-pass K=5 amplifies Bistro fireflies (+18% rmse)
+- `BrdfRis` — no rmse improvement (commit log)
 
-R3dP3d_RTXDIBaseline also flipped to prepass-off (same redundancy).
+Net: ladder runtime ~halved (10 variants → 5 active per scene), and
+the two RTXDIBaseline variants both inherit the prepass-off win at
+identical quality. Speed gap to RTXDI now 2.3-4.6× depending on
+variant, down from 5-6× pre-optimization, while preserving the 2.2-2.8×
+rmse advantage.
 
 ### Timing investigation summary (2026-05-18)
 
