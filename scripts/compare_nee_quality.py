@@ -57,7 +57,17 @@ def _run(name, graph, frames, spp_label):
         m.renderFrame()
     fc.capture()
 
-# 1. Vanilla low-SPP (upstream PathTracer, no VisCache)
+# 1. Vanilla low-SPP (upstream PathTracer, no VisCache). Two flavours:
+#    - vanilla_b1 — single-bounce baseline. Direct comparison target for
+#      restirdi (DI is a primary-hit-only algorithm) and for restirnee_b1
+#      (NEE-everywhere collapses to NEE-at-primary when maxBounces=1).
+#    - vanilla — multi-bounce baseline at MAX_BOUNCES. Comparison target for
+#      restirnee (which exercises K-RIS at every vertex through MAX_BOUNCES).
+g_vanilla_b1 = render_graph_PathTracer(viscache=False, maxBounces=1,
+                                       samplesPerPixel=SPP_LOW, useJitter=True,
+                                       passClassName="PathTracer")
+_run("vanilla_b1", g_vanilla_b1, FRAMES_LOW, f"x{SPP_LOW}")
+
 g_vanilla = render_graph_PathTracer(viscache=False, maxBounces=MAX_BOUNCES,
                                     samplesPerPixel=SPP_LOW, useJitter=True,
                                     passClassName="PathTracer")
@@ -79,7 +89,16 @@ g_rdi = render_graph_PathTracer(
 )
 _run("restirdi", g_rdi, FRAMES_LOW, f"x{SPP_LOW}")
 
-# 4. ReSTIR NEE K=16 (no VisCache at all)
+# 4a. ReSTIR NEE K=16 at maxBounces=1 — single-bounce transition variant.
+#     Algorithmically equivalent to restirdi (K-RIS only at primary hit, no
+#     temporal/spatial reuse), so the gap vs restirdi exposes the impact of
+#     DI's reservoir-reuse machinery vs NEE's single-shot K-RIS.
+g_nee_b1 = render_graph_ReSTIRNEEPass(maxBounces=1,
+                                      samplesPerPixel=SPP_LOW, useJitter=True,
+                                      numNEECandidates=NEE_K)
+_run("restirnee_b1", g_nee_b1, FRAMES_LOW, f"x{SPP_LOW}")
+
+# 4b. ReSTIR NEE K=16 (no VisCache at all)
 g_nee = render_graph_ReSTIRNEEPass(maxBounces=MAX_BOUNCES,
                                    samplesPerPixel=SPP_LOW, useJitter=True,
                                    numNEECandidates=NEE_K)

@@ -49,9 +49,15 @@ def main():
     gt = gt_matches[-1]
     print(f"[gt] {os.path.basename(gt)}")
 
-    variants = [("vanilla", "vanilla_x4"),
-                ("restirdi", "restirdi_x4"),
-                ("restirnee_K16", "restirnee_x4"),
+    # Single-bounce arms (vanilla_b1, restirdi, restirnee_K16_b1) form a
+    # like-for-like trio — all do K-RIS only at primary hit (or none for
+    # vanilla). Multi-bounce arms (vanilla, restirnee_K16, restirnee_K16_cells)
+    # exercise K-RIS at every vertex through MAX_BOUNCES.
+    variants = [("vanilla_b1",          "vanilla_b1_x4"),
+                ("restirdi",            "restirdi_x4"),
+                ("restirnee_K16_b1",    "restirnee_b1_x4"),
+                ("vanilla",             "vanilla_x4"),
+                ("restirnee_K16",       "restirnee_x4"),
                 ("restirnee_K16_cells", "restirnee_cells_x4")]
 
     vanilla_path = find_exr("vanilla_x4")
@@ -67,9 +73,9 @@ def main():
         if oklab:
             m["err_pct"]    = oklab.get("err_delta_pct")
             m["blob_pct"]   = oklab.get("err_delta_blob_pct")
-            m["art_3_pct"]  = oklab.get("artifact_3_pct")
-            m["art_5_pct"]  = oklab.get("artifact_5_pct")
-            m["art_11_pct"] = oklab.get("artifact_11_pct")
+            m["art_3_pct"]  = oklab.get("err_artifact_3_pct")
+            m["art_5_pct"]  = oklab.get("err_artifact_5_pct")
+            m["art_11_pct"] = oklab.get("err_artifact_11_pct")
         return m
 
     print(f"\n=== quality comparison @ x4 SPP vs GT@x1024 — scene={SCENE} ===")
