@@ -1103,14 +1103,16 @@ struct PathTracer
                         // because gMCap caps M but not wSum (cell.W = wSum/(pHat*M)
                         // grows monotonically across many writers per cell).
                         CellAddress cellAddr = resolveCellForFootprint(sd.posW, sd.faceN, path.cellFootprintPx);
-                        Reservoir cell;
-                        // K-slot dispatch: K=1 single-slot read, K>1 in-cell merge with
-                        // normal-aware filtering (skip slots from disparate surfaces).
-                        bool gotCell = isMultiSlot()
-                            ? loadCellMergedFiltered(cellAddr, sd.faceN, true, path.sg, cell)
-                            : loadCell(cellAddr, cell);
-                        if (gotCell && cell.M > 0.f)
+                        // K-slot slot iteration: K=1 → runs once (single-slot,
+                        // today's behavior). K>1 → K independent candidates per
+                        // cell, each rebuilt at reader and streamed with invPdf=1.
+                        // Surface mismatch handled by cell hash (normal axis) +
+                        // RIS weighting (mismatched slots get low pHat at reader,
+                        // naturally downweighted by the streaming-merge math).
+                        for (uint kSlotIdx = 0u; kSlotIdx < inCellSlotCount(); ++kSlotIdx)
                         {
+                            Reservoir cell;
+                            if (!loadCellSlot(cellAddr, kSlotIdx, cell)) continue;
                             // Rebuild cell's stored sample at THIS reader.
                             LightSampleDI cellLs;
                             bool cellOk = false;
@@ -1128,11 +1130,9 @@ struct PathTracer
                                 float pHatCell    = luminance(cellWeight * cellLs.Li);
                                 if (pHatCell > 0.f)
                                 {
-                                    // Stream cell identity as ONE extra RIS
-                                    // candidate at the reader's pHat with
-                                    // invPdf=1. No cell.W involvement → no
-                                    // unbounded-growth bias. K-RIS canonical
-                                    // already contributed (M=K, wSum=sumW).
+                                    // Stream cell identity as ONE RIS candidate at
+                                    // reader's pHat, invPdf=1. K independent slots
+                                    // each contribute one such candidate.
                                     float w = pHatCell;
                                     float total = wSum_eff + w;
                                     if (total > 0.f && !isnan(total))

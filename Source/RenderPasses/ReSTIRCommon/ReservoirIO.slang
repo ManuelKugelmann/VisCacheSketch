@@ -301,8 +301,11 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
         entry.frameLastUpdated = gFrameCount;
 
         // Atomic counter selects slot. First K writes fill 0..K-1; subsequent
-        // writes replace a uniformly-random slot with probability K/(n+1)
-        // (standard weighted-reservoir-sampling of writers — Vitter '85).
+        // writes ALWAYS commit, picking a uniformly-random slot to replace.
+        // Newer writers always overwrite; older slots decay out. Simpler
+        // than weighted-reservoir-sampling (Vitter '85) and gives fresher
+        // samples — important for static-camera convergence where older
+        // samples would otherwise dominate.
         uint n;
         InterlockedAdd(gReservoirCounters[addr.slot], 1u, n);
         uint K = inCellSlotCount();
@@ -313,9 +316,7 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
         }
         else
         {
-            // Replacement phase: probability K/(n+1) to keep; choose random
-            // slot to evict. sampleNext1D ∈ [0,1).
-            if (sampleNext1D(sg) * float(n + 1u) >= float(K)) return;  // skip
+            // Random-replace phase: always commit, pick random slot to evict.
             slotIdx = uint(sampleNext1D(sg) * float(K));
             if (slotIdx >= K) slotIdx = K - 1u;  // guard against rounding
         }
@@ -399,89 +400,31 @@ bool loadCell(CellAddress addr, out Reservoir cell)
     return true;
 }
 
-// K-slot read: reads all K slots at the cell bucket and reservoir-sample-
-// merges them into one returned Reservoir. The K slots represent the
-// in-cell neighbourhood (per .plans/unified-reservoir-addressing.md).
+// K-slot read primitive: fetch one slot by index. K reservoirs at a cell
+// address are stored chunked at slots [addr.slot * K + 0 .. + K-1]. Callers
+// iterate slots and stream each as an independent K-RIS candidate at the
+// reader's pHat (not pre-merged — K candidates contribute K-fold variance
+// reduction).
 //
-// Standard weighted reservoir merge across K writers:
-//   wSum_i = M_i * pHat_i * W_i           (per slot's contribution)
-//   wSumTotal = sum of wSum_i               (total weight)
-//   M_total = sum of M_i                    (accumulated count)
-//   selected = sampleNext1D(sg) * wSumTotal → pick slot by weight
-//   merged.W = wSumTotal / (selected.pHat * M_total)
+// Returns false when the slot is empty (fingerprint mismatch / cold cell /
+// M==0). Caller skips on false.
 //
-// Slots with fingerprint mismatch (collision) or M==0 (cold) are skipped.
-// At K=1 this would degenerate to today's loadCell with one slot; we keep
-// the no-SG loadCell above for that path (parity-preserving).
-bool loadCellMerged<S : ISampleGenerator>(CellAddress addr, inout S sg, out Reservoir merged)
+// Usage pattern (see .plans/unified-reservoir-addressing.md):
+//   for (uint i = 0u; i < inCellSlotCount(); ++i) {
+//       Reservoir slot;
+//       if (!loadCellSlot(addr, i, slot)) continue;
+//       // rebuild slot.{lightTypeIndex, payload} at reader's site,
+//       // compute pHat_reader, optionally m_j pairwise MIS,
+//       // streamingAdd(slot.identity, m_j * pHat_reader, invPdf=1, sg);
+//   }
+bool loadCellSlot(CellAddress addr, uint slotIdx, out Reservoir slot)
 {
-    // Default overload: no surface filtering. Use loadCellMergedFiltered
-    // for normal-aware slot rejection.
-    float3 dummyN = float3(0.f, 0.f, 0.f);
-    return loadCellMergedFiltered(addr, dummyN, false, sg, merged);
-}
-
-// K-slot read with optional reader-surface filtering. When filterByNormal=true,
-// each slot's stored normalOct is decoded and compared against readerFaceN; slots
-// with cos(angle) < 0.5 (~60°) are skipped. Prevents cross-surface contamination
-// on geometry-heavy scenes (Bistro / Cornell point lights regress without this
-// filter because cells aggregate writers from disparate surfaces).
-bool loadCellMergedFiltered<S : ISampleGenerator>(CellAddress addr, float3 readerFaceN,
-                                                   bool filterByNormal, inout S sg,
-                                                   out Reservoir merged)
-{
-    merged = reservoirInit(0u);
+    slot = reservoirInit(0u);
     if (!cellReservoirEnabled()) return false;
     if (gCapacity == 0u) return false;
-
-    uint K = inCellSlotCount();
-    float wSumTotal = 0.f;
-    float Mtotal = 0.f;
-    uint  selTypeIdx = 0u;
-    uint  selPayload = 0u;
-    float selTargetPdf = 0.f;
-    bool  anyValid = false;
-
-    // Normal-aware filter threshold: cos(60°) = 0.5. Matches the WS-ReSTIR
-    // temporal-reuse threshold (RTXDI normalThreshold default).
-    const float kKSlotNormalCos = 0.5f;
-
-    for (uint i = 0u; i < K; ++i)
-    {
-        Reservoir s = gReservoirs[kSlotAddr(addr.slot, i)];
-        if (s.fingerprint != addr.fingerprint) continue;   // skip cold/collision
-        if (s.M <= 0.f) continue;
-        if (filterByNormal && s.normalOct != 0u)
-        {
-            float3 slotN = unpackDirOct(s.normalOct);
-            if (dot(slotN, readerFaceN) < kKSlotNormalCos) continue;
-        }
-        float pHat_i = max(s.targetPdf, 1e-12f);
-        float wSum_i = s.W * pHat_i * s.M;
-        if (wSum_i <= 0.f) continue;
-
-        wSumTotal += wSum_i;
-        Mtotal    += s.M;
-        anyValid  = true;
-
-        // Probabilistic select: keep this slot's sample with prob wSum_i/wSumTotal.
-        if (sampleNext1D(sg) * wSumTotal <= wSum_i)
-        {
-            selTypeIdx   = s.lightTypeIndex;
-            selPayload   = s.payload;
-            selTargetPdf = s.targetPdf;
-        }
-    }
-
-    if (!anyValid) return false;
-
-    merged = reservoirInit(addr.fingerprint);
-    merged.lightTypeIndex   = selTypeIdx;
-    merged.payload          = selPayload;
-    merged.targetPdf        = selTargetPdf;
-    merged.M                = min(Mtotal, gMCap);
-    merged.W                = wSumTotal / (max(selTargetPdf, 1e-12f) * merged.M);
-    merged.frameLastUpdated = gFrameCount;
+    slot = gReservoirs[kSlotAddr(addr.slot, slotIdx)];
+    if (slot.fingerprint != addr.fingerprint) return false;
+    if (slot.M <= 0.f) return false;
     return true;
 }
 

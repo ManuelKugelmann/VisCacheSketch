@@ -1480,15 +1480,13 @@ struct PathTracer
                             // already covered by i==0.
                             if (addr.fingerprint == homeAddr.fingerprint) continue;
                         }
+                        // K-slot slot iteration (Reference pass kept in sync with
+                        // active for shader-binding compatibility; reservoirK=1
+                        // default makes this loop run once = today's behavior).
+                        for (uint kSlotIdx = 0u; kSlotIdx < inCellSlotCount(); ++kSlotIdx)
+                        {
                         Reservoir cell;
-                        // ReSTIRDIReferencePass: frozen at K=1. The isMultiSlot()
-                        // branch is dead here by pinning of reservoirK=1 default;
-                        // kept symmetrical with active pass to ease parity diff.
-                        bool gotCell = isMultiSlot()
-                            ? loadCellMergedFiltered(addr, sd.faceN, true, path.sg, cell)
-                            : loadCell(addr, cell);
-                        if (!gotCell) continue;
-                        if (cell.M <= 0.f) continue;
+                        if (!loadCellSlot(addr, kSlotIdx, cell)) continue;
                         // cell.W is no longer consumed for shading (selection-only
                         // design after the v5 fix); identity is what matters.
 
@@ -1568,6 +1566,7 @@ struct PathTracer
                                 cell.lightTypeIndex, cell.payload,
                                 pHatCell, 1.f, path.sg);
                         }
+                        }  // end K-slot inner loop
                     }
 
                     // (2.5) Per-pixel temporal+spatial reservoir layer.

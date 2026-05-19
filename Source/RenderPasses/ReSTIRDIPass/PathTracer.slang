@@ -1744,16 +1744,17 @@ struct PathTracer
                             // already covered by i==0.
                             if (addr.fingerprint == homeAddr.fingerprint) continue;
                         }
+                        // K-slot slot iteration: at K=1 runs once (slot 0); at K>1
+                        // iterates all K slots, streaming each as an independent
+                        // K-RIS candidate. K independent contributors → K-fold
+                        // variance reduction. Surface-mismatch handled by cell hash
+                        // (normal axis) + RIS weighting at reader's pHat — no
+                        // per-slot filter needed (cell.normalACoarse already
+                        // separates surfaces in addressing).
+                        for (uint kSlotIdx = 0u; kSlotIdx < inCellSlotCount(); ++kSlotIdx)
+                        {
                         Reservoir cell;
-                        // K-slot dispatch: at K=1, single-slot read (today's behavior).
-                        // At K>1, in-cell K-slot merge collapses K reservoirs into one,
-                        // with normal-aware filtering to skip slots from disparate
-                        // surfaces (fixes Bistro/Cornell cross-scene regression).
-                        bool gotCell = isMultiSlot()
-                            ? loadCellMergedFiltered(addr, sd.faceN, true, path.sg, cell)
-                            : loadCell(addr, cell);
-                        if (!gotCell) continue;
-                        if (cell.M <= 0.f) continue;
+                        if (!loadCellSlot(addr, kSlotIdx, cell)) continue;
                         // cell.W is no longer consumed for shading (selection-only
                         // design after the v5 fix); identity is what matters.
 
@@ -1851,6 +1852,7 @@ struct PathTracer
                                 cell.lightTypeIndex, cell.payload,
                                 pHatCell, 1.f, path.sg);
                         }
+                        }  // end K-slot inner loop (slotIdx 0..K-1)
                     }
                     // Re-stream canonical with accumulated cell-merge MIS weight.
 #if BIAS_CORRECTION == 1
