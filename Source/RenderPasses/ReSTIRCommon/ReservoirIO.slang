@@ -43,6 +43,12 @@ bool pixelReservoirEnabled() { return gFrameDimX > 0u && gFrameDimY > 0u; }
 uint pixelIndex(uint2 pixel) { return pixel.y * gFrameDimX + pixel.x; }
 uint visInPHatMode() { return gVisInPHat; }       ///< 0=blind, 1=cache, 2=explicit
 float lightMuMin() { return gLightMuMin; }
+// K-slot chunking: gReservoirK = slots per reservoir cell. K=1 = today's
+// single-slot behavior (parity-pinned to ReSTIRDIReferencePass). K>1 = K-slot
+// architecture per .plans/unified-reservoir-addressing.md (atomic-counter
+// insert, all-slots-merge read).
+uint inCellSlotCount() { return max(1u, gReservoirK); }
+bool isMultiSlot() { return gReservoirK > 1u; }
 uint retraceOnReuseMode() { return gRetraceOnReuseMode; } ///< 0=Off, 1=FullTrace, 2=CacheCV — RTXDI BiasCorrection analog for reservoir reuse.
 
 // ---------------------------------------------------------------------------
@@ -264,6 +270,21 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
 {
     if (!cellReservoirEnabled()) return;
     if (gCapacity == 0u || local.M <= 0.f) return;
+
+    // K-slot evolution dispatch (per .plans/unified-reservoir-addressing.md).
+    // K=1 (default): falls through to the single-slot read-merge-write path
+    // below — bit-identical to ReSTIRDIReferencePass.
+    // K>1: TODO step 5 — atomic-counter slot selection, single-write into one
+    // of K slots, no read-merge phase. Currently unreachable (gReservoirK is
+    // clamped to 1..8 at the C++ side but the only ladder-set value is 1
+    // until K-slot ladder steps land).
+    if (isMultiSlot())
+    {
+        // TODO: atomic-counter K-slot insert. Returns early — K>1 buffer
+        // layout not yet wired; falling through would corrupt the single-
+        // slot buffer's layout. Until step 5 lands, K>1 is a no-op.
+        return;
+    }
 
     // Soft-lock the slot: only proceed if it's empty (fp=0) or already
     // claimed by our cell (matching fingerprint). On collision (different

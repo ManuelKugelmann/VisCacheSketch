@@ -66,7 +66,7 @@ def main():
     # merge); a proper "ReSTIR NEE = ReSTIR DI for multi-bounce" still needs
     # per-vertex temporal/spatial reuse with Bitterli weighted merge.
     variants = [("vanilla_b1",     "vanilla_b1_x4"),
-                ("restirdi",       "restirdi_x4"),
+                ("restirdi_F16R2d", "restirdi_F16R2d_x4"),
                 ("nee_F16_b1",     "nee_F16_b1_x4"),
                 ("vanilla",        "vanilla_x4"),
                 ("nee_F16",        "nee_F16_x4"),
