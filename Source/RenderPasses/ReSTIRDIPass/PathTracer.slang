@@ -1741,7 +1741,12 @@ struct PathTracer
                             if (addr.fingerprint == homeAddr.fingerprint) continue;
                         }
                         Reservoir cell;
-                        if (!loadCell(addr, cell)) continue;
+                        // K-slot dispatch: at K=1, single-slot read (today's behavior).
+                        // At K>1, in-cell K-slot merge collapses K reservoirs into one.
+                        bool gotCell = isMultiSlot()
+                            ? loadCellMerged(addr, path.sg, cell)
+                            : loadCell(addr, cell);
+                        if (!gotCell) continue;
                         if (cell.M <= 0.f) continue;
                         // cell.W is no longer consumed for shading (selection-only
                         // design after the v5 fix); identity is what matters.

@@ -1479,7 +1479,13 @@ struct PathTracer
                             if (addr.fingerprint == homeAddr.fingerprint) continue;
                         }
                         Reservoir cell;
-                        if (!loadCell(addr, cell)) continue;
+                        // ReSTIRDIReferencePass: frozen at K=1. The isMultiSlot()
+                        // branch is dead here by pinning of reservoirK=1 default;
+                        // kept symmetrical with active pass to ease parity diff.
+                        bool gotCell = isMultiSlot()
+                            ? loadCellMerged(addr, path.sg, cell)
+                            : loadCell(addr, cell);
+                        if (!gotCell) continue;
                         if (cell.M <= 0.f) continue;
                         // cell.W is no longer consumed for shading (selection-only
                         // design after the v5 fix); identity is what matters.

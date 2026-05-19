@@ -386,22 +386,78 @@ void mergeIntoCell<S : ISampleGenerator>(CellAddress addr, LocalReservoir local,
 // fingerprint. Caller materialises the chosen sample via rebuildLightSample.
 // Returns false on miss (cold cell or collision).
 // ---------------------------------------------------------------------------
+// K=1 read path: returns the single reservoir at the cell address, or
+// cold-miss if the slot is empty / fingerprint mismatch. No SG needed.
 bool loadCell(CellAddress addr, out Reservoir cell)
 {
     cell = reservoirInit(0u);
     if (!cellReservoirEnabled()) return false;
     if (gCapacity == 0u) return false;
-    if (isMultiSlot())
-    {
-        // K>1 read = merge all K slots in the cell. Step 6 (TODO) wires
-        // this body. Returning cold-miss for now keeps the K>1 mode
-        // safely no-op on reads (cell-RIS spatial merge is ineffective
-        // until step 6 lands, but no data corruption).
-        return false;
-    }
     Reservoir r = gReservoirs[addr.slot];
     if (r.fingerprint != addr.fingerprint) return false;
     cell = r;
+    return true;
+}
+
+// K-slot read: reads all K slots at the cell bucket and reservoir-sample-
+// merges them into one returned Reservoir. The K slots represent the
+// in-cell neighbourhood (per .plans/unified-reservoir-addressing.md).
+//
+// Standard weighted reservoir merge across K writers:
+//   wSum_i = M_i * pHat_i * W_i           (per slot's contribution)
+//   wSumTotal = sum of wSum_i               (total weight)
+//   M_total = sum of M_i                    (accumulated count)
+//   selected = sampleNext1D(sg) * wSumTotal → pick slot by weight
+//   merged.W = wSumTotal / (selected.pHat * M_total)
+//
+// Slots with fingerprint mismatch (collision) or M==0 (cold) are skipped.
+// At K=1 this would degenerate to today's loadCell with one slot; we keep
+// the no-SG loadCell above for that path (parity-preserving).
+bool loadCellMerged<S : ISampleGenerator>(CellAddress addr, inout S sg, out Reservoir merged)
+{
+    merged = reservoirInit(0u);
+    if (!cellReservoirEnabled()) return false;
+    if (gCapacity == 0u) return false;
+
+    uint K = inCellSlotCount();
+    float wSumTotal = 0.f;
+    float Mtotal = 0.f;
+    uint  selTypeIdx = 0u;
+    uint  selPayload = 0u;
+    float selTargetPdf = 0.f;
+    bool  anyValid = false;
+
+    for (uint i = 0u; i < K; ++i)
+    {
+        Reservoir s = gReservoirs[kSlotAddr(addr.slot, i)];
+        if (s.fingerprint != addr.fingerprint) continue;   // skip cold/collision
+        if (s.M <= 0.f) continue;
+        float pHat_i = max(s.targetPdf, 1e-12f);
+        float wSum_i = s.W * pHat_i * s.M;
+        if (wSum_i <= 0.f) continue;
+
+        wSumTotal += wSum_i;
+        Mtotal    += s.M;
+        anyValid  = true;
+
+        // Probabilistic select: keep this slot's sample with prob wSum_i/wSumTotal.
+        if (sampleNext1D(sg) * wSumTotal <= wSum_i)
+        {
+            selTypeIdx   = s.lightTypeIndex;
+            selPayload   = s.payload;
+            selTargetPdf = s.targetPdf;
+        }
+    }
+
+    if (!anyValid) return false;
+
+    merged = reservoirInit(addr.fingerprint);
+    merged.lightTypeIndex   = selTypeIdx;
+    merged.payload          = selPayload;
+    merged.targetPdf        = selTargetPdf;
+    merged.M                = min(Mtotal, gMCap);
+    merged.W                = wSumTotal / (max(selTargetPdf, 1e-12f) * merged.M);
+    merged.frameLastUpdated = gFrameCount;
     return true;
 }
 

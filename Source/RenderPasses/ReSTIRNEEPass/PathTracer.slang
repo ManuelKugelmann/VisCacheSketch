@@ -1104,7 +1104,11 @@ struct PathTracer
                         // grows monotonically across many writers per cell).
                         CellAddress cellAddr = resolveCellForFootprint(sd.posW, sd.faceN, path.cellFootprintPx);
                         Reservoir cell;
-                        if (loadCell(cellAddr, cell) && cell.M > 0.f)
+                        // K-slot dispatch: K=1 single-slot read, K>1 in-cell merge.
+                        bool gotCell = isMultiSlot()
+                            ? loadCellMerged(cellAddr, path.sg, cell)
+                            : loadCell(cellAddr, cell);
+                        if (gotCell && cell.M > 0.f)
                         {
                             // Rebuild cell's stored sample at THIS reader.
                             LightSampleDI cellLs;
