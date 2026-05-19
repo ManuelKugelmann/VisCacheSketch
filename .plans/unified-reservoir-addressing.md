@@ -492,13 +492,38 @@ CellAddress addr1 = resolveCellAtLevel(sd.posW, sd.faceN, baseLevel + 1);
 mergeIntoCell(addr0, local, sg);          // K=1 single-slot at fine level
 mergeIntoCellMultiSlot(addr1, local, sg); // K-slot atomic-counter at coarse
 
-// Read (per pixel per frame):
-Reservoir main, nbrs;
-loadCell(addr0, main);                     // primary, per-pixel safety
-loadCellMerged(addr1, sg, nbrs);           // K-slot spatial neighbourhood
+// Read (per pixel per frame) — slot-by-slot, NOT pre-merged:
+Reservoir main; loadCell(addr0, main);    // primary, single slot
+streamSlotIntoLocal(main, sd, mi, local, sg);
 
-// Stream both into local with pairwise MIS for surface-mismatch handling.
+for (uint i = 0u; i < gReservoirK; ++i)   // K-slot coarse-level slots
+{
+    Reservoir s = gReservoirs[kSlotAddr(addr1.slot, i)];
+    if (s.fingerprint != addr1.fingerprint || s.M <= 0.f) continue;
+    // Rebuild s.identity at sd.posW, compute pHat_reader, m_j, stream:
+    streamSlotIntoLocal(s, sd, mi, local, sg);
+}
 ```
+
+**`streamSlotIntoLocal` (per-slot consumption pattern)**:
+```
+void streamSlotIntoLocal(Reservoir s, ShadingData sd, IMaterialInstance mi,
+                         inout LocalReservoir local, inout SampleGenerator sg)
+{
+    LightSampleDI ls;
+    if (!rebuildLightSample(s.lightTypeIndex, s.payload, sd, ls)) return;
+    float pHatR = luminance(mi.eval(sd, ls.dir, sg) * ls.Li);
+    if (pHatR <= 0.f) return;
+    // Pairwise MIS weight (biasCorrection=1 path):
+    float m_j = local.M / (local.M + s.M * s.targetPdf / max(pHatR, 1e-12f));
+    local.streamingAdd(s.lightTypeIndex, s.payload, m_j * pHatR, 1.f, sg);
+}
+```
+
+The K-slot read iterates K slots, streams each as a separate candidate.
+DON'T pre-merge K → 1 (`loadCellMerged` is the wrong abstraction — drop
+it). K independent candidates contribute K-fold variance reduction;
+pre-merging throws away K-1 candidates' info.
 
 **Tunables**:
 - `coarseLevelOffset` (default +1) — controls how broad the "spatial
