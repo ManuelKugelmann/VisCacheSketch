@@ -279,7 +279,6 @@ private:
              uint32_t spatialNeighbours=4;
              float    lightMuMin=0.01f;
              float    lightSoftness=1.f;
-             uint32_t normalAddr=0;
              uint32_t initialCandidates=8;
              // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)
              uint32_t useCellInRIS=1;

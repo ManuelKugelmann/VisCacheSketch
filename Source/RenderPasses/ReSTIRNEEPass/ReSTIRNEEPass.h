@@ -263,7 +263,6 @@ private:
              uint32_t enable=0;
              uint32_t capacity=0;
              uint32_t cellLevelJitter=0;
-             uint32_t normalAddr=0;
              float    mCap=20.0f;
              uint32_t cellReservoirFootprintPx=0; } mVCParams;
 

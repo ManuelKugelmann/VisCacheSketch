@@ -1254,7 +1254,6 @@ bool ReSTIRDIPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         bool wasVisCheck = mVisCacheVisibilityCheck;
         bool wasLightSel = mVisCacheLightSelection;
         bool wasDirDist = mVisCacheDirDistAddr;
-        uint32_t wasNormalAddr = mVCParams.normalAddr;
         uint32_t wasBayerN = mVisCacheBayerN;
         mpVHFTable    = dict.keyExists("vhfTable")    ? dict.getValue<ref<Buffer>>("vhfTable")    : nullptr;
         mpVHFParamsCB = dict.keyExists("vhfParamsCB") ? dict.getValue<ref<Buffer>>("vhfParamsCB") : nullptr;
@@ -1315,7 +1314,6 @@ bool ReSTIRDIPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             mVCParams.spatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
             mVCParams.lightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
             mVCParams.lightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
-            mVCParams.normalAddr        = getU("vhfParam_wsNormalAddr", 0u);
             mVCParams.initialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
             // (jitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
             mVCParams.useCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
@@ -1387,7 +1385,6 @@ bool ReSTIRDIPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
             || mVisCacheLightSelection != wasLightSel
             || mVisCacheDirDistAddr != wasDirDist
-            || mVCParams.normalAddr != wasNormalAddr
             || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN
             || mVisCacheReservoirs != wasWSReservoirs)
         {
@@ -1607,7 +1604,6 @@ void ReSTIRDIPass::tracePass(RenderContext* pRenderContext, const RenderData& re
         vc["gSpatialNeighbours"]           = mVCParams.spatialNeighbours;
         vc["gLightMuMin"]                  = mVCParams.lightMuMin;
         vc["gLightSoftness"]               = mVCParams.lightSoftness;
-        vc["gNormalAddr"]                  = mVCParams.normalAddr;
         vc["gInitialCandidates"]           = mVCParams.initialCandidates;
         // (gJitterFilter / gJitterCell cbuffer fields are now padding;
         //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)
@@ -1758,13 +1754,6 @@ DefineList ReSTIRDIPass::StaticParams::getDefines(const ReSTIRDIPass& owner) con
     defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
     defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
     defines.add("USE_VISCACHE_DIRDIST_ADDRESSING", owner.mVisCacheDirDistAddr ? "1" : "0");
-    // Compile-time gate for normalAddr-dependent code paths in ReservoirIO/
-    // CellPoolIO. When normalAddr is statically off (RDI00 canonical default),
-    // setting this to 0 dead-eliminates the gNormalAddr branches AND the
-    // normalBin(faceN) compute. Default to 1 to preserve existing behavior
-    // when no upstream VisCachePass provides the value.
-    defines.add("USE_VISCACHE_NORMAL_ADDR",
-        (owner.mVisCacheAvailable && owner.mVCParams.normalAddr) ? "1" : "0");
     defines.add("VISCACHE_BAYER_N", std::to_string(owner.mVisCacheBayerN));
     if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
     // §9.1 cached μ in NEE target p̂ (composes with WS-ReSTIR §9.4).

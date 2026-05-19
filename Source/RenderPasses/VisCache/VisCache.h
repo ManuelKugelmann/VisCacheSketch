@@ -156,8 +156,7 @@ public:
         float    lightSoftness;      ///< 0..1 softening of cached μ in target p̂.
                                        ///< 0 = uniform (no cache effect), 1 = full trust.
                                        ///< Effective μ = max(lerp(1, μ, softness), lightMuMin).
-        uint32_t normalAddr;         ///< 1 = fold a 6-axis face-normal bin into the cell hash.
-                                       ///< Prevents cross-normal pollution at corners / thin shells.
+        uint32_t _wsPad2;            ///< (reserved — was normalAddr; feature dropped 2026-05-18, never enabled in any ladder)
         uint32_t initialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
                                        ///< Drives variance reduction on many-lights scenes — single
                                        ///< candidate (K=1) gives no variance benefit beyond vanilla NEE.
@@ -323,8 +322,6 @@ public:
         float    lightSoftness               = 1.0f;  ///< Softening of cached μ for light selection.
                                                         ///< 0 disables (uniform — cache has no effect on selection),
                                                         ///< 1 = full trust (current behavior). 0.5 = √μ-like soft.
-        bool     normalAddr                  = false; ///< Fold 6-axis face-normal bin into cell hash.
-                                                        ///< Prevents cross-normal cell sharing at corners.
         uint32_t initialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).
         // (jitterFilter / jitterCell removed — WS-ReSTIR reuses

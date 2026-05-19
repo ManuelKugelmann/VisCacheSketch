@@ -1302,7 +1302,6 @@ bool ReSTIRDIReferencePass::beginFrame(RenderContext* pRenderContext, const Rend
             mVCParams.spatialNeighbours = getU("vhfParam_wsSpatialNeighbours", 4u);
             mVCParams.lightMuMin        = getF("vhfParam_wsLightMuMin", 0.01f);
             mVCParams.lightSoftness     = getF("vhfParam_wsLightSoftness", 1.f);
-            mVCParams.normalAddr        = getU("vhfParam_wsNormalAddr", 0u);
             mVCParams.initialCandidates = getU("vhfParam_wsInitialCandidates", 8u);
             // (jitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
             mVCParams.useCellInRIS      = getU("vhfParam_wsUseCellInRIS", 1u);
@@ -1593,7 +1592,6 @@ void ReSTIRDIReferencePass::tracePass(RenderContext* pRenderContext, const Rende
         vc["gSpatialNeighbours"]           = mVCParams.spatialNeighbours;
         vc["gLightMuMin"]                  = mVCParams.lightMuMin;
         vc["gLightSoftness"]               = mVCParams.lightSoftness;
-        vc["gNormalAddr"]                  = mVCParams.normalAddr;
         vc["gInitialCandidates"]           = mVCParams.initialCandidates;
         // (gJitterFilter / gJitterCell cbuffer fields are now padding;
         //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)

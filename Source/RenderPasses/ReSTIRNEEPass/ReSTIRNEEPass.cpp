@@ -1302,7 +1302,6 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             mVCParams.enable          = getU("vhfParam_wsEnable", 0u);
             mVCParams.capacity        = getU("vhfParam_wsCapacity", 0u);
             mVCParams.cellLevelJitter = getU("vhfParam_wsCellLevelJitter", 0u);
-            mVCParams.normalAddr      = getU("vhfParam_wsNormalAddr", 0u);
             mVCParams.mCap            = getF("vhfParam_wsMCap", 20.0f);
             mVCParams.cellReservoirFootprintPx = getU("vhfParam_wsCellReservoirFootprintPx", 0u);
         }
@@ -1558,7 +1557,6 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
         vc["gEnable"]                        = mVCParams.enable;
         vc["gCapacity"]                      = mVCParams.capacity;
         vc["gCellLevelJitter"]               = mVCParams.cellLevelJitter;
-        vc["gNormalAddr"]                    = mVCParams.normalAddr;
         vc["gMCap"]                          = mVCParams.mCap;
         vc["gCellReservoirFootprintPx"]      = mVCParams.cellReservoirFootprintPx;
     }

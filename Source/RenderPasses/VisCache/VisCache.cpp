@@ -131,7 +131,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
     if (props.has("lightSoftness"))               mParams.lightSoftness               = props["lightSoftness"];
-    if (props.has("normalAddr"))                  mParams.normalAddr                  = props["normalAddr"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
@@ -236,7 +235,6 @@ void VisCache::setProperties(const Properties& props)
     if (props.has("spatialNeighbours"))           mParams.spatialNeighbours           = props["spatialNeighbours"];
     if (props.has("lightMuMin"))                  mParams.lightMuMin                  = props["lightMuMin"];
     if (props.has("lightSoftness"))               mParams.lightSoftness               = props["lightSoftness"];
-    if (props.has("normalAddr"))                  mParams.normalAddr                  = props["normalAddr"];
     if (props.has("initialCandidates"))           mParams.initialCandidates           = props["initialCandidates"];
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
@@ -332,7 +330,6 @@ Properties VisCache::getProperties() const
     p["spatialNeighbours"]           = mParams.spatialNeighbours;
     p["lightMuMin"]                  = mParams.lightMuMin;
     p["lightSoftness"]               = mParams.lightSoftness;
-    p["normalAddr"]                  = mParams.normalAddr;
     p["initialCandidates"]           = mParams.initialCandidates;
     // (jitterFilter / jitterCell removed — see jitterFilter / jitterCell.)
     p["useCellInRIS"]                = mParams.useCellInRIS;
@@ -813,7 +810,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     gpu.spatialNeighbours  = std::min(4u, mParams.spatialNeighbours);
     gpu.lightMuMin         = mParams.lightMuMin;
     gpu.lightSoftness      = std::clamp(mParams.lightSoftness, 0.f, 1.f);
-    gpu.normalAddr         = mParams.normalAddr ? 1u : 0u;
+    gpu._wsPad2            = 0u;  // (was gpu.normalAddr)
     gpu.initialCandidates  = std::max(1u, mParams.initialCandidates);
     gpu._wsPad0              = 0u;
     gpu._wsPad1              = 0u;
@@ -863,12 +860,12 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.enableVisCacheBootstrapBreak, mParams.enableVisCacheParentPreinit);
         logInfo("[VisCache] bayerN={} (Bayer N×N → N²={} subframes/cycle) warmupFirst={} warmupRun={}",
                 gpu.bayerN, gpu.bayerN * gpu.bayerN, mParams.warmupSlotsFirst, mParams.warmupSlotsRun);
-        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} R3dFootprintPx={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f} normAddr={}",
+        logInfo("[VisCache] WS-ReSTIR (S9.4): enabled={} capacity={} R3dFootprintPx={} (lvlJitter={}) mCap={:.1f} neighbours={} K={} muMin={:.3f} soft={:.2f}",
                 mParams.enableReservoirs, mParams.reservoirCapacity,
                 mParams.cellReservoirFootprintPx, mParams.cellLevelJitter,
                 mParams.mCap, std::min(4u, mParams.spatialNeighbours),
                 std::max(1u, mParams.initialCandidates),
-                mParams.lightMuMin, mParams.lightSoftness, mParams.normalAddr);
+                mParams.lightMuMin, mParams.lightSoftness);
         logInfo("[VisCache] WS-ReGIR pool: enabled={} capacity={} drawK={}",
                 mParams.enableCellPool, mParams.cellPoolCapacity, mParams.cellPoolDrawK);
         logInfo("[VisCache] diagnostics={} diagMode={}",
@@ -967,7 +964,6 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     dict["vhfParam_wsSpatialNeighbours"] = std::min(4u, mParams.spatialNeighbours);
     dict["vhfParam_wsLightMuMin"]    = mParams.lightMuMin;
     dict["vhfParam_wsLightSoftness"] = std::clamp(mParams.lightSoftness, 0.f, 1.f);
-    dict["vhfParam_wsNormalAddr"]    = mParams.normalAddr ? 1u : 0u;
     dict["vhfParam_wsInitialCandidates"] = std::max(1u, mParams.initialCandidates);
     // (vhfParam_wsJitterFilter / jitterCell removed — WS-ReSTIR reads
     //  the existing vhfParam_jitterFilter / jitterCell values instead.)
@@ -1362,7 +1358,6 @@ void VisCache::renderUI(Gui::Widgets& widget)
         g.var("spatialNeighbours", mParams.spatialNeighbours, 0u, 4u);
         g.var("lightMuMin (ε floor)", mParams.lightMuMin, 0.f, 1.f, 0.01f);
         g.var("lightSoftness (0=uniform, 1=full)", mParams.lightSoftness, 0.f, 1.f, 0.05f);
-        g.checkbox("normalAddr (fold normal into cell hash)", mParams.normalAddr);
         g.var("initialCandidates (K fresh / pixel)", mParams.initialCandidates, 1u, 64u);
         // (jitterFilter / jitterCell removed — WS-ReSTIR shares
         //  VisCache's spatial jitter via gJitterFilter / gJitterCell.)

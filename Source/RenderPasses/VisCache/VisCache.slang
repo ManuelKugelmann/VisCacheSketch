@@ -265,7 +265,7 @@ cbuffer VisCacheParams
     uint   gSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
     float  gLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
     float  gLightSoftness;      ///< Softening of cached μ in target p̂. 0=uniform, 1=full trust.
-    uint   gNormalAddr;         ///< 1 = fold 6-axis face-normal bin into the WS cell hash.
+    uint   _wsPad2;             ///< (was gNormalAddr — feature dropped 2026-05-18; never enabled in any ladder)
     uint   gInitialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI parity, default 8).
     uint   gFrameDimX;          ///< Frame width  (for indexing per-pixel reservoir buffer).
     uint   gFrameDimY;          ///< Frame height.
