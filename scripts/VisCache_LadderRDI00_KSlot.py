@@ -73,7 +73,7 @@ def _R3dP3d_KN(N: int, step_name, frame_configs, scene_file,
     kwargs2.setdefault("biasCorrection", 0)
     return _run_baseline_restir(
         step_name, frame_configs, scene_file,
-        tag_prefix=f"ReSTIRDI_R3dP3d_K{N}",
+        tag_prefix=f"ReSTIRDI_R3dP3d_K{N}fp{cellReservoirFootprintPx}",
         addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         initialCandidates=0,
         cellPoolDrawK=24,
@@ -97,10 +97,14 @@ for scene_file in get_scenes(default=["Sponza"]):
     # Canonical R3dP3d baseline (frozen yardstick at K=1 implicitly).
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
 
-    # K-slot variants.
+    # K-slot at canonical fp=1 (1 writer per cell — K=temporal-history only).
     _R3dP3d_KN(1, STEP, [(0, 0, 1)], scene_file, **common)  # K=1, parity check
     _R3dP3d_KN(4, STEP, [(0, 0, 1)], scene_file, **common)  # K=4, first multi-slot
     _R3dP3d_KN(8, STEP, [(0, 0, 1)], scene_file, **common)  # K=8, cache-line ceiling
+
+    # K-slot at fp=8 (multi-writer cells — K=genuine spatial aggregation).
+    _R3dP3d_KN(4, STEP, [(0, 0, 1)], scene_file, cellReservoirFootprintPx=8, **common)
+    _R3dP3d_KN(8, STEP, [(0, 0, 1)], scene_file, cellReservoirFootprintPx=8, **common)
 
 finalize_step(STEP, carried_winners=[])
 _HEADLESS_SCRIPT_DONE = True

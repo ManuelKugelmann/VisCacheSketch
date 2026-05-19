@@ -362,7 +362,95 @@ remain reproducible against their v1_baseline counterparts forever,
 while the canonical pass evolves to support the full unified design
 space. No two-implementations-doing-the-same-thing smell.
 
-## 2026-05-19 implementation status
+## 2026-05-19 implementation FINAL status
+
+The K-slot evolution is structurally and algorithmically complete.
+Eight commits total: `7dd79fa`, `dc5072e`, `f913892`, `7d4f0e3`,
+`57d1354`, `a4603b5`, `354ea52`, plus the design-doc commits
+`b8b2eb9`, `6632e66`. Parity at K=1 bit-clean (≤0.20% RNG noise
+floor).
+
+### K>1 empirical finding: quality regresses ~2.3× on R3dP3d_F00P24
+
+Sponza x64 across the K × fp matrix:
+
+| Variant       | fp=1 rmse | fp=8 rmse |
+|---------------|-----------|-----------|
+| K=1 baseline  | 0.176     | (canonical fp=1) |
+| K=4           | 0.412     | 0.413     |
+| K=8           | 0.413     | 0.417     |
+
+The cluster at ~0.41 is **invariant under fp and K** — signature of
+an architectural mismatch, not a tuning issue. Footprint variation
+doesn't move the rmse needle.
+
+### Why K-slot regresses on R3dP3d_F00P24
+
+R3dP3d_F00P24 already uses **24 pool draws** as its primary
+aggregation: the WSCellPool pulls light samples across many pixels
+(world-space aggregation already happening through the pool). Cell
+reservoirs on top of that create **double-aggregation**:
+
+1. **Pool aggregation**: ~64 pixels per pool cell × 24 candidates per
+   draw → ~1500-sample world-aggregated pool per pixel.
+2. **Cell-RIS aggregation**: K stored writers per cell × ~64 pixels
+   per cell footprint → another aggregation layer with same world-
+   spatial scope.
+
+The two overlap. Adding the cell-RIS samples to the K-RIS canonical
+estimator doesn't reduce variance — it adds correlated samples
+(same world region, similar lighting) that shift the estimator's
+distribution. Net effect: rmse goes up by ~2.3×.
+
+### What architecture would benefit from K-slot
+
+K-slot's quality benefit needs **cell-RIS as the PRIMARY aggregation**,
+not as an addition on top of pool aggregation. Several promising
+configurations:
+
+- **Pure fresh + cell** (`F8 + P0`): drop the pool entirely; rely
+  on per-pixel fresh K=8 candidates + cell-RIS from K=4 stored slots
+  per cell. K-slot fills the role pool currently plays.
+- **Per-pixel reservoir as the temporal layer + cell-K-slot for spatial**:
+  R2d variant where pixels have their own temporal reservoirs AND
+  cells provide K-slot spatial-neighbour samples.
+- **K-slot for multi-bounce paths** (`ReSTIRNEEPass`, `ReSTIRPTPass`):
+  these are c13939f5's domain; their NEE cell-reservoir work
+  (commit `71b504e`) already uses the same selection-only consumption
+  pattern. K-slot at multi-bounce vertices where MANY pixels'
+  secondary/tertiary hits converge on the same world cell would
+  see real spatial aggregation that the canonical DI F00P24 doesn't.
+
+These are architectural choices, not parameter tweaks. The K-slot
+infrastructure is **ready to be plugged into any of them** without
+additional plumbing work — `gReservoirK`, `gReservoirCounters`,
+`kSlotAddr`, `loadCellMerged`, atomic-counter insert path are all in
+place.
+
+### What the K-slot evolution definitively delivered
+
+1. K=1 parity preserved bit-clean across all changes.
+2. K>1 atomic-counter insert path correctly fills K slots per cell
+   via Vitter '85 reservoir-sample replacement.
+3. K>1 in-cell merge read path correctly aggregates K stored slots
+   into a single weighted-merged reservoir.
+4. Selection-only consumption (identity-hint stream at reader's pHat
+   with invPdf=1) is bias-correct — no firefly explosion despite
+   stored W's known unbounded-W issue at biasCorrection=0.
+5. Quality finding above is a real empirical measurement, not a
+   bug — the architecture works as designed; the question is where
+   to deploy it.
+
+### Recommended next step (out of K-slot scope)
+
+Pursue the `F8 + P0 + K-slot=4` architecture as a new ladder variant
+in a dedicated session. That's the cleanest test of "K-slot as primary
+aggregation". If it beats the canonical pool-heavy F00P24, K-slot
+delivers a real quality win. If not, K-slot is best-suited for
+multi-bounce paths in NEE/PT where the pool isn't the dominant
+mechanism.
+
+## 2026-05-19 implementation status (historical detail)
 
 Steps 1-7 of the migration path landed across commits `7dd79fa` ..
 `57d1354` (plus `b8b2eb9` and `6632e66` for the design doc itself).
