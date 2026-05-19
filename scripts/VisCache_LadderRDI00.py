@@ -88,21 +88,22 @@ for scene_file in get_scenes(default=["Sponza"]):
     # ladder sweep + .agents/handoff for the cross-scene metric matrix
     # justifying the flip).
     run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
-    # Diagnostic: prepass-disabled variant — tests whether the extra
-    # raygen dispatch per frame is redundant given main-pass writes the
-    # pool too. Should drop per-frame time meaningfully without degrading
-    # x16 quality.
-    run_baseline_ReSTIRDI_R2dP2d_NoPrepass(STEP, [(0, 0, 1)], scene_file, **common)
-    # Timing diagnostic: stripped to pure K-RIS + temporal merge (no
-    # spatial-pixel, no cell-pool, no prepass). Tells us how much of our
-    # per-frame cost lives in the diffusion layers.
+    # NoPrepass diagnostic — REDUNDANT 2026-05-19: new RTXDIBaseline default
+    # already has wsCellPoolPrePass=False (same config). Disabled to avoid
+    # duplicate runs. Keep callable in VisCache_LadderCommon for future
+    # A/B reference.
+    # run_baseline_ReSTIRDI_R2dP2d_NoPrepass(STEP, [(0, 0, 1)], scene_file, **common)
+    # PureKRIS F8 — stripped reference: K-RIS + temporal only, no
+    # spatial-pixel, no cell-pool. Useful for cost attribution.
     run_baseline_ReSTIRDI_R2dP2d_PureKRIS(STEP, [(0, 0, 1)], scene_file, **common)
-    # K-cost scaling probe: K=4 PureKRIS — half the K-RIS work of F8.
-    run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04(STEP, [(0, 0, 1)], scene_file, **common)
-    # Timing diagnostic: all 24 from pool, no fresh K-RIS. Tests whether
-    # the 17 per-pixel PdfMipmap descents (expensive) are the dominant
-    # cost — pool reads should be much cheaper.
-    run_baseline_ReSTIRDI_R2dP2d_PoolOnly(STEP, [(0, 0, 1)], scene_file, **common)
+    # PureKRIS_F04 diagnostic — K-scaling finding documented in DEVLOG
+    # (K-cost is fixed overhead, not K-linear). Disabled from default
+    # ladder; available for re-probe.
+    # run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04(STEP, [(0, 0, 1)], scene_file, **common)
+    # PoolOnly F00P24 diagnostic — quality WORSE than RTXDI on Bistro/Sponza
+    # (fresh K-RIS is irreplaceable). Finding documented in commit 87cd7de.
+    # Disabled from default ladder; available for re-probe.
+    # run_baseline_ReSTIRDI_R2dP2d_PoolOnly(STEP, [(0, 0, 1)], scene_file, **common)
     # K5Spatial (2026-05-15): single-pass K=5 spatial neighbors gave MIXED
     # results — Sponza rmse improves -5.5% but Bistro REGRESSES +18%.
     # Same-snapshot K=5 amplifies fireflies (5 sequential RTXDI passes

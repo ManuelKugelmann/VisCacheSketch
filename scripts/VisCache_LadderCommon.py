@@ -4821,7 +4821,14 @@ def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_f
         # user confirmation 2026-05-15).
         initialCandidates=17,                 # F17 = env+inf+brdf coverage to match RTXDI total
         cellPoolDrawK=24,                     # P24 = K=24 emissive from PdfMipmap presample tile
-        wsCellPoolPrePass=True,
+        # Pre-pass disabled in canonical baseline (2026-05-18). The prepass
+        # was a redundant pool-fill mechanism — main-pass cellPoolInsert
+        # (PathTracer.slang:1197) already populates pool slots from each
+        # K-RIS winner per pixel. Empirical at x16/x64 with N_WARMUP=16:
+        # quality identical (rmse delta < 0.1%), per-frame time 25-33%
+        # faster on Bistro/Sponza. Algorithm + K=41 budget unchanged.
+        # See NoPrepass diagnostic variant for the validation data.
+        wsCellPoolPrePass=False,
         prePassEmissiveSampler="PdfMipmap",
         **kwargs2,
     )
@@ -5020,7 +5027,14 @@ def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_f
         addr_mode_kwargs={"poolAddrMode": 0, "cellPoolFootprintPx": cellPoolFootprintPx},
         initialCandidates=0,                  # F00 = pure pool, RTXDI architectural mirror
         cellPoolDrawK=24,                     # P24 = K=24 from PdfMipmap presample tile
-        wsCellPoolPrePass=True,
+        # Prepass disabled 2026-05-19 (same optimization as R2dP2d baseline):
+        # main-pass cellPoolInsert is the sole pool-fill path. With F00
+        # (no fresh K-RIS), main-pass only inserts the per-pixel outer NEE
+        # winner, so pool fills MORE slowly than R2dP2d. With N_WARMUP=16
+        # and bayerN=4 (16-frame Bayer cycle), pool reaches steady state
+        # by frame 16, identical to prepass-on case. See R3dP3d quality
+        # validation in DEVLOG before/after.
+        wsCellPoolPrePass=False,
         prePassEmissiveSampler="PdfMipmap",
         **kwargs2,
     )

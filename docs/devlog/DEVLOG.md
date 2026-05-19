@@ -148,6 +148,45 @@ rmse trails on Bistro/Sponza — attributed to RTXDI's 5-iteration
 spatial cascade (our 1-pass spatial reuse cannot recover the same
 variance reduction without multi-pass ping-pong infrastructure).
 
+### Optimization log — algorithm-preserving wins (2026-05-19)
+
+Committed optimizations that don't compromise algorithm or params.
+Quality verified identical (rmse delta < 0.1%) on Bistro+Sponza at
+x16/x64 with `LADDER_TIMING_MODE=1` + N_WARMUP=16.
+
+| Commit  | Optimization                          | Bistro x64 ms | Sponza x64 ms | Quality delta |
+|---------|---------------------------------------|---------------|---------------|---------------|
+| pre-opt | F17P24 baseline (prepass on)          | 6.69          | 4.01          | reference     |
+| f8b548e | USE_VISCACHE_NORMAL_ADDR gate         | ~6.69         | ~4.01         | identical     |
+| b7d1a86 | gNormalAddr removed entirely (–71 LOC) | ~6.69         | ~4.01         | identical     |
+| NEW     | wsCellPoolPrePass=False default       | **5.16**      | **4.41**      | identical     |
+
+**The headline win: prepass-off canonical = 23% Bistro speedup at
+identical quality.** Main-pass `cellPoolInsert` (PathTracer.slang:1197)
+already populates pool slots from K-RIS winners; the prepass was a
+redundant pool-fill dispatch. With N_WARMUP=16 + bayerN=4 (16-frame
+Bayer cycle), pool reaches steady state by frame 16 regardless of
+prepass.
+
+Speed-vs-RTXDI at x64 after canonical optimization:
+
+| Scene    | RTXDI ms | Ours new ms | Ratio        | Ours rmse | RTXDI rmse | Quality |
+|----------|----------|-------------|--------------|-----------|------------|---------|
+| Bistro   | 1.90     | 5.16        | 2.7× slower  | 43.7      | 97.9       | 2.2× better |
+| Sponza   | 1.09     | 4.41        | 4.0× slower  | 0.133     | 0.376      | 2.8× better |
+
+Down from the pre-optimization 5.3-6.6× slower. Quality wins remain.
+
+Dead variants disabled from default RDI00 ladder (callable in
+VisCache_LadderCommon.py if needed):
+- `NoPrepass` — REDUNDANT (new canonical IS prepass-off)
+- `PureKRIS_F04` — K-scaling finding documented, probe complete
+- `PoolOnly F00P24` — quality worse than RTXDI (dead-end documented)
+- `K5Spatial` — single-pass K=5 amplifies fireflies on Bistro (commented earlier)
+- `BrdfRis` — no rmse improvement (commented earlier)
+
+R3dP3d_RTXDIBaseline also flipped to prepass-off (same redundancy).
+
 ### Timing investigation summary (2026-05-18)
 
 After EMA→stats.mean, reset-before-warmup, diagnostics-off, and
