@@ -173,18 +173,23 @@ cycle, profiler `stats.mean`, EMA bypassed).
 | PureKRIS F8 (no prepass at all)| 3.75      | 3.69      | 45.1        | 0.147       |
 | R3dP3d prepass-off (canonical) | **2.95**  | 3.12      | 65.8        | 0.176       |
 
-**Per-variant speed deltas vs pre-optimization (Bistro)**
+**Clean A/B at current HEAD** (RDI00_PrepassAB ladder, same K=41, same
+biasCorrection=Basic, only `wsCellPoolPrePass` flipped, x64):
 
-| Variant                | pre-opt ms | new ms | Δ      |
-|------------------------|------------|--------|--------|
-| F17P24 (R2dP2d)        | 6.69       | 5.14   | **−23%** |
-| R3dP3d                 | ~4.81      | 2.95   | **−39%** |
-| PureKRIS F8            | 3.75       | 3.75   | 0% (already no prepass) |
+| Scene  | PrepassOn ms | PrepassOff ms | Δ        | rmse delta |
+|--------|--------------|---------------|----------|------------|
+| Bistro | 7.00         | **5.11**      | **−27%** | identical (43.71) |
+| Sponza | 6.04         | **4.39**      | **−27%** | identical (0.133) |
 
-**Sponza is scene-dependent** — F17P24 went 4.01 → 4.80 ms (+20%),
-because Sponza's open geometry made the prepass cheap and the cold
-pool startup expensive. R3dP3d / PureKRIS unaffected at Sponza scale.
-Bistro is the geometry-density case where the win materialises.
+**Prepass-off is a universal x64 win on both scenes**, not scene-dependent.
+The earlier "Sponza +20% regression" number was a contaminated baseline
+(different measurement context, EMA vs stats.mean, different warmup
+state) — corrected by the clean A/B above.
+
+At low SPP (x4), prepass-on can win on heavy scenes (Bistro x4: 7.67
+vs 11.23 ms) because the prepass IS the pool-warmup mechanism. With
+N_WARMUP=16 (one full Bayer cycle), x16+ steady-state always favors
+prepass-off.
 
 **Why prepass-off is algorithm-neutral**: main-pass `cellPoolInsert`
 (PathTracer.slang:1197) already populates pool slots from K-RIS
@@ -213,6 +218,11 @@ the two RTXDIBaseline variants both inherit the prepass-off win at
 identical quality. Speed gap to RTXDI now 2.3-4.6× depending on
 variant, down from 5-6× pre-optimization, while preserving the 2.2-2.8×
 rmse advantage.
+
+**Verified via dedicated A/B**: `scripts/VisCache_LadderRDI00_PrepassAB.py`
+isolates the prepass flip at current HEAD with all other optimizations
+frozen — confirms −27% on both Bistro AND Sponza at x64 with rmse
+identical (algorithm-neutrality preserved).
 
 ### Timing investigation summary (2026-05-18)
 
