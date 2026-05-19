@@ -1,17 +1,25 @@
 """
 compute_nee_quality_metrics.py — post-processing for compare_nee_quality.py.
 
-Loads the 4 EXRs captured by compare_nee_quality.py, computes the standard
-metric battery vs the GT, prints a comparison table.
+Loads the captured EXRs and computes the full metric battery vs GT:
+  Linear-luminance HDR (compute_research_metrics_hdr):
+    rmse, psnr_db, relmse, smape, mape, ms_ssim, flip
+  OkLab perceptual + artifact-region (compute_render_error_signed_hdr):
+    err_pct        — mean OkLab(render,GT) as % of OkLab max
+    blob_pct       — Gaussian-blurred worst-region OkLab err
+    art_3/5/11_pct — median-filtered worst-region (kernel 3/5/11 px)
+
+CLAUDE.md mandates the full battery (err%, art5%, RMSE, PSNR are the
+minimum); single-metric analysis misses anti-correlated trade-offs.
 
 Run from project root:
     runtime/pythondist/python.exe scripts/compute_nee_quality_metrics.py [scene_name]
 """
 
-import os, sys, glob
+import os, sys, glob, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from viscache_exr import compute_research_metrics_hdr
+from viscache_exr import compute_research_metrics_hdr, compute_render_error_signed_hdr
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCENE = sys.argv[1] if len(sys.argv) > 1 else "CornellBox_32PointLights"
@@ -21,6 +29,16 @@ CAP_DIR = os.path.join(ROOT, "runtime", "captures", "nee_quality", SCENE)
 def find_exr(prefix):
     matches = glob.glob(os.path.join(CAP_DIR, f"{prefix}.AccumulatePass.output.*.exr"))
     return sorted(matches)[-1] if matches else None
+
+
+# Metric direction: which way is BETTER?
+# Higher-is-better for psnr_db / ms_ssim; lower-is-better for everything else.
+HIGHER_BETTER = {"psnr_db", "ms_ssim"}
+
+
+def metric_better(name, delta):
+    """delta = variant - vanilla. Returns True if variant is better."""
+    return (delta > 0) if name in HIGHER_BETTER else (delta < 0)
 
 
 def main():
@@ -36,11 +54,40 @@ def main():
                 ("restirnee_K16", "restirnee_x4"),
                 ("restirnee_K16_cells", "restirnee_cells_x4")]
 
+    vanilla_path = find_exr("vanilla_x4")
+
+    # Combined per-variant dict: linear HDR + OkLab/artifact metrics.
+    def metrics_for(path):
+        m = compute_research_metrics_hdr(path, gt) or {}
+        # OkLab + artifact battery — writes a debug PNG to a temp path we
+        # don't need; we only want the returned dict.
+        with tempfile.TemporaryDirectory() as td:
+            out_png = os.path.join(td, "err.png")
+            oklab = compute_render_error_signed_hdr(path, vanilla_path or path, gt, out_png)
+        if oklab:
+            m["err_pct"]    = oklab.get("err_delta_pct")
+            m["blob_pct"]   = oklab.get("err_delta_blob_pct")
+            m["art_3_pct"]  = oklab.get("artifact_3_pct")
+            m["art_5_pct"]  = oklab.get("artifact_5_pct")
+            m["art_11_pct"] = oklab.get("artifact_11_pct")
+        return m
+
     print(f"\n=== quality comparison @ x4 SPP vs GT@x1024 — scene={SCENE} ===")
-    cols = ["variant", "rmse", "psnr_db", "relmse", "smape", "ms_ssim", "flip"]
-    header = " | ".join(f"{c:>13}" for c in cols)
-    print(header)
-    print("-" * len(header))
+    # Two stacked tables — the linear-HDR row stays wide-readable, the
+    # OkLab/artifact row carries the perceptual + worst-region story.
+    cols_linear = ["variant", "rmse", "psnr_db", "relmse", "smape", "mape", "ms_ssim", "flip"]
+    cols_oklab  = ["variant", "err_pct", "blob_pct", "art_3_pct", "art_5_pct", "art_11_pct"]
+
+    def print_table(rows_, cols):
+        header = " | ".join(f"{c:>13}" for c in cols)
+        print(header)
+        print("-" * len(header))
+        for label, m in rows_:
+            row = [label]
+            for k in cols[1:]:
+                v = m.get(k)
+                row.append("nan" if v is None else f"{v:.5f}")
+            print(" | ".join(f"{v:>13}" for v in row))
 
     rows = []
     for label, prefix in variants:
@@ -48,30 +95,51 @@ def main():
         if not path:
             print(f"  [skip] {label}: no EXR found")
             continue
-        m = compute_research_metrics_hdr(path, gt)
+        m = metrics_for(path)
         if not m:
             print(f"  [skip] {label}: metric computation failed")
             continue
         rows.append((label, m))
-        row = [label] + [f"{m.get(k, float('nan')):.5f}" for k in cols[1:]]
-        print(" | ".join(f"{v:>13}" for v in row))
 
-    # Comparison commentary
+    print("\n[linear-HDR luminance]")
+    print_table(rows, cols_linear)
+    print("\n[OkLab perceptual + worst-region]")
+    print_table(rows, cols_oklab)
+
+    # Per-variant verdict vs vanilla across the full battery — call out
+    # anti-correlated metric disagreements explicitly.
     if len(rows) >= 2:
-        print()
+        print("\n[verdict vs vanilla]")
         vanilla = next((m for n, m in rows if n == "vanilla"), None)
+        if vanilla is None:
+            return
+        verdict_keys = ("rmse", "psnr_db", "relmse", "smape", "ms_ssim", "flip",
+                        "err_pct", "blob_pct", "art_5_pct")
         for name, m in rows:
-            if name == "vanilla" or vanilla is None:
+            if name == "vanilla":
                 continue
-            for k in ("rmse", "psnr_db", "relmse", "ms_ssim", "flip"):
-                if vanilla.get(k) is None or m.get(k) is None:
+            wins = []
+            losses = []
+            for k in verdict_keys:
+                vv, mv = vanilla.get(k), m.get(k)
+                if vv is None or mv is None:
                     continue
-                delta = m[k] - vanilla[k]
-                better = (delta < 0) if k != "psnr_db" and k != "ms_ssim" else (delta > 0)
-                arrow = "DN" if (k != "psnr_db" and k != "ms_ssim") else "UP"
+                delta = mv - vv
+                if metric_better(k, delta):
+                    wins.append(k)
+                else:
+                    losses.append(k)
+            n_w = len(wins); n_l = len(losses)
+            print(f"  {name}: {n_w} better / {n_l} worse  (wins: {','.join(wins) or '—'};  losses: {','.join(losses) or '—'})")
+            for k in verdict_keys:
+                vv, mv = vanilla.get(k), m.get(k)
+                if vv is None or mv is None:
+                    continue
+                delta = mv - vv
+                tag = "BETTER" if metric_better(k, delta) else "WORSE "
+                arrow = "UP" if k in HIGHER_BETTER else "DN"
                 sign = "+" if delta >= 0 else ""
-                tag = "BETTER" if better else "WORSE "
-                print(f"  {name} vs vanilla: {k:>10} {tag} ({sign}{delta:.5f}, want {arrow})")
+                print(f"    {k:>10} {tag} ({sign}{delta:.5f}, want {arrow})")
 
 
 if __name__ == "__main__":

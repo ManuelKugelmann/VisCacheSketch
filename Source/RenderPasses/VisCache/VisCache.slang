@@ -262,7 +262,8 @@ cbuffer VisCacheParams
     uint   gEnable;             ///< 1 = WS reservoir buffer active.
     uint   gCapacity;           ///< Power-of-two reservoir slot count.
     float  gMCap;               ///< Temporal M-cap for reservoir merge.
-    uint   gSpatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
+    uint   gSpatialNeighbours;  ///< Cell-RIS spatial neighbour cells per pixel (0..4).
+                                ///< 0 = cell-RIS off-switch (was gUseCellInRIS, dropped 2026-05-19).
     float  gLightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
     float  _wsPad5;             ///< (was gLightSoftness, removed 2026-05-19; unused by any shader)
     uint   _wsPad2;             ///< (was gNormalAddr — feature dropped 2026-05-18; never enabled in any ladder)
@@ -276,6 +277,7 @@ cbuffer VisCacheParams
     // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
     uint   _wsPad7;             ///< (was gCellPoolEnable; collapsed into gCellPoolFootprintPx>0 2026-05-19)
     uint   gCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
+                                ///< 0 = pool off (alt off-switch alongside gCellPoolFootprintPx=0).
     uint   gCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).
     uint   gCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* analytical entry level, MCPG 2025).
     uint   gSpatialPixelsK;     ///< Per-pixel screen-space spatial-reuse neighbour count (default 4).

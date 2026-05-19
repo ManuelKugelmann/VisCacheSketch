@@ -149,7 +149,8 @@ public:
         uint32_t enable;             ///< 1 = WS-reservoir buffer active. Master gate.
         uint32_t capacity;           ///< Power-of-two reservoir slot count (table size).
         float    mCap;               ///< Temporal sample-count cap for reservoir merge (Bitterli '20).
-        uint32_t spatialNeighbours;  ///< Neighbour cells gathered during spatial reuse (0..4).
+        uint32_t spatialNeighbours;  ///< Neighbour cells gathered during cell-RIS spatial reuse (0..4).
+                                       ///< 0 = cell-RIS off (off-switch — was useCellInRIS, dropped 2026-05-19).
         float    lightMuMin;         ///< ε-floor for cached μ in target p̂ (defensive sampling).
         uint32_t _wsPad2;            ///< (reserved — was normalAddr; feature dropped 2026-05-18, never enabled in any ladder)
         uint32_t initialCandidates;  ///< K fresh per-pixel candidates per frame (RTXDI default: 8).
@@ -161,7 +162,8 @@ public:
         uint32_t visInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
         uint32_t _wsPad7;            ///< (reserved — was cellPoolEnable; collapsed into cellPoolFootprintPx>0 2026-05-19)
-        uint32_t cellPoolCapacity;   ///< Power-of-two pool slot count.
+        uint32_t cellPoolCapacity;   ///< Power-of-two pool slot count. 0 = pool off (alt off-switch
+                                       ///< alongside cellPoolFootprintPx=0).
         uint32_t cellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled,
                                        ///< write-back still active so pool fills).
         uint32_t cellLevelJitter;    ///< Stochastic LOD jitter range (0 = off).
@@ -311,7 +313,10 @@ public:
                                                         ///< Higher = more temporal stability but per-pixel
                                                         ///< reservoir lock-in bias (occluded picks stay dark
                                                         ///< on emissive scenes). Mitigated by spatial reuse.
-        uint32_t spatialNeighbours           = 4u;    ///< Spatial neighbour cells gathered per pixel (0..4).
+        uint32_t spatialNeighbours           = 4u;    ///< Cell-RIS spatial neighbour cells per pixel (0..4).
+                                                        ///< 0 = cell-RIS off-switch (was useCellInRIS, dropped
+                                                        ///< 2026-05-19); the merge-loop home cell is included in
+                                                        ///< the count when >0.
         float    lightMuMin                  = 0.01f; ///< ε-floor for cached μ in NEE target p̂.
         uint32_t initialCandidates           = 8u;    ///< K fresh per-pixel candidates per frame
                                                         ///< (matches RTXDI's localLightCandidateCount default).
@@ -335,6 +340,8 @@ public:
                                                         ///< (~4× the ~1K active cells per user "8× generous" rule,
                                                         ///< probing handles collisions; total alloc fits VRAM
                                                         ///< headroom for laptop GPUs).
+                                                        ///< 0 = pool off (alt off-switch alongside
+                                                        ///< cellPoolFootprintPx=0).
         uint32_t cellPoolDrawK               = 0u;    ///< K candidates drawn from pool per pixel (read path).
                                                         ///< 0 = pool fills from write-back only; main pass keeps
                                                         ///<     using fresh generateLightSample candidates.
@@ -385,7 +392,7 @@ public:
                                                         ///< reservoir footprint — finer than the 16-px pool
                                                         ///< footprint so each pool cell aggregates candidates
                                                         ///< across ~4 reservoir cells worth of pixels.
-                                                        ///< Required > 0.
+                                                        ///< 0 = R3d (cell reservoir) off-switch.
         uint32_t retraceOnReuseMode          = 0u;    ///< 0 = Off (Basic-equiv, current default), 1 = FullTrace
                                                         ///< (≡ RTXDI RayTraced), 2 = CacheCV (cheap CV+RRR via
                                                         ///< evalRevalidationCV with PT-canonical knobs). Toggleable
