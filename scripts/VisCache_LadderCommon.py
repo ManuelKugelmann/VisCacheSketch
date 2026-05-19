@@ -3914,12 +3914,18 @@ def _run_baseline_variant(step_name, frame_configs, scene_file, tag_suffix,
         # the postprocess loop below.
         gpu_times_by_spp = {}
 
+        # When LADDER_TIMING_BREAKDOWN=1 the per-pass GPU breakdown is only
+        # populated by a fresh render — the profiler events vanish if the
+        # variant short-circuits via the cache check. Force-bypass the
+        # cache in that mode so the breakdown can be collected.
+        _force_rerender_for_breakdown = os.environ.get("LADDER_TIMING_BREAKDOWN", "0") not in ("0", "")
+
         for spp in capture_spps:
             tag = f"s_x{spp}_{res_tag}"
             png_out = _out(captureDir, "r1c1_accum_render", f"{tag}_{tag_suffix}_")
             hdr_out = os.path.join(captureDir, f"{tag}_{tag_suffix}_hdr.exr")
 
-            if os.path.exists(png_out) and os.path.getsize(png_out) > 1024:
+            if os.path.exists(png_out) and os.path.getsize(png_out) > 1024 and not _force_rerender_for_breakdown:
                 print(f"\n[{step_name}] ======== {tag_suffix}_x{spp} {tag} ({scene_name}) - cached ========")
                 continue
 
