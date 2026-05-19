@@ -96,7 +96,11 @@ CellAddress resolveCellPoolAddr(float3 posA, float3 faceN)
     lvl = clamp(lvl, 0, int(gNumLevels) - 1);
     float cellSize = max(vhfPosASize(lvl), 1e-6f);
     int3 q = jitterQuantize(posA, cellSize, 0xC5u ^ uint(lvl));
+#if USE_VISCACHE_NORMAL_ADDR
     uint nb = (gNormalAddr != 0u) ? normalBin(faceN) : 0u;
+#else
+    const uint nb = 0u;  // normalAddr statically off — skip normalBin
+#endif
     CellAddress a;
     a.slot        = addressHash(q, nb) & (gCellPoolCapacity - 1u);
     a.fingerprint = fingerprintHash(q, nb);

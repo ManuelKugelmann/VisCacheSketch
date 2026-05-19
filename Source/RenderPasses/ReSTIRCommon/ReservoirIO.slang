@@ -120,16 +120,29 @@ int3 quantizePosA(float3 posA)
 // ---------------------------------------------------------------------------
 static const uint kWSFpSalt = 0xA5C3F09Bu;
 
+// Compile-time gate for normalAddr branches: USE_VISCACHE_NORMAL_ADDR=0
+// dead-eliminates the gNormalAddr branches AND the normalBin compute when
+// the host knows normalAddr is statically off. Default 1 preserves the
+// runtime check (existing behavior). Set host-side to 0 in pass getDefines()
+// based on the param value when fixed at construction.
+#ifndef USE_VISCACHE_NORMAL_ADDR
+#define USE_VISCACHE_NORMAL_ADDR 1
+#endif
+
 uint addressHash(int3 q, uint normalBin)
 {
     uint h = pcgHashA(q, 0u);
+#if USE_VISCACHE_NORMAL_ADDR
     if (gNormalAddr != 0u) h ^= normalBin * 0x9E370001u;
+#endif
     return h;
 }
 uint fingerprintHash(int3 q, uint normalBin)
 {
     uint h = pcgHashEndpoint(q, 0u, kSaltA ^ kWSFpSalt);
+#if USE_VISCACHE_NORMAL_ADDR
     if (gNormalAddr != 0u) h ^= normalBin * 0xB5297A4Du;
+#endif
     return (h == 0u) ? 1u : h;     // 0 reserved for empty slot
 }
 
@@ -141,7 +154,11 @@ struct CellAddress { uint slot; uint fingerprint; };
 CellAddress resolveCell(float3 posA, float3 faceN)
 {
     int3 q  = quantizePosA(posA);
+#if USE_VISCACHE_NORMAL_ADDR
     uint nb = (gNormalAddr != 0u) ? normalBin(faceN) : 0u;
+#else
+    const uint nb = 0u;  // normalAddr statically off — skip normalBin compute
+#endif
     CellAddress a;
     a.slot        = addressHash(q, nb) & (gCapacity - 1u);
     a.fingerprint = fingerprintHash(q, nb);
@@ -159,7 +176,11 @@ CellAddress resolveCellForFootprint(float3 posA, float3 faceN, float footprintPx
     lvl = clamp(lvl, 0, int(gNumLevels) - 1);
     float cs = max(vhfPosASize(lvl), 1e-6f);
     int3 q  = jitterQuantize(posA, cs, 0xC5u ^ uint(lvl));
+#if USE_VISCACHE_NORMAL_ADDR
     uint nb = (gNormalAddr != 0u) ? normalBin(faceN) : 0u;
+#else
+    const uint nb = 0u;  // normalAddr statically off — skip normalBin compute
+#endif
     CellAddress a;
     a.slot        = addressHash(q, nb) & (gCapacity - 1u);
     a.fingerprint = fingerprintHash(q, nb);
