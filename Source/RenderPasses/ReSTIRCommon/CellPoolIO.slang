@@ -41,7 +41,7 @@ uint slotPackMFrame(uint M, uint frame) { return (min(M, 0xFFFFu) << 16) | (fram
 uint slotCurrentFrame()                 { return gFrameCount & 0xFFFFu; }
 uint slotAge(uint slotFrame)            { return (slotCurrentFrame() - slotFrame) & 0xFFFFu; }
 
-bool cellPoolEnabled() { return gEnable != 0u && gCellPoolEnable != 0u && gCellPoolCapacity > 0u && gCellPoolFootprintPx > 0u; }
+bool cellPoolEnabled() { return gEnable != 0u && gCellPoolCapacity > 0u && gCellPoolFootprintPx > 0u; }
 
 /// Pool addressing mode (gPoolAddrMode):
 ///   0 = 3D world cell (default — open-addressed hash table with double-hash

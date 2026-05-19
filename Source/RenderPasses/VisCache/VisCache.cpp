@@ -133,7 +133,6 @@ VisCache::VisCache(ref<Device> pDevice, const Properties& props)
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
     if (props.has("visInPHat"))                   mParams.visInPHat                   = props["visInPHat"];
-    if (props.has("enableCellPool"))              mParams.enableCellPool              = props["enableCellPool"];
     if (props.has("cellPoolCapacity"))            mParams.cellPoolCapacity            = props["cellPoolCapacity"];
     if (props.has("cellPoolDrawK"))               mParams.cellPoolDrawK               = props["cellPoolDrawK"];
     if (props.has("spatialPixelsK"))              mParams.spatialPixelsK              = props["spatialPixelsK"];
@@ -234,7 +233,6 @@ void VisCache::setProperties(const Properties& props)
     // (jitterFilter / jitterCell removed — WS-ReSTIR reuses VisCache's
     //  gJitterFilter / gJitterCell. Use the jitterFilter / jitterCell props.)
     if (props.has("visInPHat"))                   mParams.visInPHat                   = props["visInPHat"];
-    if (props.has("enableCellPool"))              mParams.enableCellPool              = props["enableCellPool"];
     if (props.has("cellPoolCapacity"))            mParams.cellPoolCapacity            = props["cellPoolCapacity"];
     if (props.has("cellPoolDrawK"))               mParams.cellPoolDrawK               = props["cellPoolDrawK"];
     if (props.has("spatialPixelsK"))              mParams.spatialPixelsK              = props["spatialPixelsK"];
@@ -325,7 +323,6 @@ Properties VisCache::getProperties() const
     p["initialCandidates"]           = mParams.initialCandidates;
     // (jitterFilter / jitterCell removed — see jitterFilter / jitterCell.)
     p["visInPHat"]                   = mParams.visInPHat;
-    p["enableCellPool"]              = mParams.enableCellPool;
     p["cellPoolCapacity"]            = mParams.cellPoolCapacity;
     p["cellPoolDrawK"]               = mParams.cellPoolDrawK;
     p["spatialPixelsK"]              = mParams.spatialPixelsK;
@@ -598,13 +595,14 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     }
 
     // §9.4 WS-cascade ReGIR cell-pool buffer — lazy alloc, gated on
-    // enableReservoirs && enableCellPool. Capacity rounded up to pow2.
+    // enableReservoirs && cellPoolFootprintPx > 0 (the off-switch).
+    // Capacity rounded up to pow2.
     {
         uint32_t cpCap = 1u;
         while (cpCap < std::max(1u, mParams.cellPoolCapacity)) cpCap <<= 1;
         mParams.cellPoolCapacity = cpCap;
-        const bool needs = mParams.enableReservoirs && mParams.enableCellPool
-                        && (!mpCellPools || mCellPoolCapacityCommitted != cpCap);
+        const bool poolActive = mParams.enableReservoirs && mParams.cellPoolFootprintPx > 0u && mParams.cellPoolCapacity > 0u;
+        const bool needs = poolActive && (!mpCellPools || mCellPoolCapacityCommitted != cpCap);
         if (needs)
         {
             // Drop OLD buffer refs FIRST so capacity bumps don't transiently
@@ -630,7 +628,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
             pCtx->clearUAV(mpCellPools->getUAV().get(), uint4(0u));
             pCtx->clearUAV(mpCellPoolSlots->getUAV().get(), uint4(0u));
         }
-        else if ((!mParams.enableReservoirs || !mParams.enableCellPool) && mpCellPools)
+        else if (!poolActive && mpCellPools)
         {
             mpCellPools = nullptr;
             mpCellPoolSlots = nullptr;
@@ -809,7 +807,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     uint32_t cpCap = 1u;
     while (cpCap < std::max(1u, mParams.cellPoolCapacity)) cpCap <<= 1;
     mParams.cellPoolCapacity = cpCap;
-    gpu.cellPoolEnable     = mParams.enableCellPool ? 1u : 0u;
+    gpu._wsPad7            = 0u;  // (was gpu.cellPoolEnable; collapsed into cellPoolFootprintPx>0)
     gpu.cellPoolCapacity   = cpCap;
     gpu.cellPoolDrawK      = mParams.cellPoolDrawK;
     gpu.spatialPixelsK     = mParams.spatialPixelsK;
@@ -854,8 +852,8 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 mParams.mCap, std::min(4u, mParams.spatialNeighbours),
                 std::max(1u, mParams.initialCandidates),
                 mParams.lightMuMin);
-        logInfo("[VisCache] WS-ReGIR pool: enabled={} capacity={} drawK={}",
-                mParams.enableCellPool, mParams.cellPoolCapacity, mParams.cellPoolDrawK);
+        logInfo("[VisCache] WS-ReGIR pool: footprintPx={} capacity={} drawK={} (pool off when footprintPx=0)",
+                mParams.cellPoolFootprintPx, mParams.cellPoolCapacity, mParams.cellPoolDrawK);
         logInfo("[VisCache] diagnostics={} diagMode={}",
                 mEnableDiagnostics, uint32_t(mDiagMode));
     }
@@ -957,8 +955,7 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
     // §9.4 WS-cascade ReGIR cell-pool — buffer + cbuffer values.
     dict["cellPoolBuffer"]             = mpCellPools;
     dict["cellPoolSlotBuffer"]         = mpCellPoolSlots;
-    dict["vhfEnableWSCellPool"]          = mParams.enableCellPool;
-    dict["vhfParam_cellPoolEnable"]    = mParams.enableCellPool ? 1u : 0u;
+    dict["vhfEnableWSCellPool"]          = (mParams.cellPoolFootprintPx > 0u && mParams.cellPoolCapacity > 0u);
     dict["vhfParam_wsCellPoolCapacity"]  = mParams.cellPoolCapacity;
     dict["vhfParam_wsCellPoolDrawK"]     = mParams.cellPoolDrawK;
     dict["vhfParam_wsSpatialPixelsK"]    = mParams.spatialPixelsK;

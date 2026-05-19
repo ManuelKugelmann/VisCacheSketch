@@ -274,7 +274,7 @@ cbuffer VisCacheParams
     uint   _wsPad6;             ///< (was gUseCellInRIS; collapsed into gSpatialNeighbours>0 2026-05-19)
     uint   gVisInPHat;          ///< 0=blind, 1=cache-amortized, 2=explicit-always-trace.
     // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-    uint   gCellPoolEnable;     ///< 1 = pool buffer active. Master gate for ReGIR step (a)+.
+    uint   _wsPad7;             ///< (was gCellPoolEnable; collapsed into gCellPoolFootprintPx>0 2026-05-19)
     uint   gCellPoolCapacity;   ///< Power-of-two pool slot count (table size).
     uint   gCellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled).
     uint   gCellLevelJitter;    ///< Stochastic LOD jitter (0 = off; one-sided truncated exp [0, J] *above* analytical entry level, MCPG 2025).

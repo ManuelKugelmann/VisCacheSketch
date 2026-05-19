@@ -110,13 +110,16 @@ def render_graph_PathTracer(viscache=False, maxBounces=3, samplesPerPixel=1, use
                 "cellReservoirFootprintPx": cellReservoirFootprintPx,
             })
         if reservoirs and cellPool:
+            # Pool enabled iff cellPoolFootprintPx > 0 (C++ default = 0).
+            # Caller-supplied cellPoolFootprintPx defaults to 0; bump to 16
+            # if caller asked for cellPool=True but didn't specify a footprint.
+            pool_fp = cellPoolFootprintPx if cellPoolFootprintPx > 0 else 16
             vc_props.update({
-                "enableCellPool":     True,
                 "cellPoolCapacity":   cellPoolCapacity,
                 "cellPoolDrawK":      cellPoolDrawK,
                 "poolAddrMode":       poolAddrMode,
                 "poolTileSize":       poolTileSize,
-                "cellPoolFootprintPx": cellPoolFootprintPx,
+                "cellPoolFootprintPx": pool_fp,
             })
         vc = createPass("VisCachePass", vc_props)
         g.addPass(vc, "VisCache")

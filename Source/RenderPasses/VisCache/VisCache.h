@@ -160,7 +160,7 @@ public:
         uint32_t _wsPad6;              ///< (reserved — was useCellInRIS; collapsed into spatialNeighbours>0 2026-05-19)
         uint32_t visInPHat;          ///< 0 = visibility-blind p̂ (legacy), 1 = visibility-aware p̂ via cache (CV+RR), 2 = explicit always-trace (no cache).
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-        uint32_t cellPoolEnable;     ///< 1 = pool buffer active. Step (a)+ master gate.
+        uint32_t _wsPad7;            ///< (reserved — was cellPoolEnable; collapsed into cellPoolFootprintPx>0 2026-05-19)
         uint32_t cellPoolCapacity;   ///< Power-of-two pool slot count.
         uint32_t cellPoolDrawK;      ///< K candidates drawn from pool per pixel (0 = read disabled,
                                        ///< write-back still active so pool fills).
@@ -329,8 +329,8 @@ public:
                                                         ///< 2 = explicit always-trace (experimental — biased).
 
         // --- §9.4 WS-cascade ReGIR cell pool (multi-light pool per cell) ---
-        bool     enableCellPool              = false; ///< Master gate for the multi-light pool (step a+ of
-                                                        ///< .plans/rtxdi-parity-ws-cascade.md).
+        // (enableCellPool dropped 2026-05-19 — pool enabled iff
+        //  cellPoolFootprintPx > 0 && cellPoolCapacity > 0)
         uint32_t cellPoolCapacity            = 1u << 12u; ///< 4K cells at N=1024 → 64 MB slot buffer
                                                         ///< (~4× the ~1K active cells per user "8× generous" rule,
                                                         ///< probing handles collisions; total alloc fits VRAM
@@ -376,10 +376,10 @@ public:
                                                         ///< 1 = promote cell to full Bitterli weighted merge —
                                                         ///< world-space analog of per-pixel reservoir, no
                                                         ///< reprojection needed. Set to 1 for `restir_3d`.
-        uint32_t cellPoolFootprintPx         = 16u;   ///< Pool cell footprint in pixels (analytical entry
+        uint32_t cellPoolFootprintPx         = 0u;    ///< Pool cell footprint in pixels (analytical entry
                                                         ///< level via shared vhfLevelForFootprint). 16 →
                                                         ///< ~256 px² cell, matching RTXDI's 16-px tile.
-                                                        ///< Required > 0 (legacy fixed-level fallback removed).
+                                                        ///< 0 = pool DISABLED (off-switch). Set >0 to enable.
         uint32_t cellReservoirFootprintPx    = 8u;    ///< Reservoir cell footprint in pixels (analytical
                                                         ///< entry level via vhfLevelForFootprint). 8 = ~64-px
                                                         ///< reservoir footprint — finer than the 16-px pool

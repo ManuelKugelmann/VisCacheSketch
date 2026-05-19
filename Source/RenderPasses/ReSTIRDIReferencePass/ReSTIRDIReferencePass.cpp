@@ -1303,7 +1303,6 @@ bool ReSTIRDIReferencePass::beginFrame(RenderContext* pRenderContext, const Rend
             // (jitterFilter/Cell removed — WS-ReSTIR uses jitterFilter/jitterCell.)
             mVCParams.visInPHat         = getU("vhfParam_wsVisInPHat", 1u);
             // §9.4 WS-cascade ReGIR cell-pool cbuffer fields
-            mVCParams.cellPoolEnable    = getU("vhfParam_cellPoolEnable", 0u);
             mVCParams.cellPoolCapacity  = getU("vhfParam_wsCellPoolCapacity", 0u);
             mVCParams.cellPoolDrawK     = getU("vhfParam_wsCellPoolDrawK", 0u);
             mVCParams.spatialPixelsK      = getU("vhfParam_wsSpatialPixelsK", 4u);
@@ -1589,7 +1588,6 @@ void ReSTIRDIReferencePass::tracePass(RenderContext* pRenderContext, const Rende
         // (gJitterFilter / gJitterCell cbuffer fields are now padding;
         //  WS-ReSTIR's spatial jitter reads gJitterFilter / gJitterCell.)
         vc["gVisInPHat"]                   = mVCParams.visInPHat;
-        vc["gCellPoolEnable"]              = mVCParams.cellPoolEnable;
         vc["gCellPoolCapacity"]            = mVCParams.cellPoolCapacity;
         vc["gCellPoolDrawK"]               = mVCParams.cellPoolDrawK;
         vc["gSpatialPixelsK"]              = mVCParams.spatialPixelsK;

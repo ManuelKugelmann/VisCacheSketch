@@ -281,7 +281,6 @@ private:
              // (jitter* removed — shares VisCache's gJitterFilter / gJitterCell)
              uint32_t visInPHat=1;
              // §9.4 WS-cascade ReGIR cell pool
-             uint32_t cellPoolEnable=0;
              uint32_t cellPoolCapacity=0;
              uint32_t cellPoolDrawK=0;
              uint32_t spatialPixelsK=4;

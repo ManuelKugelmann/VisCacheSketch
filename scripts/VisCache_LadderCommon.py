@@ -4649,7 +4649,7 @@ def run_baseline_ReSTIRDI_R2dP2d_PureKRIS_F04(step_name, frame_configs, scene_fi
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["cellReservoirFootprintPx"] = 0
-    extra["enableCellPool"] = False
+    extra["cellPoolFootprintPx"] = 0       # pool off (was enableCellPool=False)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)
@@ -4715,7 +4715,7 @@ def run_baseline_ReSTIRDI_R2dP2d_PureKRIS(step_name, frame_configs, scene_file,
     """
     extra = dict(kwargs.get("extraVCProps", {}) or {})
     extra["cellReservoirFootprintPx"] = 0
-    extra["enableCellPool"] = False               # no pool buffer at all
+    extra["cellPoolFootprintPx"] = 0              # no pool buffer at all (off-switch)
     kwargs2 = dict(kwargs)
     kwargs2["extraVCProps"] = extra
     kwargs2.setdefault("mCap", 20.0)

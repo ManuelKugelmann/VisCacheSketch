@@ -49,7 +49,8 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                     "enablePixelReservoir": False,
                     # No cell pool (NEE uses K-RIS streaming inside the
                     # shader; cells are the reuse layer).
-                    "enableCellPool": False,
+                    # cellPoolFootprintPx C++ default is 0 = off, so nothing
+                    # to set here; documented for clarity.
                     # Cell-NEE doesn't engage VisCache visibility yet.
                     "enableVisCacheVisibilityCheck": False,
                     "enableVisCacheLightSelection": False}
