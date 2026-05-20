@@ -21,7 +21,18 @@ except ImportError:
 def render_graph_ReSTIRBDPTPass():
     g = RenderGraph("ReSTIRBDPTPass")
 
-    bdpt = createPass("ReSTIRBDPT", {})
+    # Start with all optional features off to isolate the basic camera-trace
+    # dispatch; enable BPT/resampling/temporal once the floor works.
+    # Vanilla BDPT mode is the verified working config; the ReSTIR-resampling
+    # layer (useResampling=True) currently dispatch-crashes — see project
+    # memory for the open debugging task. Default to vanilla until resolved.
+    bdpt = createPass("ReSTIRBDPT", {
+        'useBPT': True,           # bidirectional light subpaths
+        'useResampling': False,   # no ReSTIR layer (debugging)
+        'useTemporalResampling': False,
+        'useCausticReservoirs': False,
+        'useCausticShift': False,
+    })
     g.addPass(bdpt, "ReSTIRBDPT")
 
     vbuffer = createPass("VBufferRT", {

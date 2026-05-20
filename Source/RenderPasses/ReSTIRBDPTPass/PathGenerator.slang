@@ -1930,9 +1930,20 @@ extension PathGenerator {
                             mLightTraceReservoirs.Insert(flatId, r);
                         } else {
                             // splat radiance onto output directly, instead of using reservoirs
-                            mAtomicRadiance.InterlockedAddF32(flatId * sizeof(float3)                  , ps.mContribution.r * (weight * ps.mMisWeight));
-                            mAtomicRadiance.InterlockedAddF32(flatId * sizeof(float3) + sizeof(float)  , ps.mContribution.g * (weight * ps.mMisWeight));
-                            mAtomicRadiance.InterlockedAddF32(flatId * sizeof(float3) + sizeof(float)*2, ps.mContribution.b * (weight * ps.mMisWeight));
+                            // [Falcor 8 port] InterlockedAddF32 needs NVAPI which is not
+                            // built in this tree. Use CAS-based float atomic-add instead.
+                            const float3 v = ps.mContribution * (weight * ps.mMisWeight);
+                            const uint base = flatId * 12u; // 3*sizeof(float)
+                            for (int c = 0; c < 3; ++c) {
+                                const uint addr = base + uint(c) * 4u;
+                                uint origU = mAtomicRadiance.Load(addr);
+                                [allow_uav_condition] for (uint iter = 0; iter < 16u; ++iter) {
+                                    const uint cmpU = origU;
+                                    const float sum = asfloat(cmpU) + v[c];
+                                    mAtomicRadiance.InterlockedCompareExchange(addr, cmpU, asuint(sum), origU);
+                                    if (origU == cmpU) break;
+                                }
+                            }
                         }
                     }
                 }
