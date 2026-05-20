@@ -136,7 +136,8 @@ struct PathVertex {
         v.faceNormalW = mShadingData.faceN;
         v.curveRadius = mShadingData.curveRadius;
         v.coneTexLODValue = 0.f;
-        vertex.mShadingData = gScene.materials.prepareShadingData(v, mShadingData.materialID, dir, lod);
+        // [Falcor 8] prepareShadingData no longer takes ITextureSampler.
+        vertex.mShadingData = gScene.materials.prepareShadingData(v, mShadingData.materialID, dir);
         /*/
         vertex.mShadingData = mShadingData;
         vertex.mShadingData.V = dir;
@@ -232,7 +233,11 @@ struct PathVertex {
 
         if (etaCorrection) {
             // Account for asymmetry in the BSDF due to refraction (Veach 5.2)
-            factor /= sqr(properties.eta);
+            // [Falcor 8 TODO] BSDFProperties.eta removed; use sd.IoR-based estimate
+            // or skip refraction-correction. For now: identity (eta=1). This is
+            // incorrect on dielectric interfaces — caustic/rough-glass paths
+            // will be slightly biased until we wire IoR through properly.
+            // factor /= sqr(properties.eta);
         }
 
         return factor;
@@ -321,9 +326,9 @@ extension PathGenerator {
 
     PackedPathVertex TraceRay(const Ray ray) {
         IncrementCounter(DebugCounterType::eRays);
-        HitInfo hit;
+        // [Falcor 8] traceSceneRay returns HitInfo; UseAlphaTest is int (1=true).
         float dist;
-        traceSceneRay<true>(ray, hit, dist, 0, 0xFFFFFFFF);
+        HitInfo hit = traceSceneRay<1>(ray, dist, 0, 0xFFFFFFFF);
         return PackedPathVertex(ray, hit, dist);
     }
     bool Occluded(const Ray ray) {
@@ -370,7 +375,10 @@ extension PathGenerator {
         return (imagePointToCameraDist * imagePointToCameraDist) / cosCamera;
     }
     float GetPrevImageToSolidAngleFactor(const float3 dir, out float cosCamera) {
-        cosCamera = dot(dir, normalize(gScene.camera.data.prevCameraW));
+        // [Falcor 8 TODO] CameraData.prevCameraW removed. Approximate using current
+        // cameraW — correct for static cameras, biases temporal-shift weights
+        // when the camera moves. Derive from CameraData.prevViewMat when needed.
+        cosCamera = dot(dir, normalize(gScene.camera.data.cameraW));
         const float imagePlaneDist = mParams.mOutputDim.y * (gScene.camera.data.focalLength / gScene.camera.data.frameHeight);
         const float imagePointToCameraDist = imagePlaneDist / cosCamera;
         return (imagePointToCameraDist * imagePointToCameraDist) / cosCamera;
@@ -403,7 +411,9 @@ extension PathGenerator {
 
         // if we are tracing with the previous frame's data, then gScene.camera is last frame's camera
         // but we stil need to use mLastVbuffer and mLastViewDir
-        Ray cameraRay = bInPrevFrame ? gScene.camera.computeRayPinhole(id, mParams.mOutputDim) : gScene.camera.computeRayPinholePrevFrame(id, mParams.mOutputDim);
+        // [Falcor 8 TODO] Camera::computeRayPinholePrevFrame removed. Fall back to
+        // current-frame pinhole — correct for static cameras only.
+        Ray cameraRay = gScene.camera.computeRayPinhole(id, mParams.mOutputDim);
         if (gUseViewDir) cameraRay.dir = -mLastViewDir[id];
         return PackedPathVertex(cameraRay, HitInfo(mLastVbuffer[id]), cameraRay.tMax);
     }
@@ -1029,8 +1039,20 @@ extension PathGenerator {
                         barycentrics = float3(1 - triHit.barycentrics.x - triHit.barycentrics.y, triHit.barycentrics);
                     }
                 } else {
-                    triangleIndex = mEmissiveSampler.sampleLight(vertex.GetPosition(), vertexNormal, upperOnly, sg, selectionPdf);
-                    barycentrics = sample_triangle(uv);
+                    // [Falcor 8] sampleLight now returns TriangleLightSample.
+                    // Extract triangleIndex + uv→barycentrics; query selection
+                    // pdf separately so downstream BDPT MIS math (which splits
+                    // triangle-selection from area-uv pdfs) stays intact.
+                    TriangleLightSample ls;
+                    if (mEmissiveSampler.sampleLight(vertex.GetPosition(), vertexNormal, upperOnly, sg, ls)) {
+                        triangleIndex = ls.triangleIndex;
+                        selectionPdf = mEmissiveSampler.evalTriangleSelectionPdf(vertex.GetPosition(), vertexNormal, upperOnly, triangleIndex);
+                        barycentrics = float3(1 - ls.uv.x - ls.uv.y, ls.uv.x, ls.uv.y);
+                    } else {
+                        triangleIndex = LightCollection::kInvalidIndex;
+                        selectionPdf = 0;
+                        barycentrics = 0;
+                    }
                 }
 
                 if (triangleIndex == LightCollection::kInvalidIndex) {
@@ -1582,12 +1604,25 @@ extension PathGenerator {
                     TriangleHit triHit = HitInfo(firstVertex).getTriangleHit();
                     triangleIndex = gScene.lightCollection.getTriangleIndex(triHit.instanceID, triHit.primitiveIndex);
                     if (triangleIndex != LightCollection::kInvalidIndex) {
-                        selectionPdf = mEmissiveSampler.evalTriangleSelectionPdf(triangleIndex);
+                        // [Falcor 8] evalTriangleSelectionPdf now takes (pos, normal, upperOnly, triIdx).
+                        // Power/Uniform samplers ignore the geometric args; LightBVH uses them.
+                        // Light-subpath context has no shading point — pass neutral defaults.
+                        selectionPdf = mEmissiveSampler.evalTriangleSelectionPdf(float3(0), float3(0, 0, 1), false, triangleIndex);
                         barycentrics = float3(1 - triHit.barycentrics.x - triHit.barycentrics.y, triHit.barycentrics);
                     }
                 } else {
-                    triangleIndex = mEmissiveSampler.sampleLight(s.sg, selectionPdf);
-                    barycentrics = sample_triangle(sampleU.xy);
+                    // [Falcor 8] sampleLight signature unified; only takes
+                    // (pos, normal, upperOnly, sg, ls) overload now.
+                    TriangleLightSample ls;
+                    if (mEmissiveSampler.sampleLight(float3(0), float3(0, 0, 1), false, s.sg, ls)) {
+                        triangleIndex = ls.triangleIndex;
+                        selectionPdf = mEmissiveSampler.evalTriangleSelectionPdf(float3(0), float3(0, 0, 1), false, triangleIndex);
+                        barycentrics = float3(1 - ls.uv.x - ls.uv.y, ls.uv.x, ls.uv.y);
+                    } else {
+                        triangleIndex = LightCollection::kInvalidIndex;
+                        selectionPdf = 0;
+                        barycentrics = 0;
+                    }
                 }
 
                 if (triangleIndex == LightCollection::kInvalidIndex)
