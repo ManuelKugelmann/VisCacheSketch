@@ -6,6 +6,7 @@ from viscache_exr import compute_research_metrics_hdr
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCENE = sys.argv[1] if len(sys.argv) > 1 else "CornellBox_32PointLights"
 CELL_FP = int(sys.argv[2] if len(sys.argv) > 2 else 1)
+SPP_TAG = sys.argv[3] if len(sys.argv) > 3 else "x4"
 CAP_DIR = os.path.join(ROOT, "runtime", "captures", "nee_kslot", SCENE)
 
 
@@ -22,13 +23,13 @@ def main():
     gt = gt_matches[-1]
     print(f"[gt] {os.path.basename(gt)}")
 
-    variants = [("nee_F16", f"nee_F16_x4")]
+    variants = [("nee_F16", f"nee_F16_{SPP_TAG}")]
     variants += [(f"K{K}lo{lo}_fp{CELL_FP}",
-                  f"nee_F16R3d_K{K}lo{lo}_fp{CELL_FP}_x4")
+                  f"nee_F16R3d_K{K}lo{lo}_fp{CELL_FP}_{SPP_TAG}")
                  for K in (1, 4, 8) for lo in (0, 1, 2)
                  if not (K == 1 and lo > 0)]
 
-    print(f"\n=== NEE K-slot quality @ x4 SPP vs GT@x1024 — scene={SCENE} fp={CELL_FP} ===")
+    print(f"\n=== NEE K-slot quality @ {SPP_TAG} SPP vs GT@x1024 — scene={SCENE} fp={CELL_FP} ===")
     cols = ["variant", "rmse", "psnr_db", "relmse", "ms_ssim", "flip"]
     header = " | ".join(f"{c:>13}" for c in cols)
     print(header)
