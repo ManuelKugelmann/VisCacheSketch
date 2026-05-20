@@ -52,16 +52,18 @@ void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
         PathReservoir c = PathReservoir(lr.path, lr.W, 0);
         c.PrepareMerge(m);
 
-        if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
-            gPathGenerator.DebugSetPixel(-1); // dont want messages from this shift
-            // Reject path if it is not samplable from the primary vertex
-            float jacobian;
-            int2 tmp;
-            const bool valid = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
-            gPathGenerator.DebugSetPixel(id);
-            if (!valid || !(jacobian > 0))
-                continue;
-        }
+        // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — the
+        // ShiftPath call triggers a Falcor 8 ProgramVars-construction crash
+        // (silent segfault in ParameterBlock::ParameterBlock during reflection).
+        // Disabling skips the light-trace-shifted resampling correction, but
+        // keeps the rest of the resampling pipeline functional.
+        // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
+        //     gPathGenerator.DebugSetPixel(-1); // dont want messages from this shift
+        //     float jacobian; int2 tmp;
+        //     const bool valid = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
+        //     gPathGenerator.DebugSetPixel(id);
+        //     if (!valid || !(jacobian > 0)) continue;
+        // }
 
         float u = sampleNext1D(sg);
 
