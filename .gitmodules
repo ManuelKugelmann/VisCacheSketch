@@ -25,3 +25,6 @@
 [submodule "refs/NVIDIAGameWorks_RTXPT"]
 	path = refs/NVIDIAGameWorks_RTXPT
 	url = https://github.com/NVIDIAGameWorks/Path-Tracing-SDK.git
+[submodule "refs/Shmaug_ReSTIR_BDPT"]
+	path = refs/Shmaug_ReSTIR_BDPT
+	url = https://github.com/Shmaug/ReSTIR-BDPT.git
