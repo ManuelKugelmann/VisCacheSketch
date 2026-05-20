@@ -40,7 +40,8 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
                           useDirectLighting=True, pathSamplingMode="ReSTIR",
                           disableDirectIllumination=True, fireflyClampK=1e9,
                           restirptAddrMode=0, restirptPoolAddrMode=0,
-                          restirptPoolFootprintPx=16):
+                          restirptPoolFootprintPx=16,
+                          visibilityCheck=None, lightSelection=None):
     # restirptAddrMode (R-axis: reservoir storage):
     #   0 = R2d — DQLIN baseline (2D pixel reservoir only)
     #   1 = R3d — pure 3D reservoir at pixel footprint
@@ -92,6 +93,10 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
     if viscache:
         vc_params = dict(VISCACHE_DEFAULTS)
         vc_params.update(ablation)
+        if visibilityCheck is not None:
+            vc_params["enableVisCacheVisibilityCheck"] = bool(visibilityCheck)
+        if lightSelection is not None:
+            vc_params["enableVisCacheLightSelection"] = bool(lightSelection)
         vc = createPass("VisCachePass", vc_params)
         g.addPass(vc, "VisCache")
 

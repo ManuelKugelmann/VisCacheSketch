@@ -29,6 +29,7 @@ import PathReservoir;
 import PathReservoirCellPool;
 import LightPool;
 import RenderPasses.ReSTIRCommon.CellPool;   // for the CellPool struct used in lightPool buffer field
+import RenderPasses.CacheCommon.CacheHash;   // pcg3d (was local prPcg3d before Phase C-light migration)
 
 #include "Utils/Math/MathConstants.slangh"
 
@@ -257,7 +258,7 @@ struct PathTracer
         const uint entryLvl = prFootprintLevel(posW, gScene.camera.data.posW, params.sceneRadius,
                                                params.frameDim.y, gScene.camera.data.frameHeight,
                                                gScene.camera.data.focalLength, kPRCellPoolLevels);
-        const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
+        const uint jSeed    = pcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
         const uint currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u;
         PathReservoir cellRes;
         bool hit = prCellPoolReadCascadeFrameCAS(pathReservoirCellPool, posW, faceN,
@@ -291,7 +292,7 @@ struct PathTracer
         const uint entryLvl = prFootprintLevel(v.posW, gScene.camera.data.posW, params.sceneRadius,
                                                params.frameDim.y, gScene.camera.data.frameHeight,
                                                gScene.camera.data.focalLength, kPRCellPoolLevels);
-        const uint jSeed    = prPcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
+        const uint jSeed    = pcg3d(uint3(pixel.x, pixel.y, params.frameCount)).x;
         const uint currentFrame = (params.frameCount * 256u) + uint(gSppId) + 1u;
         prCellPoolWriteCascadeFrameCAS(pathReservoirCellPool, v.posW, v.faceNormalW,
                                        params.sceneRadius, capacity, entryLvl, kPRCellPoolLevels,
