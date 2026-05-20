@@ -3,7 +3,7 @@
 
 namespace
 {
-    const char kShaderFile[] = "RenderPasses/ReSTIRBDPT/HashMap.cs.slang";
+    const char kShaderFile[] = "RenderPasses/ReSTIRBDPTPass/HashMap.cs.slang";
 }
 
 namespace Falcor
@@ -38,7 +38,7 @@ bool GPUHashMap::prepareResources(const ShaderVar& var, const uint cellCount, co
 
     uint elementSize = var["mData"].getType()->unwrapArray()->asResourceType()->getSize();
 
-    if (!mpData || mpData->getElementCount() != maxSize || mpData->getElementSize() != elementSize)
+    if (!mpData || mpData->getElementCount() != maxSize || mpData->getStructSize() != elementSize)
     {
         mpData            = mpDevice->createStructuredBuffer(elementSize,         maxSize, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
         mpSortedData      = mpDevice->createStructuredBuffer(elementSize,         maxSize, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, nullptr, false);
@@ -97,14 +97,14 @@ void GPUHashMap::sort(RenderContext* pRenderContext) const
     {
         auto var = mpComputeOffsetsPass->getRootVar()["CB"];
         bindShaderData(var["gHashMap"]);
-        mpComputeOffsetsPass->addDefine("DATA_SIZE", std::to_string(mpData->getElementSize()/sizeof(uint32_t)));
+        mpComputeOffsetsPass->addDefine("DATA_SIZE", std::to_string(mpData->getStructSize()/sizeof(uint32_t)));
         mpComputeOffsetsPass->execute(pRenderContext, mpCellDataOffsets->getElementCount(), 1, 1);
     }
 
     {
         auto var = mpSortPass->getRootVar()["CB"];
         bindShaderData(var["gHashMap"]);
-        mpSortPass->addDefine("DATA_SIZE", std::to_string(mpData->getElementSize()/sizeof(uint32_t)));
+        mpSortPass->addDefine("DATA_SIZE", std::to_string(mpData->getStructSize()/sizeof(uint32_t)));
         mpSortPass->execute(pRenderContext, mpData->getElementCount(), 1, 1);
     }
 }

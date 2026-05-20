@@ -40,7 +40,7 @@ struct PackedPathVertex {
         mRayOrigin = ray.origin;
         mRayDistance = hitDist;
         mRayDirection = ray.dir;
-        mPackedHit = hit.getData();
+        mPackedHit = hit.pack(); // [Falcor 8] HitInfo::getData() → HitInfo::pack()
     }
 
     bool IsFinite() { return HitInfo(mPackedHit).isValid(); }

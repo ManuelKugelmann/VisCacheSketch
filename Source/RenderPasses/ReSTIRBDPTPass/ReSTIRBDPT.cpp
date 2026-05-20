@@ -5,10 +5,10 @@
 
 namespace
 {
-    const std::string kBDPTPassFilename           = "RenderPasses/ReSTIRBDPT/BDPT.cs.slang";
-    const std::string kTemporalReusePassFilename = "RenderPasses/ReSTIRBDPT/TemporalReuse.cs.slang";
-    const std::string kSpatialReusePassFilename  = "RenderPasses/ReSTIRBDPT/SpatialReuse.cs.slang";
-    const std::string kReflectTypesFile          = "RenderPasses/ReSTIRBDPT/ReflectTypes.cs.slang";
+    const std::string kBDPTPassFilename           = "RenderPasses/ReSTIRBDPTPass/BDPT.cs.slang";
+    const std::string kTemporalReusePassFilename = "RenderPasses/ReSTIRBDPTPass/TemporalReuse.cs.slang";
+    const std::string kSpatialReusePassFilename  = "RenderPasses/ReSTIRBDPTPass/SpatialReuse.cs.slang";
+    const std::string kReflectTypesFile          = "RenderPasses/ReSTIRBDPTPass/ReflectTypes.cs.slang";
 
     // Render pass inputs and outputs.
     const std::string kInputVBuffer       = "vbuffer";
@@ -422,7 +422,7 @@ void ReSTIRBDPT::renderUI(Gui::Widgets& widget)
             if (mpLastReservoirs) reservoirsSize += mpLastReservoirs->getSize();
             totalSize += reservoirsSize;
             widget.text("Reservoirs: " + std::to_string(reservoirsSize/1024));
-            widget.text("stride: " + std::to_string(mpReservoirs[0]->getElementSize()));
+            widget.text("stride: " + std::to_string(mpReservoirs[0]->getStructSize()));
 
             if (mStaticParams.useBPT)
             {
@@ -458,7 +458,7 @@ void ReSTIRBDPT::renderUI(Gui::Widgets& widget)
             lvcSize += mpLightVertexCount->getSize();
             totalSize += lvcSize;
             widget.text("LVC: " + std::to_string(lvcSize/1024));
-            widget.text("stride: " + std::to_string(mpLightVertices->getElementSize()));
+            widget.text("stride: " + std::to_string(mpLightVertices->getStructSize()));
             if (!mStaticParams.useResampling && mpLightImage)
                 totalSize += mpLightImage->getSize();
         }
@@ -948,7 +948,7 @@ void ReSTIRBDPT::prepareResources(RenderContext* pRenderContext, const RenderDat
 
     if (mStaticParams.useResampling)
     {
-        if (!mpReservoirs[0] || mpReservoirs[0]->getElementCount() != screenPixelCount || mpReservoirs[0]->getElementSize() != reservoirSize)
+        if (!mpReservoirs[0] || mpReservoirs[0]->getElementCount() != screenPixelCount || mpReservoirs[0]->getStructSize() != reservoirSize)
         {
             mpReservoirs[0]  = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
             mpReservoirs[1]  = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
@@ -971,7 +971,7 @@ void ReSTIRBDPT::prepareResources(RenderContext* pRenderContext, const RenderDat
         }
 
         if (mStaticParams.useBPT && mStaticParams.useCausticReservoirs) {
-            if (!mpCausticReservoirs || mpCausticReservoirs->getElementCount() != screenPixelCount || mpCausticReservoirs->getElementSize() != reservoirSize)
+            if (!mpCausticReservoirs || mpCausticReservoirs->getElementCount() != screenPixelCount || mpCausticReservoirs->getStructSize() != reservoirSize)
             {
                 mpCausticReservoirs = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
                 mVarsChanged = true;
@@ -1124,13 +1124,13 @@ bool ReSTIRBDPT::prepareLighting(RenderContext* pRenderContext)
             switch (mStaticParams.emissiveSampler)
             {
             case EmissiveLightSamplerType::Uniform:
-                mpEmissiveSampler = std::make_unique<EmissiveUniformSampler>(pRenderContext, mpScene);
+                mpEmissiveSampler = std::make_unique<EmissiveUniformSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
                 break;
             case EmissiveLightSamplerType::LightBVH:
-                mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
+                mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext), mLightBVHOptions);
                 break;
             case EmissiveLightSamplerType::Power:
-                mpEmissiveSampler = std::make_unique<EmissivePowerSampler>(pRenderContext, mpScene);
+                mpEmissiveSampler = std::make_unique<EmissivePowerSampler>(pRenderContext, mpScene->getILightCollection(pRenderContext));
                 break;
             default:
                 FALCOR_THROW("Unknown emissive light sampler type");
@@ -1157,7 +1157,7 @@ bool ReSTIRBDPT::prepareLighting(RenderContext* pRenderContext)
 
     if (mpEmissiveSampler)
     {
-        lightingChanged |= mpEmissiveSampler->update(pRenderContext);
+        lightingChanged |= mpEmissiveSampler->update(pRenderContext, mpScene->getILightCollection(pRenderContext));
         auto defines = mpEmissiveSampler->getDefines();
         if (mpSampleCameraPathsPass && mpSampleCameraPathsPass->getProgram()->addDefines(defines)) mRecompile = true;
     }
@@ -1376,7 +1376,8 @@ void ReSTIRBDPT::preparePass(RenderContext* pRenderContext, const RenderData& re
     auto var = pass.getRootVar();
     mpPixelDebug->prepareProgram(program, var);
 
-    mpScene->setRaytracingShaderData(pRenderContext, var);
+    // [Falcor 8] bindShaderDataForRaytracing expects the gScene ShaderVar, not root.
+    mpScene->bindShaderDataForRaytracing(pRenderContext, var["gScene"]);
 
     bindShaderData(var["gPathGenerator"], renderData);
 

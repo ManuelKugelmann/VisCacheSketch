@@ -1,6 +1,6 @@
-add_plugin(ReSTIRBDPT)
+add_plugin(ReSTIRBDPTPass)
 
-target_sources(ReSTIRBDPT PRIVATE
+target_sources(ReSTIRBDPTPass PRIVATE
     BitfieldMacros.slangh
     HashMap.slang
     HashMap.cs.slang
@@ -20,6 +20,6 @@ target_sources(ReSTIRBDPT PRIVATE
     BDPT.cs.slang
 )
 
-target_copy_shaders(ReSTIRBDPT RenderPasses/ReSTIRBDPT)
+target_copy_shaders(ReSTIRBDPTPass RenderPasses/ReSTIRBDPTPass)
 
-target_source_group(ReSTIRBDPT "RenderPasses")
+target_source_group(ReSTIRBDPTPass "RenderPasses")

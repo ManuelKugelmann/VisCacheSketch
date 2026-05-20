@@ -98,6 +98,7 @@ ShadingData loadShadingData(const HitInfo hit, const float3 rayOrigin, const flo
     uint materialID = {};
 
     VertexData v = loadVertexData(hit, rayOrigin, rayDir, materialID);
-    ShadingData sd = gScene.materials.prepareShadingData(v, materialID, -rayDir, lod);
+    // [Falcor 8] prepareShadingData no longer takes ITextureSampler — texture LOD is handled internally.
+    ShadingData sd = gScene.materials.prepareShadingData(v, materialID, -rayDir);
     return sd;
 }
