@@ -1,0 +1,12 @@
+#define SET_LSBITS(len) ( (1u << (len)) - 1u ) // the first len bits are '1' and the rest are '0'
+#define BF_MASK(start, len) ( SET_LSBITS(len) << (start) ) // same but with offset
+#define BF_PREP(y, start, len) ( ((y)&SET_LSBITS(len)) << (start) ) // Prepare a bitmask
+
+/* Extract a bitfield of length len starting at bit start from y. */
+#define BF_GET(y, start, len) ( ((y) >> (start)) & SET_LSBITS(len) )
+
+/* Insert a new bitfield value bf into x. */
+#define BF_SET(x, bf, start, len) ( x = ((x) &~ BF_MASK(start, len)) | BF_PREP(bf, start, len) )
+
+#define BF_GET_UNORM(x, start, len) ( BF_GET(x, start, len) / float(SET_LSBITS(len)) )
+#define BF_SET_UNORM(x, newValue, start, len) ( BF_SET(x, (uint)floor(saturate(newValue)*SET_LSBITS(len) + 0.5f), start, len) )
