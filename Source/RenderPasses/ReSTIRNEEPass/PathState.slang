@@ -100,13 +100,14 @@ struct PathState
     float3      L;                      ///< Accumulated path contribution.
 
     // Path-cumulative cell footprint (pixels). Initialised at the primary
-    // hit to the base footprint (per-pixel = 1-2). Multiplied at each
-    // scatter ray by a BSDF-roughness-dependent widening factor — fine
-    // for tight specular bounces, broad for rough/diffuse. Used by NEE
-    // call-sites to pick the right 3D cell resolution for cell-reservoir
-    // reuse. Sharc-inspired (BSDF-cone-tracking) — see project_pairwise_
-    // mis_cross_surface_principle for the reuse-layer rationale.
+    // hit to the base footprint (1 px). At each scatter the next value is
+    // f_next = f_cur + roughness * f_prev — Fibonacci-style additive
+    // growth. cellFootprintPxPrev holds f_prev so the recurrence can step
+    // without geometric blow-up at depth. For r≈1 diffuse: 1, 1, 2, 3, 5,
+    // 8 (deep cells stay usable). For r≈0 specular: 1, 1, 1, 1 (no
+    // widening). Sharc-inspired but additive instead of multiplicative.
     float       cellFootprintPx;
+    float       cellFootprintPxPrev;
 
     GuideData   guideData;              ///< Denoiser guide data.
     InteriorList interiorList;          ///< Interior list. Keeping track of a stack of materials with medium properties.

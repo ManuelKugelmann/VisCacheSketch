@@ -25,7 +25,8 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                                useNEECells=False,
                                cellReservoirFootprintPx=1,
                                reservoirK=1,
-                               cellLevelOffsetWrite=0):
+                               cellLevelOffsetWrite=0,
+                               normalACoarse=None):
     g = RenderGraph("ReSTIRNEEPass")
 
     vbuf = createPass("VBufferRT", {
@@ -58,6 +59,8 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                     # Cell-NEE doesn't engage VisCache visibility yet.
                     "enableVisCacheVisibilityCheck": False,
                     "enableVisCacheLightSelection": False}
+        if normalACoarse is not None:
+            vc_props["normalACoarse"] = float(normalACoarse)
         vc = createPass("VisCachePass", vc_props)
         g.addPass(vc, "VisCache")
 

@@ -147,9 +147,10 @@ struct PathTracer
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA != 0;
 
     // 3D cell-reservoir reuse for NEE — base footprint at the primary hit.
-    // ~per-pixel coverage (1-2 px). path.cellFootprintPx grows from here
-    // at each scatter by a BSDF-roughness-dependent factor.
-    static const float kNeeCellBaseFootprintPx = 2.0f;
+    // Per-pixel at the camera; path.cellFootprintPx widens at each scatter
+    // by (1 + 4*roughness) so deeper bounces use coarser cells matching
+    // the path's actual spatial coherence (Sharc-style adaptive resolution).
+    static const float kNeeCellBaseFootprintPx = 1.0f;
 
     // LightType + LightSample lifted to namespace level in
     // `RenderPasses.PathTraceCommon.PathTraceCore` (imported above).
@@ -308,9 +309,10 @@ struct PathTracer
         path.id = pathID;
         path.thp = float3(1.f);
         // Initialise cumulative cell footprint at primary hit: ~per-pixel.
-        // Each bounce in generateScatterRay multiplies by a BSDF-roughness-
-        // dependent widening factor so deeper bounces use coarser cells.
-        path.cellFootprintPx = kNeeCellBaseFootprintPx;
+        // Each bounce in generateScatterRay applies a Fibonacci-style
+        // additive update so deeper bounces grow gently, not geometrically.
+        path.cellFootprintPx     = kNeeCellBaseFootprintPx;
+        path.cellFootprintPxPrev = 0.f;  // f_-1 = 0 → f1 = f0 + r·0 = f0
 
         const uint2 pixel = path.getPixel();
 
@@ -490,13 +492,15 @@ struct PathTracer
             float roughness = mi.getProperties(sd).roughness;
             bool isDiffuse = bs.isLobe(LobeType::DiffuseReflection) || roughness > params.specularRoughnessThreshold;
 
-            // Widen path's cumulative cell-footprint by a roughness-dependent
-            // factor. Smooth spec bounces (roughness ≈ 0) preserve the cone
-            // (factor ≈ 1); rough/diffuse bounces broaden it. Used downstream
-            // by NEE to pick a coarser cell at deeper bounces, matching the
-            // path's actual spatial coherence (Sharc-style adaptive resolution).
-            // Delta lobes get the no-widen behaviour automatically (roughness=0).
-            path.cellFootprintPx *= (1.f + 4.f * roughness);
+            // Fibonacci-style additive growth: f_next = f_cur + r * f_prev.
+            // For r≈1 diffuse, this is the Fibonacci sequence 1,1,2,3,5,8...
+            // For r≈0 specular it stays at f_cur (no widening). Converges
+            // to ratio φ≈1.618 in the limit — much gentler than the prior
+            // multiplicative (1 + 4r) which exploded to ×5/bounce. Delta
+            // lobes get no widening automatically (roughness=0).
+            float fNext = path.cellFootprintPx + roughness * path.cellFootprintPxPrev;
+            path.cellFootprintPxPrev = path.cellFootprintPx;
+            path.cellFootprintPx     = fNext;
 
             if (isDiffuse)
             {
