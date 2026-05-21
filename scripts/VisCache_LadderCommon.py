@@ -5138,9 +5138,15 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                     maxBounces=3, resX=kResX, resY=kResY,
                                     mogwai_globals=None, capture_spps=(1, 4),
                                     gt_spp=4096, variant_tag=None,
-                                    fireflyClampK=1e9,
+                                    fireflyClampK=100.0,
                                     pathSamplingMode="ReSTIR",
                                     unifiedDIGI=False):
+    # fireflyClampK=100 bounds Lin 2026 §15's chroma-preserving GRIS
+    # estimator at 100× direct-lighting magnitude. Biased but stable.
+    # K=1e9 (no clamp, paper-canonical) produces rmse 100-200 on
+    # Cornell_3AL b≥1 from temporal+spatial firefly carryover — set
+    # explicitly via kwarg if you want the paper-canonical unbiased
+    # variant.
     """ReSTIRPT reference baseline. Modes:
       - pathSamplingMode="ReSTIR" (default): DQLin canonical GRIS resampling
       - pathSamplingMode="PathReuse": Bekaert-style path reuse (BPR=1 in shader)
