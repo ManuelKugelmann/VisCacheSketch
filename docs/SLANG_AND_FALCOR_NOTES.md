@@ -127,6 +127,16 @@ Mystery: `SpatialReuse.cs.slang::main` calls `ShiftPath` (via a `SpatialShift` w
 
 Probe file kept at `Source/RenderPasses/ReSTIRBDPTPass/ResolveLightTraceShift.cs.slang` plus an `#if 0`-gated host-side create site in `ReSTIRBDPT.cpp` so the experiment can resume without re-deriving it.
 
+### Next bisect plan
+
+The unsolved question is **why SpatialReuse.cs.slang::main works** while ResolveLightTraceShift.cs.slang's probe (with just `PathSample basePath = {}; ShiftPath(basePath, pv, tmp, jacobian);`) crashes. Two next-iteration tests:
+
+1. **Verbatim SpatialReuse clone with renamed entry.** Copy `SpatialReuse.cs.slang` to a new file `SpatialReuseClone.cs.slang`, rename `main` → `main_clone`, keep ALL helpers (`SpatialShift`, `ComputeSpatialMisWeight`, `ComputeSpatialZ`, `GetNeighborOffsetSampleGenerator`, `Texture2D<uint4> gVertices`, `static const RMISType gMISType`). Add the host-side create+prepare for it.
+   - If it crashes → the trip is "structurally-identical compute pass instantiated AS THE Nth pass" (some pass-count or registration-order Falcor effect).
+   - If it passes → the trip is specifically in our slimmed probe body's structure (missing helpers / globals / wrapper layer).
+
+2. **Add a wrapper.** Try matching SpatialReuse's pattern more carefully: define `ResolveShift(basePath, vertex, jacobian)` as a wrapper that calls `ShiftPath` only when a condition is met. Call the wrapper from main. Maybe the dead-code-guard tricks Slang's call-graph reflection into being more conservative.
+
 ---
 
 ## Useful upstream resources
