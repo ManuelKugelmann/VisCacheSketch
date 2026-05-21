@@ -6,12 +6,18 @@ floor for ReSTIR PT before any ablation work. Runs ONLY the canonical PT
 references — no "ours" variants yet (those land in RPT01+).
 
   restirpt_b{1,4,8}    — DQLin ReSTIR PT reference (port of NVlabs F8) in
-                         ReSTIR mode. The parity target for our future
-                         ReSTIRPT R2d/R3d implementations. GT resolved
-                         from Ladder00's `vanilla_b{N}_x4096` captures.
-  restirpt_bpr_b{1,4,8}— DQLin ReSTIR PT reference in BPR (Bekaert path
-                         reuse) mode. Different sampling strategy on top
-                         of the same shift machinery; same GT.
+                         ReSTIR mode — true reservoir resampling (RIS/
+                         GRIS) across temporal + spatial neighbours.
+                         The parity target for our future ReSTIRPT
+                         R2d/R3d implementations. GT resolved from
+                         Ladder00's `vanilla_b{N}_x4096` captures.
+  pathreuse_b{1,4,8}   — Bekaert-style path reuse (NOT ReSTIR — no
+                         reservoir resampling). Same plugin
+                         (`ReSTIRPTPass` with `pathSamplingMode=PathReuse`)
+                         and same shift machinery, but deterministic
+                         shift only. Lower variance-reduction ceiling
+                         than ReSTIR mode; more stable without firefly
+                         clamping. Same GT.
 
 All variants ride RTXDI for direct lighting (matches the DQLin recipe) and
 are visibility-blind p̂ (V via post-RIS shadow + V=0 invalidation, matching
@@ -80,7 +86,7 @@ for scene_file in get_scenes():
             maxBounces=mb,
             capture_spps=(1, 4),
             mogwai_globals=globals(),
-            variant_tag=f"restirpt_bpr_b{mb}",
+            variant_tag=f"pathreuse_b{mb}",
             pathSamplingMode="PathReuse",
         )
         # Lin 2026 §6.1 Stage A — unified DI+GI in one ReSTIR reservoir

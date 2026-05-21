@@ -5576,9 +5576,9 @@ def make_baseline_reference_comparison_plot(step_name, variant_groups=None,
             palette[fam] = "#d62728"
         elif fam == "restirpt":
             palette[fam] = "#ff7f0e"
-        elif fam == "restirpt_bpr":
+        elif fam == "pathreuse":
             palette[fam] = "#8c2d04"
-        elif fam.startswith("restirpt"):
+        elif fam.startswith("restirpt") or fam.startswith("pathreuse"):
             palette[fam] = "#fdae6b"
         elif fam.startswith("nee_"):
             palette[fam] = "#2ca02c"
