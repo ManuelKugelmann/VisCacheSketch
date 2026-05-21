@@ -5140,7 +5140,9 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                     gt_spp=4096, variant_tag=None,
                                     fireflyClampK=100.0,
                                     pathSamplingMode="ReSTIR",
-                                    unifiedDIGI=False):
+                                    unifiedDIGI=False,
+                                    viscache=False,
+                                    visibilityCheck=None, lightSelection=None):
     # fireflyClampK=100 bounds Lin 2026 §15's chroma-preserving GRIS
     # estimator at 100× direct-lighting magnitude. Biased but stable.
     # K=1e9 (no clamp, paper-canonical) produces rmse 100-200 on
@@ -5177,12 +5179,14 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
               f"See PORT_NOTES.md §12 #3 + .plans/restirpt-forced-nee-reconnection.md.")
     def _build(actual_spp):
         return render_graph_ReSTIRPT(
-            viscache=False, maxBounces=maxBounces, samplesPerPixel=actual_spp,
+            viscache=viscache, maxBounces=maxBounces, samplesPerPixel=actual_spp,
             useRTXDIDirect=not unifiedDIGI,
             useDirectLighting=not unifiedDIGI,
             pathSamplingMode=pathSamplingMode,
             disableDirectIllumination=not unifiedDIGI,
             fireflyClampK=fireflyClampK,
+            visibilityCheck=visibilityCheck,
+            lightSelection=lightSelection,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
@@ -5207,13 +5211,17 @@ def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
                                    maxBounces=3, resX=kResX, resY=kResY,
                                    mogwai_globals=None, capture_spps=(1, 4),
                                    gt_spp=4096, variant_tag=None,
-                                   numNEECandidates=16):
-    """ReSTIR NEE pure K-RIS baseline (no cell reservoirs, no VisCache).
+                                   numNEECandidates=16,
+                                   visibilityCheck=False, lightSelection=False):
+    """ReSTIR NEE pure K-RIS baseline (no cell reservoirs).
 
     The lean reference for ReSTIRNEEPass: F=numNEECandidates RIS candidates
     per NEE event, no spatial/temporal reuse. Compared against vanilla path
     tracer at matched maxBounces — should match within K-RIS noise (i.e.
     sqrt(F) better than vanilla single-sample NEE per call).
+
+    `visibilityCheck` / `lightSelection` flip the VisCachePass toggles —
+    leave False for the vblind baseline (default), True for the VC variant.
 
     Tag in CSV: f'nee_F{F}_b{maxBounces}'."""
     if render_graph_ReSTIRNEEPass is None:
@@ -5224,7 +5232,7 @@ def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
             maxBounces=maxBounces, samplesPerPixel=actual_spp,
             useJitter=True, numNEECandidates=numNEECandidates,
             useNEECells=False,
-            visibilityCheck=False, lightSelection=False,
+            visibilityCheck=visibilityCheck, lightSelection=lightSelection,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
@@ -5254,8 +5262,9 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
                                       numNEECandidates=16,
                                       cellReservoirFootprintPx=1,
                                       reservoirK=1,
-                                      cellLevelOffsetWrite=0):
-    """ReSTIR NEE + 3D cell reservoirs (vblind, no VisCache visibility).
+                                      cellLevelOffsetWrite=0,
+                                      visibilityCheck=False, lightSelection=False):
+    """ReSTIR NEE + 3D cell reservoirs.
 
     Adds the cell-reservoir reuse layer on top of K-RIS NEE — every NEE call
     folds a per-cell stored sample into the K-RIS stream as one extra
@@ -5263,6 +5272,9 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
     for the unbounded-W rationale). Default reservoirK=1 + lo=0 is the
     prescribed safe config (smooth area lights / env-map regime); see
     project_kslot_archcontext for scene-class tuning.
+
+    `visibilityCheck` / `lightSelection` flip the VisCachePass toggles —
+    leave False for the vblind baseline (default), True for the VC variant.
 
     Tag in CSV: f'nee_F{F}R3d_b{maxBounces}'."""
     if render_graph_ReSTIRNEEPass is None:
@@ -5276,7 +5288,7 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
             cellReservoirFootprintPx=cellReservoirFootprintPx,
             reservoirK=reservoirK,
             cellLevelOffsetWrite=cellLevelOffsetWrite,
-            visibilityCheck=False, lightSelection=False,
+            visibilityCheck=visibilityCheck, lightSelection=lightSelection,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
@@ -5293,6 +5305,64 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
         gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
         force_actual_spp=1,
     )
+
+
+# ----------------------------------------------------------------------------
+# VisCache-enabled wrappers (visInPHat=1 for DI, visibilityCheck=True for NEE,
+# viscache=True+visibilityCheck=True+lightSelection=True for PT). Each is a
+# thin shim that flips the cache toggles and emits a `_vc` variant tag so
+# the *01_VC ladder steps sit cleanly next to their vblind baselines.
+# ----------------------------------------------------------------------------
+def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_vc(step_name, frame_configs, scene_file, **kwargs):
+    """VisCache-on counterpart of R2dP2d_RTXDIBaseline. Flips `visInPHat=1`
+    so K-RIS pHat uses cached V; tag suffix becomes `_vcache`."""
+    kwargs.setdefault("visInPHat", 1)
+    return run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_file, **kwargs)
+
+
+def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline_vc(step_name, frame_configs, scene_file, **kwargs):
+    """VisCache-on counterpart of R3dP3d_RTXDIBaseline."""
+    kwargs.setdefault("visInPHat", 1)
+    return run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_file, **kwargs)
+
+
+def run_baseline_ReSTIRDI_R2dP2d_PureKRIS_vc(step_name, frame_configs, scene_file, **kwargs):
+    """VisCache-on counterpart of R2dP2d_PureKRIS."""
+    kwargs.setdefault("visInPHat", 1)
+    return run_baseline_ReSTIRDI_R2dP2d_PureKRIS(step_name, frame_configs, scene_file, **kwargs)
+
+
+def run_baseline_ReSTIRNEEPass_F16_vc(step_name, frame_configs, scene_file,
+                                      maxBounces=3, **kwargs):
+    """VisCache-on counterpart of nee_F16. Tag: `nee_F16_vc_b{N}`."""
+    kwargs.setdefault("visibilityCheck", True)
+    kwargs.setdefault("lightSelection", True)
+    kwargs.setdefault("variant_tag", f"nee_F16_vc_b{maxBounces}")
+    return run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
+                                          maxBounces=maxBounces, **kwargs)
+
+
+def run_baseline_ReSTIRNEEPass_F16R3d_vc(step_name, frame_configs, scene_file,
+                                         maxBounces=3, **kwargs):
+    """VisCache-on counterpart of nee_F16R3d. Tag: `nee_F16R3d_vc_b{N}`."""
+    kwargs.setdefault("visibilityCheck", True)
+    kwargs.setdefault("lightSelection", True)
+    kwargs.setdefault("variant_tag", f"nee_F16R3d_vc_b{maxBounces}")
+    return run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
+                                             maxBounces=maxBounces, **kwargs)
+
+
+def run_baseline_reference_restirpt_vc(step_name, frame_configs, scene_file,
+                                       maxBounces=3, **kwargs):
+    """VisCache-on counterpart of restirpt reference. Sets viscache=True so
+    VisCachePass + PathTracerX shadow gating are added, and visibility/light
+    selection toggles fire. Pairs with clamped + unclamped tags so RPT01_VC
+    can test whether the V-aware target eliminates the need for fireflyClampK."""
+    kwargs.setdefault("viscache", True)
+    kwargs.setdefault("visibilityCheck", True)
+    kwargs.setdefault("lightSelection", True)
+    return run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
+                                           maxBounces=maxBounces, **kwargs)
 
 
 def run_baseline_rtxdi(step_name, frame_configs, scene_file,
