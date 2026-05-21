@@ -5,6 +5,15 @@ All references + all our implementations side-by-side. The goal is a clean
 baseline ladder where each "ours" variant is within sampling-noise of its
 paired reference — the validation step before any feature ablation.
 
+Historical role: this step USED to carry both DI and PT references. As the
+ladder grew, the per-family baselines hived off into dedicated steps:
+  - DI baselines  → VisCache_LadderRDI00.py  (RTXDI parity work)
+  - PT baselines  → VisCache_LadderRPT00.py  (DQLin parity work)
+  - NEE baselines → VisCache_LadderRNEE00.py (forthcoming)
+
+Ladder00 itself now carries the cross-family baselines that don't fit a
+single pass (single-bounce vanilla DI reference, RTXDI, restir_2d, restir_3d).
+
 DI side (current):
   - vanilla     — path tracer DI reference (NEE, single-bounce).
   - rtxdi       — external RTXDIPass; the ReSTIR DI reference.
@@ -15,11 +24,6 @@ DI side (current):
                   world-space analog of `restir_2d`. No reprojection
                   needed (cell ID camera-invariant).
                   Should match `restir_2d` within noise.
-
-PT side (future):
-  - vanilla_b{1,4,8}  — path tracer multi-bounce reference.
-  - restirpt_b{1,4,8} — DQLin ReSTIR PT (port of NVlabs F8) reference.
-  - restir_pt_2d / restir_pt_3d — our ReSTIR PT (TBD).
 
 All variants are visibility-blind p̂ baselines (V comes via post-RIS shadow
 + V=0 invalidation, matching RTXDI's and DQLin's recipes). V-aware p̂ is
@@ -40,7 +44,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     run_baseline, run_baseline_rtxdi,
     run_baseline_restir_2d, run_baseline_restir_3d,
-    run_baseline_reference_restirpt,
     get_scenes, finalize_baseline,
     make_baseline_comparison_plate, make_baseline_bar_plot,
 )
@@ -77,66 +80,11 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
-    # 1b. Multi-bounce vanilla PathTracer — `vanilla_b{1,4,8}`. Shares the
-    #     canonical x4096 GT from (1); variant_tag prevents output collision.
-    #     Provides per-bounce-depth PT references for the ReSTIRPT comparison
-    #     in (1c). Additive: untouched by the `restir_2d`/`restir_3d` cleanup
-    #     in the loop header.
-    for mb in (1, 4, 8):
-        run_baseline(
-            step_name="00",
-            frame_configs=[(0, 0, 1)],
-            scene_file=scene_file,
-            resX=res, resY=res,
-            maxBounces=mb,
-            gt_spp=4096,
-            extra_spp=[2, 4, 8, 16],
-            mogwai_globals=globals(),
-            variant_tag=f"vanilla_b{mb}",
-        )
-
-    # 1c. DQLin ReSTIRPT reference — canonical (ReSTIR mode) and BPR (Bekaert
-    #     path reuse). Both share the RTXDI direct feed; both validated against
-    #     vanilla_b{N}_x4096 GT.
-    for mb in (1, 4, 8):
-        run_baseline_reference_restirpt(
-            step_name="00",
-            frame_configs=[(0, 0, 1)],
-            scene_file=scene_file,
-            resX=res, resY=res,
-            maxBounces=mb,
-            capture_spps=(1, 4),
-            mogwai_globals=globals(),
-            variant_tag=f"restirpt_b{mb}",
-        )
-        run_baseline_reference_restirpt(
-            step_name="00",
-            frame_configs=[(0, 0, 1)],
-            scene_file=scene_file,
-            resX=res, resY=res,
-            maxBounces=mb,
-            capture_spps=(1, 4),
-            mogwai_globals=globals(),
-            variant_tag=f"restirpt_bpr_b{mb}",
-            pathSamplingMode="PathReuse",
-        )
-        # Lin 2026 §6.1 Stage A — unified DI+GI in one ReSTIR reservoir
-        # (no external RTXDI feed). Probe variant DISABLED 2026-05-06 (Phase 3
-        # blocked on Phase 1 §6.2.3 — see .plans/restirpt-forced-nee-reconnection.md).
-        # Re-enable when Phase 1's force-NEE shift MIS bookkeeping is corrected.
-        # The `unifiedDIGI=True` kwarg path in run_baseline_reference_restirpt and
-        # the test scaffold scripts/ReSTIRPT_StageA_Test.py are preserved.
-        #run_baseline_reference_restirpt(
-        #    step_name="00",
-        #    frame_configs=[(0, 0, 1)],
-        #    scene_file=scene_file,
-        #    resX=res, resY=res,
-        #    maxBounces=mb,
-        #    capture_spps=(1, 4),
-        #    mogwai_globals=globals(),
-        #    variant_tag=f"restirpt_unified_b{mb}",
-        #    unifiedDIGI=True,
-        #)
+    # Multi-bounce vanilla + DQLin ReSTIRPT references previously lived here.
+    # They moved to VisCache_LadderRPT00.py on 2026-05-20 so the PT baseline
+    # family has its own dedicated parity step (mirroring how DI baselines
+    # are extracted to RDI00). Ladder00 keeps the single-bounce DI references
+    # below.
 
     # 2. RTXDI external reference — the parity target.
     #    RTXDI = 1-sample-per-frame; x4 = 4 frames into accumulator.
