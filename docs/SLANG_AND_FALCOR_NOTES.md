@@ -99,6 +99,8 @@ What still needs to be tried (task #10):
 
 **Wrapper test ruled out (2026-05-21):** wrapping `gPathGenerator.ShiftPath(...)` in a free function `ShiftPathFree(...)` does NOT bypass the crash. Slang inlines through the wrapper so the reflection sees the same call graph. The fix must change the actual function *definition* context, not the call site.
 
+**Free-function refactor ruled out (2026-05-21, commit 67f1a165):** moved `ShiftPath` and `ShiftCausticPath` out of `extension PathGenerator { ... }` into actual free functions at file scope. Their bodies now use `gPathGenerator.` prefix on every PathGenerator-member access. The refactor is mechanically clean and produces 17/17 smoke PASS — but **re-enabling the `gShiftLightPathsToPixelCenters` branch still crashes setVars**. The "extension method vs free function" hypothesis was therefore wrong. The trip is in the call-graph complexity reachable from the resolve entry point: `ShiftPath → ConnectToSuffix → Occluded / SetNextVertex / InitializeLightPath<true,true> / vertex.EvaluateReflectance / GetShiftedSuffixVertex / …`. Those helpers ARE still extension methods on PathGenerator. Refactoring the helpers too would require fully qualifying `PathGenerator.PathState<bShift>` everywhere — gnarly but possible. Alternative: inline ShiftPath's body into the resolve compute shader to break the cross-function-reflection chain.
+
 Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented out in `BDPT.cs.slang`. This disables only the optional sub-pixel re-projection optimization; the rest of the ReSTIR resampling pipeline is intact and renders 8 frames cleanly. See [project_restir_bdpt_port memory](../memory) for the running status.
 
 ---
