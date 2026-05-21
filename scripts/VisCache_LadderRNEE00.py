@@ -6,16 +6,12 @@ cache-less reference floor for ReSTIR NEE before any ablation work.
 Runs ONLY the canonical NEE references — no "ours" variants yet (those
 land in RNEE01+).
 
-  vanilla_b{1,4,8}    — Falcor PathTracer multi-bounce vanilla NEE
-                        reference. Bounce set matches RPT00 (1/4/8) so
-                        cross-step comparisons are apples-to-apples.
-                        Provides the x4096 GT each nee_*_b{N} is compared
-                        against (variant_tag matches so the GT resolver
-                        pairs them up).
   nee_F16_b{1,4,8}    — ReSTIRNEEPass pure K-RIS (F=16 candidates, no
                         cell reservoirs, no VisCache). Should match
                         vanilla PT in expected value but with lower
-                        per-frame noise (sqrt(F)=4× reduction).
+                        per-frame noise (sqrt(F)=4× reduction). GT
+                        resolved from Ladder00's `vanilla_b{N}_x4096`
+                        captures (shared with RPT00).
   nee_F16R3d_b{1,4,8} — Pure K-RIS NEE + 3D cell reservoirs (vblind,
                         reservoirK=1, lo=0 — the prescribed safe config
                         per project_kslot_archcontext). Bottoms-out the
@@ -50,7 +46,7 @@ Outputs (after finalize_step at end):
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
-    get_scenes, run_baseline,
+    get_scenes,
     run_baseline_ReSTIRNEEPass_F16,
     run_baseline_ReSTIRNEEPass_F16R3d,
     make_baseline_reference_comparison_plot,
@@ -75,21 +71,9 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
-    # === Multi-bounce vanilla references ===
-    # Provides per-bounce x4096 GT; variant_tag pairs each GT with its
-    # corresponding nee_*_b{N}.
-    for mb in NEE_BOUNCES:
-        run_baseline(
-            step_name=STEP,
-            frame_configs=[(0, 0, 1)],
-            scene_file=scene_file,
-            resX=res, resY=res,
-            maxBounces=mb,
-            gt_spp=4096,
-            extra_spp=[2, 4, 8, 16],
-            mogwai_globals=globals(),
-            variant_tag=f"vanilla_b{mb}",
-        )
+    # GT note: per-bounce vanilla_b{1,4,8} GTs live in Ladder00; the
+    # `_resolve_gt_for_variant` resolver finds them there via the matching
+    # variant_tag. Run `-s 00` first if GTs aren't already present.
 
     # === ReSTIRNEEPass references (vblind, no VisCache) ===
     # F=16 K-RIS pure (no cells) — the sqrt(F) noise-reduction floor.

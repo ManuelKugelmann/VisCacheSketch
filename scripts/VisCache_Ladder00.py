@@ -69,7 +69,8 @@ for scene_file in get_scenes():
                 try: os.remove(f)
                 except OSError: pass
 
-    # 1. Vanilla baseline FIRST — provides x4096 GT for error metric.
+    # 1. Vanilla DI baseline FIRST — provides direct-only x4096 GT for
+    #    the DI error metric (used by rtxdi / restir_2d / restir_3d below).
     run_baseline(
         step_name="00",
         frame_configs=[(0, 0, 1)],
@@ -80,9 +81,24 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
-    # Multi-bounce vanilla + DQLin ReSTIRPT references live in
-    # VisCache_LadderRPT00.py (PT family parity). Ladder00 keeps the
-    # single-bounce DI references below.
+    # 1b. Multi-bounce vanilla — `vanilla_b{1,4,8}` x{1,2,4,8,16,4096}.
+    #     Lives here (not in a per-family ladder) because the GTs are shared
+    #     across families: RPT00 restirpt_b{N} and RNEE00 nee_*_b{N} both
+    #     resolve their GT via `_resolve_gt_for_variant` which looks in
+    #     `captures/ladder/00/<scene>/` by variant_tag. Centralising avoids
+    #     re-rendering the same x4096 GT per family.
+    for mb in (1, 4, 8):
+        run_baseline(
+            step_name="00",
+            frame_configs=[(0, 0, 1)],
+            scene_file=scene_file,
+            resX=res, resY=res,
+            maxBounces=mb,
+            gt_spp=4096,
+            extra_spp=[2, 4, 8, 16],
+            mogwai_globals=globals(),
+            variant_tag=f"vanilla_b{mb}",
+        )
 
     # 2. RTXDI external reference — the parity target.
     #    RTXDI = 1-sample-per-frame; x4 = 4 frames into accumulator.

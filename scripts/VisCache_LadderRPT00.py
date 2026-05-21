@@ -5,16 +5,13 @@ Mirrors RDI00's role on the PT side: establishes the cache-less reference
 floor for ReSTIR PT before any ablation work. Runs ONLY the canonical PT
 references — no "ours" variants yet (those land in RPT01+).
 
-  vanilla_b{1,4,8}     — Falcor PathTracer multi-bounce reference. Provides
-                         the x4096 GT each restirpt_b{N} is compared
-                         against (variant_tag matches so the GT resolver
-                         pairs them up).
   restirpt_b{1,4,8}    — DQLin ReSTIR PT reference (port of NVlabs F8) in
                          ReSTIR mode. The parity target for our future
-                         ReSTIRPT R2d/R3d implementations.
+                         ReSTIRPT R2d/R3d implementations. GT resolved
+                         from Ladder00's `vanilla_b{N}_x4096` captures.
   restirpt_bpr_b{1,4,8}— DQLin ReSTIR PT reference in BPR (Bekaert path
                          reuse) mode. Different sampling strategy on top
-                         of the same shift machinery.
+                         of the same shift machinery; same GT.
 
 All variants ride RTXDI for direct lighting (matches the DQLin recipe) and
 are visibility-blind p̂ (V via post-RIS shadow + V=0 invalidation, matching
@@ -44,7 +41,7 @@ Outputs (after finalize_step at end):
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
-    get_scenes, run_baseline, run_baseline_reference_restirpt,
+    get_scenes, run_baseline_reference_restirpt,
     make_baseline_reference_comparison_plot,
     finalize_step,
 )
@@ -57,21 +54,9 @@ for scene_file in get_scenes():
     captureDir = f"captures/ladder/{STEP}/{scene_name}"
     os.makedirs(captureDir, exist_ok=True)
 
-    # === Multi-bounce vanilla references ===
-    # Provides per-bounce x4096 GT for the ReSTIRPT comparison below.
-    # variant_tag pairs each GT with its corresponding restirpt_b{N}.
-    for mb in (1, 4, 8):
-        run_baseline(
-            step_name=STEP,
-            frame_configs=[(0, 0, 1)],
-            scene_file=scene_file,
-            resX=res, resY=res,
-            maxBounces=mb,
-            gt_spp=4096,
-            extra_spp=[2, 4, 8, 16],
-            mogwai_globals=globals(),
-            variant_tag=f"vanilla_b{mb}",
-        )
+    # GT note: per-bounce vanilla_b{1,4,8} GTs live in Ladder00; the
+    # `_resolve_gt_for_variant` resolver finds them there via the matching
+    # variant_tag. Run `-s 00` first if GTs aren't already present.
 
     # === DQLin ReSTIR PT references (canonical + BPR) ===
     # Both share RTXDI for direct illumination; both validated against
