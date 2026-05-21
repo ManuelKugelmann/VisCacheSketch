@@ -55,14 +55,14 @@ void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
         // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — bisected
         // to ConnectToSuffix body (lines 87-280 of PathShift.slang) as the trip.
         // Specifically: trip is in upper half (lines 87-175) — visibility check,
-        // camera-pdf compute, SetNextVertex, vertex.EvaluateReflectance. Not the
-        // chained-method-access on InitializeLightPath<true,true>.mis (split tested).
+        // camera-pdf compute, SetNextVertex, vertex.EvaluateReflectance.
+        // Slang 2024.14.6 upgrade did NOT fix this — same SIGSEGV during setVars.
         // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
         //     gPathGenerator.DebugSetPixel(-1);
         //     float jacobian; int2 tmp;
-        //     const PathSample shifted = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian);
+        //     const bool valid = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
         //     gPathGenerator.DebugSetPixel(id);
-        //     if (!shifted.IsValid() || !(jacobian > 0)) continue;
+        //     if (!valid || !(jacobian > 0)) continue;
         // }
 
         float u = sampleNext1D(sg);

@@ -1,0 +1,109 @@
+# Slang & Falcor — version & migration notes
+
+What's currently pinned, what was tested, where the docs live. Read first when chasing a shader-compile, reflection, or Falcor-host-API problem.
+
+---
+
+## Currently pinned
+
+| Package | Version | File |
+|---|---|---|
+| Falcor | 8.0 (Aug 2024) + 2 post-release cherry-picks (already applied) | `Falcor/Source/Falcor/Core/Version.h` |
+| Slang  | 2024.14.6 (Nov 2024) | `Falcor/dependencies.xml` |
+
+Both are NOT the Falcor-defaults. Falcor 8.0 originally shipped with Slang 2024.1.34. We deliberately bumped Slang because newer Slang fixes accumulated warnings/strictness improvements over a year of releases. The bump required two slang-source fixes documented below.
+
+---
+
+## Why Falcor 7 → 8 broke so much (porting context)
+
+Falcor 8.0 (Aug 19 2024) was a major architectural release, not a point bump. Anyone porting a Falcor 7 codebase (e.g. Shmaug/ReSTIR-BDPT, DQLin/ReSTIR_PT, NVlabs/conditional-restir-prototype) needs to apply roughly the same migration. See [PORTING.md](PORTING.md) for the ReSTIRPTPass port, and `Source/RenderPasses/ReSTIRBDPTPass/` commits 847381d / 26b456d for the BDPT port — the deltas are mechanical and stereotyped.
+
+Documented breaking changes from the [Falcor 8.0 release notes](https://github.com/NVIDIAGameWorks/Falcor/releases/tag/8.0):
+
+| Falcor 7 | Falcor 8 |
+|---|---|
+| `Scene::setRaytracingShaderData(ctx, var)` | `Scene::bindShaderDataForRaytracing(ctx, var["gScene"])` (note: pass `gScene` sub-var, not root) |
+| `EmissivePowerSampler/Uniform/LightBVH` ctor `(ctx, ref<Scene>)` | `(ctx, ref<ILightCollection>)`. Same for `EmissiveLightSampler::update(ctx)` → `update(ctx, scene->getILightCollection(ctx))` |
+| `Scene::getActiveLights` | `Scene::getActiveAnalyticLights` |
+| `Scene::getActiveLightCount` / `getActiveLight` | removed (count active analytic lights via `getActiveAnalyticLights().size()`) |
+| `Buffer::getElementSize()` | `Buffer::getStructSize()` |
+| Buffer views: element ranges | byte ranges (`createBufferRange(byteOffset, byteSize)`) |
+
+Slang-side breaks (most are Slang 2024.1.x → 2024.14.x; some Falcor 8 specific):
+
+| Falcor 7 (Slang 2024.1.x) | Falcor 8 (Slang 2024.14+) |
+|---|---|
+| `HitInfo::getData()` | `HitInfo::pack()` |
+| `prepareShadingData(v, mid, dir, lod)` | `prepareShadingData(v, mid, dir)` (LOD is internal) |
+| `traceSceneRay<true>(ray, out hit, out hitT, flags, mask)` | `hit = traceSceneRay<1>(ray, out hitT, flags, mask)` (returns by value, template arg is `int`) |
+| `EmissiveSampler.sampleLight(sg, out selectionPdf)` overload | removed — only `sampleLight(pos, normal, upperOnly, sg, out TriangleLightSample)` survives |
+| `evalTriangleSelectionPdf(triIdx)` | `evalTriangleSelectionPdf(pos, normal, upperOnly, triIdx)` — Power/Uniform ignore geom args; LightBVH uses them |
+| `BSDFProperties.eta` | removed — `ShadingData.IoR` is the new home |
+| `CameraData.prevCameraW` / `Camera::computeRayPinholePrevFrame` | removed — prev-frame plumbing is now `CameraData.prevViewMat` / `prevPosW` only |
+| `RWByteAddressBuffer::InterlockedAddF32` | NVAPI shader extension required — Falcor builds with `FALCOR_HAS_NVAPI=OFF` by default, use a 16-iter `InterlockedCompareExchange` CAS loop on the uint reinterpretation |
+| `mLightVertexCache[i] = v` (via `__subscript` set) | not an l-value in 2024.14+; write through the underlying buffer field (`mLightVertexCache.lightVertices[i] = v`) |
+| `[require(sm_6_6, …)]` on compute shaders touching scene vertex buffers | needs `compute` capability too: `[require(compute, sm_6_6, …)]` |
+
+---
+
+## Slang version-bump experiments
+
+Tested versions (one branch each, full 17-pass smoke battery on CornellBox_1AreaLight):
+
+| Version | Build | 17-pass smoke | Notes |
+|---|---|---|---|
+| 2024.1.34 (Falcor 8 default) | clean | 17/17 | Baseline. ReSTIRBDPT resolve-pass crash workaround in `BDPT.cs.slang` required (ShiftPath branch disabled). |
+| **2024.14.6** (current pin) | clean | 17/17 | Two source fixes needed: l-value subscript + `compute` capability. Did not fix the ConnectToSuffix reflection bug. |
+| 2026.9.1 (latest as of May 2026) | clean | 0/17 | Stricter constant-fold: BF_SET macro in `HostDeviceShared.slangh` overflows uint conversion. Also: `packSnorm2x16(float2)` becomes ambiguous (new overloads). Massive Falcor-side breakage. |
+
+**Takeaway:** 2024.14.6 is the sweet spot between "stuck on Falcor's pinned version" and "Slang ABI has moved too far." It picks up ~10 months of slang fixes without breaking Falcor 8.0.
+
+---
+
+## The ConnectToSuffix reflection bug (open)
+
+Symptom: With Falcor 8.0 + Slang 2024.1.34 OR 2024.14.6, `ComputePass::setVars(nullptr)` on the `ResolveLightTraceReservoirs` entry of `ReSTIRBDPTPass/BDPT.cs.slang` triggers a silent SIGSEGV during `ParameterBlock::ParameterBlock` construction (stack: `ProgramVars::create` → `ParameterBlock::ParameterBlock`).
+
+Bisection (see commits `dde8bf8` and `d6e2424`):
+- Stubbing the entire `ShiftPath` body to `return result;` → no crash → it's the body, not the signature
+- Bottom half of `ShiftPath` body (camera-subpath shift) → crashes
+- Reducing the suffix block to only `ConnectToSuffix(...)` → still crashes
+- Stubbing the `ConnectToSuffix` body to `return result;` → no crash → it's `ConnectToSuffix` itself
+- Stubbing the MIS-weight half of `ConnectToSuffix` (lines 175 onward) → still crashes → trip is in lines 87-175 (visibility check, camera-pdf, `SetNextVertex<true>`, `vertex.EvaluateReflectance`)
+- Splitting the chained `.mis` access on `InitializeLightPath<true, true>(...)` return → didn't help
+
+What we know:
+- The Slang version doesn't matter (2024.1.34 and 2024.14.6 both crash identically)
+- The shader compiles and links cleanly; the crash is during ProgramVars layout reflection
+- Only `ResolveLightTraceReservoirs` trips it — `SampleCameraPaths` calls into the same templated helpers (`InitializeLightPath`, `ConnectToCamera`, …) without crashing
+
+What we tried that did NOT work:
+- Refactoring `ShiftPath`/`ConnectToSuffix` to out-param style → ran into a separate Slang IR bug (`InternalError: missing case for getting IR default value` on `out PathSample = {}`)
+- Splitting chained method access on parameter-block method returns
+- Slang version bump
+
+What still needs to be tried (task #10):
+- Move `ConnectToSuffix` outside `extension PathGenerator` and pass `gPathGenerator` explicitly
+- Replace `RWStructuredBuffer<PathReservoir>` in `PathGenerator` struct with raw `RWByteAddressBuffer` + manual pack/unpack
+- Slang issue tracker — file a minimal reproducer
+
+Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented out in `BDPT.cs.slang`. This disables only the optional sub-pixel re-projection optimization; the rest of the ReSTIR resampling pipeline is intact and renders 8 frames cleanly. See [project_restir_bdpt_port memory](../memory) for the running status.
+
+---
+
+## Useful upstream resources
+
+- [Slang Parameter Block guide](https://shader-slang.org/docs/parameter-blocks/) — official cross-platform parameter-block semantics
+- [Slang Reflection API guide](http://shader-slang.org/slang/user-guide/reflection) — what's reflectable and what isn't
+- [Slang Reflection API doc-update blog (Dec 2024)](https://shader-slang.org/blog/2024/12/18/reflection-api-doc-update/) — pointer to the rewritten docs
+- [Falcor 8.0 release notes](https://github.com/NVIDIAGameWorks/Falcor/releases/tag/8.0) — the authoritative migration list
+- [Falcor commits since 8.0](https://github.com/NVIDIAGameWorks/Falcor/commits/master) — 2 commits total (GBufferRT linearZ slope, GraphicsState leak); both already applied in our subtree as of 2026-05-21
+
+---
+
+## When to revisit
+
+- New Slang release with a documented parameter-block reflection fix → try a bump
+- New Falcor release tagged past 8.0 → cherry-pick relevant fixes
+- ConnectToSuffix bug becomes a research-time blocker → file a minimal Slang reproducer

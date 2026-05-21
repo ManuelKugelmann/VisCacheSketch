@@ -48,7 +48,9 @@ void tracePath(uint pathID, inout PathReservoir giReservoir, uint sampleIdx)
 }
 
 [shader("compute")]
-[require(sm_6_6, GL_NV_compute_shader_derivatives)]
+// [Slang 2024.14] Newer Slang demands explicit 'vertex' capability for compute
+// shaders that touch vertex buffers via Scene methods.
+[require(compute, sm_6_6, GL_NV_compute_shader_derivatives)]
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {

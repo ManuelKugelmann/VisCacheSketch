@@ -22,7 +22,7 @@
     </dependency>
     <remote name="github-slang" type="https" packageLocation="github.com/shader-slang/slang/releases/download/v${version}/slang-${version}-${platform}.zip"/>
     <dependency name="slang" linkPath="external/packman/slang">
-        <package name="slang" version="2024.1.34" remotes="github-slang" platforms="windows-x86_64 linux-x86_64"/>
+        <package name="slang" version="2024.14.6" remotes="github-slang" platforms="windows-x86_64 linux-x86_64"/>
     </dependency>
     <dependency name="pix" linkPath="external/packman/pix">
         <package name="WinPixEventRuntime" version="1.0.190604001" platforms="windows-x86_64" />

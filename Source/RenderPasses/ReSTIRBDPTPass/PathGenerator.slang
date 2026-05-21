@@ -1895,7 +1895,8 @@ extension PathGenerator {
                             mLightVertexCache.lightVertexCount[i] = b + 1;
 
                             i += b * mParams.mOutputDim.x * mParams.mOutputDim.y;
-                            mLightVertexCache[i] = v;
+                            // [Slang 2024.14] __subscript set is no longer an l-value here; write through the underlying RWStructuredBuffer.
+                            mLightVertexCache.lightVertices[i] = v;
                         } else {
                             i = mLightVertexCache.Insert(v);
                         }
