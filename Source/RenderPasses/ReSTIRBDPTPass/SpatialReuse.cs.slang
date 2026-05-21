@@ -16,7 +16,7 @@ PathSample SpatialShift(const PathSample basePath, const PackedPathVertex newVer
     // caustic paths cannot be shifted between pixels
     if (!basePath.HasFlag(PathFlags::eCausticLightPath)) {
         int2 tmp;
-        result = gPathGenerator.ShiftPath(basePath, newVertex, tmp, jacobian);
+        result = ShiftPath(basePath, newVertex, tmp, jacobian);
     }
 
     return result;

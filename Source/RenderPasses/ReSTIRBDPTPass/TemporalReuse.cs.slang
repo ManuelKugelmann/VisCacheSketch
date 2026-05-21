@@ -20,7 +20,7 @@ PathSample TemporalShift<let bShiftToPrev : bool>(const uint2 basePixel, const P
         newPixel = bShiftToPrev ? gPathGenerator.GetPrevPixelCoord(pos) : gPathGenerator.GetPixelCoord(pos);
         result = basePath;
     } else {
-        result = gPathGenerator.ShiftPath(basePath, newVertex, newPixel, jacobian, bShiftToPrev);
+        result = ShiftPath(basePath, newVertex, newPixel, jacobian, bShiftToPrev);
     }
 
     if (result.IsValid() && jacobian > 0 && result.HasFlag(PathFlags::eCausticLightPath) && gPathGenerator.gBidirectional) {
@@ -146,7 +146,7 @@ void TemporalReuse(const uint2 id, inout SampleGenerator sg, inout PathReservoir
                 } else {
                     int2 newPixel;
                     float jacobianToPrev;
-                    const float shiftedTargetPdf = gPathGenerator.ShiftCausticPath(cr.mSample, newPixel, jacobianToPrev, true).GetTargetPdf();
+                    const float shiftedTargetPdf = ShiftCausticPath(cr.mSample, newPixel, jacobianToPrev, true).GetTargetPdf();
                     f = SafeDivide(shiftedTargetPdf, jacobianToPrev);
 
                     prevM = gPathGenerator.LoadPrevCausticReservoir(newPixel).mM;
@@ -239,7 +239,7 @@ void ShiftToPrevFrame(uint3 index: SV_DispatchThreadID) {
         if (r.mSample.IsValid()) {
             int2 newPixel;
             float jacobianToPrev;
-            const float shiftedTargetPdf = gPathGenerator.ShiftCausticPath(r.mSample, newPixel, jacobianToPrev, false).GetTargetPdf();
+            const float shiftedTargetPdf = ShiftCausticPath(r.mSample, newPixel, jacobianToPrev, false).GetTargetPdf();
 
             // HACK: storing 'shiftedTargetPdf / jacobianToPrev' in reservoir
             r.mSample.mSuffix.mVertex.pad1 = SafeDivide(shiftedTargetPdf, jacobianToPrev);
@@ -273,7 +273,7 @@ void ShiftCaustics(uint3 index: SV_DispatchThreadID) {
 
     int2 newId = id;
     float jacobian = 0;
-    r.mSample = gPathGenerator.ShiftCausticPath(r.mSample, newId, jacobian);
+    r.mSample = ShiftCausticPath(r.mSample, newId, jacobian);
 
     const bool success = r.mSample.IsValid() && jacobian > 0;
     gPathGenerator.IncrementCounter(success ? DebugCounterType::eCausticShiftSuccesses : DebugCounterType::eCausticShiftFailures);

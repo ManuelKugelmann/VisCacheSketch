@@ -52,15 +52,20 @@ void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
         PathReservoir c = PathReservoir(lr.path, lr.W, 0);
         c.PrepareMerge(m);
 
-        // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — bisected
-        // to ConnectToSuffix body (lines 87-280 of PathShift.slang) as the trip.
-        // Specifically: trip is in upper half (lines 87-175) — visibility check,
-        // camera-pdf compute, SetNextVertex, vertex.EvaluateReflectance.
-        // Slang 2024.14.6 upgrade did NOT fix this — same SIGSEGV during setVars.
+        // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — the
+        // ShiftPath call (now a free function, was extension method) still trips
+        // Falcor 8's ParameterBlock reflection during ResolveLightTraceReservoirs
+        // setVars. The free-function refactor (commit pending) was the
+        // hypothesised fix per ReSTIRPTPass's Shift.slang pattern; turned out
+        // not to matter. The trip is in the call-graph complexity reachable
+        // from the resolve entry point (ShiftPath → ConnectToSuffix → Occluded
+        // / GetShiftedSuffixVertex / SetNextVertex / InitializeLightPath /
+        // EvaluateReflectance / …). Workaround: leave the shift-to-pixel-center
+        // optimization off; the rest of the ReSTIR resampling pipeline runs fine.
         // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
         //     gPathGenerator.DebugSetPixel(-1);
         //     float jacobian; int2 tmp;
-        //     const bool valid = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
+        //     const bool valid = ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
         //     gPathGenerator.DebugSetPixel(id);
         //     if (!valid || !(jacobian > 0)) continue;
         // }
