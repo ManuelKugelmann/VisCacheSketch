@@ -117,6 +117,7 @@ Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented o
 | `useTemporalResampling=True`                                         | ✗ broken  | `TemporalReuse.cs.slang` reaches `ShiftPath` through the same reflection trip |
 | `useCausticShift=True`                                               | ✗ blocked | requires `useTemporalResampling=True` |
 | `spatialReusePasses>0`                                               | ✓ works   | tested 16-frame PASS — confirms the reflection trip is SPECIFIC to BDPT.cs.slang::ResolveLightTraceReservoirs, not to ShiftPath itself. SpatialReuse.cs.slang::main is a separate compute pass with a different call graph; its setVars reflects cleanly even though it calls into `ShiftPath` → `ConnectToSuffix` |
+| `useCausticReservoirs=True` + `spatialReusePasses>0` (combined)      | ✓ works   | tested 8-frame PASS |
 
 ---
 
