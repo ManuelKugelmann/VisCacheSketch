@@ -24,6 +24,10 @@ try:
     from ReSTIRPT_Graph import render_graph_ReSTIRPT
 except ImportError:
     render_graph_ReSTIRPT = None
+try:
+    from ReSTIRNEEPass_Graph import render_graph_ReSTIRNEEPass
+except ImportError:
+    render_graph_ReSTIRNEEPass = None
 from viscache_exr import write_channel, load_diag_mask, find_exr, compute_render_noise, compute_render_noise_signed, compute_render_error, compute_render_error_signed_hdr, oklab_distance_hdr_cached
 
 # Track last-loaded scene to skip redundant m.loadScene() calls
@@ -5193,6 +5197,98 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
     )
 
 
+def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
+                                   maxBounces=3, resX=kResX, resY=kResY,
+                                   mogwai_globals=None, capture_spps=(1, 4),
+                                   gt_spp=4096, variant_tag=None,
+                                   numNEECandidates=16):
+    """ReSTIR NEE pure K-RIS baseline (no cell reservoirs, no VisCache).
+
+    The lean reference for ReSTIRNEEPass: F=numNEECandidates RIS candidates
+    per NEE event, no spatial/temporal reuse. Compared against vanilla path
+    tracer at matched maxBounces — should match within K-RIS noise (i.e.
+    sqrt(F) better than vanilla single-sample NEE per call).
+
+    Tag in CSV: f'nee_F{F}_b{maxBounces}'."""
+    if render_graph_ReSTIRNEEPass is None:
+        print(f"[{step_name}] ReSTIRNEE graph not importable — skipping nee_F{numNEECandidates}")
+        return
+    def _build(actual_spp):
+        return render_graph_ReSTIRNEEPass(
+            maxBounces=maxBounces, samplesPerPixel=actual_spp,
+            useJitter=True, numNEECandidates=numNEECandidates,
+            useNEECells=False,
+            visibilityCheck=False, lightSelection=False,
+        )
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(
+        captureDir, gt_spp, f"{resX}x{resY}",
+        gt_variant_tag=f"vanilla_b{maxBounces}",
+    )
+    tag = variant_tag or f"nee_F{numNEECandidates}_b{maxBounces}"
+    # force_actual_spp=1: ReSTIR NEE accumulates per-frame K-RIS observations
+    # into cell reservoirs; matches the realtime regime (1 SPP/frame). Same
+    # rationale as ReSTIRPT — see project_kslot_archcontext for the
+    # SPP-convention rationale.
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, tag,
+        _build, "AccumulatePass.output",
+        capture_spps=capture_spps, maxBounces=maxBounces,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
+        force_actual_spp=1,
+    )
+
+
+def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
+                                      maxBounces=3, resX=kResX, resY=kResY,
+                                      mogwai_globals=None, capture_spps=(1, 4),
+                                      gt_spp=4096, variant_tag=None,
+                                      numNEECandidates=16,
+                                      cellReservoirFootprintPx=1,
+                                      reservoirK=1,
+                                      cellLevelOffsetWrite=0):
+    """ReSTIR NEE + 3D cell reservoirs (vblind, no VisCache visibility).
+
+    Adds the cell-reservoir reuse layer on top of K-RIS NEE — every NEE call
+    folds a per-cell stored sample into the K-RIS stream as one extra
+    identity-only RIS candidate (invPdf=1, no W; see ReservoirIO docstring
+    for the unbounded-W rationale). Default reservoirK=1 + lo=0 is the
+    prescribed safe config (smooth area lights / env-map regime); see
+    project_kslot_archcontext for scene-class tuning.
+
+    Tag in CSV: f'nee_F{F}R3d_b{maxBounces}'."""
+    if render_graph_ReSTIRNEEPass is None:
+        print(f"[{step_name}] ReSTIRNEE graph not importable — skipping nee_F{numNEECandidates}R3d")
+        return
+    def _build(actual_spp):
+        return render_graph_ReSTIRNEEPass(
+            maxBounces=maxBounces, samplesPerPixel=actual_spp,
+            useJitter=True, numNEECandidates=numNEECandidates,
+            useNEECells=True,
+            cellReservoirFootprintPx=cellReservoirFootprintPx,
+            reservoirK=reservoirK,
+            cellLevelOffsetWrite=cellLevelOffsetWrite,
+            visibilityCheck=False, lightSelection=False,
+        )
+    scene_name = os.path.splitext(os.path.basename(scene_file))[0]
+    captureDir = f"captures/ladder/{step_name}/{scene_name}"
+    gt_hdr, noise_floor = _resolve_gt_for_variant(
+        captureDir, gt_spp, f"{resX}x{resY}",
+        gt_variant_tag=f"vanilla_b{maxBounces}",
+    )
+    tag = variant_tag or f"nee_F{numNEECandidates}R3d_b{maxBounces}"
+    _run_baseline_variant(
+        step_name, frame_configs, scene_file, tag,
+        _build, "AccumulatePass.output",
+        capture_spps=capture_spps, maxBounces=maxBounces,
+        resX=resX, resY=resY, mogwai_globals=mogwai_globals,
+        gt_hdr_for_post=gt_hdr, noise_floor_for_post=noise_floor,
+        force_actual_spp=1,
+    )
+
+
 def run_baseline_rtxdi(step_name, frame_configs, scene_file,
                        resX=kResX, resY=kResY, mogwai_globals=None,
                        capture_spps=(1, 4), gt_spp=4096,
@@ -5368,3 +5464,181 @@ def make_baseline_bar_plot(step_name):
     plt.close(fig)
     print(f"[{step_name}] [plot] -> {out}")
     return out
+
+
+# ----------------------------------------------------------------------------
+# Reference-comparison plot — used by per-family baseline steps (RDI00,
+# RNEE00, RPT00). Plots each variant's metric trajectory across SPP next to
+# the reference impl (rtxdi for DI / DQLin restirpt for PT / vanilla itself
+# for NEE) and against bounce-matched vanilla path tracer. One subplot per
+# error metric + one for timing. NO rays — those only become interesting
+# once VisCache adds the cache-amortization mechanism.
+# ----------------------------------------------------------------------------
+def make_baseline_reference_comparison_plot(step_name, variant_groups=None,
+                                            metrics=None, out_name=None,
+                                            max_spp=256):
+    """Per-step plot: variants × reference × vanilla, across SPP, per metric.
+
+    Args:
+      step_name: e.g. 'RDI00', 'RNEE00', 'RPT00'.
+      variant_groups: optional list of (group_label, [variant_substr,...])
+                      to organise the legend; when None, every variant in
+                      the CSV becomes its own line.
+      metrics: list of (csv_field, axis_label, lower_is_better) tuples.
+               Default = (rmse, psnr_db, flip, ms_ssim, mean_err_pct,
+                          gpu_tracepass_ms).
+      out_name: optional filename override (default: <step>_reference_comparison.png).
+
+    One figure per scene → grid of (metric × spp) lines, variants overlaid.
+    Reads the populated baseline CSV; missing values silently dropped.
+    """
+    try:
+        import csv
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(f"[{step_name}] matplotlib not available — skipping reference comparison plot")
+        return None
+
+    csv_path = _step_csv(step_name)
+    if not os.path.exists(csv_path):
+        print(f"[{step_name}] no CSV at {csv_path} — skipping reference comparison plot")
+        return None
+
+    if metrics is None:
+        metrics = [
+            ("rmse",             "RMSE (lin HDR)",  True),
+            ("psnr_db",          "PSNR (dB)",       False),
+            ("flip",             "FLIP (HDR)",      True),
+            ("ms_ssim",          "MS-SSIM",         False),
+            ("mean_err_pct",     "OkLab err %",     True),
+            ("gpu_tracepass_ms", "GPU trace (ms)",  True),
+        ]
+
+    rows = []
+    with open(csv_path, newline="") as f:
+        for r in csv.DictReader(f):
+            try:
+                spp = int(r.get("spp", "0") or 0)
+            except ValueError:
+                continue
+            # Drop GT-self captures (typically x4096) — comparing GT against
+            # itself produces degenerate values (rmse 0, psnr 150 dB, ...)
+            # that compress the variant comparison out of visible range.
+            if spp > max_spp:
+                continue
+            entry = {"scene": r.get("scene", ""),
+                     "variant": r.get("variant", ""),
+                     "spp": spp}
+            for m, _, _ in metrics:
+                v = r.get(m, "")
+                try:
+                    entry[m] = float(v) if v not in ("", None) else float("nan")
+                except (TypeError, ValueError):
+                    entry[m] = float("nan")
+            rows.append(entry)
+
+    if not rows:
+        print(f"[{step_name}] no rows in CSV — skipping reference comparison plot")
+        return None
+
+    scenes = sorted(set(r["scene"] for r in rows))
+    variants_all = sorted(set(r["variant"] for r in rows))
+
+    # Variant decomposition: family (color) × bounce (linestyle). vanilla_b4
+    # → ("vanilla", 4). nee_F16R3d_b3 → ("nee_F16R3d", 3). restirpt_bpr_b8
+    # → ("restirpt_bpr", 8). Bounce-less variants (rtxdi, restir_2d, etc.)
+    # use default solid line.
+    import re
+    _bounce_re = re.compile(r"^(.+?)_b(\d+)$")
+    def family_bounce(v):
+        m = _bounce_re.match(v)
+        if m:
+            return m.group(1), int(m.group(2))
+        return v, None
+
+    palette = {}
+    cycle = ["#1f77b4", "#2ca02c", "#9467bd", "#17becf", "#8c564b", "#e377c2"]
+    next_ci = [0]
+    def color_for_family(fam):
+        if fam in palette:
+            return palette[fam]
+        if fam == "vanilla":
+            palette[fam] = "#6e6e6e"
+        elif fam == "rtxdi":
+            palette[fam] = "#d62728"
+        elif fam == "restirpt":
+            palette[fam] = "#ff7f0e"
+        elif fam == "restirpt_bpr":
+            palette[fam] = "#8c2d04"
+        elif fam.startswith("restirpt"):
+            palette[fam] = "#fdae6b"
+        elif fam.startswith("nee_"):
+            palette[fam] = "#2ca02c"
+        else:
+            palette[fam] = cycle[next_ci[0] % len(cycle)]
+            next_ci[0] += 1
+        return palette[fam]
+
+    # Bounce → linestyle. Solid is the canonical / no-bounce baseline.
+    _ls_map = {None: "-", 1: ":", 3: "-", 4: "--", 8: "-."}
+    def linestyle_for_bounce(b):
+        return _ls_map.get(b, "-")
+
+    outs = []
+    for scene in scenes:
+        scene_rows = [r for r in rows if r["scene"] == scene]
+        if not scene_rows:
+            continue
+        spps_present = sorted(set(r["spp"] for r in scene_rows))
+        # 2 rows × 3 cols for the 6 default metrics; auto-shape otherwise.
+        n = len(metrics)
+        ncols = 3 if n >= 3 else n
+        nrows = (n + ncols - 1) // ncols
+        fig, axes = plt.subplots(nrows, ncols,
+                                 figsize=(4.5 * ncols, 3.2 * nrows),
+                                 squeeze=False)
+        for mi, (mfield, mlabel, lower_better) in enumerate(metrics):
+            ax = axes[mi // ncols, mi % ncols]
+            for v in variants_all:
+                pts = [(r["spp"], r[mfield]) for r in scene_rows
+                       if r["variant"] == v and r[mfield] == r[mfield]]  # NaN filter
+                if not pts:
+                    continue
+                pts.sort()
+                xs, ys = zip(*pts)
+                fam, bounce = family_bounce(v)
+                ax.plot(xs, ys, marker="o", linewidth=1.4,
+                        color=color_for_family(fam),
+                        linestyle=linestyle_for_bounce(bounce),
+                        label=v)
+            ax.set_xscale("log", base=2)
+            ax.set_xticks(spps_present)
+            ax.set_xticklabels([f"x{s}" for s in spps_present])
+            ax.set_title(f"{mlabel}{' ↓' if lower_better else ' ↑'}", fontsize=10)
+            ax.grid(alpha=0.3)
+            ax.set_xlabel("SPP")
+        # Hide unused subplot cells.
+        for blank in range(n, nrows * ncols):
+            axes[blank // ncols, blank % ncols].axis("off")
+        # Single legend across the whole figure (vertical right side).
+        handles, labels = axes[0, 0].get_legend_handles_labels()
+        for ax in axes.flat:
+            if not handles or len(handles) < len(variants_all):
+                h, l = ax.get_legend_handles_labels()
+                for hi, li in zip(h, l):
+                    if li not in labels:
+                        labels.append(li); handles.append(hi)
+        fig.suptitle(f"{step_name} — {scene} — references + variants vs SPP",
+                     fontsize=11)
+        fig.legend(handles, labels, loc="center right", fontsize=8,
+                   bbox_to_anchor=(1.0, 0.5))
+        fig.tight_layout(rect=(0, 0, 0.84, 0.96))
+        out = f"captures/ladder/{step_name}/{out_name or 'reference_comparison'}_{scene}.png"
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        fig.savefig(out, dpi=110)
+        plt.close(fig)
+        outs.append(out)
+        print(f"[{step_name}] [refcmp] -> {out}")
+    return outs

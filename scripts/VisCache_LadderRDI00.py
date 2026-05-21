@@ -50,6 +50,7 @@ from VisCache_LadderCommon import (
     run_baseline_ReSTIRDI_R2dP2d_BrdfRis,
     run_baseline_ReSTIRDI_R2dP2d_K5Spatial,
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline,
+    make_baseline_reference_comparison_plot,
     finalize_step, kResX, kResY,
 )
 
@@ -115,6 +116,12 @@ for scene_file in get_scenes(default=["Sponza"]):
     # ±0.5%, no rmse improvement. Variant dropped from default ladder.
     #     run_baseline_ReSTIRDI_R2dP2d_BrdfRis(STEP, [(0, 0, 1)], scene_file, **common)
     run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(STEP, [(0, 0, 1)], scene_file, **common)
+
+# === Reference-comparison plot: variants vs rtxdi + vanilla, per metric ===
+# One figure per scene, lines across SPP for rmse/psnr/flip/ms_ssim/oklab/
+# gpu_trace. No rays_traced — that's a VisCache-amortization signal that
+# only becomes interesting in RDI01+ when caching is enabled.
+make_baseline_reference_comparison_plot(STEP)
 
 # === Cross-variant overview plot + ladder progress refresh ===
 # carried_winners=[] — RDI00 publishes baselines, not winners. Improvement

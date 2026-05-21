@@ -45,6 +45,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from VisCache_LadderCommon import (
     get_scenes, run_baseline, run_baseline_reference_restirpt,
+    make_baseline_reference_comparison_plot,
     finalize_step,
 )
 
@@ -114,6 +115,11 @@ for scene_file in get_scenes():
         #    variant_tag=f"restirpt_unified_b{mb}",
         #    unifiedDIGI=True,
         #)
+
+# === Reference-comparison plot: variants vs DQLin restirpt + vanilla per metric ===
+# One figure per scene, lines across SPP for rmse/psnr/flip/ms_ssim/oklab/
+# gpu_trace. No rays_traced — baseline-only step, caching enters RPT01+.
+make_baseline_reference_comparison_plot(STEP)
 
 # === Cross-variant overview plot + ladder progress refresh ===
 # carried_winners=[] — RPT00 publishes baselines, not winners. Improvement
