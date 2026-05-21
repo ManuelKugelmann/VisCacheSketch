@@ -5,19 +5,23 @@ Mirrors RDI00's role on the PT side: establishes the cache-less reference
 floor for ReSTIR PT before any ablation work. Runs ONLY the canonical PT
 references — no "ours" variants yet (those land in RPT01+).
 
-  restirpt_b{1,4,8}    — DQLin ReSTIR PT reference (port of NVlabs F8) in
-                         ReSTIR mode — true reservoir resampling (RIS/
-                         GRIS) across temporal + spatial neighbours.
-                         The parity target for our future ReSTIRPT
-                         R2d/R3d implementations. GT resolved from
-                         Ladder00's `vanilla_b{N}_x4096` captures.
-  pathreuse_b{1,4,8}   — Bekaert-style path reuse (NOT ReSTIR — no
-                         reservoir resampling). Same plugin
-                         (`ReSTIRPTPass` with `pathSamplingMode=PathReuse`)
-                         and same shift machinery, but deterministic
-                         shift only. Lower variance-reduction ceiling
-                         than ReSTIR mode; more stable without firefly
-                         clamping. Same GT.
+  restirpt_b{1,4,8}            — DQLin ReSTIR PT (reservoir resampling
+                                 across temporal + spatial neighbours)
+                                 with Lin §15 chroma-preserving clamp
+                                 `fireflyClampK=100`. Biased but stable.
+  restirpt_unclamped_b{1,4,8}  — Same algorithm, `fireflyClampK=1e9` (no
+                                 clamp). Paper-canonical unbiased but
+                                 firefly-unstable. Pairs with the clamped
+                                 variant for cost-of-clamp measurement
+                                 and for the V-aware-eliminates-clamp
+                                 hypothesis in RPT01_VC.
+  pathreuse_b{1,4,8}           — Bekaert path reuse (NOT ReSTIR — no
+                                 reservoir resampling). Same plugin
+                                 (`ReSTIRPTPass` with `pathSamplingMode=
+                                 PathReuse`) and same shift machinery,
+                                 but deterministic shift only. Stable
+                                 without firefly clamping; clamped at
+                                 K=100 for consistency. Same GT.
 
 All variants ride RTXDI for direct lighting (matches the DQLin recipe) and
 are visibility-blind p̂ (V via post-RIS shadow + V=0 invalidation, matching
@@ -64,10 +68,11 @@ for scene_file in get_scenes():
     # `_resolve_gt_for_variant` resolver finds them there via the matching
     # variant_tag. Run `-s 00` first if GTs aren't already present.
 
-    # === DQLin ReSTIR PT references (canonical + BPR) ===
-    # Both share RTXDI for direct illumination; both validated against
-    # the paired vanilla_b{N} GT above.
+    # === DQLin ReSTIR PT references (clamped + unclamped + path-reuse) ===
+    # All share RTXDI for direct illumination; all validated against the
+    # paired vanilla_b{N} GT in Ladder00.
     for mb in (1, 4, 8):
+        # Clamped reservoir resampling (Lin §15 K=100, default).
         run_baseline_reference_restirpt(
             step_name=STEP,
             frame_configs=[(0, 0, 1)],
@@ -78,6 +83,23 @@ for scene_file in get_scenes():
             mogwai_globals=globals(),
             variant_tag=f"restirpt_b{mb}",
         )
+        # Unclamped paper-canonical (K=1e9, no clamp). Pairs with the
+        # clamped variant — RPT01_VC tests whether VisCache V-in-pHat
+        # eliminates the need for the clamp.
+        run_baseline_reference_restirpt(
+            step_name=STEP,
+            frame_configs=[(0, 0, 1)],
+            scene_file=scene_file,
+            resX=res, resY=res,
+            maxBounces=mb,
+            capture_spps=(1, 4),
+            mogwai_globals=globals(),
+            variant_tag=f"restirpt_unclamped_b{mb}",
+            fireflyClampK=1e9,
+        )
+        # Bekaert path-reuse mode (no reservoir resampling). Clamped at
+        # K=100 for consistency; not paired unclamped because BPR doesn't
+        # have the temporal+spatial reservoir-merge firefly amplification.
         run_baseline_reference_restirpt(
             step_name=STEP,
             frame_configs=[(0, 0, 1)],
