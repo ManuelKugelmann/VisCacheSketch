@@ -1,35 +1,42 @@
-/** Falcor-8-workaround experiment: clone of BDPT.cs.slang::ResolveLightTraceReservoirs
-    into a separate compute file, WITH the ShiftPath branch enabled. Tests whether
-    putting the resolve entry in its own .cs.slang file bypasses the reflection trip
-    that hits BDPT.cs.slang::ResolveLightTraceReservoirs.
-
-    Hypothesis: SpatialReuse.cs.slang's main entry calls ShiftPath fine; ResolveLightTraceReservoirs
-    crashes. The difference might be call-graph shape SPECIFIC to BDPT.cs.slang. Moving the
-    entry to its own file separates it.
+/** Falcor-8-workaround experiment, attempt 2: copy SpatialReuse's structure
+    (wrapper function + guard + Texture2D global + RMIS static const) verbatim
+    and see if it reflects clean. If yes, the trip is purely about the WAY
+    the body invokes ShiftPath, not what surrounds it.
 */
-import Utils.Color.ColorMap;
-import Utils.Sampling.SampleGenerator;
-import Utils.Debug.PixelDebug;
 import PathShift;
+import Utils.Sampling.SampleGenerator;
+import Utils.Math.MathHelpers;
+import Utils.Debug.PixelDebug;
 
-static const bool gUseCausticReservoirs   = USE_CAUSTIC_RESERVOIRS;
+Texture2D<uint4> gShiftProbeVertices;
 
-// EXPERIMENTAL: minimal repro test — call ShiftPath but DON'T read from
-// mLightTraceReservoirs. If this passes setVars where the full resolve
-// crashes, the trigger is the combo of HashMap-subscript + ShiftPath.
-// Test: trivial entry that does NOTHING but write a constant. If THIS
-// crashes setVars, the issue is "additional compute pass exceeds Falcor 8
-// reflection threshold". If it passes, the issue is content of the body.
+static const RMISType gShiftProbeMISType = (RMISType)SPATIAL_RMIS_TYPE;
+
+// EXACT mirror of SpatialReuse.cs.slang::SpatialShift — guard wrapper.
+PathSample ShiftProbeWrapped(const PathSample basePath, const PackedPathVertex newVertex, out float jacobian) {
+    jacobian = 0;
+    PathSample result = {};
+
+    if (!basePath.HasFlag(PathFlags::eCausticLightPath)) {
+        int2 tmp;
+        result = ShiftPath(basePath, newVertex, tmp, jacobian);
+    }
+
+    return result;
+}
+
 [shader("compute")]
-[numthreads(8, 8, 1)]
+[numthreads(8, 4, 1)]
 void main(uint3 index: SV_DispatchThreadID) {
     uint2 id = index.xy;
     if (any(id >= gPathGenerator.mParams.mOutputDim)) return;
 
-    PathSample basePath = {};
-    PackedPathVertex pv = {};
-    int2 tmp;
+    // Mimic SpatialReuse.cs.slang::main's pattern: LoadInputReservoir + LoadPrimaryVertex + guarded ShiftPath via wrapper.
+    PathReservoir r = gPathGenerator.LoadInputReservoir(id);
+    const PackedPathVertex vertex = gPathGenerator.LoadPrimaryVertex(id);
+
     float jacobian;
-    PathSample result = ShiftPath(basePath, pv, tmp, jacobian);
-    gPathGenerator.mOutputRadiance[id] = float4(result.IsValid() ? 1 : 0, jacobian, 0, 1);
+    PathSample shifted = ShiftProbeWrapped(r.mSample, vertex, jacobian);
+
+    gPathGenerator.mOutputRadiance[id] = float4(shifted.IsValid() ? 1 : 0, jacobian, 0, 1);
 }
