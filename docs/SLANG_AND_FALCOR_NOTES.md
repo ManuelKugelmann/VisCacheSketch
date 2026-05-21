@@ -88,6 +88,17 @@ What still needs to be tried (task #10):
 - Replace `RWStructuredBuffer<PathReservoir>` in `PathGenerator` struct with raw `RWByteAddressBuffer` + manual pack/unpack
 - Slang issue tracker — file a minimal reproducer
 
+**Root-cause pattern confirmed (2026-05-21):** ReSTIRPTPass `Source/RenderPasses/ReSTIRPTPass/Shift.slang` — the Falcor 8 working analogue — defines every shift function (`computeShiftedIntegrand`, `shiftAndMergeReservoir`, `mergeReservoir`, …) as a **free function** at file scope that takes `RestirPathTracerParams params` as an explicit argument. They are NOT extension methods on `ParameterBlock<PathTracer>`. BDPT's `PathShift.slang` wraps every function in `extension PathGenerator { ... }` making them parameter-block methods, and *that* is what Falcor 8's `ParameterBlock::ParameterBlock` reflection trips on for the resolve entry point. Other entry points (SampleCameraPaths, SampleLightPaths) survive because they touch fewer / smaller methods on the ParameterBlock.
+
+**Plumbing fix** (algorithm unchanged):
+1. Remove the `extension PathGenerator { ... }` wrapper in `PathShift.slang`
+2. Rewrite each function as a free function. Member accesses like `mParams.xxx` become `gPathGenerator.mParams.xxx`; method calls like `Occluded(ray)` become `gPathGenerator.Occluded(ray)`
+3. Callers in `BDPT.cs.slang` / `SpatialReuse.cs.slang` / `TemporalReuse.cs.slang` switch from `gPathGenerator.ShiftPath(...)` to `ShiftPath(...)`
+
+**Refactor scope discovered (2026-05-21):** moving `ShiftPath` and `ShiftCausticPath` out of the `extension PathGenerator` block compiles to *many* `undefined identifier` errors — every PathGenerator-member identifier (`gBidirectional`, `gDisableCameraConnection`, `gShiftSuffixes`, `mParams`, `Occluded`, `GetShiftedSuffixVertex`, `InitializeLightPath`, `SetNextVertex`, `ShiftLightSubpath`, `ShiftPrefix`, `ConnectToSuffix`, `ShiftSuffix`, `EvalLightContribution`, `ConnectToCamera`, `PackLightSubpathVertex`, …) needs `gPathGenerator.` prefix; **AND** nested types like `PathState<bShift>` (defined inside `struct PathGenerator`) need `PathGenerator.PathState<bShift>` qualification. The refactor is mechanical but invasive (~30 sites across two functions). Same applies to refactoring block 1 (helpers ConnectToSuffix etc.) if needed. Estimated as a half-day of focused mechanical work + verification.
+
+**Wrapper test ruled out (2026-05-21):** wrapping `gPathGenerator.ShiftPath(...)` in a free function `ShiftPathFree(...)` does NOT bypass the crash. Slang inlines through the wrapper so the reflection sees the same call graph. The fix must change the actual function *definition* context, not the call site.
+
 Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented out in `BDPT.cs.slang`. This disables only the optional sub-pixel re-projection optimization; the rest of the ReSTIR resampling pipeline is intact and renders 8 frames cleanly. See [project_restir_bdpt_port memory](../memory) for the running status.
 
 ---
