@@ -2,6 +2,7 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Rendering/Lights/EmissiveUniformSampler.h"
+#include <cstdlib>  // std::getenv for BDPT_SHIFT_PROBE gate
 
 namespace
 {
@@ -873,19 +874,21 @@ void ReSTIRBDPT::updatePrograms()
             }
             preparePass(mpLightReservoirResolvePass);
 
-            // [Falcor 8 experiment] ResolveLightTraceShift.cs.slang probe:
-            // currently mirrors SpatialReuse.cs.slang's structure verbatim
-            // (Texture2D global, RMIS static const, ShiftPath-via-wrapper
-            // pattern). If this passes setVars, the trip in BDPT.cs.slang's
-            // ResolveLightTraceReservoirs is purely body-content related —
-            // the workaround would be matching that wrapper pattern there.
-            if (!mpResolveLightTraceShiftPass)
+            // [Falcor 8 experiment, gated] ResolveLightTraceShift.cs.slang probe.
+            // The probe mirrors SpatialReuse.cs.slang's structure verbatim
+            // (Texture2D global, RMIS static const, ShiftPath-via-wrapper).
+            // Gated off by default so smoke tests stay green; enable via
+            // `BDPT_SHIFT_PROBE=1` env var when actively testing the workaround.
+            if (std::getenv("BDPT_SHIFT_PROBE"))
             {
-                ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kResolveShiftPassFilename).csEntry("main");
-                mpResolveLightTraceShiftPass = ComputePass::create(mpDevice, desc, defines, false);
+                if (!mpResolveLightTraceShiftPass)
+                {
+                    ProgramDesc desc = baseDesc;
+                    desc.addShaderLibrary(kResolveShiftPassFilename).csEntry("main");
+                    mpResolveLightTraceShiftPass = ComputePass::create(mpDevice, desc, defines, false);
+                }
+                preparePass(mpResolveLightTraceShiftPass);
             }
-            preparePass(mpResolveLightTraceShiftPass);
         }
     }
 
