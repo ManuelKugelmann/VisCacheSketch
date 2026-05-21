@@ -106,6 +106,18 @@ What still needs to be tried (task #10):
 
 Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented out in `BDPT.cs.slang`. This disables only the optional sub-pixel re-projection optimization; the rest of the ReSTIR resampling pipeline is intact and renders 8 frames cleanly. See [project_restir_bdpt_port memory](../memory) for the running status.
 
+### Feature-by-feature status (ReSTIRBDPTPass on Falcor 8 + Slang 2024.14.6)
+
+| ReSTIRBDPT property | Status | Notes |
+|---|---|---|
+| `useBPT=True` (bidirectional light subpaths)                         | ✓ works   | core BDPT feature |
+| `useResampling=True` (per-pixel ReSTIR reservoir merge)              | ✓ works   | tested 8-frame smoke |
+| `useResampling=True` + `gShiftLightPathsToPixelCenters` enabled      | ✗ broken  | the ConnectToSuffix reflection bug; workaround = disable the branch |
+| `useCausticReservoirs=True` (caustic reservoir buffer, no temporal)  | ✓ works   | tested standalone — 64-frame PASS via `scripts/ReSTIRBDPTPass_Caustic_Graph.py` |
+| `useTemporalResampling=True`                                         | ✗ broken  | `TemporalReuse.cs.slang` reaches `ShiftPath` through the same reflection trip |
+| `useCausticShift=True`                                               | ✗ blocked | requires `useTemporalResampling=True` |
+| `spatialReusePasses>0`                                               | likely ✗  | `SpatialReuse.cs.slang` also reaches `ShiftPath` — same crash family |
+
 ---
 
 ## Useful upstream resources
