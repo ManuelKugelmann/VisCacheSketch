@@ -9,6 +9,7 @@ namespace
     const std::string kTemporalReusePassFilename = "RenderPasses/ReSTIRBDPTPass/TemporalReuse.cs.slang";
     const std::string kSpatialReusePassFilename  = "RenderPasses/ReSTIRBDPTPass/SpatialReuse.cs.slang";
     const std::string kReflectTypesFile          = "RenderPasses/ReSTIRBDPTPass/ReflectTypes.cs.slang";
+    const std::string kResolveShiftPassFilename  = "RenderPasses/ReSTIRBDPTPass/ResolveLightTraceShift.cs.slang";
 
     // Render pass inputs and outputs.
     const std::string kInputVBuffer       = "vbuffer";
@@ -805,6 +806,7 @@ void ReSTIRBDPT::resetPrograms()
     mpSampleCameraPathsPass = nullptr;
     mpSampleLightPathsPass = nullptr;
     mpLightReservoirResolvePass = nullptr;
+    mpResolveLightTraceShiftPass = nullptr;
     mpSpatialReusePass = nullptr;
     mpTemporalReusePass = nullptr;
     mpTemporalShiftPass = nullptr;
@@ -870,6 +872,26 @@ void ReSTIRBDPT::updatePrograms()
                 mpLightReservoirResolvePass = ComputePass::create(mpDevice, desc, defines, false);
             }
             preparePass(mpLightReservoirResolvePass);
+
+            // [Falcor 8 experiment, on shelf] ResolveLightTraceShift.cs.slang
+            // is kept as a probe file — when uncommented it creates a second
+            // compute pass that calls ShiftPath. Tested 2026-05-21: trivial
+            // body PASSES, but adding `ShiftPath(basePath, vertex, tmp, jacobian)`
+            // call to a new compute entry CRASHES setVars — even when the
+            // existing mpLightReservoirResolvePass is disabled and the body
+            // contains no HashMap read. Suggests Falcor 8's per-program
+            // reflection of ShiftPath's call graph is somehow path-dependent
+            // (SpatialReuse.cs.slang::main calls ShiftPath fine). Re-enable
+            // and bisect when we revisit task #10.
+            #if 0
+            if (!mpResolveLightTraceShiftPass)
+            {
+                ProgramDesc desc = baseDesc;
+                desc.addShaderLibrary(kResolveShiftPassFilename).csEntry("main");
+                mpResolveLightTraceShiftPass = ComputePass::create(mpDevice, desc, defines, false);
+            }
+            preparePass(mpResolveLightTraceShiftPass);
+            #endif
         }
     }
 

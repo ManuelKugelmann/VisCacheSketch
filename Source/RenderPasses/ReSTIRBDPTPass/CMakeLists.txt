@@ -18,6 +18,7 @@ target_sources(ReSTIRBDPTPass PRIVATE
     SpatialReuse.cs.slang
     TemporalReuse.cs.slang
     BDPT.cs.slang
+    ResolveLightTraceShift.cs.slang
 )
 
 target_copy_shaders(ReSTIRBDPTPass RenderPasses/ReSTIRBDPTPass)

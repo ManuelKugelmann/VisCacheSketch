@@ -119,6 +119,14 @@ Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented o
 | `spatialReusePasses>0`                                               | ✓ works   | tested 16-frame PASS — confirms the reflection trip is SPECIFIC to BDPT.cs.slang::ResolveLightTraceReservoirs, not to ShiftPath itself. SpatialReuse.cs.slang::main is a separate compute pass with a different call graph; its setVars reflects cleanly even though it calls into `ShiftPath` → `ConnectToSuffix` |
 | `useCausticReservoirs=True` + `spatialReusePasses>0` (combined)      | ✓ works   | tested 8-frame PASS |
 
+### Negative result: separate-compute-file workaround doesn't help (2026-05-21)
+
+Tested moving the resolve entry to a new file `ResolveLightTraceShift.cs.slang` (separate `.cs.slang` with its own `main` entry, body cloned from `BDPT.cs.slang::ResolveLightTraceReservoirs` with shift branch enabled). Result: same SIGSEGV during setVars even with the original resolve pass DISABLED (so only the new pass exists in the program). Trivial body (just `mOutputRadiance[id] = const`) PASSES, but adding bare `ShiftPath(basePath, primaryVertex, tmp, jacobian)` to the new entry crashes.
+
+Mystery: `SpatialReuse.cs.slang::main` calls `ShiftPath` (via a `SpatialShift` wrapper) AND works fine. The body content of the two passes is similar enough that "what's specifically different" remains elusive. Possible Slang-reflection cache effects, undefined-symbol resolution order, or some other path-dependent issue.
+
+Probe file kept at `Source/RenderPasses/ReSTIRBDPTPass/ResolveLightTraceShift.cs.slang` plus an `#if 0`-gated host-side create site in `ReSTIRBDPT.cpp` so the experiment can resume without re-deriving it.
+
 ---
 
 ## Useful upstream resources

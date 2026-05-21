@@ -68,7 +68,7 @@ if "%CLEAN_CACHE%"=="1" (
         if exist "!BUILD_DIR!\CMakeCache.txt" (
             "!CLEAN_CMAKE!" --build "!BUILD_DIR!" --target clean 2>nul
         )
-        echo [build] --clean: nuking precompiled-header (.pch) cache...
+        echo [build] --clean: nuking precompiled-header .pch cache...
         REM MSBuild's `--target clean` leaves PCH files behind; after a Slang
         REM version downgrade those can hold inline expansions for symbols that
         REM no longer exist (e.g. slang_createGlobalSession2 in 2025.5). Nuke
