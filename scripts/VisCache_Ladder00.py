@@ -80,11 +80,9 @@ for scene_file in get_scenes():
         mogwai_globals=globals(),
     )
 
-    # Multi-bounce vanilla + DQLin ReSTIRPT references previously lived here.
-    # They moved to VisCache_LadderRPT00.py on 2026-05-20 so the PT baseline
-    # family has its own dedicated parity step (mirroring how DI baselines
-    # are extracted to RDI00). Ladder00 keeps the single-bounce DI references
-    # below.
+    # Multi-bounce vanilla + DQLin ReSTIRPT references live in
+    # VisCache_LadderRPT00.py (PT family parity). Ladder00 keeps the
+    # single-bounce DI references below.
 
     # 2. RTXDI external reference — the parity target.
     #    RTXDI = 1-sample-per-frame; x4 = 4 frames into accumulator.

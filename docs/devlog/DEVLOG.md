@@ -240,148 +240,19 @@ isolates the prepass flip at current HEAD with all other optimizations
 frozen — confirms −27% on both Bistro AND Sponza at x64 with rmse
 identical (algorithm-neutrality preserved).
 
-### Timing investigation summary (2026-05-18)
+### Timing + RTXDI cost comparison (caveats)
 
-After EMA→stats.mean, reset-before-warmup, diagnostics-off, and
-x64 measurement, the honest steady-state per-frame numbers:
+- Falcor's `events[k]["average"]` is an EMA (σ=0.98) and survives `resetStats()`. Use `events[k]["stats"]["mean"]` for true per-call arithmetic mean.
+- `LADDER_TIMING_MODE=1` disables VisCache diagnostic-texture writes (~90% of our per-frame GPU cost). Use for timing benchmarks; default-on for quality plates.
+- Honest steady-state at x16, diagnostics off: ~2.5× slower per frame than RTXDI on Bistro/Sponza. Quality EXCEEDS RTXDI (rmse −41% Bistro, −44% Sponza at x16). Trade: quality-per-frame vs quality-per-ms. RTXDI saturates at mCap=20; our metrics improve monotonically with SPP.
 
-  Bistro x64:  RTXDI 1.56 ms,  Ours 8.62 ms  (5.5x slower)
-  Sponza x64:  RTXDI 1.62 ms,  Ours 8.74 ms  (5.4x slower)
+### Bayer-cascade convergence
 
-Quality at same SPP:
-  Bistro x64:  RTXDI err 11.4 rmse 98   Ours err 4.3 rmse 44 (~2.5x better)
-  Sponza x64:  RTXDI err 6.6  rmse 0.38 Ours err 2.4 rmse 0.13 (~2.7x better)
+At x16 SPP our F17P24 cell-pool architecture beats RTXDI on every metric across Bistro+Sponza. RTXDI's metrics DEGRADE x4→x16 (M-cap saturation reusing stale fireflies); ours monotonically improve. The Bayer-coordinated cell-pool fill IS our equivalent of RTXDI's per-frame 5-pass cascade — stretched in time across N²=16 subframes. We don't need to port RTXDI's compute-presample-tile or 5-iteration cascade.
 
-Cost-center analysis (un-instrumented; would need PIX/NSight for
-true sub-pass breakdown):
- - K=17 uniform-fresh K-RIS = 17 × mi.eval(BSDF) per pixel
- - K=24 pool reads with atomic load + reservoir-CAS per slot
- - 3 sequential reservoir merges (cell + temporal + spatial-pixel)
-   each with pairwise-MIS-style canonical re-stream when BIAS_CORRECTION=1
- - VisCacheParams cbuffer access patterns (gNormalAddr, gJitterFilter
-   branches in hot paths)
- - PathTracerPrePass redundant work (NoPrepass saves 25-33%)
+### RTXDI-parity attempts that did NOT help (pitfalls)
 
-State of RTXDI parity claim:
- - Parameter parity   ✓ matched (K=41, mCap=20, biasCorrection=Basic, PdfMipmap)
- - Quality parity     ✓ EXCEEDED (2.5-2.8x better err+rmse)
- - Speed parity       ✗ 5x slower per frame (steady state)
- - Convergence        ✓ better (monotonic; RTXDI saturates at mCap=20)
-
-The architectural trade is: we buy quality with frames-of-compute.
-Cell-pool + Bayer + reservoir-CAS is structurally heavier per frame
-but more sample-efficient. The quality wins persist across all
-scenes at all SPPs once measurement is clean.
-
-### Diagnostics dominate per-frame cost (2026-05-18)
-
-Following the EMA-fix retraction below, running with
-`LADDER_TIMING_MODE=1` (disables VisCache diagnostic-texture writes)
-reveals that diagnostics account for ~90% of our per-frame GPU time:
-
-|              | Diag ON  | Diag OFF | savings |
-|--------------|----------|----------|---------|
-| Bistro x16   | 81 ms    | 7.98 ms  | -90%    |
-| Sponza x16   | 80 ms    | 8.31 ms  | -90%    |
-
-Quality unchanged with diagnostics off (rmse delta < 0.1% across
-all SPPs/scenes) — they're texture writes for per-variant quality
-plates, not algorithm participation.
-
-Updated comparison to RTXDI (all diagnostics off):
-
-|              | RTXDI   | Ours    | Ratio        |
-|--------------|---------|---------|--------------|
-| Bistro x16   | 3.23 ms | 7.98 ms | 2.5x slower  |
-| Sponza x16   | 3.14 ms | 8.31 ms | 2.6x slower  |
-
-The remaining 2.5x cost vs RTXDI is the real algorithm gap. The
-13× and 17× claims from the EMA-corrected entry below included
-diagnostic overhead that doesn't represent the algorithm.
-
-Use LADDER_TIMING_MODE=1 for pure timing benchmarks. Default
-(diagnostics on) is correct for quality plates + ladder analysis.
-
-### TIMING CORRECTION (2026-05-15 late) — Falcor EMA artifact
-
-The "we're 3-4× faster per frame than RTXDI" claim below was WRONG.
-It rested on `events[k]["average"]` from Falcor's profiler, which
-is actually an EMA with σ=0.98 (Profiler.cpp:43). `resetStats()`
-does NOT reset the EMA (line 234-239 only clears the
-`computeStats()` history buffer) — so 16 warmup frames leaked
-into the measurement window.
-
-Switching to `events[k]["stats"]["mean"]` (true per-call arithmetic
-mean) reveals the actual per-frame cost at x16:
-
-|              | RTXDI ms/fr | Ours ms/fr | Ratio          |
-|--------------|-------------|------------|----------------|
-| Cornell_1PL  | 2.70        | 47.32      | ours 17.5× slower |
-| Bistro       | 23.44       | 81.19      | ours 3.5× slower  |
-| Sponza       | 5.81        | 79.65      | ours 13.7× slower |
-
-So we are NOT faster. We are 3-17× SLOWER per frame than RTXDI at
-steady state. The QUALITY wins remain valid (40-95% rmse advantage
-across all scenes at all SPPs) — those weren't timing-dependent.
-
-Trade-off: ours buys quality at cost of speed. For the same
-quality target, RTXDI would need many more frames; but its
-quality plateaus around mCap=20 saturation (Bistro x4→x16
-degrades), while ours improves monotonically with SPP. So
-ours is the right architecture for quality-per-frame, not
-quality-per-millisecond.
-
-The original 2026-05-15 "convergence confirmed" entry below
-retains its QUALITY claims unchanged. Strike its timing claims.
-
-### Bayer-cascade convergence CONFIRMED (2026-05-15, end of session)
-
-Resolved the residual rmse gap question definitively. Convergence
-test at x1/x4/x16 SPP on Bistro+Sponza with our F17P24 Basic
-canonical vs RTXDI reference:
-
-|              | err%       | art5%      | rmse        | psnr       |
-|--------------|------------|------------|-------------|------------|
-| Bistro x1    | 12.8 / 11.4 (RTXDI) | 71.6 / 67.0 | 163.6 / 95.6  | 47.3 / 52.0 |
-| Bistro x4    | **8.8** / 10.0 | 61.7 / 61.8 | 120.2 / 108.3 | 50.0 / 50.9 |
-| Bistro x16   | **5.9** / 10.8 | **48.1** / 65.4 | **67.0** / 113.7 | **55.1** / 48.2 |
-| Sponza x1    | **6.5** / 7.3 | **59.3** / 61.3 | 0.70 / 0.43   | 20.7 / 24.8 |
-| Sponza x4    | **5.8** / 6.6 | **53.9** / 54.2 | 0.47 / 0.40   | 24.0 / 25.5 |
-| Sponza x16   | **4.3** / 6.4 | **36.4** / 44.6 | **0.26** / 0.47 | **29.1** / 24.1 |
-
-Pattern: at x16 SPP our system BEATS RTXDI on every metric on both
-scenes, by significant margins (Bistro rmse −41%, Sponza rmse −44%).
-RTXDI's metrics DEGRADE x4→x16 on Bistro (rmse 108→114, art5 62→65)
-likely from M-cap saturation reusing stale fireflies. Our metrics
-monotonically improve.
-
-**Interpretation:**
-
-The residual ~11% Bistro rmse / 19% Sponza rmse gap we observed at
-x4 was cold-start of Bayer-stretched diffusion. Across N²=16 Bayer
-subframes our cell-pool fully warms; once warmed, the architecture
-strictly outperforms RTXDI's per-frame 5-pass cascade because:
-
-- RTXDI's spatial cascade is fixed work per frame (5 passes × 1
-  neighbor each); diffusion doesn't compound across frames beyond
-  the temporal mCap=20 history.
-- Our Bayer-cell-pool keeps accumulating better-presampled candidates
-  across N² frames; the per-pixel reservoir's temporal merge eats
-  over a wider effective history (each Bayer subframe contributes
-  different pixels to the cell, which then become reservoir
-  candidates at later subframes — hierarchical compounding).
-
-The cell-pool/Bayer architecture is structurally validated as the
-correct multi-pass-equivalent for steady-state operation. We don't
-need to port RTXDI's compute-presample-tile or its 5-iteration
-cascade — our system has its own multi-pass diffusion mechanism
-stretched in the time dimension. The Bayer-coordinated cell-pool
-fill IS the cascade.
-
-### Failed RTXDI-parity attempts (2026-05-15 session)
-
-- **Category-quota K-RIS — single-stream (c1d4345).** Replaced F17 uniform-fresh with dedicated 8 env + 8 inf + 24 pool streams flowing into one shared reservoir. Bistro x4 rmse +43% regression (164.43 vs 114.98). Mixed pHat scales across categories cause variance spikes when env samples with raw env-map pdf hit fat-tail values.
-- **Category-quota K-RIS — sub-reservoir (8b5627f).** Proper RTXDI architecture: per-category private LocalReservoirs, then `streamingMergeReservoir` into compound. Bistro x4 rmse +26% (144.22). Hierarchical winner selection (sub-roulette × compound-roulette) improves over single-stream but still trails F17 uniform — RTXDI's separation alone isn't enough without the presample tile semantics.
-- **BRDF candidate stream (2b7e353).** RTXDI_SampleBrdf analog: BSDF direction → closest-hit ray → emissive/env classification → LightSampleDI. MIS-balance Li damping (balance heuristic between bs.pdf and NEE-equivalent pdf). Bistro+Sponza unchanged ±0.5%, no rmse improvement. The MIS damping zeroes the BRDF candidate on diffuse surfaces AND in env-sun direction (sun peak's env-pdf dominates balance ratio). RTXDI uses `RTXDI_LightBrdfMisWeight` (blended source pdf) instead of Li damping — requires presample tile to implement properly.
-- **K=5 single-pass spatial (cf7a3c7).** Bumped `spatialPixelsK` 1→5 to approximate RTXDI's `spatialIterations=5`. MIXED result: Sponza rmse -5.5% (variance reduction works on smooth scenes); Bistro rmse +18% (single-snapshot K=5 amplifies fireflies — RTXDI's 5 separate passes average them across iterations). Closing the gap requires multi-pass spatial reuse with reservoir ping-pong (substantial refactor: separate CS pass, 2 reservoir buffers, 5 dispatches).
-- **biasCorrection=Basic flip (5be5db0).** ✓ THE WIN. RTXDI's actual default is Basic (Falcor RTXDI.h:144); we had Pairwise (=1). Flipping to Basic improves err+art5 on every scene with mild rmse regression on Cornell_32PL (+18%) and Bistro (+5%). art5 hits exact RTXDI parity on Bistro (61.77 vs 61.81); BEATS RTXDI on Sponza (53.89 vs 54.17). Param-parity argument alone justifies the flip. Pairwise MIS port retained for cross-surface reservoir merges (cell/temporal/spatial — see project_pairwise_mis_cross_surface_principle memory).
+- **Category-quota K-RIS** (single-stream OR sub-reservoir) — mixed pHat scales across env/analytic/BRDF categories cause variance spikes. RTXDI's category separation works because of presample-tile semantics, not the separation itself.
+- **BRDF candidate stream with MIS-balance Li damping** — the damping zeroes the BRDF candidate on diffuse surfaces AND in env-sun direction. RTXDI uses `RTXDI_LightBrdfMisWeight` (blended source pdf) which requires the presample tile.
+- **K=5 single-pass spatial** — single snapshot amplifies fireflies on Bistro (+18%) even though Sponza wins. Multi-pass spatial reuse with reservoir ping-pong is the right architecture, not bigger K per pass.
+- **biasCorrection** — Pairwise looks safer but the param-parity win is Basic (RTXDI's actual default). Pairwise stays in the codebase only for cross-surface reservoir merges (cell / temporal / spatial — see `project_pairwise_mis_cross_surface_principle`).

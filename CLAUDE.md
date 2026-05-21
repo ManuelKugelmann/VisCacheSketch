@@ -124,18 +124,6 @@ Scripts in `scripts/VisCache_Ladder*.py`; shared infra in `VisCache_LadderCommon
 - **Always use `runtime/pythondist/python.exe`** — never system Python; `runtime/pythondist/python.exe -m pip install <pkg>`
 - Never work in `Falcor/build/...` — only edit `Source/`, work in `runtime/`
 
-## Recovery artefacts (local-only, not committed)
-
-`scripts/VisCache_LadderCommon.py` was truncated to 0 bytes during a disk-full write on 2026-04-21 23:05. It has been reconstructed from the session `.pyc` backup. These files are **excluded via `.git/info/exclude`** and must stay local:
-
-- `VisCache_LadderCommon_session.pyc_backup` — intact bytecode at session state (md5 6e28191a40d9b3f851ffb9580f5edbdd)
-- `VisCache_LadderCommon_githead.py.bak` — git-HEAD pre-session fallback
-- `_recovery_diff.py` — bytecode fingerprint validator (ref .pyc vs current compiled source)
-- `_recovery_session_changes.md` / `_recovery_session_reads.md` / `_recovery_this_session_notes.md` — per-function reconstruction notes and post-.pyc edit log (A.1–A.8)
-- `_plot_metric_replacement.py` / `_add_nested_docstrings.py` — ad-hoc patchers used during reconstruction
-
-Current diff state: 122 match / 11 diff (4 expected from post-.pyc edits, 7 implementation drift — functionally correct but not byte-identical). Keep the artefacts as an audit trail until the ladder stack has proven stable across several runs.
-
 ## `.agents/` — Inter-Agent Communication
 
 Gitignored folder for agent coordination. Two files:
