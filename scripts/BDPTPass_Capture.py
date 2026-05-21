@@ -22,7 +22,7 @@ except ImportError:
     pass
 
 project_root = os.environ.get("PROJECT_ROOT", "")
-pass_kind    = os.environ.get("PASS_KIND", "vanilla")
+pass_kind    = os.environ.get("PASS_KIND", "vanilla")  # 'vanilla' | 'restir' | 'caustic'
 scene_file   = os.environ.get("SCENE_FILE", "CornellBox_1AreaLight.pyscene")
 num_frames   = int(os.environ.get("NUM_FRAMES", "64"))
 out_dir      = os.environ.get("OUT_DIR", os.path.join(project_root, "runtime", "captures", "bdpt_check"))
@@ -40,6 +40,15 @@ g = RenderGraph("BDPTCapture")
 if pass_kind == "vanilla":
     bdpt = createPass("BDPT", {})
     label = "vanilla_BDPT"
+elif pass_kind == "caustic":
+    bdpt = createPass("ReSTIRBDPT", {
+        'useBPT': True,
+        'useResampling': True,
+        'useTemporalResampling': False,
+        'useCausticReservoirs': True,    # caustic reservoir buffer
+        'useCausticShift': False,
+    })
+    label = "ReSTIR_BDPT_caustic"
 else:
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
