@@ -116,7 +116,7 @@ Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented o
 | `useCausticReservoirs=True` (caustic reservoir buffer, no temporal)  | ✓ works   | tested standalone — 64-frame PASS via `scripts/ReSTIRBDPTPass_Caustic_Graph.py` |
 | `useTemporalResampling=True`                                         | ✗ broken  | `TemporalReuse.cs.slang` reaches `ShiftPath` through the same reflection trip |
 | `useCausticShift=True`                                               | ✗ blocked | requires `useTemporalResampling=True` |
-| `spatialReusePasses>0`                                               | likely ✗  | `SpatialReuse.cs.slang` also reaches `ShiftPath` — same crash family |
+| `spatialReusePasses>0`                                               | ✓ works   | tested 16-frame PASS — confirms the reflection trip is SPECIFIC to BDPT.cs.slang::ResolveLightTraceReservoirs, not to ShiftPath itself. SpatialReuse.cs.slang::main is a separate compute pass with a different call graph; its setVars reflects cleanly even though it calls into `ShiftPath` → `ConnectToSuffix` |
 
 ---
 
