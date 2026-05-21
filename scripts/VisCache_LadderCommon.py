@@ -5213,17 +5213,19 @@ def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
                                    gt_spp=4096, variant_tag=None,
                                    numNEECandidates=16,
                                    visibilityCheck=False, lightSelection=False):
-    """ReSTIR NEE pure K-RIS baseline (no cell reservoirs).
+    """Pure K-RIS NEE baseline (no cell reservoirs, NOT ReSTIR).
 
-    The lean reference for ReSTIRNEEPass: F=numNEECandidates RIS candidates
-    per NEE event, no spatial/temporal reuse. Compared against vanilla path
-    tracer at matched maxBounces — should match within K-RIS noise (i.e.
-    sqrt(F) better than vanilla single-sample NEE per call).
+    Streaming K-RIS at every NEE event with no spatial/temporal reuse —
+    just better single-shot light selection. Strictly not ReSTIR (no
+    reservoir, no reuse); the variant tag reflects that. Compared against
+    vanilla path tracer at matched maxBounces — should match within K-RIS
+    noise (i.e. sqrt(F) better than vanilla single-sample NEE per call).
 
     `visibilityCheck` / `lightSelection` flip the VisCachePass toggles —
     leave False for the vblind baseline (default), True for the VC variant.
 
-    Tag in CSV: f'nee_F{F}_b{maxBounces}'."""
+    Tag in CSV: f'nee_kris_F{F}_b{maxBounces}' (was `nee_F16_b{N}` —
+    renamed for taxonomic clarity, matching the pathreuse rename)."""
     if render_graph_ReSTIRNEEPass is None:
         print(f"[{step_name}] ReSTIRNEE graph not importable — skipping nee_F{numNEECandidates}")
         return
@@ -5240,9 +5242,8 @@ def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
         captureDir, gt_spp, f"{resX}x{resY}",
         gt_variant_tag=f"vanilla_b{maxBounces}",
     )
-    tag = variant_tag or f"nee_F{numNEECandidates}_b{maxBounces}"
-    # force_actual_spp=1: ReSTIR NEE accumulates per-frame K-RIS observations
-    # into cell reservoirs; matches the realtime regime (1 SPP/frame). Same
+    tag = variant_tag or f"nee_kris_F{numNEECandidates}_b{maxBounces}"
+    # force_actual_spp=1: matches the realtime regime (1 SPP/frame). Same
     # rationale as ReSTIRPT — see project_kslot_archcontext for the
     # SPP-convention rationale.
     _run_baseline_variant(
@@ -5334,10 +5335,10 @@ def run_baseline_ReSTIRDI_R2dP2d_PureKRIS_vc(step_name, frame_configs, scene_fil
 
 def run_baseline_ReSTIRNEEPass_F16_vc(step_name, frame_configs, scene_file,
                                       maxBounces=3, **kwargs):
-    """VisCache-on counterpart of nee_F16. Tag: `nee_F16_vc_b{N}`."""
+    """VisCache-on counterpart of pure K-RIS NEE. Tag: `nee_kris_F16_vc_b{N}`."""
     kwargs.setdefault("visibilityCheck", True)
     kwargs.setdefault("lightSelection", True)
-    kwargs.setdefault("variant_tag", f"nee_F16_vc_b{maxBounces}")
+    kwargs.setdefault("variant_tag", f"nee_kris_F16_vc_b{maxBounces}")
     return run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
                                           maxBounces=maxBounces, **kwargs)
 
@@ -5650,8 +5651,10 @@ def make_baseline_reference_comparison_plot(step_name, variant_groups=None,
             palette[fam] = "#8c2d04"
         elif fam.startswith("restirpt") or fam.startswith("pathreuse"):
             palette[fam] = "#fdae6b"
+        elif fam == "nee_kris":
+            palette[fam] = "#74c476"   # lighter green — pure K-RIS, not ReSTIR
         elif fam.startswith("nee_"):
-            palette[fam] = "#2ca02c"
+            palette[fam] = "#2ca02c"   # ReSTIR-NEE (with cell reservoir)
         else:
             palette[fam] = cycle[next_ci[0] % len(cycle)]
             next_ci[0] += 1

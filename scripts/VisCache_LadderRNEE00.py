@@ -6,17 +6,20 @@ cache-less reference floor for ReSTIR NEE before any ablation work.
 Runs ONLY the canonical NEE references — no "ours" variants yet (those
 land in RNEE01+).
 
-  nee_F16_b{1,4,8}    — ReSTIRNEEPass pure K-RIS (F=16 candidates, no
-                        cell reservoirs, no VisCache). Should match
-                        vanilla PT in expected value but with lower
-                        per-frame noise (sqrt(F)=4× reduction). GT
-                        resolved from Ladder00's `vanilla_b{N}_x4096`
-                        captures (shared with RPT00).
-  nee_F16R3d_b{1,4,8} — Pure K-RIS NEE + 3D cell reservoirs (vblind,
-                        reservoirK=1, lo=0 — the prescribed safe config
-                        per project_kslot_archcontext). Bottoms-out the
-                        cell-reuse mechanism for VisCache integration in
-                        RNEE01+.
+  nee_kris_F16_b{1,4,8} — Pure K-RIS NEE (F=16 candidates). NOT ReSTIR
+                          — no reservoir, no reuse, just better single-
+                          shot light selection. Should match vanilla PT
+                          in expected value but with lower per-frame
+                          noise (sqrt(F)=4× reduction). GT resolved
+                          from Ladder00's `vanilla_b{N}_x4096` captures
+                          (shared with RPT00).
+  nee_F16R3d_b{1,4,8}   — Pure K-RIS NEE + 3D cell reservoirs. IS
+                          ReSTIR — the cell IS the reservoir, identity-
+                          stream merge IS the reuse. vblind here
+                          (reservoirK=1, lo=0 prescribed safe config per
+                          project_kslot_archcontext). Bottoms-out the
+                          cell-reuse mechanism for VisCache integration
+                          in RNEE01_VC.
 
 All variants are visibility-blind p̂ baselines (V via post-shadow trace
 at NEE event), matching the recipe used in RDI00 / RPT00. VisCache-
