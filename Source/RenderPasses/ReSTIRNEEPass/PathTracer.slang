@@ -1090,6 +1090,12 @@ struct PathTracer
                     {
                         // K-RIS local state — treated as canonical for the
                         // optional cell-reservoir merge below.
+                        // M_eff = K (not validCount). Bitterli RIS estimator
+                        // is mean over ALL K proposals including failures
+                        // (failures contribute w=0 to sumW implicitly). Using
+                        // validCount would bias the estimator HIGH by
+                        // K/validCount — proven 2026-05-21: validCount swap
+                        // made nee_F16 brighter than vanilla by 30-42%.
                         float M_eff = float(kNumNEECandidates);
                         float wSum_eff = sumW;
                         float pHat_eff = pHatBest;

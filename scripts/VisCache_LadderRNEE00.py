@@ -6,22 +6,21 @@ cache-less reference floor for ReSTIR NEE before any ablation work.
 Runs ONLY the canonical NEE references — no "ours" variants yet (those
 land in RNEE01+).
 
-  vanilla_b{1,3}    — Falcor PathTracer multi-bounce vanilla NEE reference.
-                      b=1 (direct-only) is the cheapest sanity check;
-                      b=3 (default ReSTIR NEE depth) is the parity target.
-                      Provides the x4096 GT each nee_*_b{N} is compared
-                      against (variant_tag matches so the GT resolver
-                      pairs them up).
-  nee_F16_b{1,3}    — ReSTIRNEEPass pure K-RIS (F=16 candidates, no
-                      cell reservoirs, no VisCache). The sqrt(F)=4×
-                      noise-reduction reference for our cell-reservoir
-                      enhancement; should match vanilla PT in expected
-                      value but with lower per-frame noise.
-  nee_F16R3d_b{1,3} — Pure K-RIS NEE + 3D cell reservoirs (vblind,
-                      reservoirK=1, lo=0 — the prescribed safe config
-                      per project_kslot_archcontext). Bottoms-out the
-                      cell-reuse mechanism for VisCache integration in
-                      RNEE01+.
+  vanilla_b{1,4,8}    — Falcor PathTracer multi-bounce vanilla NEE
+                        reference. Bounce set matches RPT00 (1/4/8) so
+                        cross-step comparisons are apples-to-apples.
+                        Provides the x4096 GT each nee_*_b{N} is compared
+                        against (variant_tag matches so the GT resolver
+                        pairs them up).
+  nee_F16_b{1,4,8}    — ReSTIRNEEPass pure K-RIS (F=16 candidates, no
+                        cell reservoirs, no VisCache). Should match
+                        vanilla PT in expected value but with lower
+                        per-frame noise (sqrt(F)=4× reduction).
+  nee_F16R3d_b{1,4,8} — Pure K-RIS NEE + 3D cell reservoirs (vblind,
+                        reservoirK=1, lo=0 — the prescribed safe config
+                        per project_kslot_archcontext). Bottoms-out the
+                        cell-reuse mechanism for VisCache integration in
+                        RNEE01+.
 
 All variants are visibility-blind p̂ baselines (V via post-shadow trace
 at NEE event), matching the recipe used in RDI00 / RPT00. VisCache-
@@ -61,9 +60,9 @@ from VisCache_LadderCommon import (
 STEP = "RNEE00"
 res = int(os.environ.get("RES", "512"))
 
-# NEE bounces to test. b=1 = direct-only sanity. b=3 = ReSTIR NEE prescribed
-# default (cell-reuse mechanism engages at primary + 2 indirect bounces).
-NEE_BOUNCES = (1, 3)
+# NEE bounce set matches RPT00's 1/4/8 — apples-to-apples cross-step.
+# b=1 = direct-only sanity. b=4 / b=8 exercise cell-reuse depth.
+NEE_BOUNCES = (1, 4, 8)
 
 for scene_file in get_scenes():
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
