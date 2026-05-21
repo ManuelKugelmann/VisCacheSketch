@@ -53,16 +53,18 @@ void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
         c.PrepareMerge(m);
 
         // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — the
-        // ShiftPath call triggers a Falcor 8 ProgramVars-construction crash
-        // (silent segfault in ParameterBlock::ParameterBlock during reflection).
-        // Disabling skips the light-trace-shifted resampling correction, but
-        // keeps the rest of the resampling pipeline functional.
+        // ShiftPath call body triggers a Falcor 8 ProgramVars-construction
+        // crash (silent SIGSEGV in ParameterBlock::ParameterBlock). Stubbing
+        // ShiftPath body to `return result;` makes the crash go away, so the
+        // signature is fine — something inside the body is the trip.
+        // Bisecting the body is task #10. Until then, this branch is off; the
+        // rest of the ReSTIR resampling pipeline runs unmodified.
         // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
-        //     gPathGenerator.DebugSetPixel(-1); // dont want messages from this shift
+        //     gPathGenerator.DebugSetPixel(-1);
         //     float jacobian; int2 tmp;
-        //     const bool valid = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
+        //     const PathSample shifted = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian);
         //     gPathGenerator.DebugSetPixel(id);
-        //     if (!valid || !(jacobian > 0)) continue;
+        //     if (!shifted.IsValid() || !(jacobian > 0)) continue;
         // }
 
         float u = sampleNext1D(sg);
