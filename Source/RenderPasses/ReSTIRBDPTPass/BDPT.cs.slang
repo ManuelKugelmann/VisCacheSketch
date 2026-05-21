@@ -52,13 +52,11 @@ void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
         PathReservoir c = PathReservoir(lr.path, lr.W, 0);
         c.PrepareMerge(m);
 
-        // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — the
-        // ShiftPath call body triggers a Falcor 8 ProgramVars-construction
-        // crash (silent SIGSEGV in ParameterBlock::ParameterBlock). Stubbing
-        // ShiftPath body to `return result;` makes the crash go away, so the
-        // signature is fine — something inside the body is the trip.
-        // Bisecting the body is task #10. Until then, this branch is off; the
-        // rest of the ReSTIR resampling pipeline runs unmodified.
+        // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled — bisected
+        // to ConnectToSuffix body (lines 87-280 of PathShift.slang) as the trip.
+        // Specifically: trip is in upper half (lines 87-175) — visibility check,
+        // camera-pdf compute, SetNextVertex, vertex.EvaluateReflectance. Not the
+        // chained-method-access on InitializeLightPath<true,true>.mis (split tested).
         // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
         //     gPathGenerator.DebugSetPixel(-1);
         //     float jacobian; int2 tmp;
