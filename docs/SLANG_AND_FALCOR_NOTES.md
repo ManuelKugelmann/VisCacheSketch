@@ -55,7 +55,10 @@ Tested versions (one branch each, full 17-pass smoke battery on CornellBox_1Area
 |---|---|---|---|
 | 2024.1.34 (Falcor 8 default) | clean | 17/17 | Baseline. ReSTIRBDPT resolve-pass crash workaround in `BDPT.cs.slang` required (ShiftPath branch disabled). |
 | **2024.14.6** (current pin) | clean | 17/17 | Two source fixes needed: l-value subscript + `compute` capability. Did not fix the ConnectToSuffix reflection bug. |
+| 2025.5  | clean | 0/17 | Falcor's own `Scene/HitInfo.slang` breaks: `this = {};` no longer a valid zero-init in slang 2025+ (needs explicit arg). 3 sites in HitInfo.slang alone, more elsewhere. Falcor 8 source would need patching to align — too invasive. |
 | 2026.9.1 (latest as of May 2026) | clean | 0/17 | Stricter constant-fold: BF_SET macro in `HostDeviceShared.slangh` overflows uint conversion. Also: `packSnorm2x16(float2)` becomes ambiguous (new overloads). Massive Falcor-side breakage. |
+
+**Slang downgrade gotcha (2026-05-21):** when downgrading from 2025.x → 2024.14.6 (or any cross-version-API change), `build.bat --clean` did not remove precompiled headers (`Falcor.dir/Release/cmake_pch.pch`), causing `LNK2019 unresolved external symbol slang_createGlobalSession2`. Fixed: `--clean` now nukes `*.pch` and `cmake_pch.obj` explicitly in addition to CMakeCache + CMakeFiles. Symptom to recognize next time: linker references a Slang C-API symbol that doesn't exist in the current `external/packman/slang/include/slang.h`.
 
 **Takeaway:** 2024.14.6 is the sweet spot between "stuck on Falcor's pinned version" and "Slang ABI has moved too far." It picks up ~10 months of slang fixes without breaking Falcor 8.0.
 

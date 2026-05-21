@@ -68,6 +68,13 @@ if "%CLEAN_CACHE%"=="1" (
         if exist "!BUILD_DIR!\CMakeCache.txt" (
             "!CLEAN_CMAKE!" --build "!BUILD_DIR!" --target clean 2>nul
         )
+        echo [build] --clean: nuking precompiled-header (.pch) cache...
+        REM MSBuild's `--target clean` leaves PCH files behind; after a Slang
+        REM version downgrade those can hold inline expansions for symbols that
+        REM no longer exist (e.g. slang_createGlobalSession2 in 2025.5). Nuke
+        REM them explicitly.
+        for /r "!BUILD_DIR!" %%F in (*.pch) do (del /q "%%F" 2>nul)
+        for /r "!BUILD_DIR!" %%F in (cmake_pch.obj cmake_pch.cxx.obj) do (del /q "%%F" 2>nul)
         echo [build] --clean: removing CMake cache for full reconfigure...
         if exist "!BUILD_DIR!\CMakeCache.txt" del /q "!BUILD_DIR!\CMakeCache.txt"
         if exist "!BUILD_DIR!\CMakeFiles" rmdir /s /q "!BUILD_DIR!\CMakeFiles"
