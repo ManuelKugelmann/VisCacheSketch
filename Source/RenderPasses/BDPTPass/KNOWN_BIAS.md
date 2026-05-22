@@ -253,6 +253,23 @@ in PT — Cornell has small absolute BSDF contribution to direct lighting
 VeachAjar has substantial BSDF contribution through the door slit, so
 the absolute bias is large (35%).
 
+## Independent validation: Falcor PT vs MinimalPathTracer
+
+Three-way 256-spp comparison (20-bounce matched config):
+
+| Scene     | Falcor PT | MinimalPathTracer | BDPTPass |
+|-----------|----------:|------------------:|---------:|
+| VeachAjar | 1.1601    | **1.1599**        | 0.8169   |
+| Cornell   | 0.4001    | 0.4001            | 0.3999   |
+
+Falcor's PathTracer and MinimalPathTracer are independent implementations
+of unidirectional path tracing with NEE+MIS. They agree within 0.02% on
+both scenes — this independently confirms Falcor PathTracer as a
+trustworthy unbiased reference. It's not that PT is biased high; it's
+that BDPTPass is biased LOW on VeachAjar. On Cornell BDPT agrees with
+both PT and MPT, so the BDPT bug is scene-specific (triggered by
+glass+occlusion).
+
 ## Recommendation
 
 Until per-pixel pdf instrumentation pins down the formula divergence,
