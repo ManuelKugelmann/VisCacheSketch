@@ -1863,6 +1863,25 @@ void ReSTIRPTPass::PathReusePass(RenderContext* pRenderContext, uint32_t restir_
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
 
+    // VisCache diagnostics — Shift.slang's evalSegmentVisibility / traceVisibilityRay
+    // bumps VC_RAY_SITE_RECONNECT counters when called from this compute pass.
+    if (mVisCacheDiagnostics)
+    {
+        auto rootVar = pass->getRootVar();
+        if (mpVCAccumSaved)              rootVar["gVCAccumSaved"]              = mpVCAccumSaved;
+        if (mpVCAccumTotal)              rootVar["gVCAccumTotal"]              = mpVCAccumTotal;
+        if (mpVCAccumSavedNEE)           rootVar["gVCAccumSavedNEE"]           = mpVCAccumSavedNEE;
+        if (mpVCAccumTotalNEE)           rootVar["gVCAccumTotalNEE"]           = mpVCAccumTotalNEE;
+        if (mpVCAccumSavedReval)         rootVar["gVCAccumSavedReval"]         = mpVCAccumSavedReval;
+        if (mpVCAccumTotalReval)         rootVar["gVCAccumTotalReval"]         = mpVCAccumTotalReval;
+        if (mpVCAccumSavedProposal)      rootVar["gVCAccumSavedProposal"]      = mpVCAccumSavedProposal;
+        if (mpVCAccumTotalProposal)      rootVar["gVCAccumTotalProposal"]      = mpVCAccumTotalProposal;
+        if (mpVCAccumSavedReconnect)     rootVar["gVCAccumSavedReconnect"]     = mpVCAccumSavedReconnect;
+        if (mpVCAccumTotalReconnect)     rootVar["gVCAccumTotalReconnect"]     = mpVCAccumTotalReconnect;
+        if (mpVCAccumRaysNoiseErrorCold) rootVar["gVCAccumRaysNoiseErrorCold"] = mpVCAccumRaysNoiseErrorCold;
+        if (mpVCAccumRaysSplitNeeReval)  rootVar["gVCAccumRaysSplitNeeReval"]  = mpVCAccumRaysSplitNeeReval;
+    }
+
     {
         // Launch one thread per pixel.
         // The dimensions are padded to whole tiles to allow re-indexing the threads in the shader.
@@ -1932,6 +1951,25 @@ void ReSTIRPTPass::PathRetracePass(RenderContext* pRenderContext, uint32_t resti
 
     mpPixelStats->prepareProgram(pass->getProgram(), pass->getRootVar());
     mpPixelDebug->prepareProgram(pass->getProgram(), pass->getRootVar());
+
+    // VisCache diagnostics — Shift.slang's evalSegmentVisibility / traceVisibilityRay
+    // bumps VC_RAY_SITE_RECONNECT counters when called from this compute pass.
+    if (mVisCacheDiagnostics)
+    {
+        auto rootVar = pass->getRootVar();
+        if (mpVCAccumSaved)              rootVar["gVCAccumSaved"]              = mpVCAccumSaved;
+        if (mpVCAccumTotal)              rootVar["gVCAccumTotal"]              = mpVCAccumTotal;
+        if (mpVCAccumSavedNEE)           rootVar["gVCAccumSavedNEE"]           = mpVCAccumSavedNEE;
+        if (mpVCAccumTotalNEE)           rootVar["gVCAccumTotalNEE"]           = mpVCAccumTotalNEE;
+        if (mpVCAccumSavedReval)         rootVar["gVCAccumSavedReval"]         = mpVCAccumSavedReval;
+        if (mpVCAccumTotalReval)         rootVar["gVCAccumTotalReval"]         = mpVCAccumTotalReval;
+        if (mpVCAccumSavedProposal)      rootVar["gVCAccumSavedProposal"]      = mpVCAccumSavedProposal;
+        if (mpVCAccumTotalProposal)      rootVar["gVCAccumTotalProposal"]      = mpVCAccumTotalProposal;
+        if (mpVCAccumSavedReconnect)     rootVar["gVCAccumSavedReconnect"]     = mpVCAccumSavedReconnect;
+        if (mpVCAccumTotalReconnect)     rootVar["gVCAccumTotalReconnect"]     = mpVCAccumTotalReconnect;
+        if (mpVCAccumRaysNoiseErrorCold) rootVar["gVCAccumRaysNoiseErrorCold"] = mpVCAccumRaysNoiseErrorCold;
+        if (mpVCAccumRaysSplitNeeReval)  rootVar["gVCAccumRaysSplitNeeReval"]  = mpVCAccumRaysSplitNeeReval;
+    }
 
     {
         // Launch one thread per pixel.
