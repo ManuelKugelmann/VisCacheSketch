@@ -3,6 +3,7 @@
 import Scene.RaytracingInline;
 import Rendering.Lights.EnvMapSampler;
 import Rendering.Lights.EmissiveLightSampler;
+import Rendering.Lights.LightHelpers;  // analytic light sampling (sampleLight for LightData)
 import Utils.Math.MathHelpers;
 import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGenerator;
@@ -23,6 +24,7 @@ cbuffer CB {
 extension PathGenerator {
     static const bool  gUseEnvLight                   = USE_ENV_LIGHT;
     static const bool  gUseEmissiveLights             = USE_EMISSIVE_LIGHTS;
+    static const bool  gUseAnalyticLights             = USE_ANALYTIC_LIGHTS;
     static const bool  gUseViewDir                    = USE_VIEW_DIR;
     static const bool  gSampleDirectLight             = USE_NEE;
     static const bool  gBidirectional                 = USE_BIDIRECTIONAL;
@@ -1198,6 +1200,83 @@ extension PathGenerator {
 
         return result;
     }
+
+    // [Bug #3 fix] Connect to an analytic light (PointLight, DirectionalLight,
+    // SpotLight, etc.). BDPT's original ConnectToLight only samples emissive
+    // triangles + env map; analytic lights are silently skipped. Added as a
+    // parallel NEE call from SampleCanonicalPaths' loop. For delta-position
+    // lights (point/dir/spot), only NEE can sample them — BSDF importance
+    // sampling has probability zero of landing on the delta light direction,
+    // so misWeight = 1.
+    PathSample ConnectToAnalyticLight<let bShift : bool>(inout PathState<bShift> s, const PathVertex vertex, out float integrationWeight) {
+        integrationWeight = 0;
+        PathSample result = {};
+
+        if (!gUseAnalyticLights) return result;
+
+        const uint lightCount = gScene.getLightCount();
+        if (lightCount == 0) return result;
+
+        // Uniform light selection.
+        SampleGenerator sgLocal = s.sg;  // local copy so we don't disturb caller
+        const uint lightIndex = min(uint(sampleNext1D(sgLocal) * lightCount), lightCount - 1);
+        const float lightSelectionPdf = 1.0f / float(lightCount);
+
+        AnalyticLightSample als;
+        if (!sampleLight(vertex.GetPosition(), gScene.getLight(lightIndex), sgLocal, als)) return result;
+        if (!any(als.Li > 0)) return result;
+
+        // Receiver-side cosine + occlusion.
+        const float cosOut = vertex.GetCosN(als.dir);
+        if (cosOut < kMinCosTheta) return result;
+
+        ReflectanceEvalData f = vertex.EvaluateReflectance(s.sg, als.dir, false);
+        if (!any(f.mReflectance > 0)) return result;
+
+        const float3 rayOrigin = vertex.ComputeRayOrigin(als.dir);
+        if (Occluded(Ray(rayOrigin, als.dir, 0, als.distance))) return result;
+
+        // For delta analytic lights, Falcor's AnalyticLightSample.Li is already
+        // "Le / pdf" form (sample weight). For our consistent
+        // throughput * BRDF * Le / (s.pdfW * directPdfW) formula we treat Li as
+        // the divided form: set directPdfW = lightSelectionPdf (= 1/lightCount)
+        // and use als.Li * lightSelectionPdf as the "raw" Le. The same effect.
+        // misWeight = 1 since delta lights can't be sampled by BSDF strategy.
+        const float3 contrib = s.throughput * f.mReflectance * als.Li * lightSelectionPdf;
+        const float samplePdf = s.pdfW * lightSelectionPdf;
+        if (!any(contrib > 0) || !(samplePdf > 0)) return result;
+
+        integrationWeight = 1.0f / samplePdf;
+        const float misWeight = 1.0f;  // delta lights: only NEE can sample them
+
+        // Build a minimal valid PathSample so ProcessSample accepts it.
+        // No light subpath / no rcv data — this is an isolated NEE contribution.
+        PathSuffix suffix = PathSuffix::Create(
+            als.Li * lightSelectionPdf,
+            samplePdf,
+            PackedPathVertex(Ray(rayOrigin, als.dir, 0, als.distance), HitInfo(0), als.distance),
+            0,
+            als.distance,
+            1,  // cosLight: 1 for delta (no surface)
+            MisEvalData(),
+            LightSubpathData::Create({}, {}, 1, 0, lightSelectionPdf)
+        );
+
+        result = PathSample::Create(
+            contrib,
+            misWeight,
+            s.bounces + 1,
+            s.pdfW,
+            s.bounces,
+            s.diffuseBounces,
+            s.id,
+            suffix,
+            PathFlags::eNone
+        );
+
+        return result;
+    }
+
     PathSample ConnectToLightSubpath<let bShift : bool>(inout PathState<bShift> s, const PathVertex vertex, const LightSubpathVertex v, out float integrationWeight) {
         integrationWeight = 0;
 
@@ -1999,10 +2078,19 @@ extension PathGenerator {
             while (s.bounces < mParams.mMaxBounces && any(s.throughput > 0) && s.pdfW > 0 && vertex.IsFinite()) {
                 if (vertex.IsConnectable() && s.diffuseBounces < mParams.mMaxDiffuseBounces) {
                     if ((gBidirectional || gSampleDirectLight)) {
-                        // connect to a random light
+                        // connect to a random light (env / emissive)
                         float weight = 0;
                         const PathSample ps = ConnectToLight(s, vertex, weight);
                         ProcessSample(r, s.sg, ps, weight);
+
+                        // [Bug #3 fix] also connect to a random analytic light
+                        // (point / directional / spot). BDPT's ConnectToLight
+                        // doesn't sample analytic lights at all — separate call.
+                        if (gUseAnalyticLights) {
+                            float analWeight = 0;
+                            const PathSample analPs = ConnectToAnalyticLight(s, vertex, analWeight);
+                            ProcessSample(r, s.sg, analPs, analWeight);
+                        }
                     }
 
                     if (gBidirectional) {
