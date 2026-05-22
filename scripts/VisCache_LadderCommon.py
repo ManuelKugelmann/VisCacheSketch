@@ -5353,6 +5353,13 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
 #       normalACoarse=60° — qa012 quant from Step-10/13 carry
 # ----------------------------------------------------------------------------
 CANONICAL_VC_SETTINGS = {
+    # Override _run_baseline_restir's hardcoded visibilityCheck=False /
+    # lightSelection=False — the DI/NEE/PT VC wrappers need the cache
+    # gating ON, but the underlying helper hardcodes them off for the
+    # "pure ReSTIR" baseline track. extraVCProps wins (applied last in
+    # render_graph_PathTracer) so this re-flips them on.
+    "enableVisCacheVisibilityCheck": True,
+    "enableVisCacheLightSelection":  True,
     "stderrThreshold":  0.10,
     "bootThreshold":    16,
     "bayerN":           4,

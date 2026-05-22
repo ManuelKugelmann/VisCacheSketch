@@ -1401,10 +1401,14 @@ bool ReSTIRDIPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
             || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN
             || mVisCacheReservoirs != wasWSReservoirs)
         {
-            logInfo("[PathTracer] VisCache recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={} wsRes={}",
+            logInfo("[PathTracer] VisCache full recompile: avail={} visCheck={} lightSel={} dirDistAddr={} diag={} bayerN={} wsRes={}",
                     mVisCacheAvailable, mVisCacheVisibilityCheck, mVisCacheLightSelection,
                     mVisCacheDirDistAddr, mVisCacheDiagnostics, mVisCacheBayerN, mVisCacheReservoirs);
-            mRecompile = true;
+            // Force a full recompile (not just prepareProgram) so the trace
+            // pass picks up the new USE_VISCACHE_VISIBILITYCHECK define.
+            // prepareProgram alone wasn't actually swapping the compiled
+            // shader — ch2 EXR stayed 0 despite the recompile log firing.
+            resetPrograms();
         }
     }
 
