@@ -29,14 +29,26 @@ on the 7-scene AB harness (`scripts/RestirPT2D_AB.py`).
 
 ## Step list (fine-grained, one per /loop iteration where possible)
 
-### Step 3.0 — Prerequisite: consolidate `MISHeuristic` enum
-Currently defined 5 places (ReSTIRPTPass, PathTracerX, ReSTIRDIPass, ReSTIRDIReferencePass,
-ReSTIRNEEPass Params.slang lines ~47-53). Move single definition to
-`Source/RenderPasses/PathTraceCommon/PathTraceCore.slang` (already imported
-by all 5). Same approach for any other duplicated enums (BounceType, LightSampleType,
-LobeType ablation extensions, etc.). Identified by grepping `enum class .* :`
-across the 5 passes for collisions. Lets Step 3.1 extract `evalMIS` and other
-helpers that use these enums.
+### Step 3.0 — Prerequisite: shared `evalMIS` via int-arg API
+Currently `MISHeuristic` enum is duplicated 5 times (ReSTIRPTPass,
+PathTracerX, ReSTIRDIPass, ReSTIRDIReferencePass, ReSTIRNEEPass
+Params.slang lines ~47-53). All bodies identical: Balance=0,
+PowerTwo=1, PowerExp=2. Moving the enum itself is awkward because
+Params.slang is host-shared (C++ reads enum values via `HOST_CODE`
+ifdef), and PathTraceCore.slang is shader-only.
+
+**Approach**: extract `evalMIS` taking `uint heuristic` instead of the
+enum type, so it stays decoupled from any single Params.slang's enum
+copy. Implementation:
+- Add `float evalMIS(uint heuristic, float n0, float p0, float n1, float p1)`
+  to PathTraceCore.slang.
+- Replace 2 call sites at ReSTIRPTPass + PathTracerX with
+  `evalMIS(uint(kMISHeuristic), ...)`.
+- Validate: PT smoke + AB-vs-Reference parity (same bit pattern since
+  enum→int cast preserves value).
+
+This is the proof-of-concept extraction. Bigger helpers (russianRoulette,
+sampleBSDF) follow the same pattern in step 3.1.
 
 ### Step 3.1 — Helper-extract: pure BSDF eval / RR / MIS
 Identify methods in dqlin's `PathTracer.slang` that are byte-identical (or
