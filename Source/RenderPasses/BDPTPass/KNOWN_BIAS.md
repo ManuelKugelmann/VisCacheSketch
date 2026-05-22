@@ -340,6 +340,52 @@ Next-iteration instrumentation: write per-pixel counter to alpha channel
 of mOutputRadiance. Increment at each non-zero emission accumulation.
 Compare BDPT alpha pattern vs PT to see WHERE the path drops happen.
 
+## Per-pixel brightness pattern (BDPT max=1.18 vs PT max=71.2 on slit)
+
+Per-pixel luminance distribution on Cornell+Slit 1024 spp:
+  PT  : mean=0.4388  max=71.2  p99=8.73
+  BDPT: mean=0.0241  max=1.18  p99=0.466
+
+BDPT/PT ratio binned by PT brightness:
+  pct 25-50 (dim):     ratio 0.046
+  pct 50-75 (medium):  ratio 0.108
+  pct 75-90:           ratio 0.141
+  pct 90-99 (bright):  ratio 0.141
+  pct 99-100 (peak):   ratio 0.0066  (!)
+
+Peak pixels are MOST under-sampled in BDPT — pixels that PT renders as
+very bright (lots of through-slit paths converging) get only 0.66% of
+that brightness in BDPT. This rules out a uniform per-path damping —
+the loss is concentrated where the highest-energy paths land.
+
+BDPT max = 1.18 doesn't indicate a CLAMP — it's that PT averages many
+high-energy hits per pixel (max 71 over 1024 spp = peak contribution
+~73000 units summed), while BDPT lands such hits MUCH less often
+(max 1.18 over 1024 spp = peak contribution ~1200 units summed). 60×
+fewer through-slit hits found by BDPT.
+
+## What's ruled out (Cornell+Slit confirmed)
+
+- **Russian Roulette**: ratio 0.054 with RR off vs 0.053 with RR on.
+  Identical. RR not the cause.
+- **Contribution formula**: PT contribution per surviving path equals
+  BDPT's by algebra (1/contProb compensation flows through s.pdfW).
+- **PT undersampling**: PT and MPT (independent implementations) agree
+  at 0.44 mean.
+- **useBPT toggle**: vanilla, ptonly, bsdf-only all give 0.023 — no
+  difference. So BPT layer is not the cause.
+
+So the slit bug must be in **how often BDPT's BSDF sampler finds the
+slit direction**, i.e., the BSDF sample-generator state evolves
+differently than Falcor PT's such that the BDPT generator rarely picks
+directions that thread the slit. Or there's an asymmetry in the
+shading-data setup that biases the BSDF sample distribution.
+
+Specifically, look at:
+1. `vertex.SampleDirection(s.sgBsdf, ...)` vs Falcor PT's `mi.sample(sd, path.sg, ...)` — different generator (`sgBsdf` uses negative seed) might produce a sample sequence that systematically misses the slit direction
+2. `mShadingData` construction differs between `PathVertex.__init` (BDPT) and Falcor PT's `prepareShadingData` flow
+3. `mMaterial.sample` returning different `wo` for identical sd+sg in BDPT vs PT due to different `getMaterialInstanceHints` flags (BDPT uses 0; PT may set hints)
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
