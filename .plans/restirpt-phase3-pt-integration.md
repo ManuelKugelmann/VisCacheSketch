@@ -50,7 +50,24 @@ copy. Implementation:
 This is the proof-of-concept extraction. Bigger helpers (russianRoulette,
 sampleBSDF) follow the same pattern in step 3.1.
 
-### Step 3.1 — Helper-extract: pure BSDF eval / RR / MIS
+### Step 3.1 — Helper-extract findings (post-3.0)
+
+After Step 3.0 succeeded with `evalMIS`, surveyed remaining candidates:
+
+| helper | dqlin | PathTracerX | extract candidate |
+|---|---|---|---|
+| `evalMIS` | static, struct-local | non-static, struct-local | ✅ DONE (3.0) — `evalMISImpl(uint heuristic, ...)` |
+| RR (russianRoulette) | `terminatePathByRussianRoulette` method | inlined pattern | ❌ structurally different — defer |
+| `russianRoulettePdf` accumulator | `path.russianRoulettePdf` field | same field | already in shared PathState (no extraction needed) |
+| `getCoherenceHints` | not present | struct method | PathTracerX-only, no shared opportunity |
+| `updatePathThroughput`, `addToPathContribution` | PathState-style on dqlin's PathState | PathTracerX-style | adapter Step 3.2 territory |
+| `generateScatterRay` | dqlin `sampleScatterRay` | PathTracerX `generateScatterRay` | similar surface, different bodies → Step 3.2 |
+
+Conclusion: **only `evalMIS` is cleanly extractable via the int-arg pattern**. Other shared helpers either (a) live on diverging PathState surfaces (needs Step 3.2 adapter first), or (b) are structurally different enough that extracting forces a behaviour change.
+
+**Implication**: Step 3.1 essentially ends with `evalMIS`. Step 3.2 (PathTracerX as a field of dqlin's PathTracer struct, calling into its scatter/throughput/contribution helpers) is the next forward motion — but a bigger lift since PathState compat is involved. Defer to a focused multi-session effort.
+
+### Step 3.1 — Helper-extract: pure BSDF eval / RR / MIS (DEFERRED beyond 3.0)
 Identify methods in dqlin's `PathTracer.slang` that are byte-identical (or
 near-identical, modulo signature) to PathTracerX's. Extract into a shared
 slang module under `Source/RenderPasses/PathTraceCommon/` (already exists per
