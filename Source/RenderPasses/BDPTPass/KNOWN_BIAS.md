@@ -422,6 +422,31 @@ Bug needs headed Mogwai + PixelDebug `print()` at a specific
 slit-affected pixel for side-by-side BDPT/PT print-log comparison.
 Can't be done in the autonomous /loop.
 
+**Update 2026-05-23 (control-scene bisect)**: Built three control
+scenes that ISOLATE the bug to LIGHT POSITION, not partition geometry:
+
+| Scene                                            | BDPT/PT ratio |
+|--------------------------------------------------|--------------:|
+| CornellBox_1AreaLight (flush ceiling y=1.98)     |     **1.0**   |
+| CornellBox_SlitControl3 (centered, y=1.7)        |   **0.086**   |
+| CornellBox_SlitControl2 (offset, y=1.7)          |   **0.058**   |
+| CornellBox_Slit (offset y=1.7 + partition wall)  |   **0.053**   |
+
+So **the partition wall is irrelevant** — the bug is fully present even
+without it. The trigger is the **suspended light** (not flush with
+ceiling).
+
+Hypothesis: BDPT treats hits on the BACK FACE of the light differently
+than PT does. For a flush-with-ceiling light, no ray can hit its back
+face (light is glued to ceiling). For a suspended light at y=1.7, rays
+bouncing in the space ABOVE the light (between y=1.7 and y=2.0 ceiling)
+can hit the light's back face from above. If BDPT mis-handles back
+hits (e.g., terminates path silently or fails to continue) while PT
+correctly treats the hit as zero-emission-then-continue-bsdf, BDPT
+would lose paths reflected off the back face area.
+
+Next step: instrument the back-face hit accumulation path in BDPT.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:

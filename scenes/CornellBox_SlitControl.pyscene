@@ -1,0 +1,24 @@
+# CornellBox_SlitControl.pyscene — same as CornellBox_Slit.pyscene but with
+# the partition wall REMOVED. Bright light in same upper-back-left position
+# but visible directly from camera. Control test for the slit bug:
+# if BDPT matches PT here, the partition wall geometry is the trigger.
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+light_mat = StandardMaterial('Light')
+light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+light_mat.emissiveColor = float3(400.0, 325.0, 250.0)
+light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
+
+# Same bright light position as CornellBox_Slit.pyscene
+addQuad('Light', light_mat,
+    float3(-0.95, 1.7, 0.9), float3(-0.55, 1.7, 0.9),
+    float3(-0.55, 1.7, 0.55), float3(-0.95, 1.7, 0.55),
+    0, -1, 0)
+
+# NO partition / occluder — direct visibility from camera
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = True
