@@ -98,10 +98,12 @@ interface IVisibilityQuery
         \return Unbiased CV+RRR visibility weight.
     */
     [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                                          uint sampleIdx, float3 normalA = float3(0.f));
+                                          uint sampleIdx, float3 normalA = float3(0.f),
+                                          uint callSite = 0u);
 #ifdef VISCACHE_DIAGNOSTICS
     [mutating] float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
-                                               uint sampleIdx, float3 normalA = float3(0.f));
+                                               uint sampleIdx, float3 normalA = float3(0.f),
+                                               uint callSite = 0u);
 #endif
 #endif
 };
