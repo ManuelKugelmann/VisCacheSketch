@@ -29,6 +29,15 @@ on the 7-scene AB harness (`scripts/RestirPT2D_AB.py`).
 
 ## Step list (fine-grained, one per /loop iteration where possible)
 
+### Step 3.0 — Prerequisite: consolidate `MISHeuristic` enum
+Currently defined 5 places (ReSTIRPTPass, PathTracerX, ReSTIRDIPass, ReSTIRDIReferencePass,
+ReSTIRNEEPass Params.slang lines ~47-53). Move single definition to
+`Source/RenderPasses/PathTraceCommon/PathTraceCore.slang` (already imported
+by all 5). Same approach for any other duplicated enums (BounceType, LightSampleType,
+LobeType ablation extensions, etc.). Identified by grepping `enum class .* :`
+across the 5 passes for collisions. Lets Step 3.1 extract `evalMIS` and other
+helpers that use these enums.
+
 ### Step 3.1 — Helper-extract: pure BSDF eval / RR / MIS
 Identify methods in dqlin's `PathTracer.slang` that are byte-identical (or
 near-identical, modulo signature) to PathTracerX's. Extract into a shared
