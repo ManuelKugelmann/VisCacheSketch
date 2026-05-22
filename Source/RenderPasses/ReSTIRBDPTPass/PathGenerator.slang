@@ -1047,7 +1047,11 @@ extension PathGenerator {
                     if (mEmissiveSampler.sampleLight(vertex.GetPosition(), vertexNormal, upperOnly, sg, ls)) {
                         triangleIndex = ls.triangleIndex;
                         selectionPdf = mEmissiveSampler.evalTriangleSelectionPdf(vertex.GetPosition(), vertexNormal, upperOnly, triangleIndex);
-                        barycentrics = float3(1 - ls.uv.x - ls.uv.y, ls.uv.x, ls.uv.y);
+                        // [Falcor 8 bug fix] TriangleLightSample.uv is the RAW 2D random
+                        // numbers (the u that drove the sample), NOT barycentric coordinates.
+                        // The Falcor-7 port treated it as bary directly which biases the
+                        // sample distribution (causes ~35% dim on VeachAjar — task #14).
+                        barycentrics = sample_triangle(ls.uv);
                     } else {
                         triangleIndex = LightCollection::kInvalidIndex;
                         selectionPdf = 0;
@@ -1617,7 +1621,11 @@ extension PathGenerator {
                     if (mEmissiveSampler.sampleLight(float3(0), float3(0, 0, 1), false, s.sg, ls)) {
                         triangleIndex = ls.triangleIndex;
                         selectionPdf = mEmissiveSampler.evalTriangleSelectionPdf(float3(0), float3(0, 0, 1), false, triangleIndex);
-                        barycentrics = float3(1 - ls.uv.x - ls.uv.y, ls.uv.x, ls.uv.y);
+                        // [Falcor 8 bug fix] TriangleLightSample.uv is the RAW 2D random
+                        // numbers (the u that drove the sample), NOT barycentric coordinates.
+                        // The Falcor-7 port treated it as bary directly which biases the
+                        // sample distribution (causes ~35% dim on VeachAjar — task #14).
+                        barycentrics = sample_triangle(ls.uv);
                     } else {
                         triangleIndex = LightCollection::kInvalidIndex;
                         selectionPdf = 0;
