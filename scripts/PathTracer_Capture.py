@@ -23,7 +23,17 @@ os.makedirs(out_dir, exist_ok=True)
 
 g = RenderGraph("PathTracerCapture")
 
-pt = createPass("PathTracer", {'samplesPerPixel': 1})
+# Match BDPT defaults: 20-bounce path budget so bias-comparison vs BDPT
+# is apples-to-apples (Falcor PathTracer default maxDiffuseBounces=3 yields
+# significantly less indirect light and confounds a bias check).
+pt = createPass("PathTracer", {
+    'samplesPerPixel': 1,
+    'maxSurfaceBounces': 20,
+    'maxDiffuseBounces': 20,
+    'maxSpecularBounces': 20,
+    'maxTransmissionBounces': 20,
+    'emissiveSampler': "Power",  # match BDPT default (string form, not enum)
+})
 g.addPass(pt, "PathTracer")
 
 vbuffer = createPass("VBufferRT", {

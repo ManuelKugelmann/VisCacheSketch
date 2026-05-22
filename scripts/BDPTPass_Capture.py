@@ -40,6 +40,12 @@ g = RenderGraph("BDPTCapture")
 if pass_kind == "vanilla":
     bdpt = createPass("BDPT", {})
     label = "vanilla_BDPT"
+elif pass_kind == "ptonly":
+    # Light subpath count = 0 (useBPT=False). Should match unidirectional
+    # path tracing (NEE + camera subpaths only) in expectation. Used as
+    # the bias-free baseline test against Falcor's PathTracer.
+    bdpt = createPass("BDPT", {'useBPT': False})
+    label = "BDPT_ptonly"
 elif pass_kind == "caustic":
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
