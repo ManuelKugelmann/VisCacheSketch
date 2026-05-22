@@ -38,28 +38,27 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
     })
     g.addPass(vbuf, "VBufferRT")
 
-    # When 3D cell-reservoir reuse is enabled, NEE pulls the gReservoirs
-    # buffer + VisCacheParams cbuffer from VisCachePass via InternalDictionary
-    # (same wiring DI uses). cellReservoirFootprintPx=1 → sub-pixel cell
-    # at primary hit; path.cellFootprintPx in the shader widens with
-    # BSDF roughness at each subsequent bounce (Sharc-style).
-    if useNEECells:
+    # Add VisCachePass when ANY VC toggle is on (cells, visibilityCheck,
+    # lightSelection). Earlier this was gated on `useNEECells` only — that
+    # bug meant pure K-RIS NEE never even had the cache pass in the graph,
+    # so `visibilityCheck=True` was a no-op (the shader define
+    # USE_VISCACHE_VISIBILITYCHECK ended up 0 because mVisCacheAvailable
+    # was false). Visibility-cache amortization should work for ANY NEE
+    # shadow ray, independent of whether cell reservoirs are engaged.
+    need_vc_pass = useNEECells or visibilityCheck or lightSelection
+    if need_vc_pass:
         vc_props = {**VISCACHE_DEFAULTS,
                     "spp": samplesPerPixel,
-                    "enableReservoirs": True,
-                    "reservoirCapacity": 1 << 20,
-                    "cellReservoirFootprintPx": cellReservoirFootprintPx,
-                    "reservoirK": reservoirK,
+                    # Cell-reservoir reuse: only enable buffer + dict publish
+                    # when useNEECells is on. Visibility-cache + light-
+                    # selection-cache are independent toggles.
+                    "enableReservoirs":     bool(useNEECells),
+                    "reservoirCapacity":    1 << 20,
+                    "cellReservoirFootprintPx": cellReservoirFootprintPx if useNEECells else 0,
+                    "reservoirK":           reservoirK,
                     "cellLevelOffsetWrite": cellLevelOffsetWrite,
-                    "mCap": 20.0,
-                    # NEE drives cell reads/writes inline; no per-pixel
-                    # reservoir layer needed.
+                    "mCap":                 20.0,
                     "enablePixelReservoir": False,
-                    # No cell pool (NEE uses K-RIS streaming inside the
-                    # shader; cells are the reuse layer).
-                    # cellPoolFootprintPx C++ default is 0 = off, so nothing
-                    # to set here; documented for clarity.
-                    # Cell-NEE doesn't engage VisCache visibility yet.
                     "enableVisCacheVisibilityCheck": bool(visibilityCheck),
                     "enableVisCacheLightSelection":  bool(lightSelection)}
         if normalACoarse is not None:
@@ -106,8 +105,9 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
     # via InternalDictionary, not as a render-graph edge). Mark one of its
     # diagnostic outputs so Falcor's graph compiler doesn't prune the pass as
     # dead — that prune would also skip its dict-publish, leaving NEE with
-    # mVisCacheAvailable=false and USE_NEE_CELLS silently gated off.
-    if useNEECells:
+    # mVisCacheAvailable=false and the visibility-cache + cell-reservoir
+    # paths silently gated off.
+    if need_vc_pass:
         g.markOutput("VisCache.vcAccumMeanVarMatCount")
     return g
 
