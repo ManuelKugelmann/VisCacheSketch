@@ -384,7 +384,25 @@ shading-data setup that biases the BSDF sample distribution.
 Specifically, look at:
 1. `vertex.SampleDirection(s.sgBsdf, ...)` vs Falcor PT's `mi.sample(sd, path.sg, ...)` — different generator (`sgBsdf` uses negative seed) might produce a sample sequence that systematically misses the slit direction
 2. `mShadingData` construction differs between `PathVertex.__init` (BDPT) and Falcor PT's `prepareShadingData` flow
-3. `mMaterial.sample` returning different `wo` for identical sd+sg in BDPT vs PT due to different `getMaterialInstanceHints` flags (BDPT uses 0; PT may set hints)
+3. `mMaterial.sample` returning different `wo` for identical sd+sg in BDPT vs PT due to different `getMaterialInstanceHints` flags
+
+**Update 2026-05-23**: Ruled out #3 — added AdjustShadingNormal hint (commit 3a262e24) mirroring PT. No effect on Cornell+Slit (all-diffuse, no normal map → hint is no-op there).
+
+Mathematical analysis of single-bounce contribution:
+  PT  contribution per path: throughput * Le = path.thp * Le  (where path.thp accumulates bs.weight = BRDF*cos/pdf)
+  BDPT contribution per path: throughput * Le / s.pdfW = (∏BRDF*cos) * Le / ∏(pdf*contProb)
+                            = PT_contribution / ∏contProb
+
+For RR off (contProb=1), they should match exactly. Empirically Cornell+Slit
+ratio is 0.054 with RR off vs 0.053 with default — identical → math
+is consistent in expectation. So the 60x miss-rate must come from
+SAMPLE DIRECTION DISTRIBUTION (which directions BDPT picks vs PT picks
+for the same shading point), not contribution magnitude per path.
+
+Next step: per-pixel hit counter via a new debug buffer (counter[id]
+incremented at each non-zero EvalLightContribution accumulation in
+ProcessSample). Compare BDPT vs PT counter patterns to localize where
+sample-direction divergence occurs.
 
 ## Architectural note: parallel vs unified light-type selection
 
