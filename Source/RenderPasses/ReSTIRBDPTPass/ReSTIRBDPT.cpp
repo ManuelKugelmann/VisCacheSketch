@@ -899,7 +899,7 @@ void ReSTIRBDPT::updatePrograms()
             if (!mpTemporalShiftPass)
             {
                 ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kTemporalReusePassFilename).csEntry("ShiftToPrevFrame");
+                desc.addShaderLibrary("RenderPasses/ReSTIRBDPTPass/TemporalShiftPrev.cs.slang").csEntry("main");
                 mpTemporalShiftPass = ComputePass::create(mpDevice, desc, defines, false);
             }
             preparePass(mpTemporalShiftPass);
@@ -910,7 +910,7 @@ void ReSTIRBDPT::updatePrograms()
             if (!mpShiftCausticsPass)
             {
                 ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kTemporalReusePassFilename).csEntry("ShiftCaustics");
+                desc.addShaderLibrary("RenderPasses/ReSTIRBDPTPass/TemporalShiftCaustics.cs.slang").csEntry("main");
                 mpShiftCausticsPass = ComputePass::create(mpDevice, desc, defines, false);
             }
             preparePass(mpShiftCausticsPass);

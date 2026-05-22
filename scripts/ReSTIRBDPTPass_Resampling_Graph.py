@@ -18,7 +18,7 @@ def render_graph_ReSTIRBDPTPass_Resampling():
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
         'useResampling': True,
-        'useTemporalResampling': False,  # blocked on task #10 (ShiftPath crash)
+        'useTemporalResampling': True,
         'useCausticReservoirs': False,
         'useCausticShift': False,
     })

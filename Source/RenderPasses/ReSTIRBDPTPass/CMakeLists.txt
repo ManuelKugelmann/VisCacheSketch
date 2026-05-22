@@ -20,6 +20,8 @@ target_sources(ReSTIRBDPTPass PRIVATE
     BDPT.cs.slang
     ResolveLightTrace.cs.slang
     ResolveLightTraceShift.cs.slang
+    TemporalShiftPrev.cs.slang
+    TemporalShiftCaustics.cs.slang
 )
 
 target_copy_shaders(ReSTIRBDPTPass RenderPasses/ReSTIRBDPTPass)

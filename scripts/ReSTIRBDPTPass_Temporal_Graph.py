@@ -1,25 +1,22 @@
 """
-ReSTIRBDPTPass_Spatial_Graph.py — Test spatial reuse with no temporal.
+ReSTIRBDPTPass_Temporal_Graph.py — ReSTIR-BDPT with temporal reuse ON.
 
-Validates whether `spatialReusePasses>0` (SpatialReuse.cs.slang) crashes
-the same way as TemporalReuse (both reach ShiftPath through the call
-graph). Predicted: same crash family.
+Used to track task #12: re-enable useTemporalReuse (Slang trip family of task #10).
+Currently expected to FAIL on dispatch until the warmup-helper fix is applied
+to TemporalReuse.cs.slang's entry. PASS = task #12 complete.
 """
-try:
-    from falcor import *
-except ImportError:
-    pass
+from falcor import *
 
-def render_graph():
-    g = RenderGraph("ReSTIRBDPTPass_Spatial")
+def render_graph_ReSTIRBDPTPass_Temporal():
+    g = RenderGraph("ReSTIRBDPTPass_Temporal")
 
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
         'useResampling': True,
         'useTemporalResampling': True,
-        'useCausticReservoirs': False,
-        'useCausticShift': False,
-        'spatialReusePasses': 1,
+        'unbiasedTemporalReuse': True,
+        'useCausticReservoirs': True,
+        'useCausticShift': True,
     })
     g.addPass(bdpt, "ReSTIRBDPT")
 
@@ -46,6 +43,5 @@ def render_graph():
     g.markOutput("ToneMapper.dst")
     return g
 
-
 if 'm' in globals():
-    m.addGraph(render_graph())
+    m.addGraph(render_graph_ReSTIRBDPTPass_Temporal())

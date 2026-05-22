@@ -17,9 +17,9 @@ def render_graph():
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
         'useResampling': True,
-        'useTemporalResampling': False,  # blocked: TemporalReuse calls ShiftPath
-        'useCausticReservoirs': True,    # caustic reservoir buffer — WORKS standalone
-        'useCausticShift': False,        # requires temporal reuse
+        'useTemporalResampling': True,
+        'useCausticReservoirs': True,
+        'useCausticShift': True,
     })
     g.addPass(bdpt, "ReSTIRBDPT")
 
