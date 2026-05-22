@@ -252,4 +252,10 @@ private:
     bool mVisCacheDiagnostics = false;
     ref<Texture> mpVCAccumMeanVarMatCount, mpVCFrameMeanVarMatSamplesRaw, mpVCFrameLevelProbesSamplesCold, mpVCFrameHashAHashBHashABRays;
     ref<Texture> mpVCAccumSaved, mpVCAccumTotal, mpVCAccumRaysNoiseErrorCold;
+    // Per-call-site counters (4-mode VisCache use accounting: NEE/Reval/Proposal/Reconnect).
+    ref<Texture> mpVCAccumSavedNEE, mpVCAccumTotalNEE;
+    ref<Texture> mpVCAccumSavedReval, mpVCAccumTotalReval;
+    ref<Texture> mpVCAccumSavedProposal, mpVCAccumTotalProposal;
+    ref<Texture> mpVCAccumSavedReconnect, mpVCAccumTotalReconnect;
+    ref<Texture> mpVCAccumRaysSplitNeeReval;
 };
