@@ -231,6 +231,7 @@ def render_graph_ReSTIRPT(viscache=False, ablation=None, maxBounces=1,
         g.markOutput("VisCache.vcFrameLevelProbesSamplesCold", TextureChannelFlags.RGBA)
         g.markOutput("VisCache.vcFrameHashAHashBHashABRays", TextureChannelFlags.RGBA)
         g.markOutput("VisCache.vcAccumRaysNoiseErrorCold", TextureChannelFlags.RGBA)
+        g.markOutput("VisCache.vcAccumRaysSplitNeeReval", TextureChannelFlags.RGBA)  # 4-channel: R=NEE G=Reval B=Proposal A=Reconnect
 
     return g
 
