@@ -128,6 +128,34 @@ Once everything is Falcor 8 native, remove the bridge module.
 Final cleanup — what was 2344 lines becomes a thin adapter struct (~200 lines)
 or disappears entirely.
 
+## Iteration pacing reality (2026-05-23)
+
+Step 3.0 (evalMIS extract) succeeded cleanly. Step 3.1 surveyed remaining
+candidates — only evalMIS fit the int-arg extraction pattern.
+
+The "small" helpers like `updatePathThroughput` are byte-identical
+(`path.thp *= weight`) but extracting them adds 4 lines of new infrastructure
+for 1 line of duplication removed — not worth the noise.
+
+The **real** Phase 3 payoff is at `handleHit` / `nextVertex` / `generatePath`
+which have substantially divergent bodies. Those need careful per-call-site
+analysis + validation against `ReSTIRPTReferencePass` (byte-frozen dqlin
+mirror). Each sub-step is a focused 30-60min effort:
+
+  3.2.A — Pick ONE handleHit pattern delta to bridge (e.g. emission
+          accumulation at hit). Write the bridge so dqlin's handleHit's
+          emission block delegates to a free helper that PathTracerX
+          could also call. Validate AB-parity.
+  3.2.B — Repeat for next delta (light sampling, RR, ...).
+  3.2.N — Once enough deltas bridged, `handleHit` body shrinks enough
+          that delegating wholesale to PathTracerX becomes the small
+          remaining edit.
+
+Per-iteration scope is **one delta bridge + validate**. Most session-budget
+goes to validation runs, not the code itself. Reserved for dedicated focused
+sessions — not the /loop short-iter cadence which gates on background
+notifications.
+
 ## Validation gate per step
 
 After each step:
