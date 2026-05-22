@@ -5142,7 +5142,8 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                     pathSamplingMode="ReSTIR",
                                     unifiedDIGI=False,
                                     viscache=False,
-                                    visibilityCheck=None, lightSelection=None):
+                                    visibilityCheck=None, lightSelection=None,
+                                    ablation=None):
     # fireflyClampK=100 bounds Lin 2026 §15's chroma-preserving GRIS
     # estimator at 100× direct-lighting magnitude. Biased but stable.
     # K=1e9 (no clamp, paper-canonical) produces rmse 100-200 on
@@ -5187,6 +5188,7 @@ def run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
             fireflyClampK=fireflyClampK,
             visibilityCheck=visibilityCheck,
             lightSelection=lightSelection,
+            ablation=ablation,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
@@ -5309,27 +5311,84 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
 
 
 # ----------------------------------------------------------------------------
+# CANONICAL VisCache trust settings — applied to all *_vc wrappers via
+# extraVCProps. Combines the post-Step-18 + SPONZA_STDERR + ALL_STDERR
+# carry from LADDERLOG.
+#
+# Why these values:
+#   stderrThreshold=0.10 — supersedes varThreshold per ALL_STDERR (Pareto
+#       improvement across full scene matrix, single config covers x4 + x16)
+#   bootThreshold=16     — lower than default 32; canonical post-Step-13
+#       ct016 carry; lets cells reach trust faster at low SPP
+#   bayerN=4             — 4×4 = 16 subframes/cycle; disperses cell writes
+#       across frames so they reach independent maturity (per
+#       project_sub4_bayer_breakthrough + ALL_STDERR)
+#   warmupSlotsRun=1     — 1/16 pixels per frame in write-only mode →
+#       cache refreshes 1/16 of cells per frame; remaining 15/16 trust
+#       the cache when mature
+#   pMin=0.10            — lower-bound on cache trust probability per
+#       project_pmin_is_rate_defense (rate defense vs bias)
+#   numLevels=32, autoTuneCells=True — multi-level cascade (LEVELS_MULTI)
+#   posACoarse=0.12, posBCoarse=0.36, dirBCoarse=15°, distBCoarse=0.48,
+#       normalACoarse=60° — qa012 quant from Step-10/13 carry
+# ----------------------------------------------------------------------------
+CANONICAL_VC_SETTINGS = {
+    "stderrThreshold":  0.10,
+    "bootThreshold":    16,
+    "bayerN":           4,
+    "warmupSlotsFirst": 16,      # cold start: all 16 slots in frame 0
+    "warmupSlotsRun":   1,       # steady state: 1/16 pixels write-only
+    "pMin":             0.10,
+    "numLevels":        32,
+    "autoTuneCells":    True,
+    # qa012 quant
+    "posACoarse":       0.12,
+    "posBCoarse":       0.36,
+    "dirBCoarse":       15.0,
+    "distBCoarse":      0.48,
+    "normalACoarse":    60.0,
+}
+
+
+def _merge_canonical_vc(kwargs):
+    """Merge CANONICAL_VC_SETTINGS into kwargs['extraVCProps'] without
+    clobbering caller-set overrides. Used by all *_vc wrappers."""
+    extra = dict(kwargs.get("extraVCProps", {}) or {})
+    for k, v in CANONICAL_VC_SETTINGS.items():
+        extra.setdefault(k, v)
+    kwargs["extraVCProps"] = extra
+    return kwargs
+
+
+# ----------------------------------------------------------------------------
 # VisCache-enabled wrappers (visInPHat=1 for DI, visibilityCheck=True for NEE,
 # viscache=True+visibilityCheck=True+lightSelection=True for PT). Each is a
 # thin shim that flips the cache toggles and emits a `_vc` variant tag so
 # the *01_VC ladder steps sit cleanly next to their vblind baselines.
+#
+# All *_vc wrappers also merge CANONICAL_VC_SETTINGS into extraVCProps so
+# the cache trust thresholds + Bayer settings are the post-Step-18 carry
+# (not the conservative VISCACHE_DEFAULTS that never trust the cache).
 # ----------------------------------------------------------------------------
 def run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_vc(step_name, frame_configs, scene_file, **kwargs):
     """VisCache-on counterpart of R2dP2d_RTXDIBaseline. Flips `visInPHat=1`
     so K-RIS pHat uses cached V; tag suffix becomes `_vcache`."""
     kwargs.setdefault("visInPHat", 1)
+    kwargs = _merge_canonical_vc(kwargs)
     return run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline(step_name, frame_configs, scene_file, **kwargs)
 
 
 def run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline_vc(step_name, frame_configs, scene_file, **kwargs):
     """VisCache-on counterpart of R3dP3d_RTXDIBaseline."""
     kwargs.setdefault("visInPHat", 1)
+    kwargs = _merge_canonical_vc(kwargs)
     return run_baseline_ReSTIRDI_R3dP3d_RTXDIBaseline(step_name, frame_configs, scene_file, **kwargs)
 
 
 def run_baseline_ReSTIRDI_R2dP2d_PureKRIS_vc(step_name, frame_configs, scene_file, **kwargs):
     """VisCache-on counterpart of R2dP2d_PureKRIS."""
     kwargs.setdefault("visInPHat", 1)
+    kwargs = _merge_canonical_vc(kwargs)
     return run_baseline_ReSTIRDI_R2dP2d_PureKRIS(step_name, frame_configs, scene_file, **kwargs)
 
 
@@ -5339,6 +5398,7 @@ def run_baseline_ReSTIRNEEPass_F16_vc(step_name, frame_configs, scene_file,
     kwargs.setdefault("visibilityCheck", True)
     kwargs.setdefault("lightSelection", True)
     kwargs.setdefault("variant_tag", f"nee_kris_F16_vc_b{maxBounces}")
+    kwargs = _merge_canonical_vc(kwargs)
     return run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
                                           maxBounces=maxBounces, **kwargs)
 
@@ -5349,6 +5409,7 @@ def run_baseline_ReSTIRNEEPass_F16R3d_vc(step_name, frame_configs, scene_file,
     kwargs.setdefault("visibilityCheck", True)
     kwargs.setdefault("lightSelection", True)
     kwargs.setdefault("variant_tag", f"nee_F16R3d_vc_b{maxBounces}")
+    kwargs = _merge_canonical_vc(kwargs)
     return run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
                                              maxBounces=maxBounces, **kwargs)
 
@@ -5358,10 +5419,22 @@ def run_baseline_reference_restirpt_vc(step_name, frame_configs, scene_file,
     """VisCache-on counterpart of restirpt reference. Sets viscache=True so
     VisCachePass + PathTracerX shadow gating are added, and visibility/light
     selection toggles fire. Pairs with clamped + unclamped tags so RPT01_VC
-    can test whether the V-aware target eliminates the need for fireflyClampK."""
+    can test whether the V-aware target eliminates the need for fireflyClampK.
+
+    Canonical settings applied via extraVCProps (Bayer4x4 + stderr=0.10 etc).
+    Note: PT helper passes extraVCProps through to render_graph_ReSTIRPT
+    where it's merged into VISCACHE_DEFAULTS for the VisCachePass."""
     kwargs.setdefault("viscache", True)
     kwargs.setdefault("visibilityCheck", True)
     kwargs.setdefault("lightSelection", True)
+    kwargs = _merge_canonical_vc(kwargs)
+    # PT helper signature doesn't have extraVCProps — pop it into the dict
+    # that render_graph_ReSTIRPT consumes via the ablation/override kwarg.
+    # ReSTIRPT_Graph builds vc_params from VISCACHE_DEFAULTS; ablation kwarg
+    # is the override knob.
+    extra = kwargs.pop("extraVCProps", None)
+    if extra:
+        kwargs.setdefault("ablation", extra)
     return run_baseline_reference_restirpt(step_name, frame_configs, scene_file,
                                            maxBounces=maxBounces, **kwargs)
 
