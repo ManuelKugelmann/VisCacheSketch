@@ -311,6 +311,35 @@ User hypothesized PT might be undersampling VeachAjar — DISPROVEN by
 the Cornell+slit test where PT/MPT agree at 0.44 (independent unbiased
 estimators of the same integral) while BDPT alone diverges to 0.023.
 
+## Slit-bug investigation plan (task #19)
+
+Per-bounce decomposition on Cornell+Slit BSDF-only at 256 spp:
+  b=1:  PT 0.386  BDPT 0.016  ratio 0.041
+  b=2:  PT 0.420  BDPT 0.021  ratio 0.051
+  b=20: PT 0.440  BDPT 0.023  ratio 0.053
+
+Per-bounce ratio is ~5% at all bounces — confirms per-PATH loss, not
+per-bounce compounding. About 95% of paths in PT that find the light
+through the slit are silently dropped in BDPT.
+
+Mathematical sanity-check on contribution formula:
+  PT contribution per surviving path: throughput * Le / s.pdfW
+    = (albedo/π * cos) * Le / (cos/π) = albedo * Le
+  BDPT same formula gives albedo * Le / contProb (extra 1/contProb)
+  Survival rate compensates → expected value matches PT.
+
+So the 95% loss is NOT in the contribution formula. It's in one of:
+1. Path TERMINATION (cosOut/cosIn/throughput/pdfW checks) silently
+   killing through-slit paths.
+2. BSDF SAMPLE direction in BDPT being systematically different from
+   PT's (despite same Falcor sampleLight call).
+3. EvalLightContribution returning invalid result for these paths.
+4. ProcessSample's IsValid filter dropping them.
+
+Next-iteration instrumentation: write per-pixel counter to alpha channel
+of mOutputRadiance. Increment at each non-zero emission accumulation.
+Compare BDPT alpha pattern vs PT to see WHERE the path drops happen.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
