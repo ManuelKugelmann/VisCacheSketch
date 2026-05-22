@@ -404,6 +404,24 @@ incremented at each non-zero EvalLightContribution accumulation in
 ProcessSample). Compare BDPT vs PT counter patterns to localize where
 sample-direction divergence occurs.
 
+**Update 2026-05-23 (sgBsdf test)**: Tested `s.sgBsdf = s.sg`
+(unified BSDF generator like Falcor PT uses), ratio still 0.053
+unchanged. Separate negative-seed generator is NOT the cause.
+
+Cumulative ruled-out list (Cornell+Slit BDPT/PT ratio constant ≈ 0.053
+in all tests):
+- Russian Roulette on/off
+- BSDF importance sampling on/off
+- useBPT toggle (vanilla/ptonly/bsdf-only)
+- AdjustShadingNormal hint
+- frontFacing emission handling (verified identical in Falcor source)
+- sgBsdf vs sg unified generator
+- mTerminationProbability=0 (RR off)
+
+Bug needs headed Mogwai + PixelDebug `print()` at a specific
+slit-affected pixel for side-by-side BDPT/PT print-log comparison.
+Can't be done in the autonomous /loop.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
