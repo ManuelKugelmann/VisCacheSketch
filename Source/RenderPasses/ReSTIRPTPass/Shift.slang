@@ -18,6 +18,13 @@ import PathTracer;
 import Falcor8Compat;
 import RenderPasses.Shared.Denoising.NRDData;
 
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCachePathTracer;
+#ifdef VISCACHE_DIAGNOSTICS
+import RenderPasses.VisCache.VisCacheDiagnostics;  // VC_RAY_SITE_RECONNECT + vcDiagCountRay
+#endif
+#endif
+
 ParameterBlock<PathTracer> gPathTracer;
 
 float3 computeShiftedIntegrandExtraOutput(
@@ -682,16 +689,27 @@ bool mergeReservoir(const RestirPathTracerParams params, float3 dstIntegrand, fl
     return selected;
 }
 
-bool traceVisibilityRay(const Ray ray)
+// Reconnection-shift visibility — RECONNECT site (mode c in 4-mode VC
+// accounting). For task #86 PT VC reconnection instrumentation:
+// callers should pass `pixel` so the diagnostic counter
+// gVCAccumSavedReconnect / gVCAccumTotalReconnect can bump. Currently
+// pixel is uint2(0xFFFFFFFF) sentinel = "no pixel context" → counter
+// bump skipped. Threading real pixel from SpatialReuse / TemporalReuse
+// entry points is follow-up work; see task #86 for the call chain
+// (computeShiftedIntegrand_ → computeShiftedIntegrandReconnection /
+// PathTree → evalSegmentVisibility).
+bool traceVisibilityRay(const Ray ray, uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-    return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+    bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+#if defined(VISCACHE_DIAGNOSTICS) && USE_VISCACHE
+    if (pixel.x != 0xFFFFFFFFu) vcDiagCountRay(pixel, true, VC_RAY_SITE_RECONNECT);
+#endif
+    return visible;
 }
 
-// Segment-visibility test. Binary visibility (0 or 1). targetVertex is a
-// position when isDirection=false, or a direction when isDirection=true
-// (env-map reconnection).
-bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex, bool isDirection = false)
+bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
+                           bool isDirection = false, uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
     float3 dir;
     float tMax;
@@ -709,6 +727,10 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
     }
     Ray ray = Ray(sourceVertex, dir, 0.f, tMax);
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
-    return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+    bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+#if defined(VISCACHE_DIAGNOSTICS) && USE_VISCACHE
+    if (pixel.x != 0xFFFFFFFFu) vcDiagCountRay(pixel, true, VC_RAY_SITE_RECONNECT);
+#endif
+    return visible;
 }
 
