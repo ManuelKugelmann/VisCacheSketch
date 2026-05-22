@@ -10,9 +10,13 @@ light_mat.emissiveFactor = 1.0
 light_mat.roughness = 1.0
 
 # Centered light at y=1.7 (suspended below ceiling)
+# Vertex order: (-x,-z) (+x,-z) (+x,+z) (-x,+z) — gives triangles whose
+# geometric cross product equals the stored -y normal. The earlier
+# winding produced triangles facing +y (opposite to the stored normal),
+# which BDPT mis-handles (95% energy loss). See KNOWN_BIAS.md task #19.
 addQuad('Light', light_mat,
-    float3(-0.2, 1.7, 0.175), float3(0.2, 1.7, 0.175),
-    float3(0.2, 1.7, -0.175), float3(-0.2, 1.7, -0.175),
+    float3(-0.2, 1.7, -0.175), float3(0.2, 1.7, -0.175),
+    float3(0.2, 1.7, 0.175), float3(-0.2, 1.7, 0.175),
     0, -1, 0)
 
 settings = sceneBuilder.renderSettings

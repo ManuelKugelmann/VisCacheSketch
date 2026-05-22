@@ -11,10 +11,11 @@ light_mat.emissiveColor = float3(400.0, 325.0, 250.0)
 light_mat.emissiveFactor = 1.0
 light_mat.roughness = 1.0
 
-# Bright light tucked into the upper-back-left corner
+# Bright light tucked into the upper-back-left corner.
+# Vertex order chosen so the geometric cross product matches the stored -y normal.
 addQuad('Light', light_mat,
-    float3(-0.95, 1.7, 0.9), float3(-0.55, 1.7, 0.9),
-    float3(-0.55, 1.7, 0.55), float3(-0.95, 1.7, 0.55),
+    float3(-0.95, 1.7, 0.55), float3(-0.55, 1.7, 0.55),
+    float3(-0.55, 1.7, 0.9), float3(-0.95, 1.7, 0.9),
     0, -1, 0)
 
 # Vertical occluder partitioning the room — leaves a narrow slit

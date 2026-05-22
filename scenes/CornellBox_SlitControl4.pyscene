@@ -1,0 +1,21 @@
+# CornellBox_SlitControl4.pyscene — light at y=1.999 (just below ceiling).
+# Tests if "flush" works only because of exact ceiling alignment, or
+# if even very-near-ceiling lights are fine.
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+light_mat = StandardMaterial('Light')
+light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+light_mat.emissiveColor = float3(80.0, 65.0, 50.0)
+light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
+
+# Light at y=1.999 (just 1mm below ceiling) — same center+size as 1AreaLight
+addQuad('CeilingLight', light_mat,
+    float3(-0.25, 1.999, -0.25), float3(0.25, 1.999, -0.25),
+    float3(0.25, 1.999, 0.25), float3(-0.25, 1.999, 0.25),
+    0, -1, 0)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = True
