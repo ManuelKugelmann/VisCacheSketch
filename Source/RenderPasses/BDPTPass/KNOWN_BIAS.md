@@ -270,6 +270,33 @@ that BDPTPass is biased LOW on VeachAjar. On Cornell BDPT agrees with
 both PT and MPT, so the BDPT bug is scene-specific (triggered by
 glass+occlusion).
 
+## Bug #3 found: BDPT ignores analytic lights entirely
+
+C++ side at `BDPT.cpp:1449` defines `USE_ANALYTIC_LIGHTS` but the slang
+side NEVER USES the define. BDPT only samples emissive triangles via
+`mEmissiveSampler.sampleLight(...)`. Point lights, directional lights,
+spot lights — completely skipped.
+
+Evidence: on Arcade (which has DirectionalLight + PointLight + emissive
+triangles), BDPT undershoots Falcor PT by 13%:
+
+  Arcade 256 spp:
+    PT/MPT:           0.31845 / 0.31839
+    BDPT (full/pton): 0.27633 (same for both)   = 0.868 × truth
+
+The directional light + point light contribute the missing ~13%. On
+Cornell (no analytic lights), BDPT matches PT within 0.05%.
+
+Fix scope: add `generateAnalyticLightSample`-equivalent to BDPT's
+`ConnectToLight`, with light-type selection probability (env / emissive
+/ analytic), then make sure the analytic-light NEE path produces a
+proper `PathSample` with correct pdf for MIS.
+
+Note: VeachAjar has NO analytic lights, so this fix won't close the
+VeachAjar gap. VeachAjar has a separate bug (or — per user's
+hypothesis — PT might be undersampling VeachAjar through-slit paths
+even at 2048 spp).
+
 ## Recommendation
 
 Until per-pixel pdf instrumentation pins down the formula divergence,
