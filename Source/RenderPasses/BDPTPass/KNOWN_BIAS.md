@@ -293,9 +293,23 @@ Fix scope: add `generateAnalyticLightSample`-equivalent to BDPT's
 proper `PathSample` with correct pdf for MIS.
 
 Note: VeachAjar has NO analytic lights, so this fix won't close the
-VeachAjar gap. VeachAjar has a separate bug (or — per user's
-hypothesis — PT might be undersampling VeachAjar through-slit paths
-even at 2048 spp).
+VeachAjar gap. VeachAjar has a separate bug. **Confirmed by clean
+CornellBox_Slit test scene**: bright light hidden behind partition
+wall with narrow slit at top. PT and MPT both render correctly at
+0.44 mean (256+ spp, converged). BDPT renders at 0.023 mean — 95% dim,
+identical at maxB=1/2/20 and SPP=256/1024.
+
+The slit bug exists in BDPT's BSDF-strategy emission accumulation: PT
+finds through-slit paths (cosine-weighted random direction sometimes
+threads the opening, lands on light), BDPT doesn't. Both useBPT=True
+and useBPT=False give the same dim result on slit, so the bug is in
+the path-trace core, not the BPT layer. So the 30% VeachAjar gap and
+the 95% slit gap are the same bug — VeachAjar's slit is wider so
+fewer paths get lost.
+
+User hypothesized PT might be undersampling VeachAjar — DISPROVEN by
+the Cornell+slit test where PT/MPT agree at 0.44 (independent unbiased
+estimators of the same integral) while BDPT alone diverges to 0.023.
 
 ## Architectural note: parallel vs unified light-type selection
 
