@@ -26,9 +26,13 @@ SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
     return SampleGenerator(pixel, gFrameCount * gSpp + sampleIdx + 0x7C000000u);
 }
 
+// callSite: VC_RAY_SITE_* tag (see VisCacheDiagnostics.slang). Default
+// VC_RAY_SITE_NEE matches the historical behaviour for all NEE shadow rays;
+// pass VC_RAY_SITE_PROPOSAL for V-aware target-pdf cache reads and
+// VC_RAY_SITE_RECONNECT for PT reconnection-shift V tests.
 float vcVisibility_Ray<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
-    float3 normalA = float3(0.f))
+    float3 normalA = float3(0.f), uint callSite = 0u)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
@@ -47,7 +51,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
 #ifdef VISCACHE_DIAGNOSTICS
 float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
-    float3 normalA = float3(0.f))
+    float3 normalA = float3(0.f), uint callSite = 0u)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
@@ -59,10 +63,10 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
         SceneRayQuery<UseAlphaTest> sceneRayQuery;
         float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
         float w = vhfCommit(posA, posB, V, g, normalA);
-        vcWriteDiag(pixel, g, true, V, posA, posB);
+        vcWriteDiag(pixel, g, true, V, posA, posB, callSite);
         return w;
     }
-    vcWriteDiag(pixel, g, false, 0.f, posA, posB);
+    vcWriteDiag(pixel, g, false, 0.f, posA, posB, callSite);
     return g.visWeight;
 }
 #endif // VISCACHE_DIAGNOSTICS

@@ -1148,7 +1148,7 @@ struct PathTracer
                             float vF = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                             if (visInPHatMode() == 1u)
-                                vF = vq.traceVisibilityRayCV(vrayF, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                vF = vq.traceVisibilityRayCV(vrayF, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_PROPOSAL);
                             else
                                 vF = vq.traceVisibilityRay(vrayF) ? 1.f : 0.f;
 #else
@@ -1235,7 +1235,7 @@ struct PathTracer
                                 float vK = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                                 if (visInPHatMode() == 1u)
-                                    vK = vq.traceVisibilityRayCV(vrayK, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                    vK = vq.traceVisibilityRayCV(vrayK, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_PROPOSAL);
                                 else
                                     vK = vq.traceVisibilityRay(vrayK) ? 1.f : 0.f;
 #else
@@ -1327,7 +1327,7 @@ struct PathTracer
                                 float vQ = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                                 if (visInPHatMode() == 1u)
-                                    vQ = vq.traceVisibilityRayCV(vrayQ, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                    vQ = vq.traceVisibilityRayCV(vrayQ, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_PROPOSAL);
                                 else
                                     vQ = vq.traceVisibilityRay(vrayQ) ? 1.f : 0.f;
 #else
@@ -1439,7 +1439,7 @@ struct PathTracer
                                 float vB = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                                 if (visInPHatMode() == 1u)
-                                    vB = vq.traceVisibilityRayCV(vrayB, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                    vB = vq.traceVisibilityRayCV(vrayB, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_PROPOSAL);
                                 else
                                     vB = vq.traceVisibilityRay(vrayB) ? 1.f : 0.f;
 #else
@@ -1581,7 +1581,7 @@ struct PathTracer
                                     float vP = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                                     if (visInPHatMode() == 1u)
-                                        vP = vq.traceVisibilityRayCV(vrayP, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                        vP = vq.traceVisibilityRayCV(vrayP, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_PROPOSAL);
                                     else
                                         vP = vq.traceVisibilityRay(vrayP) ? 1.f : 0.f;
 #else
@@ -1805,7 +1805,7 @@ struct PathTracer
                             float vC = 1.f;
 #if USE_VISCACHE_VISIBILITYCHECK
                             if (visInPHatMode() == 1u)
-                                vC = vq.traceVisibilityRayCV(vrayC, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                vC = vq.traceVisibilityRayCV(vrayC, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_PROPOSAL);
                             else
                                 vC = vq.traceVisibilityRay(vrayC) ? 1.f : 0.f;
 #else
