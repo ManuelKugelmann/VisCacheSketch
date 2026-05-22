@@ -1566,6 +1566,35 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         mRecompile = true;
     }
 
+    // --- VisCache integration scaffold (task #82, step 1 of N) ---
+    // Read VisCache dict state for downstream USE_VISCACHE_VISIBILITYCHECK
+    // define. Shader call sites (4 traceVisibilityRay sites) are NOT yet
+    // routed through vcVisibility_Ray — that lands in a follow-up commit.
+    // For now we just establish the flag + recompile trigger so future
+    // shader edits can reference the macro safely.
+    {
+        bool wasAvailable   = mVisCacheAvailable;
+        bool wasVisCheck    = mVisCacheVisibilityCheck;
+        bool wasLightSel    = mVisCacheLightSelection;
+        bool wasDiag        = mVisCacheDiagnostics;
+        uint32_t wasBayerN  = mVisCacheBayerN;
+        mVisCacheAvailable       = dict.keyExists("vhfParam_tableCapacity");
+        mVisCacheVisibilityCheck = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableVisibilityCheck") && dict.getValue<bool>("vhfEnableVisibilityCheck");
+        mVisCacheLightSelection  = mVisCacheAvailable &&
+            dict.keyExists("vhfEnableLightSelection") && dict.getValue<bool>("vhfEnableLightSelection");
+        mVisCacheDiagnostics     = mVisCacheAvailable &&
+            dict.keyExists("vhfDiagEnabled") && dict.getValue<bool>("vhfDiagEnabled");
+        mVisCacheBayerN          = (mVisCacheAvailable && dict.keyExists("vhfBayerN"))
+            ? dict.getValue<uint32_t>("vhfBayerN") : 1u;
+        if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
+            || mVisCacheLightSelection != wasLightSel
+            || mVisCacheDiagnostics != wasDiag || mVisCacheBayerN != wasBayerN)
+        {
+            mRecompile = true;
+        }
+    }
+
     // Check if NRD data should be generated.
     mOutputNRDData =
         renderData[kOutputNRDDiffuseRadianceHitDist] != nullptr
@@ -1907,6 +1936,13 @@ DefineList ReSTIRPTPass::StaticParams::getDefines(const ReSTIRPTPass& owner) con
     defines.add("INTERIOR_LIST_SLOT_COUNT", std::to_string(maxNestedMaterials));
 
     defines.add("GBUFFER_ADJUST_SHADING_NORMALS", owner.mGBufferAdjustShadingNormals ? "1" : "0");
+
+    // VisCache integration (scaffold — shader wiring lands in follow-up).
+    defines.add("USE_VISCACHE", owner.mVisCacheAvailable ? "1" : "0");
+    defines.add("USE_VISCACHE_VISIBILITYCHECK", owner.mVisCacheVisibilityCheck ? "1" : "0");
+    defines.add("USE_VISCACHE_LIGHTSELECTION", owner.mVisCacheLightSelection ? "1" : "0");
+    defines.add("VISCACHE_BAYER_N", std::to_string(owner.mVisCacheBayerN));
+    if (owner.mVisCacheDiagnostics) defines.add("VISCACHE_DIAGNOSTICS", "1");
 
     // Scene-specific configuration (matching PathTracer::StaticParams::getDefines).
     // Scene defines include material system config, geometry types, hit info, etc.

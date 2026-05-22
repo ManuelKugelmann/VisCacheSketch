@@ -238,4 +238,14 @@ private:
     ref<Texture>                    mpNeighborOffsets;
 
     ref<Buffer>                     mNRooksPatternBuffer;
+
+    // --- VisCache integration (per-mode ray accounting, task #82) ---
+    // Currently CPU-side scaffold only — shader wiring (vcVisibility_Ray
+    // routes for the 4 traceVisibilityRay sites + VC_RAY_SITE_* tagging)
+    // ships in follow-up commits. Mirrors DI's pattern.
+    bool mVisCacheAvailable        = false;
+    bool mVisCacheVisibilityCheck  = false;
+    bool mVisCacheLightSelection   = false;
+    bool mVisCacheDiagnostics      = false;
+    uint32_t mVisCacheBayerN       = 1;
 };
