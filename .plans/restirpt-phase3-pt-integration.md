@@ -80,6 +80,30 @@ Use `ptx.generateScatterRay`, `ptx.updatePathThroughput`,
 `ptx.addToPathContribution` for the routine work; keep dqlin's `handleHit`
 outer logic but call `ptx.*` for the pure-PT parts.
 
+**PathState delta (Step 3.2 prerequisite):**
+
+Common fields (1:1): `id, bounceCounters, origin, dir, pdf, normal, hit, thp, L, interiorList, sg`.
+
+dqlin-only extras (ReSTIR reservoir bookkeeping):
+- `prefixThp` — for rcVertexIrradiance[1] computation
+- `rcVertexPathTreeIrradiance` — path-tree irradiance accumulator
+- `LDeltaDirect` — direct lighting saved on delta surfaces
+- `sharedScatterDir`
+- `rcPrevVertexHit` — previous vertex of rcVertex for hybrid shift replay
+- `rcPrevVertexWo` — outgoing dir at rcPrev for hybrid shift replay
+- `hitDist` — NRD denoiser input
+
+PathTracerX-only:
+- `flagsAndVertexIndex` — packed vertex idx + path flags
+
+**Migration strategy:** dqlin keeps its PathState (superset of PathTracerX's
+minus the packing detail). PathTracerX methods called via the `ptx` field
+operate on a PathState-compatible view — either (a) cast/reinterpret to
+PathTracerX's PathState if layouts can be made superset-compatible, or
+(b) construct a temporary PathTracerX::PathState from the dqlin one for
+each method call. (a) is faster (no copy), (b) is safer (no layout
+coupling). Start with (b), evolve to (a) if profile shows the copy is hot.
+
 ### Step 3.3 — Reservoir hook in PathTracerX (additive)
 PathTracerX gains an optional `inout PathReservoir res` arg on `handleHit`,
 gated by `#if USE_RESTIR_RESERVOIRS`. Default off → bit-identical to vanilla.
