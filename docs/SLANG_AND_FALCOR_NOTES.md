@@ -53,7 +53,7 @@ Tested versions (one branch each, full 17-pass smoke battery on CornellBox_1Area
 
 | Version | Build | 17-pass smoke | Notes |
 |---|---|---|---|
-| 2024.1.34 (Falcor 8 default) | clean | 17/17 | Baseline. ReSTIRBDPT resolve-pass crash workaround in `BDPT.cs.slang` required (ShiftPath branch disabled). |
+| 2024.1.34 (Falcor 8 default) | clean | 17/17 | Baseline. ReSTIRBDPT full ReSTIR-BDPT pipeline including ShiftPath, temporal reuse, and caustic shift all enabled via warmup-helper recipe (tasks #10 + #12, 2026-05-22). |
 | **2024.14.6** (current pin) | clean | 17/17 | Two source fixes needed: l-value subscript + `compute` capability. Did not fix the ConnectToSuffix reflection bug. |
 | 2025.5  | clean | 0/17 | Falcor's own `Scene/HitInfo.slang` breaks: `this = {};` no longer a valid zero-init in slang 2025+ (needs explicit arg). 3 sites in HitInfo.slang alone, more elsewhere. Falcor 8 source would need patching to align — too invasive. |
 | 2026.9.1 (latest as of May 2026) | clean | 0/17 | Stricter constant-fold: BF_SET macro in `HostDeviceShared.slangh` overflows uint conversion. Also: `packSnorm2x16(float2)` becomes ambiguous (new overloads). Massive Falcor-side breakage. |
@@ -102,9 +102,22 @@ What still needs to be tried (task #10):
 
 **Wrapper test ruled out (2026-05-21):** wrapping `gPathGenerator.ShiftPath(...)` in a free function `ShiftPathFree(...)` does NOT bypass the crash. Slang inlines through the wrapper so the reflection sees the same call graph. The fix must change the actual function *definition* context, not the call site.
 
-**Free-function refactor ruled out (2026-05-21, commit 67f1a165):** moved `ShiftPath` and `ShiftCausticPath` out of `extension PathGenerator { ... }` into actual free functions at file scope. Their bodies now use `gPathGenerator.` prefix on every PathGenerator-member access. The refactor is mechanically clean and produces 17/17 smoke PASS — but **re-enabling the `gShiftLightPathsToPixelCenters` branch still crashes setVars**. The "extension method vs free function" hypothesis was therefore wrong. The trip is in the call-graph complexity reachable from the resolve entry point: `ShiftPath → ConnectToSuffix → Occluded / SetNextVertex / InitializeLightPath<true,true> / vertex.EvaluateReflectance / GetShiftedSuffixVertex / …`. Those helpers ARE still extension methods on PathGenerator. Refactoring the helpers too would require fully qualifying `PathGenerator.PathState<bShift>` everywhere — gnarly but possible. Alternative: inline ShiftPath's body into the resolve compute shader to break the cross-function-reflection chain.
+**RESOLVED (2026-05-22, tasks #10 + #12, commits f33c8bb2 + 1050a461 + dc85b2a7).** The fix is a "warmup helper" recipe applied per-file:
 
-Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented out in `BDPT.cs.slang`. This disables only the optional sub-pixel re-projection optimization; the rest of the ReSTIR resampling pipeline is intact and renders 8 frames cleanly. See [project_restir_bdpt_port memory](../memory) for the running status.
+1. **Extract the .cs.slang entry to its own file** (don't share with other entries — multi-entry .cs.slang compounds the trip). Old `BDPT.cs.slang::ResolveLightTraceReservoirs` → new `ResolveLightTrace.cs.slang::main`. Old `TemporalReuse.cs.slang` (3 entries) → split into `TemporalReuse.cs.slang::main`, `TemporalShiftPrev.cs.slang::main`, `TemporalShiftCaustics.cs.slang::main`.
+2. **Define inline** (not via a shared library) a 4-arg `ShiftPath` wrapper (`SpatialShiftHelper` / `TempShiftHelper`).
+3. **Define inline** a `ComputeWarmupMisWeight`-shaped helper: a for-loop iterating `gPathGenerator.mParams.mSpatialReuseSamples` that calls the wrapper inside. Loop bound MUST be a runtime value — 0-iter literal loops get DCE'd by Slang ("warning 30505: the loop runs for 0 iterations and will be removed").
+4. **CALL the warmup helper from main's body.** Defining it without invoking it isn't enough (Slang DCEs unused functions even if they appear in the file).
+
+After applying the recipe to all four files, every previously-broken feature works: `gShiftLightPathsToPixelCenters`, `useTemporalReuse`, `unbiasedTemporalReuse`, `useCausticShift`, `useCausticReservoirs` — combined, simultaneously, with `spatialReusePasses>0`. 17/17 smoke + 64f temporal-with-everything PASS.
+
+**Gotchas worth knowing if you revisit this:**
+- Genericity is not the trigger. Both `TemporalShift<bool>` and a non-generic split crashed before the recipe was applied; both pass after.
+- 5-arg `ShiftPath(basePath, newVertex, newPixel, jacobian, shiftToPrev)` and 4-arg `ShiftPath(basePath, newVertex, newPixel, jacobian)` both work — arg count isn't the trigger.
+- `__exported import` in a shared library correctly forwards symbols, but the *helpers must be defined inline in the .cs.slang*. A shared-library `ComputeWarmupMisWeight` didn't unblock the trip.
+- Pass creation order doesn't matter. Creating the resolve pass before or after `mpCopyRadiancePass` gives identical results.
+- The minimal "ShiftPath inline + write output" body PASSED for `ResolveLightTrace.cs.slang::main` after the recipe but FAILED in `TemporalReuse.cs.slang::main` until that file got its own warmup. The recipe is per-file even for byte-identical bodies.
+- Slang shader-cache clearing doesn't help (verified by `rm -rf runtime/.shadercache && retest`).
 
 ### Feature-by-feature status (ReSTIRBDPTPass on Falcor 8 + Slang 2024.14.6)
 
@@ -112,30 +125,25 @@ Workaround in effect: the `gShiftLightPathsToPixelCenters` branch is commented o
 |---|---|---|
 | `useBPT=True` (bidirectional light subpaths)                         | ✓ works   | core BDPT feature |
 | `useResampling=True` (per-pixel ReSTIR reservoir merge)              | ✓ works   | tested 8-frame smoke |
-| `useResampling=True` + `gShiftLightPathsToPixelCenters` enabled      | ✗ broken  | the ConnectToSuffix reflection bug; workaround = disable the branch |
+| `useResampling=True` + `gShiftLightPathsToPixelCenters` enabled      | ✓ works   | task #10 — warmup recipe in `ResolveLightTrace.cs.slang` |
 | `useCausticReservoirs=True` (caustic reservoir buffer, no temporal)  | ✓ works   | tested standalone — 64-frame PASS via `scripts/ReSTIRBDPTPass_Caustic_Graph.py` |
-| `useTemporalResampling=True`                                         | ✗ broken  | `TemporalReuse.cs.slang` reaches `ShiftPath` through the same reflection trip |
-| `useCausticShift=True`                                               | ✗ blocked | requires `useTemporalResampling=True` |
-| `spatialReusePasses>0`                                               | ✓ works   | tested 16-frame PASS — confirms the reflection trip is SPECIFIC to BDPT.cs.slang::ResolveLightTraceReservoirs, not to ShiftPath itself. SpatialReuse.cs.slang::main is a separate compute pass with a different call graph; its setVars reflects cleanly even though it calls into `ShiftPath` → `ConnectToSuffix` |
-| `useCausticReservoirs=True` + `spatialReusePasses>0` (combined)      | ✓ works   | tested 8-frame PASS |
+| `useTemporalResampling=True`                                         | ✓ works   | task #12 — warmup recipe in `TemporalReuse.cs.slang` |
+| `useCausticShift=True`                                               | ✓ works   | task #12 — warmup recipe in `TemporalShiftCaustics.cs.slang` and `TemporalShiftPrev.cs.slang` |
+| `spatialReusePasses>0`                                               | ✓ works   | `SpatialReuse.cs.slang::main` always reflected cleanly (it already had the ComputeSpatialMisWeight call shape that the warmup recipe mimics) |
+| `useCausticReservoirs=True` + `spatialReusePasses>0` (combined)      | ✓ works   | |
+| All flags simultaneously (full ReSTIR-BDPT pipeline)                 | ✓ works   | 64-frame PASS on CornellBox_1AreaLight via `BDPTPass_Capture.py` PASS_KIND=full |
 
-### Negative result: separate-compute-file workaround doesn't help (2026-05-21)
+### Bisect record (2026-05-22)
 
-Tested moving the resolve entry to a new file `ResolveLightTraceShift.cs.slang` (separate `.cs.slang` with its own `main` entry, body cloned from `BDPT.cs.slang::ResolveLightTraceReservoirs` with shift branch enabled). Result: same SIGSEGV during setVars even with the original resolve pass DISABLED (so only the new pass exists in the program). Trivial body (just `mOutputRadiance[id] = const`) PASSES, but adding bare `ShiftPath(basePath, primaryVertex, tmp, jacobian)` to the new entry crashes.
+The key insight that broke the case open: the trip is body-content-shape-dependent. Working backwards from "verbatim SpatialReuse.cs.slang body PASSES as a new probe file with renamed entry", incrementally stripping body parts:
 
-Mystery: `SpatialReuse.cs.slang::main` calls `ShiftPath` (via a `SpatialShift` wrapper) AND works fine. The body content of the two passes is similar enough that "what's specifically different" remains elusive. Possible Slang-reflection cache effects, undefined-symbol resolution order, or some other path-dependent issue.
+- Trivial body (single texture write) — PASSES
+- + LoadInputReservoir + LoadPrimaryVertex + bare ShiftPath call — FAILS
+- + SpatialShift wrapper (gate ShiftPath on `!HasFlag(eCausticLightPath)`) — STILL FAILS
+- + ComputeSpatialMisWeight helper *defined* but NOT called — FAILS (DCE'd)
+- + ComputeSpatialMisWeight helper *defined AND called* from main — PASSES
 
-Probe file kept at `Source/RenderPasses/ReSTIRBDPTPass/ResolveLightTraceShift.cs.slang` plus an `#if 0`-gated host-side create site in `ReSTIRBDPT.cpp` so the experiment can resume without re-deriving it.
-
-### Next bisect plan
-
-The unsolved question is **why SpatialReuse.cs.slang::main works** while ResolveLightTraceShift.cs.slang's probe (with just `PathSample basePath = {}; ShiftPath(basePath, pv, tmp, jacobian);`) crashes. Two next-iteration tests:
-
-1. **Verbatim SpatialReuse clone with renamed entry.** Copy `SpatialReuse.cs.slang` to a new file `SpatialReuseClone.cs.slang`, rename `main` → `main_clone`, keep ALL helpers (`SpatialShift`, `ComputeSpatialMisWeight`, `ComputeSpatialZ`, `GetNeighborOffsetSampleGenerator`, `Texture2D<uint4> gVertices`, `static const RMISType gMISType`). Add the host-side create+prepare for it.
-   - If it crashes → the trip is "structurally-identical compute pass instantiated AS THE Nth pass" (some pass-count or registration-order Falcor effect).
-   - If it passes → the trip is specifically in our slimmed probe body's structure (missing helpers / globals / wrapper layer).
-
-2. **Add a wrapper.** Try matching SpatialReuse's pattern more carefully: define `ResolveShift(basePath, vertex, jacobian)` as a wrapper that calls `ShiftPath` only when a condition is met. Call the wrapper from main. Maybe the dead-code-guard tricks Slang's call-graph reflection into being more conservative.
+So the recipe is: any entry that calls `ShiftPath` must also have a `ComputeSpatialMisWeight`-shaped helper (`for (i < runtime-bound) { ... call SpatialShiftHelper ... }`) actually invoked from main. The exact mechanism inside Slang is unclear — likely an interaction between IR call-graph analysis and ParameterBlock reflection.
 
 ---
 
