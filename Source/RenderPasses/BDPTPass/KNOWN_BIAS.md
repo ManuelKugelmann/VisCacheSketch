@@ -297,6 +297,31 @@ VeachAjar gap. VeachAjar has a separate bug (or — per user's
 hypothesis — PT might be undersampling VeachAjar through-slit paths
 even at 2048 spp).
 
+## Architectural note: parallel vs unified light-type selection
+
+Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
+single NEE call per loop iteration, type chosen probabilistically.
+
+BDPT after Bug #3 fix uses **parallel** NEE: separate `ConnectToLight`
+(env + emissive) and `ConnectToAnalyticLight` calls every iteration.
+This gives a small 1-2% over-shoot on scenes with mixed light types
+(Arcade ratio 1.019 vs PT, Sponza 1.009).
+
+Attempted to refactor to unified (commit d8730ba5 added helpers; the
+dispatch change attempted in this session reverted) — the unified
+approach REGRESSED Sponza to ratio 0.55 and Arcade to 0.888 because
+the BPT MIS weight in `EvalDirectLightMIS` depends quadratically on
+`directPdfW`. Scaling directPdfW by `lightSelectPdf` (0.5 for two-type
+scenes) cubes (wLight ~ 4×) the BPT MIS weight, shifting weight away
+from NEE.
+
+To make the unified refactor work, the BPT MIS would need to use the
+ORIGINAL `directPdfW` (without selection scaling) for the MIS-weight
+calculation, while using the SELECTION-scaled pdf for the integration-
+weight normalization. That's a deeper refactor — keeping parallel for
+now. The selectLightType + getLightTypeSelectionProbabilities helpers
+are committed (unused) as scaffolding for a future careful attempt.
+
 ## Recommendation
 
 Until per-pixel pdf instrumentation pins down the formula divergence,
