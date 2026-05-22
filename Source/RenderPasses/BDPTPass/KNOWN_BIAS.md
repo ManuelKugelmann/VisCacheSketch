@@ -148,6 +148,66 @@ NEE), which gives a different sample sequence than Falcor PT. This
 shouldn't bias the expected value but might explain different
 convergence behavior on hard-to-find-light scenes.
 
+**Update**: Tested unifying generators (`sgBsdf = sg`) — ratio
+unchanged at 0.704. So generator divergence is NOT the cause.
+
+## What's been ruled out for the remaining 30pp gap
+
+After extensive bisect, the following are NOT the cause of the
+remaining ~30pp bias on VeachAjar (after sample_triangle fix and
+off-by-one bounce-count correction):
+
+1. **Russian Roulette**: `mTerminationProbability=0` doesn't help.
+2. **maxDiffuseBounces=8 truncation**: setting BDPT to 20 doesn't help.
+3. **maxBounces off-by-one**: BDPT b=21 matched against PT b=20 still
+   gives ratio 0.704.
+4. **contProb factor in BSDF pdf for MIS**: removing it makes bias
+   slightly worse (0.704 → 0.682), so the factor is correct.
+5. **Separate BSDF sample generator**: unifying `sgBsdf = sg` doesn't
+   help.
+6. **Convergence (variance vs bias)**: 2048-spp render gives 0.7042
+   (vs 0.7041 at 256 spp). Definitively converged to a different
+   mean than PT — real bias, not slow convergence.
+
+## What's left to try
+
+The bias is in the BSDF-strategy emission accumulation chain. Possible
+remaining causes:
+
+1. **`vertex.IsConnectable()` gates termination**: the
+   `s.diffuseBounces == maxDiffuseBounces` check at AdvanceVertex
+   line 1829 terminates paths immediately when diffuseBounces hits
+   the limit, BEFORE the bounce is taken. PT's hasFinishedSurfaceBounces
+   uses `>` (allows one more bounce). Could be a second off-by-one
+   specifically on diffuse path counting.
+
+2. **PathSample.IsValid() in ProcessSample**: returns false if
+   `mPrefixPdf <= 0`. For very low BSDF pdf paths, mPrefixPdf could
+   underflow and silently reject contributions. PT doesn't have this
+   filter.
+
+3. **Cross-bounce throughput accumulation precision**: BDPT
+   accumulates BRDF*cos in throughput and BSDF_pdf in pdfW separately;
+   PT accumulates BRDF*cos/pdf in single thp. Numerical precision
+   could differ for long paths.
+
+4. **Veach shading-normal correction (line 220-231 in
+   GetAdjointCorrection)**: only applied to adjoint paths (light
+   subpaths). For useBPT=False camera-only paths, NOT applied. PT
+   does its own shading-normal handling internally in material.eval()
+   — possible divergence.
+
+## Recommendation
+
+Use Falcor's built-in PathTracer as the vanilla reference for
+ground-truth renders. BDPTPass has known scene-dependent dim bias of
+1% (Cornell) to 30% (VeachAjar/glass scenes). The bias is in BDPT's
+BSDF-strategy emission accumulation and persists at convergence. Two
+real bugs found and one fixed during this investigation (Falcor 7→8
+TriangleLightSample.uv semantics, maxBounces off-by-one); the
+remaining bias root cause is in one of the candidates above and needs
+per-pixel pdf+throughput instrumentation to confirm.
+
 ## What we ruled out (task #13 bisect)
 
 - **Not a port regression.** Original Shmaug/ReSTIR-BDPT has identical MIS
