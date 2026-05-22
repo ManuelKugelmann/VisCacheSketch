@@ -1329,14 +1329,28 @@ bool ReSTIRNEEPass::beginFrame(RenderContext* pRenderContext, const RenderData& 
             mpVCFrameMeanVarMatSamplesRaw   = getTex("vhfFrameMeanVarMatSamplesRaw");
             mpVCFrameLevelProbesSamplesCold   = getTex("vhfFrameLevelProbesSamplesCold");
             mpVCFrameHashAHashBHashABRays   = getTex("vhfFrameHashAHashBHashABRays");
-            mpVCAccumSaved     = getTex("vhfAccumSaved");
-            mpVCAccumTotal     = getTex("vhfAccumTotal");
-            mpVCAccumRaysNoiseErrorCold  = getTex("vhfAccumRaysNoiseErrorCold");
+            mpVCAccumSaved              = getTex("vhfAccumSaved");
+            mpVCAccumTotal              = getTex("vhfAccumTotal");
+            mpVCAccumSavedNEE           = getTex("vhfAccumSavedNEE");
+            mpVCAccumTotalNEE           = getTex("vhfAccumTotalNEE");
+            mpVCAccumSavedReval         = getTex("vhfAccumSavedReval");
+            mpVCAccumTotalReval         = getTex("vhfAccumTotalReval");
+            mpVCAccumSavedProposal      = getTex("vhfAccumSavedProposal");
+            mpVCAccumTotalProposal      = getTex("vhfAccumTotalProposal");
+            mpVCAccumSavedReconnect     = getTex("vhfAccumSavedReconnect");
+            mpVCAccumTotalReconnect     = getTex("vhfAccumTotalReconnect");
+            mpVCAccumRaysNoiseErrorCold = getTex("vhfAccumRaysNoiseErrorCold");
+            mpVCAccumRaysSplitNeeReval  = getTex("vhfAccumRaysSplitNeeReval");
         }
         else
         {
             mpVCAccumMeanVarMatCount = mpVCFrameMeanVarMatSamplesRaw = mpVCFrameLevelProbesSamplesCold = mpVCFrameHashAHashBHashABRays = nullptr;
             mpVCAccumSaved = mpVCAccumTotal = mpVCAccumRaysNoiseErrorCold = nullptr;
+            mpVCAccumSavedNEE = mpVCAccumTotalNEE = nullptr;
+            mpVCAccumSavedReval = mpVCAccumTotalReval = nullptr;
+            mpVCAccumSavedProposal = mpVCAccumTotalProposal = nullptr;
+            mpVCAccumSavedReconnect = mpVCAccumTotalReconnect = nullptr;
+            mpVCAccumRaysSplitNeeReval = nullptr;
         }
 
         if (mVisCacheAvailable != wasAvailable || mVisCacheVisibilityCheck != wasVisCheck
@@ -1577,9 +1591,18 @@ void ReSTIRNEEPass::tracePass(RenderContext* pRenderContext, const RenderData& r
         if (mpVCFrameMeanVarMatSamplesRaw)   var["gVCFrameMeanVarMatSamplesRaw"]   = mpVCFrameMeanVarMatSamplesRaw;
         if (mpVCFrameLevelProbesSamplesCold)   var["gVCFrameLevelProbesSamplesCold"]   = mpVCFrameLevelProbesSamplesCold;
         if (mpVCFrameHashAHashBHashABRays)   var["gVCFrameHashAHashBHashABRays"]   = mpVCFrameHashAHashBHashABRays;
-        if (mpVCAccumSaved)     var["gVCAccumSaved"]     = mpVCAccumSaved;
-        if (mpVCAccumTotal)     var["gVCAccumTotal"]      = mpVCAccumTotal;
-        if (mpVCAccumRaysNoiseErrorCold)  var["gVCAccumRaysNoiseErrorCold"]  = mpVCAccumRaysNoiseErrorCold;
+        if (mpVCAccumSaved)              var["gVCAccumSaved"]              = mpVCAccumSaved;
+        if (mpVCAccumTotal)              var["gVCAccumTotal"]              = mpVCAccumTotal;
+        if (mpVCAccumSavedNEE)           var["gVCAccumSavedNEE"]           = mpVCAccumSavedNEE;
+        if (mpVCAccumTotalNEE)           var["gVCAccumTotalNEE"]           = mpVCAccumTotalNEE;
+        if (mpVCAccumSavedReval)         var["gVCAccumSavedReval"]         = mpVCAccumSavedReval;
+        if (mpVCAccumTotalReval)         var["gVCAccumTotalReval"]         = mpVCAccumTotalReval;
+        if (mpVCAccumSavedProposal)      var["gVCAccumSavedProposal"]      = mpVCAccumSavedProposal;
+        if (mpVCAccumTotalProposal)      var["gVCAccumTotalProposal"]      = mpVCAccumTotalProposal;
+        if (mpVCAccumSavedReconnect)     var["gVCAccumSavedReconnect"]     = mpVCAccumSavedReconnect;
+        if (mpVCAccumTotalReconnect)     var["gVCAccumTotalReconnect"]     = mpVCAccumTotalReconnect;
+        if (mpVCAccumRaysNoiseErrorCold) var["gVCAccumRaysNoiseErrorCold"] = mpVCAccumRaysNoiseErrorCold;
+        if (mpVCAccumRaysSplitNeeReval)  var["gVCAccumRaysSplitNeeReval"]  = mpVCAccumRaysSplitNeeReval;
     }
     // Full screen dispatch.
     // Reduced-resolution dispatch when subframe gate active; raygen remaps to

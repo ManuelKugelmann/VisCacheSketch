@@ -45,17 +45,29 @@ RWTexture2D<uint>   gVCAccumTotal;                         ///< Internal: per-pi
 // of temporal/spatial reservoir reuse-revalidation rays. Both pairs are
 // always bumped alongside the rolled-up pair above — readers can pick the
 // channel they need without breaking the existing single-counter consumers.
+//
+// 4-mode VisCache use accounting (user-requested 2026-05-22):
+//   NEE       = (d) regular visibility — vanilla-style shadow ray amortization
+//   Reval     = (a) reuse unbiasing    — V-test on reused reservoir samples
+//   Proposal  = (b) sample proposal    — V-aware target pdf (visInPHat=1)
+//   Reconnect = (c) reconnections      — V-aware reconnection-shift acceptance
 RWTexture2D<uint>   gVCAccumSavedNEE;
 RWTexture2D<uint>   gVCAccumTotalNEE;
 RWTexture2D<uint>   gVCAccumSavedReval;
 RWTexture2D<uint>   gVCAccumTotalReval;
-RWTexture2D<float4> gVCAccumRaysSplitNeeReval;             ///< R=NEE_ratio, G=Reval_ratio, B+A reserved
+RWTexture2D<uint>   gVCAccumSavedProposal;
+RWTexture2D<uint>   gVCAccumTotalProposal;
+RWTexture2D<uint>   gVCAccumSavedReconnect;
+RWTexture2D<uint>   gVCAccumTotalReconnect;
+RWTexture2D<float4> gVCAccumRaysSplitNeeReval;             ///< R=NEE, G=Reval, B=Proposal, A=Reconnect (traced ratios)
 
 // Call-site tags for vcWriteDiag / vcDiagCountRay.
 // Slang exports `static const` symbols across `import` boundaries but NOT
 // `#define`s — keep these as constants so importers see them.
-static const uint VC_RAY_SITE_NEE   = 0u;
-static const uint VC_RAY_SITE_REVAL = 1u;
+static const uint VC_RAY_SITE_NEE       = 0u;
+static const uint VC_RAY_SITE_REVAL     = 1u;
+static const uint VC_RAY_SITE_PROPOSAL  = 2u;
+static const uint VC_RAY_SITE_RECONNECT = 3u;
 
 /// Write per-pixel diagnostics after a vhfGate/vhfCommit sequence.
 /// @param pixel       Screen-space pixel coordinate.
@@ -135,16 +147,34 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
     gVCAccumSaved[pixel] = saved;
     gVCAccumTotal[pixel] = total;
 
-    uint savedNEE   = gVCAccumSavedNEE[pixel];
-    uint totalNEE   = gVCAccumTotalNEE[pixel];
-    uint savedReval = gVCAccumSavedReval[pixel];
-    uint totalReval = gVCAccumTotalReval[pixel];
+    uint savedNEE       = gVCAccumSavedNEE[pixel];
+    uint totalNEE       = gVCAccumTotalNEE[pixel];
+    uint savedReval     = gVCAccumSavedReval[pixel];
+    uint totalReval     = gVCAccumTotalReval[pixel];
+    uint savedProposal  = gVCAccumSavedProposal[pixel];
+    uint totalProposal  = gVCAccumTotalProposal[pixel];
+    uint savedReconnect = gVCAccumSavedReconnect[pixel];
+    uint totalReconnect = gVCAccumTotalReconnect[pixel];
     if (callSite == VC_RAY_SITE_REVAL)
     {
         savedReval += traced ? 0u : 1u;
         totalReval += 1u;
         gVCAccumSavedReval[pixel] = savedReval;
         gVCAccumTotalReval[pixel] = totalReval;
+    }
+    else if (callSite == VC_RAY_SITE_PROPOSAL)
+    {
+        savedProposal += traced ? 0u : 1u;
+        totalProposal += 1u;
+        gVCAccumSavedProposal[pixel] = savedProposal;
+        gVCAccumTotalProposal[pixel] = totalProposal;
+    }
+    else if (callSite == VC_RAY_SITE_RECONNECT)
+    {
+        savedReconnect += traced ? 0u : 1u;
+        totalReconnect += 1u;
+        gVCAccumSavedReconnect[pixel] = savedReconnect;
+        gVCAccumTotalReconnect[pixel] = totalReconnect;
     }
     else // VC_RAY_SITE_NEE (default for cache-NEE bounce-0 path)
     {
@@ -169,9 +199,11 @@ void vcWriteDiag(uint2 pixel, VHFGateResult g, bool traced, float V,
 
     // Split per-call-site ratios. Pixels with zero queries on a site report
     // 0 (not-traced); postprocess can mask on totals to avoid skewing means.
-    float ratioNEE   = (totalNEE   > 0u) ? float(totalNEE   - savedNEE)   / float(totalNEE)   : 0.f;
-    float ratioReval = (totalReval > 0u) ? float(totalReval - savedReval) / float(totalReval) : 0.f;
-    gVCAccumRaysSplitNeeReval[pixel] = float4(ratioNEE, ratioReval, 0.f, 0.f);
+    float ratioNEE       = (totalNEE       > 0u) ? float(totalNEE       - savedNEE)       / float(totalNEE)       : 0.f;
+    float ratioReval     = (totalReval     > 0u) ? float(totalReval     - savedReval)     / float(totalReval)     : 0.f;
+    float ratioProposal  = (totalProposal  > 0u) ? float(totalProposal  - savedProposal)  / float(totalProposal)  : 0.f;
+    float ratioReconnect = (totalReconnect > 0u) ? float(totalReconnect - savedReconnect) / float(totalReconnect) : 0.f;
+    gVCAccumRaysSplitNeeReval[pixel] = float4(ratioNEE, ratioReval, ratioProposal, ratioReconnect);
 }
 
 /// Lightweight ray-counter bump for V-tests that do NOT go through the
@@ -188,16 +220,34 @@ void vcDiagCountRay(uint2 pixel, bool traced, uint callSite = VC_RAY_SITE_NEE)
     gVCAccumSaved[pixel] = saved;
     gVCAccumTotal[pixel] = total;
 
-    uint savedNEE   = gVCAccumSavedNEE[pixel];
-    uint totalNEE   = gVCAccumTotalNEE[pixel];
-    uint savedReval = gVCAccumSavedReval[pixel];
-    uint totalReval = gVCAccumTotalReval[pixel];
+    uint savedNEE       = gVCAccumSavedNEE[pixel];
+    uint totalNEE       = gVCAccumTotalNEE[pixel];
+    uint savedReval     = gVCAccumSavedReval[pixel];
+    uint totalReval     = gVCAccumTotalReval[pixel];
+    uint savedProposal  = gVCAccumSavedProposal[pixel];
+    uint totalProposal  = gVCAccumTotalProposal[pixel];
+    uint savedReconnect = gVCAccumSavedReconnect[pixel];
+    uint totalReconnect = gVCAccumTotalReconnect[pixel];
     if (callSite == VC_RAY_SITE_REVAL)
     {
         savedReval += traced ? 0u : 1u;
         totalReval += 1u;
         gVCAccumSavedReval[pixel] = savedReval;
         gVCAccumTotalReval[pixel] = totalReval;
+    }
+    else if (callSite == VC_RAY_SITE_PROPOSAL)
+    {
+        savedProposal += traced ? 0u : 1u;
+        totalProposal += 1u;
+        gVCAccumSavedProposal[pixel] = savedProposal;
+        gVCAccumTotalProposal[pixel] = totalProposal;
+    }
+    else if (callSite == VC_RAY_SITE_RECONNECT)
+    {
+        savedReconnect += traced ? 0u : 1u;
+        totalReconnect += 1u;
+        gVCAccumSavedReconnect[pixel] = savedReconnect;
+        gVCAccumTotalReconnect[pixel] = totalReconnect;
     }
     else
     {
@@ -211,7 +261,9 @@ void vcDiagCountRay(uint2 pixel, bool traced, uint callSite = VC_RAY_SITE_NEE)
     float4 prev = gVCAccumRaysNoiseErrorCold[pixel];
     gVCAccumRaysNoiseErrorCold[pixel] = float4(ratio, prev.g, prev.b, prev.a);
 
-    float ratioNEE   = (totalNEE   > 0u) ? float(totalNEE   - savedNEE)   / float(totalNEE)   : 0.f;
-    float ratioReval = (totalReval > 0u) ? float(totalReval - savedReval) / float(totalReval) : 0.f;
-    gVCAccumRaysSplitNeeReval[pixel] = float4(ratioNEE, ratioReval, 0.f, 0.f);
+    float ratioNEE       = (totalNEE       > 0u) ? float(totalNEE       - savedNEE)       / float(totalNEE)       : 0.f;
+    float ratioReval     = (totalReval     > 0u) ? float(totalReval     - savedReval)     / float(totalReval)     : 0.f;
+    float ratioProposal  = (totalProposal  > 0u) ? float(totalProposal  - savedProposal)  / float(totalProposal)  : 0.f;
+    float ratioReconnect = (totalReconnect > 0u) ? float(totalReconnect - savedReconnect) / float(totalReconnect) : 0.f;
+    gVCAccumRaysSplitNeeReval[pixel] = float4(ratioNEE, ratioReval, ratioProposal, ratioReconnect);
 }

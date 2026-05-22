@@ -1100,22 +1100,30 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                 || mpAccumSaved->getHeight() != mFrameDims.y;
             if (needAccumRealloc)
             {
-                mpAccumSaved      = makeR32U("VHF_AccumSaved");
-                mpAccumTotal      = makeR32U("VHF_AccumTotal");
-                mpAccumSavedNEE   = makeR32U("VHF_AccumSavedNEE");
-                mpAccumTotalNEE   = makeR32U("VHF_AccumTotalNEE");
-                mpAccumSavedReval = makeR32U("VHF_AccumSavedReval");
-                mpAccumTotalReval = makeR32U("VHF_AccumTotalReval");
+                mpAccumSaved          = makeR32U("VHF_AccumSaved");
+                mpAccumTotal          = makeR32U("VHF_AccumTotal");
+                mpAccumSavedNEE       = makeR32U("VHF_AccumSavedNEE");
+                mpAccumTotalNEE       = makeR32U("VHF_AccumTotalNEE");
+                mpAccumSavedReval     = makeR32U("VHF_AccumSavedReval");
+                mpAccumTotalReval     = makeR32U("VHF_AccumTotalReval");
+                mpAccumSavedProposal  = makeR32U("VHF_AccumSavedProposal");
+                mpAccumTotalProposal  = makeR32U("VHF_AccumTotalProposal");
+                mpAccumSavedReconnect = makeR32U("VHF_AccumSavedReconnect");
+                mpAccumTotalReconnect = makeR32U("VHF_AccumTotalReconnect");
                 mResetAccum = true;
             }
             if (mResetAccum)
             {
-                pCtx->clearUAV(mpAccumSaved->getUAV().get(),      uint4(0u));
-                pCtx->clearUAV(mpAccumTotal->getUAV().get(),      uint4(0u));
-                pCtx->clearUAV(mpAccumSavedNEE->getUAV().get(),   uint4(0u));
-                pCtx->clearUAV(mpAccumTotalNEE->getUAV().get(),   uint4(0u));
-                pCtx->clearUAV(mpAccumSavedReval->getUAV().get(), uint4(0u));
-                pCtx->clearUAV(mpAccumTotalReval->getUAV().get(), uint4(0u));
+                pCtx->clearUAV(mpAccumSaved->getUAV().get(),          uint4(0u));
+                pCtx->clearUAV(mpAccumTotal->getUAV().get(),          uint4(0u));
+                pCtx->clearUAV(mpAccumSavedNEE->getUAV().get(),       uint4(0u));
+                pCtx->clearUAV(mpAccumTotalNEE->getUAV().get(),       uint4(0u));
+                pCtx->clearUAV(mpAccumSavedReval->getUAV().get(),     uint4(0u));
+                pCtx->clearUAV(mpAccumTotalReval->getUAV().get(),     uint4(0u));
+                pCtx->clearUAV(mpAccumSavedProposal->getUAV().get(),  uint4(0u));
+                pCtx->clearUAV(mpAccumTotalProposal->getUAV().get(),  uint4(0u));
+                pCtx->clearUAV(mpAccumSavedReconnect->getUAV().get(), uint4(0u));
+                pCtx->clearUAV(mpAccumTotalReconnect->getUAV().get(), uint4(0u));
                 // Clear accumulated diagnostic textures so the
                 // averaging window starts fresh.
                 if (accumMeanVarMatCountTex)
@@ -1134,12 +1142,16 @@ void VisCache::execute(RenderContext* pCtx, const RenderData& renderData)
                     pCtx->clearUAV(frameHashTex->getUAV().get(), float4(0.f));
                 mResetAccum = false;
             }
-            dict["vhfAccumSaved"]      = mpAccumSaved;
-            dict["vhfAccumTotal"]      = mpAccumTotal;
-            dict["vhfAccumSavedNEE"]   = mpAccumSavedNEE;
-            dict["vhfAccumTotalNEE"]   = mpAccumTotalNEE;
-            dict["vhfAccumSavedReval"] = mpAccumSavedReval;
-            dict["vhfAccumTotalReval"] = mpAccumTotalReval;
+            dict["vhfAccumSaved"]          = mpAccumSaved;
+            dict["vhfAccumTotal"]          = mpAccumTotal;
+            dict["vhfAccumSavedNEE"]       = mpAccumSavedNEE;
+            dict["vhfAccumTotalNEE"]       = mpAccumTotalNEE;
+            dict["vhfAccumSavedReval"]     = mpAccumSavedReval;
+            dict["vhfAccumTotalReval"]     = mpAccumTotalReval;
+            dict["vhfAccumSavedProposal"]  = mpAccumSavedProposal;
+            dict["vhfAccumTotalProposal"]  = mpAccumTotalProposal;
+            dict["vhfAccumSavedReconnect"] = mpAccumSavedReconnect;
+            dict["vhfAccumTotalReconnect"] = mpAccumTotalReconnect;
         }
 
         // Per-frame clear: frame textures must be zeroed every frame so the

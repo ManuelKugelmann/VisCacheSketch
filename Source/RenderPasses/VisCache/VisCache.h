@@ -508,11 +508,20 @@ private:
     // Accumulated textures (persistent across frames, cleared on reset)
     ref<Texture>    mpAccumSaved;       ///< R32Uint: per-pixel saved ray count (rolled up across call sites)
     ref<Texture>    mpAccumTotal;       ///< R32Uint: per-pixel total query count (rolled up across call sites)
-    ref<Texture>    mpAccumSavedNEE;    ///< R32Uint: per-pixel saved-NEE ray count
-    ref<Texture>    mpAccumTotalNEE;    ///< R32Uint: per-pixel total NEE queries
-    ref<Texture>    mpAccumSavedReval;  ///< R32Uint: per-pixel saved-revalidation ray count
-    ref<Texture>    mpAccumTotalReval;  ///< R32Uint: per-pixel total revalidation queries
-    ref<Texture>    mpAccumRaysSplitNeeRevalTex; ///< RGBA32F: R=NEE_ratio, G=Reval_ratio, B+A reserved
+    // Per-call-site ray counters — 4-mode VisCache use accounting:
+    //   NEE       (d) regular visibility — vanilla-style shadow-ray amortization
+    //   Reval     (a) reuse unbiasing    — V-test on reused reservoir samples
+    //   Proposal  (b) sample proposal    — V-aware target pdf (visInPHat=1)
+    //   Reconnect (c) reconnections      — V-aware reconnection-shift acceptance
+    ref<Texture>    mpAccumSavedNEE;       ///< R32Uint: per-pixel saved-NEE ray count
+    ref<Texture>    mpAccumTotalNEE;       ///< R32Uint: per-pixel total NEE queries
+    ref<Texture>    mpAccumSavedReval;     ///< R32Uint: per-pixel saved-revalidation ray count
+    ref<Texture>    mpAccumTotalReval;     ///< R32Uint: per-pixel total revalidation queries
+    ref<Texture>    mpAccumSavedProposal;  ///< R32Uint: per-pixel saved-proposal ray count (V-aware target pdf)
+    ref<Texture>    mpAccumTotalProposal;  ///< R32Uint: per-pixel total proposal queries
+    ref<Texture>    mpAccumSavedReconnect; ///< R32Uint: per-pixel saved-reconnect ray count (PT reconnection shift)
+    ref<Texture>    mpAccumTotalReconnect; ///< R32Uint: per-pixel total reconnect queries
+    ref<Texture>    mpAccumRaysSplitNeeRevalTex; ///< RGBA32F: R=NEE, G=Reval, B=Proposal, A=Reconnect (traced ratios)
     ref<Texture>    mpAccumRaysNoiseErrorColdTex; ///< RGBA32Float: R=raysTraced, G=renderNoise(TBD), B=renderError(TBD), A=coldmiss
     bool            mResetAccum = true;      ///< Clear accum textures next frame
     bool            mClearHashTable = true;  ///< Clear hash table to empty sentinel
