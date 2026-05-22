@@ -875,20 +875,8 @@ void ReSTIRBDPT::updatePrograms()
             preparePass(mpLightReservoirResolvePass);
 
             // [Falcor 8 experiment, gated] ResolveLightTraceShift.cs.slang probe.
-            // The probe mirrors SpatialReuse.cs.slang's structure verbatim
-            // (Texture2D global, RMIS static const, ShiftPath-via-wrapper).
-            // Gated off by default so smoke tests stay green; enable via
-            // `BDPT_SHIFT_PROBE=1` env var when actively testing the workaround.
-            if (std::getenv("BDPT_SHIFT_PROBE"))
-            {
-                if (!mpResolveLightTraceShiftPass)
-                {
-                    ProgramDesc desc = baseDesc;
-                    desc.addShaderLibrary(kResolveShiftPassFilename).csEntry("main");
-                    mpResolveLightTraceShiftPass = ComputePass::create(mpDevice, desc, defines, false);
-                }
-                preparePass(mpResolveLightTraceShiftPass);
-            }
+            // Probe is now created AFTER mpCopyRadiancePass (further below) to test
+            // whether creation order matters for the reflection trip.
         }
     }
 
@@ -940,6 +928,19 @@ void ReSTIRBDPT::updatePrograms()
         ProgramDesc desc = baseDesc;
         desc.addShaderLibrary(kBDPTPassFilename).csEntry("OutputRadiance");
         mpCopyRadiancePass = ComputePass::create(mpDevice, desc, defines, false);
+    }
+
+    // [Falcor 8 experiment, gated] probe placed AFTER CopyRadiance to test
+    // creation-order hypothesis. Activate with BDPT_SHIFT_PROBE=1.
+    if (mStaticParams.useResampling && std::getenv("BDPT_SHIFT_PROBE"))
+    {
+        if (!mpResolveLightTraceShiftPass)
+        {
+            ProgramDesc desc = baseDesc;
+            desc.addShaderLibrary(kResolveShiftPassFilename).csEntry("main");
+            mpResolveLightTraceShiftPass = ComputePass::create(mpDevice, desc, defines, false);
+        }
+        preparePass(mpResolveLightTraceShiftPass);
     }
     preparePass(mpCopyRadiancePass);
 
