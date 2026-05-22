@@ -152,6 +152,27 @@ topic: <what>
 
 **Worktrees:** Use for risky/experimental work (refactors, experiments that might break main). `Agent` tool `isolation: "worktree"` creates a temp worktree automatically for subagents. Manual: `EnterWorktree`/`ExitWorktree` tools. Record active branch in `worktree:` field of `.agents/shout`.
 
+## 4-mode VisCache ray-savings counters (per-CSV-column reference)
+
+Five `rays_traced_*_pct` columns in the ladder CSV report cache-amortization by VC use category. **Each is a per-pixel ratio = traced/total in that mode**, NOT a fraction of total rays. So they don't sum to 100% — each is an independent trust-gate measure.
+
+| column | mode | semantic | typical population |
+|---|---|---|---|
+| `rays_traced_pct` | aggregate | total traced / total queries (all cache-routed rays) | DI/NEE/PT all populate |
+| `rays_traced_nee_pct` | (d) regular visibility | vanilla-style shadow rays + default-tagged sites | DI/NEE/PT all populate |
+| `rays_traced_reval_pct` | (a) reuse unbiasing | V-test on reused reservoir samples (spatial/temporal) | DI only (NEE+PT either n/a or unused at canonical config) |
+| `rays_traced_proposal_pct` | (b) sample proposal | V-aware target pdf cache reads (`visInPHat=1`) | DI only (PT no V-aware target; NEE no visInPHat path) |
+| `rays_traced_reconnect_pct` | (c) reconnections | V-aware reconnection-shift acceptance | PT only (DI no shift, NEE no shift) |
+
+**Tagging architecture:**
+- Slang side: `VC_RAY_SITE_NEE/REVAL/PROPOSAL/RECONNECT` constants in `VisCacheDiagnostics.slang`. Pass to `vq.traceVisibilityRayCV(..., callSite)` to tag a cache call.
+- `vcVisibility_Ray` (non-Diag wrapper) calls `vcDiagCountRay(pixel, traced, callSite)` which bumps the matching counter pair (Saved/Total).
+- `gVCAccumRaysSplitNeeReval` (RGBA32F) packs the 4 ratios; Python `viscache_exr` reads + averages → CSV column.
+
+**Required cpp bindings per pass:** Each pass that consumes VC diagnostics must bind `gVCAccumSavedNEE/Total/SavedReval/Total/SavedProposal/Total/SavedReconnect/Total/RaysSplitNeeReval` on EVERY shader's root var that calls into the cache (main raygen, PathReuse compute, PathRetrace compute). Missing bindings → silent writes to null views → counter stays 0. See `ReSTIRPTPass::tracePass()` + `PathReusePass()` + `PathRetracePass()` for the canonical pattern.
+
+**Per-mode counts won't appear for compute-pass-only call sites** (e.g. Shift.slang's `evalSegmentVisibility`) unless `pixel` is threaded from the dispatch entry through the shift-function call chain. See task #86 commit 32644a36 for the threading pattern.
+
 ## Workflow
 
 - **No backwards compatibility** — move forward, no back-compat aliases or shims
