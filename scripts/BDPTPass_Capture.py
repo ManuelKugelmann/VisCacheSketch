@@ -44,16 +44,28 @@ elif pass_kind == "caustic":
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
         'useResampling': True,
-        'useTemporalResampling': False,
-        'useCausticReservoirs': True,    # caustic reservoir buffer
-        'useCausticShift': False,
+        'useTemporalResampling': True,
+        'useCausticReservoirs': True,
+        'useCausticShift': True,
     })
     label = "ReSTIR_BDPT_caustic"
+elif pass_kind == "full":
+    bdpt = createPass("ReSTIRBDPT", {
+        'useBPT': True,
+        'useResampling': True,
+        'useTemporalResampling': True,
+        'unbiasedTemporalReuse': True,
+        'shiftLightPathsToPixelCenters': True,
+        'useCausticReservoirs': True,
+        'useCausticShift': True,
+        'spatialReusePasses': 1,
+    })
+    label = "ReSTIR_BDPT_full"
 else:
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,
         'useResampling': True,
-        'useTemporalResampling': False,
+        'useTemporalResampling': True,
         'useCausticReservoirs': False,
         'useCausticShift': False,
     })

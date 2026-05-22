@@ -6,13 +6,6 @@ import PathShift;
 static const bool gUseCausticReservoirs   = USE_CAUSTIC_RESERVOIRS;
 static const uint gDebugCausticReservoirs = DEBUG_CAUSTIC_RESERVOIRS;
 
-// [Falcor 8 workaround] ResolveLightTraceReservoirs moved to its own
-// ResolveLightTrace.cs.slang to keep Slang's reflector happy (see [[task #10]]).
-// The body left below is the no-shift fallback retained for the case where
-// the host code dispatches this entry instead. Either way is functionally
-// equivalent because we never re-enable the shift branch here; it's a docs
-// artifact pending eventual removal.
-
 [shader("compute")]
 [numthreads(8, 4, 1)]
 void SampleLightPaths(uint3 index: SV_DispatchThreadID) {
@@ -34,74 +27,8 @@ void SampleCameraPaths(uint3 index : SV_DispatchThreadID) {
     gPathGenerator.StoreReservoir(id, r);
 }
 
-[shader("compute")]
-[numthreads(8, 8, 1)]
-void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
-    const uint2 id = index.xy;
-    if (any(id >= gPathGenerator.mParams.mOutputDim)) return;
-    gPathGenerator.DebugSetPixel(id);
-    SampleGenerator sg = MakeSampleGenerator(id, gRandomSeed);
-
-    const PackedPathVertex primaryVertex = gPathGenerator.LoadPrimaryVertex(id);
-
-    const float m = 1 / float(gPathGenerator.mParams.mLightSubpathCount);
-
-    // merge light trace reservoirs in pixel
-
-    uint minid = ~0u;
-
-    PathReservoir r = {};
-    PathReservoir cr = {};
-
-    const uint2 range = gPathGenerator.mLightTraceReservoirs.GetCellDataRange(id.y * gPathGenerator.mParams.mOutputDim.x + id.x);
-    for (uint i = range.x; i < range.y; i++) {
-        const LightTraceReservoir lr = gPathGenerator.mLightTraceReservoirs[i];
-        PathReservoir c = PathReservoir(lr.path, lr.W, 0);
-        c.PrepareMerge(m);
-
-        // [bisect] shift branch off; warmup still called above. Does warmup
-        // alone crash? If yes, warmup is the new trip. If no, shift branch
-        // is still the trip even with warmup helping.
-        // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
-        //     ...
-        // }
-
-        float u = sampleNext1D(sg);
-
-        if (gPathGenerator.gDisableLVC) {
-            uint l = c.mSample.mSuffix.mLightSubpath.mId.mId.y * gPathGenerator.mParams.mOutputDim.x + c.mSample.mSuffix.mLightSubpath.mId.mId.x;
-            if (l < minid) {
-                u = 0; // always pick the lowest ID for deterministic-ness
-                minid = l;
-            } else
-                u = 1;
-        }
-
-        if (gUseCausticReservoirs && c.mSample.HasFlag(PathFlags::eCausticLightPath)) {
-            cr.Merge(u, c);
-        } else {
-            r.Merge(u, c);
-        }
-    }
-
-    // Merge with camera tracing sample
-
-    if (!gPathGenerator.gLightTraceOnly) {
-        PathReservoir c = gPathGenerator.LoadOutputReservoir(id);
-        c.PrepareMerge();
-        r.Merge(sampleNext1D(sg), c);
-    }
-
-    r.mM = 1;
-    r.FinalizeMerge();
-    gPathGenerator.StoreReservoir(id, r);
-
-    if (gUseCausticReservoirs) {
-        cr.mM = 1;
-        cr.FinalizeMerge();
-        gPathGenerator.StoreCausticReservoir(id, cr);
-    }
-}
+// ResolveLightTraceReservoirs has been extracted to ResolveLightTrace.cs.slang
+// (task #10 — Falcor 8 Slang reflector workaround). Host dispatch points there.
 
 [shader("compute")]
 [numthreads(8, 8, 1)]

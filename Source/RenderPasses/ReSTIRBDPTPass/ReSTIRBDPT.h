@@ -135,7 +135,6 @@ private:
     ref<ComputePass>                mpSpatialReusePass;          ///< Spatial reservoir reuse pass.
     ref<ComputePass>                mpShiftCausticsPass;         ///< Shift caustic reservoirs pass.
     ref<ComputePass>                mpLightReservoirResolvePass; ///< Fullscreen compute pass merging light traced reservoirs within each pixel.
-    ref<ComputePass>                mpResolveLightTraceShiftPass; ///< Experimental: same logic as resolve, in its own .cs.slang file, with ShiftPath branch enabled. Tests Falcor 8 reflection workaround.
     ref<ComputePass>                mpCopyRadiancePass;          ///< Fullscreen compute pass writing reservoir samples to the output buffer.
 
     std::unique_ptr<GPUHashMap>     mpLightReservoirs;

@@ -10,7 +10,6 @@ namespace
     const std::string kTemporalReusePassFilename = "RenderPasses/ReSTIRBDPTPass/TemporalReuse.cs.slang";
     const std::string kSpatialReusePassFilename  = "RenderPasses/ReSTIRBDPTPass/SpatialReuse.cs.slang";
     const std::string kReflectTypesFile          = "RenderPasses/ReSTIRBDPTPass/ReflectTypes.cs.slang";
-    const std::string kResolveShiftPassFilename  = "RenderPasses/ReSTIRBDPTPass/ResolveLightTraceShift.cs.slang";
     const std::string kResolveLightTraceFilename = "RenderPasses/ReSTIRBDPTPass/ResolveLightTrace.cs.slang";
 
     // Render pass inputs and outputs.
@@ -808,7 +807,6 @@ void ReSTIRBDPT::resetPrograms()
     mpSampleCameraPathsPass = nullptr;
     mpSampleLightPathsPass = nullptr;
     mpLightReservoirResolvePass = nullptr;
-    mpResolveLightTraceShiftPass = nullptr;
     mpSpatialReusePass = nullptr;
     mpTemporalReusePass = nullptr;
     mpTemporalShiftPass = nullptr;
@@ -935,24 +933,6 @@ void ReSTIRBDPT::updatePrograms()
         mpCopyRadiancePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
-    // [Falcor 8 experiment, retired] probe gated behind BDPT_SHIFT_PROBE env
-    // var was used to bisect the ResolveLightTraceReservoirs reflection trip.
-    // Conclusion (commit 544d1053): calling a ComputeSpatialMisWeight-like
-    // helper from the same entry that calls ShiftPath unblocks the Slang
-    // reflector. Fix applied directly to BDPT.cs.slang::ResolveLightTraceReservoirs.
-    // Keeping the probe file + its create-site disabled for future bisects.
-    #if 0
-    if (mStaticParams.useResampling && std::getenv("BDPT_SHIFT_PROBE"))
-    {
-        if (!mpResolveLightTraceShiftPass)
-        {
-            ProgramDesc desc = baseDesc;
-            desc.addShaderLibrary(kResolveShiftPassFilename).csEntry("main");
-            mpResolveLightTraceShiftPass = ComputePass::create(mpDevice, desc, defines, false);
-        }
-        preparePass(mpResolveLightTraceShiftPass);
-    }
-    #endif
     preparePass(mpCopyRadiancePass);
 
     if (!mpReflectTypes)

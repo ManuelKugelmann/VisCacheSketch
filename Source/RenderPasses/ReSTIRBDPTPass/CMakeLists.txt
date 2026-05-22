@@ -19,7 +19,6 @@ target_sources(ReSTIRBDPTPass PRIVATE
     TemporalReuse.cs.slang
     BDPT.cs.slang
     ResolveLightTrace.cs.slang
-    ResolveLightTraceShift.cs.slang
     TemporalShiftPrev.cs.slang
     TemporalShiftCaustics.cs.slang
 )
