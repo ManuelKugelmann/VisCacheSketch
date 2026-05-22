@@ -447,6 +447,32 @@ would lose paths reflected off the back face area.
 
 Next step: instrument the back-face hit accumulation path in BDPT.
 
+## RESOLUTION 2026-05-23: "slit bug" was a scene authoring bug, NOT a BDPT bug
+
+After a deep bisect (commits f53318e..82b65971, 3a262e24, 25d2ea11),
+the "BDPT slit bug" was traced to **wrong winding order in my own
+test scenes**. The light quads in CornellBox_Slit/SlitControl/
+SlitControl2/SlitControl3 had vertices ordered CCW from above, which
+produces a geometric cross product of +y while the stored vertex
+normal was -y. PT handles this gracefully (uses geometric face
+normal); BDPT treats the disagreement as backFacing for hits coming
+from below, returning emission = 0 from `vertex.GetEmission()`.
+
+After flipping vertex winding:
+  CornellBox_Slit:        0.053 → 1.0006 ratio
+  CornellBox_SlitControl: 0.058 → 0.9998 ratio
+  CornellBox_SlitControl2: 0.058 → 0.9998 ratio
+  CornellBox_SlitControl3: 0.086 → 0.9999 ratio
+
+**So BDPT does NOT have a narrow-occlusion bug.** The 95% under-sampling
+was BDPT correctly treating a wrongly-wound light surface as mostly-
+not-emitting. Robustness gap from PT remains (PT permissive, BDPT
+strict) but doesn't affect canonical scenes. See task #20.
+
+VeachAjar 0.70 ratio at 256 spp is a SEPARATE issue — may be its
+own scene/material quirk, or actual PT undersampling through the
+door slit at moderate spp (per user's earlier hypothesis).
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:

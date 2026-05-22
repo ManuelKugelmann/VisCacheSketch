@@ -173,6 +173,12 @@ Five `rays_traced_*_pct` columns in the ladder CSV report cache-amortization by 
 
 **Per-mode counts won't appear for compute-pass-only call sites** (e.g. Shift.slang's `evalSegmentVisibility`) unless `pixel` is threaded from the dispatch entry through the shift-function call chain. See task #86 commit 32644a36 for the threading pattern.
 
+**Default-config zeroes are NOT plumbing bugs.** At canonical settings on Cornell_3AL:
+- DI `rays_reval=0` — `retraceOnReuseMode=0` (Off) by default; the REVAL site doesn't execute. Set mode=2 (CacheCV) via wrapper override to exercise it.
+- NEE `rays_proposal=0` / `rays_reval=0` / `rays_reconnect=0` — NEE shader has no visInPHat=1 path (PROPOSAL), no spatial/temporal NEE reuse (REVAL), no shift mapping (RECONNECT).
+- PT `rays_proposal=0` / `rays_reval=0` — PT has no V-aware target pdf (PROPOSAL); the line-2011 temporal-shift V-test rarely fires at canonical (REVAL).
+- All wired sites fire when exercised — verify by setting per-pass kwargs that turn the corresponding code path on.
+
 ## Workflow
 
 - **No backwards compatibility** — move forward, no back-compat aliases or shims
