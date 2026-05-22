@@ -248,4 +248,13 @@ private:
     bool mVisCacheLightSelection   = false;
     bool mVisCacheDiagnostics      = false;
     uint32_t mVisCacheBayerN       = 1;
+    // Per-call-site counter textures (4-mode: NEE/Reval/Proposal/Reconnect).
+    ref<Texture> mpVCAccumSaved, mpVCAccumTotal, mpVCAccumRaysNoiseErrorCold;
+    ref<Texture> mpVCAccumSavedNEE, mpVCAccumTotalNEE;
+    ref<Texture> mpVCAccumSavedReval, mpVCAccumTotalReval;
+    ref<Texture> mpVCAccumSavedProposal, mpVCAccumTotalProposal;
+    ref<Texture> mpVCAccumSavedReconnect, mpVCAccumTotalReconnect;
+    ref<Texture> mpVCAccumRaysSplitNeeReval;
+    ref<Texture> mpVCAccumMeanVarMatCount;
+    ref<Texture> mpVCFrameMeanVarMatSamplesRaw, mpVCFrameLevelProbesSamplesCold, mpVCFrameHashAHashBHashABRays;
 };

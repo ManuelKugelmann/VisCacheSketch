@@ -1593,6 +1593,30 @@ bool ReSTIRPTPass::beginFrame(RenderContext* pRenderContext, const RenderData& r
         {
             mRecompile = true;
         }
+        // Consume diagnostic textures (no-op if VisCache pass isn't in the
+        // graph or diagnostics are off — getTex returns nullptr, bindings
+        // skip below).
+        auto getTex = [&](const char* key) -> ref<Texture> {
+            return dict.keyExists(key) ? dict.getValue<ref<Texture>>(key) : nullptr;
+        };
+        if (mVisCacheDiagnostics) {
+            mpVCAccumMeanVarMatCount        = getTex("vhfAccumMeanVarMatCount");
+            mpVCFrameMeanVarMatSamplesRaw   = getTex("vhfFrameMeanVarMatSamplesRaw");
+            mpVCFrameLevelProbesSamplesCold = getTex("vhfFrameLevelProbesSamplesCold");
+            mpVCFrameHashAHashBHashABRays   = getTex("vhfFrameHashAHashBHashABRays");
+            mpVCAccumSaved              = getTex("vhfAccumSaved");
+            mpVCAccumTotal              = getTex("vhfAccumTotal");
+            mpVCAccumSavedNEE           = getTex("vhfAccumSavedNEE");
+            mpVCAccumTotalNEE           = getTex("vhfAccumTotalNEE");
+            mpVCAccumSavedReval         = getTex("vhfAccumSavedReval");
+            mpVCAccumTotalReval         = getTex("vhfAccumTotalReval");
+            mpVCAccumSavedProposal      = getTex("vhfAccumSavedProposal");
+            mpVCAccumTotalProposal      = getTex("vhfAccumTotalProposal");
+            mpVCAccumSavedReconnect     = getTex("vhfAccumSavedReconnect");
+            mpVCAccumTotalReconnect     = getTex("vhfAccumTotalReconnect");
+            mpVCAccumRaysNoiseErrorCold = getTex("vhfAccumRaysNoiseErrorCold");
+            mpVCAccumRaysSplitNeeReval  = getTex("vhfAccumRaysSplitNeeReval");
+        }
     }
 
     // Check if NRD data should be generated.
@@ -1712,6 +1736,30 @@ void ReSTIRPTPass::tracePass(RenderContext* pRenderContext, const RenderData& re
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
     var["CB"]["gSampleId"] = sampleID;
+
+    // VisCache diagnostics — bind per-site UAVs at root var (PixelStats
+    // pattern, mirrors DI/NEE bindings). nullptr-checked so the same
+    // tracePass works when VisCache pass isn't present or diagnostics
+    // are disabled.
+    if (mVisCacheDiagnostics)
+    {
+        if (mpVCAccumMeanVarMatCount)        var["gVCAccumMeanVarMatCount"]        = mpVCAccumMeanVarMatCount;
+        if (mpVCFrameMeanVarMatSamplesRaw)   var["gVCFrameMeanVarMatSamplesRaw"]   = mpVCFrameMeanVarMatSamplesRaw;
+        if (mpVCFrameLevelProbesSamplesCold) var["gVCFrameLevelProbesSamplesCold"] = mpVCFrameLevelProbesSamplesCold;
+        if (mpVCFrameHashAHashBHashABRays)   var["gVCFrameHashAHashBHashABRays"]   = mpVCFrameHashAHashBHashABRays;
+        if (mpVCAccumSaved)                  var["gVCAccumSaved"]                  = mpVCAccumSaved;
+        if (mpVCAccumTotal)                  var["gVCAccumTotal"]                  = mpVCAccumTotal;
+        if (mpVCAccumSavedNEE)               var["gVCAccumSavedNEE"]               = mpVCAccumSavedNEE;
+        if (mpVCAccumTotalNEE)               var["gVCAccumTotalNEE"]               = mpVCAccumTotalNEE;
+        if (mpVCAccumSavedReval)             var["gVCAccumSavedReval"]             = mpVCAccumSavedReval;
+        if (mpVCAccumTotalReval)             var["gVCAccumTotalReval"]             = mpVCAccumTotalReval;
+        if (mpVCAccumSavedProposal)          var["gVCAccumSavedProposal"]          = mpVCAccumSavedProposal;
+        if (mpVCAccumTotalProposal)          var["gVCAccumTotalProposal"]          = mpVCAccumTotalProposal;
+        if (mpVCAccumSavedReconnect)         var["gVCAccumSavedReconnect"]         = mpVCAccumSavedReconnect;
+        if (mpVCAccumTotalReconnect)         var["gVCAccumTotalReconnect"]         = mpVCAccumTotalReconnect;
+        if (mpVCAccumRaysNoiseErrorCold)     var["gVCAccumRaysNoiseErrorCold"]     = mpVCAccumRaysNoiseErrorCold;
+        if (mpVCAccumRaysSplitNeeReval)      var["gVCAccumRaysSplitNeeReval"]      = mpVCAccumRaysSplitNeeReval;
+    }
 
     // Launch the threads.
     auto frameDim = renderData.getDefaultTextureDims();
