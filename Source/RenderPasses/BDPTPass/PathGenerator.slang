@@ -479,6 +479,38 @@ extension PathGenerator {
     }
     static const float gConcentricDiscPdfA = M_1_PI;
 
+    // ---------------------------------------------------------------------------------------------------------
+    // -------------------------- Light-type selection (mirror of Falcor PathTracer) ---------------------------
+    // ---------------------------------------------------------------------------------------------------------
+
+    /** Probabilities for selecting env / emissive / analytic light at a NEE call.
+        Uniform across whichever types are enabled, matching PathTracer.slang::getLightTypeSelectionProbabilities.
+    */
+    void getLightTypeSelectionProbabilities(out float p[3]) {
+        p[0] = gUseEnvLight        ? 1.f : 0.f;
+        p[1] = gUseEmissiveLights  ? 1.f : 0.f;
+        p[2] = gUseAnalyticLights  ? 1.f : 0.f;
+        float sum = p[0] + p[1] + p[2];
+        if (sum == 0.f) return;
+        float invSum = 1.f / sum;
+        p[0] *= invSum; p[1] *= invSum; p[2] *= invSum;
+    }
+
+    /** Select a light type and return the selection pdf. Mirrors PathTracer.slang::selectLightType.
+        lightType:  0 = env, 1 = emissive, 2 = analytic.
+    */
+    bool selectLightType(out uint lightType, out float selectPdf, inout SampleGenerator sg) {
+        float p[3]; getLightTypeSelectionProbabilities(p);
+        float u = sampleNext1D(sg);
+        [unroll]
+        for (lightType = 0; lightType < 3; ++lightType) {
+            if (u < p[lightType]) { selectPdf = p[lightType]; return true; }
+            u -= p[lightType];
+        }
+        lightType = {}; selectPdf = {};
+        return false;
+    }
+
     void GetLightSamplePdf(const PathVertex vertex, const float3 prevPos, const float3 prevNormal, const bool upperOnly, out float emissionPdfW, out float directPdfW, out float directPdfA) {
         emissionPdfW = 0;
         directPdfW = 0;
