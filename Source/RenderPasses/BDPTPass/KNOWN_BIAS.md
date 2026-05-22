@@ -10,21 +10,48 @@ For vanilla / ground-truth reference renders, use **Falcor's built-in `PathTrace
 BDPTPass is useful for variance comparison and bidirectional algorithm
 research but should not be treated as a "truth" estimator.
 
-## Evidence (commits e56407ec, 6b6844fb, 5a57dd9e)
+## Evidence
 
 Matched config (20-bounce, Power-sampler, no env light, useResampling=False):
 
-| Scene                        | SPP   | PT mean | BDPT mean | Ratio  |
-|------------------------------|-------|---------|-----------|--------|
-| CornellBox_1AreaLight 1-bnc  | 256   | 0.3783  | 0.3487    | 0.922  |
-| CornellBox_1AreaLight 20-bnc | 512   | 0.4001  | 0.4017    | 1.004  |
-| VeachAjar 1-bnc              | 256   | 0.9442  | 0.6325    | 0.670  |
-| VeachAjar 20-bnc             | 256   | 1.1601  | 0.7591    | 0.654  |
-| VeachAjar 20-bnc             | 2048  | 1.1602  | 0.7590    | 0.654  |
+| Scene                        | SPP   | PT mean | BDPT mean | Ratio  | Notes               |
+|------------------------------|-------|---------|-----------|--------|---------------------|
+| CornellBox_1AreaLight 1-bnc  | 256   | 0.3794  | 0.3453    | 0.910  | after F8 uv fix     |
+| CornellBox_1AreaLight 20-bnc | 512   | 0.4001  | 0.3999    | 1.000  | after F8 uv fix     |
+| VeachAjar 1-bnc              | 256   | 0.9442  | 0.6958    | 0.737  | after F8 uv fix     |
+| VeachAjar 20-bnc             | 256   | 1.1601  | 0.8169    | 0.704  | after F8 uv fix     |
+| VeachAjar 20-bnc             | 2048  | 1.1602  | 0.7590    | 0.654  | before F8 uv fix    |
 
 The 256→2048 shift on VeachAjar is 0.01% for PT and −1.33% for BDPT. PT is
 fully converged at 256 spp; BDPT is still converging slightly but to a
 DIFFERENT mean. Definitively not variance.
+
+## Fix #1 applied: Falcor 7→8 TriangleLightSample.uv semantics (commit 376f27fd)
+
+`mEmissiveSampler.sampleLight(...)` in Falcor 7 returned barycentric
+coordinates in `TriangleLightSample.uv`. In Falcor 8 (which Falcor's
+own sampleTriangle now does — see `EmissiveLightSamplerHelpers.slang`),
+`uv` is the RAW 2D random numbers `u` that drove the sample. The
+Falcor-7-era port code in BDPTPass/PathGenerator.slang line 1050 and
+1620 treated `ls.uv` as bary directly:
+
+```slang
+barycentrics = float3(1 - ls.uv.x - ls.uv.y, ls.uv.x, ls.uv.y);  // WRONG in F8
+```
+
+which (a) produces invalid barycentrics for u.x+u.y>1 (half the sample
+space) and (b) non-uniformly distributes the valid samples within the
+triangle. Result: BDPT sampled the wrong point on the light triangle,
+which biased the evaluated Le, distance, and cosLight.
+
+Fix: convert raw `u` to barycentrics via the standard sqrt mapping:
+```slang
+barycentrics = sample_triangle(ls.uv);
+```
+
+This closed ~5pp of the gap on VeachAjar (0.654 → 0.704). Cornell was
+already tight (1.004 → 1.000). Direct-only (1-bounce) VeachAjar also
+improved (0.670 → 0.737).
 
 ## What we ruled out (task #13 bisect)
 
