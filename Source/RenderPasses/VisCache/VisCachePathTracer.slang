@@ -39,13 +39,28 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel));
 
+    float result;
+    bool traced;
     if (g.shouldTrace)
     {
         SceneRayQuery<UseAlphaTest> sceneRayQuery;
         float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
-        return vhfCommit(posA, posB, V, g, normalA);
+        result = vhfCommit(posA, posB, V, g, normalA);
+        traced = true;
     }
-    return g.visWeight;
+    else
+    {
+        result = g.visWeight;
+        traced = false;
+    }
+    // Counter-only bump (no per-pixel diagnostic texture writes — those
+    // are reserved for the Diag wrapper). Lets visInPHat=1 / reconnect /
+    // any other cache-routed visibility query land in the right per-mode
+    // ray-savings column.
+#ifdef VISCACHE_DIAGNOSTICS
+    vcDiagCountRay(pixel, traced, callSite);
+#endif
+    return result;
 }
 
 #ifdef VISCACHE_DIAGNOSTICS

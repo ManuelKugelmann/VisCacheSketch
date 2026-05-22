@@ -2025,9 +2025,9 @@ struct PathTracer
 #if USE_VISCACHE_VISIBILITYCHECK
                                         if (reuseMode == 2u)
                                         {
-                                            // CacheCV path — vcWriteDiag inside evalRevalidationCV
-                                            // already bumps the diag rays counter; no extra count here.
-                                            vR = vq.traceVisibilityRayCV(vrayR, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                            // CacheCV path — vcVisibility_Ray (non-Diag) now bumps
+                                            // the counter via vcDiagCountRay; pass REVAL site tag.
+                                            vR = vq.traceVisibilityRayCV(vrayR, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_REVAL);
                                         }
                                         else
                                         {
@@ -2210,8 +2210,8 @@ struct PathTracer
 #if USE_VISCACHE_VISIBILITYCHECK
                                 if (reuseModeN == 2u)
                                 {
-                                    // CacheCV — vcWriteDiag inside evalRevalidationCV bumps counter.
-                                    vN = vq.traceVisibilityRayCV(vrayN, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                                    // CacheCV — vcVisibility_Ray bumps counter; pass REVAL.
+                                    vN = vq.traceVisibilityRayCV(vrayN, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, VC_RAY_SITE_REVAL);
                                 }
                                 else
                                 {
