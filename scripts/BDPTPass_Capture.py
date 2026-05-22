@@ -38,13 +38,19 @@ os.makedirs(out_dir, exist_ok=True)
 g = RenderGraph("BDPTCapture")
 
 if pass_kind == "vanilla":
-    bdpt = createPass("BDPT", {})
+    # Plain BDPT — uses BDPT defaults. Note: BDPT default maxDiffuseBounces=8
+    # while Falcor PT default is 3; PathTracer_Capture.py sets PT to 20 to
+    # match BDPT's default maxBounces=20. Set BDPT maxDB explicitly here
+    # too if you want exactly matched paths.
+    bdpt = createPass("BDPT", {'maxBounces': 20, 'maxDiffuseBounces': 20})
     label = "vanilla_BDPT"
 elif pass_kind == "ptonly":
     # Light subpath count = 0 (useBPT=False). Should match unidirectional
-    # path tracing (NEE + camera subpaths only) in expectation. Used as
-    # the bias-free baseline test against Falcor's PathTracer.
-    bdpt = createPass("BDPT", {'useBPT': False})
+    # PT in expectation; in practice BDPT has a ~35% dimming bias on
+    # variance-heavy scenes (VeachAjar) vs Falcor PT. Bias is in NEE MIS
+    # weight (forcing misWeight=1 over-corrects to +16%). Original Shmaug
+    # code has the same bias. See task #13 bisect.
+    bdpt = createPass("BDPT", {'useBPT': False, 'maxDiffuseBounces': 20})
     label = "BDPT_ptonly"
 elif pass_kind == "direct":
     # Direct lighting only (maxBounces=1). Isolates NEE/light visibility
@@ -55,6 +61,16 @@ elif pass_kind == "deep":
     # 100-bounce. Tests if 20 is truncating significant indirect light.
     bdpt = createPass("BDPT", {'useBPT': False, 'maxBounces': 100})
     label = "BDPT_deep"
+elif pass_kind == "bsdf":
+    # BSDF-only (NEE disabled). Isolates whether the bias is in NEE.
+    # If BDPT bsdf matches Falcor PT useNEE=False, NEE in BDPT is the bug.
+    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False})
+    label = "BDPT_bsdf"
+elif pass_kind == "neeonly":
+    # NEE only (no BSDF-direct-emission). PathTracer doesn't expose this
+    # toggle directly, but useful for visualizing what NEE alone contributes.
+    bdpt = createPass("BDPT", {'useBPT': False, 'useBsdfImportanceSampling': False})
+    label = "BDPT_neeonly"
 elif pass_kind == "caustic":
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,

@@ -26,6 +26,7 @@ g = RenderGraph("PathTracerCapture")
 # PT config (bounce budget + emissive sampler) selectable via env vars
 # so we can do matched comparisons against BDPT at the same bounce count.
 pt_bounces = int(os.environ.get("PT_BOUNCES", "20"))
+pt_usenee = os.environ.get("PT_USENEE", "1") == "1"
 pt = createPass("PathTracer", {
     'samplesPerPixel': 1,
     'maxSurfaceBounces': pt_bounces,
@@ -33,6 +34,7 @@ pt = createPass("PathTracer", {
     'maxSpecularBounces': pt_bounces,
     'maxTransmissionBounces': pt_bounces,
     'emissiveSampler': "Power",
+    'useNEE': pt_usenee,
 })
 g.addPass(pt, "PathTracer")
 
@@ -64,7 +66,7 @@ print(f"[pt-capture] Loading scene: {scene_file}")
 m.loadScene(scene_file)
 
 scene_basename = os.path.splitext(os.path.basename(scene_file))[0]
-stem = f"PathTracer_b{pt_bounces}_{scene_basename}_x{num_frames}"
+stem = f"PathTracer_b{pt_bounces}{'nonee' if not pt_usenee else ''}_{scene_basename}_x{num_frames}"
 
 m.frameCapture.outputDir    = out_dir
 m.frameCapture.baseFilename = stem
