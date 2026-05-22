@@ -121,7 +121,7 @@ for scene_file in get_scenes(default=["Sponza"]):
 
     common = dict(
         resX=res, resY=res,
-        capture_spps=(1, 4, 16, 64),
+        capture_spps=(1, 4, 16),
         mogwai_globals=globals(),
     )
 

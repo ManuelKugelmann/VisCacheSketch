@@ -52,7 +52,7 @@ for scene_file in get_scenes():
 
     common = dict(
         resX=res, resY=res,
-        capture_spps=(1, 4, 16, 64),
+        capture_spps=(1, 4, 16),
         mogwai_globals=globals(),
     )
 

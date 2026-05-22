@@ -64,7 +64,7 @@ for scene_file in get_scenes(default=["Sponza"]):
 
     common = dict(
         resX=res, resY=res,
-        capture_spps=(1, 4, 16, 64),             # x64 added for higher-precision timing — 64 measured frames vs 16
+        capture_spps=(1, 4, 16),             # x64 added for higher-precision timing — 64 measured frames vs 16
         mogwai_globals=globals(),
     )
 

@@ -53,7 +53,7 @@ for scene_file in get_scenes():
             scene_file=scene_file,
             resX=res, resY=res,
             maxBounces=mb,
-            capture_spps=(1, 4),
+            capture_spps=(1, 4, 16),
             mogwai_globals=globals(),
             variant_tag=f"restirpt_vc_b{mb}",
         )
@@ -66,7 +66,7 @@ for scene_file in get_scenes():
             scene_file=scene_file,
             resX=res, resY=res,
             maxBounces=mb,
-            capture_spps=(1, 4),
+            capture_spps=(1, 4, 16),
             mogwai_globals=globals(),
             variant_tag=f"restirpt_vc_unclamped_b{mb}",
             fireflyClampK=1e9,
