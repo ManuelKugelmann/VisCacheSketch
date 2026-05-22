@@ -61,6 +61,15 @@ elif pass_kind == "deep":
     # 100-bounce. Tests if 20 is truncating significant indirect light.
     bdpt = createPass("BDPT", {'useBPT': False, 'maxBounces': 100})
     label = "BDPT_deep"
+elif pass_kind == "bounce2":
+    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False, 'maxBounces': 2, 'maxDiffuseBounces': 2})
+    label = "BDPT_b2_nonee"
+elif pass_kind == "bounce0":
+    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False, 'maxBounces': 0, 'maxDiffuseBounces': 0})
+    label = "BDPT_b0"
+elif pass_kind == "bounce1":
+    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False, 'maxBounces': 1, 'maxDiffuseBounces': 1})
+    label = "BDPT_b1_nonee"
 elif pass_kind == "bsdf":
     # BSDF-only (NEE disabled). Isolates whether the bias is in NEE.
     # If BDPT bsdf matches Falcor PT useNEE=False, NEE in BDPT is the bug.
