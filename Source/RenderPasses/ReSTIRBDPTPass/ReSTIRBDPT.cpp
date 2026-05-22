@@ -2,7 +2,6 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Rendering/Lights/EmissiveUniformSampler.h"
-#include <cstdlib>  // std::getenv for BDPT_SHIFT_PROBE gate
 
 namespace
 {
@@ -876,10 +875,6 @@ void ReSTIRBDPT::updatePrograms()
                 mpLightReservoirResolvePass = ComputePass::create(mpDevice, desc, defines, false);
             }
             preparePass(mpLightReservoirResolvePass);
-
-            // [Falcor 8 experiment, gated] ResolveLightTraceShift.cs.slang probe.
-            // Probe is now created AFTER mpCopyRadiancePass (further below) to test
-            // whether creation order matters for the reflection trip.
         }
     }
 

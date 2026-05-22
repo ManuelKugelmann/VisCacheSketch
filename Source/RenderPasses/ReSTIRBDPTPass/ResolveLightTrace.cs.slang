@@ -56,35 +56,34 @@ float ComputeWarmupMisWeight(const uint2 center, PathReservoir sample, float jac
     return msum > 0 ? mi / msum : 0;
 }
 
+// Body verbatim from the original BDPT.cs.slang::ResolveLightTraceReservoirs.
+// ONLY change: a single ComputeWarmupMisWeight call inserted after the
+// SampleGenerator init, with its result discarded. Required to keep Slang's
+// ParameterBlock reflector happy when this entry calls ShiftPath (see [[task #10]]
+// and docs/SLANG_AND_FALCOR_NOTES.md). Removing the call re-introduces the
+// SIGSEGV during ComputePass::setVars.
 [shader("compute")]
-[numthreads(8, 4, 1)]
+[numthreads(8, 8, 1)]
 void main(uint3 index: SV_DispatchThreadID) {
-    uint2 id = index.xy;
-    if (any(id >= gPathGenerator.mParams.mOutputDim))
-        return;
+    const uint2 id = index.xy;
+    if (any(id >= gPathGenerator.mParams.mOutputDim)) return;
     gPathGenerator.DebugSetPixel(id);
-
-    PathReservoir r = gPathGenerator.LoadInputReservoir(id);
-    const PackedPathVertex vertex = gPathGenerator.LoadPrimaryVertex(id);
-    if (!vertex.IsFinite()) {
-        gPathGenerator.StoreReservoir(id, r);
-        return;
-    }
-
-    // Warmup helper call — required to keep Slang's ParameterBlock reflector
-    // happy with this entry's ShiftPath references (see [[task #10]]).
-    const float centerM = r.mM;
-    float _warmupMis = ComputeWarmupMisWeight(id, r, 1, centerM, -1, r.mSample.GetTargetPdf());
-
-    // === REAL RESOLVE LOGIC (lifted from BDPT.cs.slang::ResolveLightTraceReservoirs) ===
     SampleGenerator sg = MakeSampleGenerator(id, gRandomSeed);
+
+    // [Falcor 8 reflector warmup — additive, no algorithmic effect, keep at
+    // function scope so Slang's DCE can't eliminate the ShiftPath reference.]
+    const PathReservoir _warmupRes = gPathGenerator.LoadInputReservoir(id);
+    const float _warmupMis = ComputeWarmupMisWeight(id, _warmupRes, 1, _warmupRes.mM, -1, _warmupRes.mSample.GetTargetPdf());
 
     const PackedPathVertex primaryVertex = gPathGenerator.LoadPrimaryVertex(id);
 
     const float m = 1 / float(gPathGenerator.mParams.mLightSubpathCount);
 
+    // merge light trace reservoirs in pixel
+
     uint minid = ~0u;
-    PathReservoir rOut = {};
+
+    PathReservoir r = {};
     PathReservoir cr = {};
 
     const uint2 range = gPathGenerator.mLightTraceReservoirs.GetCellDataRange(id.y * gPathGenerator.mParams.mOutputDim.x + id.x);
@@ -94,10 +93,11 @@ void main(uint3 index: SV_DispatchThreadID) {
         c.PrepareMerge(m);
 
         if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
-            gPathGenerator.DebugSetPixel(-1);
+            gPathGenerator.DebugSetPixel(-1); // dont want messages from this shift
+            // Reject path if it is not samplable from the primary vertex
             float jacobian;
-            const PathSample shifted = SpatialShiftHelper(c.mSample, primaryVertex, jacobian);
-            const bool valid = shifted.IsValid();
+            int2 tmp;
+            const bool valid = ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
             gPathGenerator.DebugSetPixel(id);
             if (!valid || !(jacobian > 0))
                 continue;
@@ -108,7 +108,7 @@ void main(uint3 index: SV_DispatchThreadID) {
         if (gPathGenerator.gDisableLVC) {
             uint l = c.mSample.mSuffix.mLightSubpath.mId.mId.y * gPathGenerator.mParams.mOutputDim.x + c.mSample.mSuffix.mLightSubpath.mId.mId.x;
             if (l < minid) {
-                u = 0;
+                u = 0; // always pick the lowest ID for deterministic-ness
                 minid = l;
             } else
                 u = 1;
@@ -117,19 +117,21 @@ void main(uint3 index: SV_DispatchThreadID) {
         if (gUseCausticReservoirs && c.mSample.HasFlag(PathFlags::eCausticLightPath)) {
             cr.Merge(u, c);
         } else {
-            rOut.Merge(u, c);
+            r.Merge(u, c);
         }
     }
+
+    // Merge with camera tracing sample
 
     if (!gPathGenerator.gLightTraceOnly) {
         PathReservoir c = gPathGenerator.LoadOutputReservoir(id);
         c.PrepareMerge();
-        rOut.Merge(sampleNext1D(sg), c);
+        r.Merge(sampleNext1D(sg), c);
     }
 
-    rOut.mM = 1;
-    rOut.FinalizeMerge();
-    gPathGenerator.StoreReservoir(id, rOut);
+    r.mM = 1;
+    r.FinalizeMerge();
+    gPathGenerator.StoreReservoir(id, r);
 
     if (gUseCausticReservoirs) {
         cr.mM = 1;
