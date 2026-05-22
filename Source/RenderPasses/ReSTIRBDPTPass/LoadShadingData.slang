@@ -29,6 +29,7 @@
 __exported import Scene.Shading;
 import Scene.Material.ShadingUtils;
 import Rendering.Materials.TexLODHelpers;
+import Rendering.Materials.MaterialInstanceHints;
 import Utils.Math.MathHelpers;
 
 /** Setup vertex data based on hit point.
@@ -80,10 +81,16 @@ VertexData loadVertexData(const HitInfo hit, const float3 rayOrigin, const float
 }
 
 /** Determine hints to use when creating the material instance.
+    Mirror of Falcor PathTracer's getMaterialInstanceHints.
 */
 uint getMaterialInstanceHints(const HitInfo hit, const bool isPrimary)
 {
-    return 0;
+    uint hints = 0;
+    if (hit.getType() == HitType::Triangle)
+    {
+        hints |= (uint)MaterialInstanceHints::AdjustShadingNormal;
+    }
+    return hints;
 }
 
 /** Setup ShadingData based on loaded vertex/material attributes for a hit point.

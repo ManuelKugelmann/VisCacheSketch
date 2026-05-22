@@ -29,6 +29,7 @@
 __exported import Scene.Shading;
 import Scene.Material.ShadingUtils;
 import Rendering.Materials.TexLODHelpers;
+import Rendering.Materials.MaterialInstanceHints;
 import Utils.Math.MathHelpers;
 
 /** Setup vertex data based on hit point.
@@ -80,10 +81,26 @@ VertexData loadVertexData(const HitInfo hit, const float3 rayOrigin, const float
 }
 
 /** Determine hints to use when creating the material instance.
+    Mirror of Falcor PathTracer's getMaterialInstanceHints — always sets
+    AdjustShadingNormal on primary hits (and on all hits if scene-level
+    adjustShadingNormals is enabled). Without this hint, shading normals
+    can point opposite to the incoming ray, producing BSDF sample directions
+    in the wrong hemisphere — large efficiency loss on multi-bounce / oblique
+    geometry (see KNOWN_BIAS.md: 60x BSDF-hit-rate gap on Cornell+Slit).
 */
 uint getMaterialInstanceHints(const HitInfo hit, const bool isPrimary)
 {
-    return 0;
+    uint hints = 0;
+    if (hit.getType() == HitType::Triangle)
+    {
+        // PathTracer.slang:LoadShadingData uses scene-controlled
+        // kAdjustShadingNormals; in BDPT we don't have that compile-time
+        // flag plumbed in, so unconditionally adjust on primary AND
+        // secondary hits (matches PathTracer's behavior when
+        // adjustShadingNormals=true is set on the graph).
+        hints |= (uint)MaterialInstanceHints::AdjustShadingNormal;
+    }
+    return hints;
 }
 
 /** Setup ShadingData based on loaded vertex/material attributes for a hit point.
