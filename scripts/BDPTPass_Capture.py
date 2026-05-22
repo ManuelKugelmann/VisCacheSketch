@@ -70,6 +70,12 @@ elif pass_kind == "bounce0":
 elif pass_kind == "bounce1":
     bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False, 'maxBounces': 1, 'maxDiffuseBounces': 1})
     label = "BDPT_b1_nonee"
+elif pass_kind == "matched20":
+    # BDPT off-by-one vs Falcor PT: PT's hasFinishedSurfaceBounces uses
+    # > comparison, so PT maxB=20 actually does 21 bounces. Match by setting
+    # BDPT maxB=21 to compensate.
+    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False, 'maxBounces': 21, 'maxDiffuseBounces': 21})
+    label = "BDPT_b21_nonee_matched"
 elif pass_kind == "bsdf":
     # BSDF-only (NEE disabled). Isolates whether the bias is in NEE.
     # If BDPT bsdf matches Falcor PT useNEE=False, NEE in BDPT is the bug.

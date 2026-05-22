@@ -90,6 +90,64 @@ Candidate root causes for the remaining ~30pp gap:
 
 Per-pixel pdf+throughput instrumentation remains the path to a fix.
 
+## Bug #2: maxBounces off-by-one vs Falcor PT semantics (NOT YET FIXED)
+
+Falcor PT's `hasFinishedSurfaceBounces` uses STRICT greater-than:
+```slang
+return surfaceBounces > kMaxSurfaceBounces;
+```
+
+So Falcor PT with `maxSurfaceBounces=N` allows N+1 surface bounces (the
+primary doesn't count). BDPT's main loop uses:
+```slang
+while (s.bounces < mParams.mMaxBounces && ...)
+```
+
+which allows exactly N bounces (the primary doesn't count either,
+since `s.bounces` starts at 0 and is incremented after each
+SampleNextVertex). So BDPT does one FEWER bounce than Falcor PT for
+the same `maxBounces=N` setting.
+
+Symptom: BDPT at `maxBounces=0` gives mean=0.00 on VeachAjar while PT
+at `maxSurfaceBounces=0` gives 0.77 (light visible through door slit
+via the one allowed surface bounce after the primary).
+
+Fix candidates:
+1. Change BDPT loop to `s.bounces <= mParams.mMaxBounces` to match
+   PT's `>` semantics. Subtle — primary still doesn't count.
+2. Document the off-by-one and require users to set BDPT
+   `maxBounces=N+1` when comparing against PT `maxSurfaceBounces=N`.
+
+Confirmed: matching BDPT b=21 vs PT b=20 (both = 21 bounces total)
+does NOT close the remaining 30% gap on VeachAjar — ratio still 0.704.
+So the 30% bias is separate from the off-by-one.
+
+## Remaining unexplained ~30pp gap on VeachAjar
+
+Bounce-by-bounce ratios (BSDF-only, matched off-by-one):
+  b=0(0/1): 0.00/0.77 (BDPT misses 1 bounce due to off-by-one)
+  b=1(1/2): 0.70/0.95 → 0.74
+  b=2(2/3): 0.76/1.05 → 0.72
+  b=21(21/21): 0.82/1.16 → 0.70
+
+Ratio decreases with bounce count, suggesting per-bounce loss. Per-bounce
+factor: (0.704)^(1/21) ≈ 0.983 → ~1.7% loss per bounce. But Cornell at
+20 bounces is ratio=1.00 (no loss), so the per-bounce loss is
+scene-dependent.
+
+VeachAjar-specific factors: glass teapot (delta transmission paths),
+small area light behind door (rare BSDF hits), textured surfaces. The
+glass teapot specifically is interesting — BDPT's
+`factor /= sqr(properties.eta)` workaround disabled at line 240 should
+only affect adjoint paths (light subpaths, not camera subpaths used in
+useBPT=False), so probably not the cause.
+
+Remaining candidate: BSDF sample generator divergence. BDPT uses
+`s.sgBsdf = MakeSampleGenerator(id, -seed)` (separate from `s.sg` for
+NEE), which gives a different sample sequence than Falcor PT. This
+shouldn't bias the expected value but might explain different
+convergence behavior on hard-to-find-light scenes.
+
 ## What we ruled out (task #13 bisect)
 
 - **Not a port regression.** Original Shmaug/ReSTIR-BDPT has identical MIS
