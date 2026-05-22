@@ -531,32 +531,8 @@ struct PathTracer
     */
     float evalMIS(float n0, float p0, float n1, float p1)
     {
-        switch (MISHeuristic(kMISHeuristic))
-        {
-        case MISHeuristic::Balance:
-        {
-            // Balance heuristic
-            float q0 = n0 * p0;
-            float q1 = n1 * p1;
-            return q0 / (q0 + q1);
-        }
-        case MISHeuristic::PowerTwo:
-        {
-            // Power two heuristic
-            float q0 = (n0 * p0) * (n0 * p0);
-            float q1 = (n1 * p1) * (n1 * p1);
-            return q0 / (q0 + q1);
-        }
-        case MISHeuristic::PowerExp:
-        {
-            // Power exp heuristic
-            float q0 = pow(n0 * p0, kMISPowerExponent);
-            float q1 = pow(n1 * p1, kMISPowerExponent);
-            return q0 / (q0 + q1);
-        }
-        default:
-            return 0.f;
-        }
+        // Phase 3 step 3.0: delegate to shared PathTraceCommon helper.
+        return evalMISImpl(uint(kMISHeuristic), kMISPowerExponent, n0, p0, n1, p1);
     }
 
     /** Generates a light sample on the environment map.

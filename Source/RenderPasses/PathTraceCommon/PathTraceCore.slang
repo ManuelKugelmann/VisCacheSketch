@@ -29,6 +29,47 @@ enum class LightType
     Analytic
 };
 
+/** MIS heuristic identifier — matches each pass's local MISHeuristic enum
+    value-for-value (Balance=0, PowerTwo=1, PowerExp=2). The free function
+    below takes a uint so it stays decoupled from any single pass's enum
+    type; each caller passes uint(kMISHeuristic). Phase 3 sub-step 3.0 —
+    first shared helper extracted from per-pass struct PathTracer copies.
+
+    \param[in] heuristic 0=Balance, 1=PowerTwo, 2=PowerExp.
+    \param[in] powerExponent Exponent used only for PowerExp. Other heuristics ignore it.
+    \param[in] n0 Number of samples taken from the first sampling strategy.
+    \param[in] p0 Pdf for the first sampling strategy.
+    \param[in] n1 Number of samples taken from the second sampling strategy.
+    \param[in] p1 Pdf for the second sampling strategy.
+    \return Weight for the contribution from the first strategy (p0).
+*/
+float evalMISImpl(uint heuristic, float powerExponent, float n0, float p0, float n1, float p1)
+{
+    switch (heuristic)
+    {
+    case 0u: // Balance
+    {
+        float q0 = n0 * p0;
+        float q1 = n1 * p1;
+        return q0 / (q0 + q1);
+    }
+    case 1u: // PowerTwo
+    {
+        float q0 = (n0 * p0) * (n0 * p0);
+        float q1 = (n1 * p1) * (n1 * p1);
+        return q0 / (q0 + q1);
+    }
+    case 2u: // PowerExp
+    {
+        float q0 = pow(n0 * p0, powerExponent);
+        float q1 = pow(n1 * p1, powerExponent);
+        return q0 / (q0 + q1);
+    }
+    default:
+        return 0.f;
+    }
+}
+
 /** Common-base interface: the six fields every NEE consumer needs.
 
     Concrete implementers (LightSample here, LightSampleDI in LightReservoir.slang,
