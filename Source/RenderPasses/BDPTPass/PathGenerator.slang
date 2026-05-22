@@ -1236,23 +1236,25 @@ extension PathGenerator {
         const float3 rayOrigin = vertex.ComputeRayOrigin(als.dir);
         if (Occluded(Ray(rayOrigin, als.dir, 0, als.distance))) return result;
 
-        // For delta analytic lights, Falcor's AnalyticLightSample.Li is already
-        // "Le / pdf" form (sample weight). For our consistent
-        // throughput * BRDF * Le / (s.pdfW * directPdfW) formula we treat Li as
-        // the divided form: set directPdfW = lightSelectionPdf (= 1/lightCount)
-        // and use als.Li * lightSelectionPdf as the "raw" Le. The same effect.
-        // misWeight = 1 since delta lights can't be sampled by BSDF strategy.
-        const float3 contrib = s.throughput * f.mReflectance * als.Li * lightSelectionPdf;
-        const float samplePdf = s.pdfW * lightSelectionPdf;
-        if (!any(contrib > 0) || !(samplePdf > 0)) return result;
+        // Falcor's AnalyticLightSample.Li is "Le / pdf" form (sample weight)
+        // for the WITHIN-light sample only — the per-light selection pdf
+        // (1/lightCount) is NOT included. So the proper-form contribution is
+        // BRDF * cos * als.Li / lightSelectionPdf  (=  BRDF * cos * Le * lightCount / pdf).
+        // misWeight = 1 since delta-position lights can't be sampled by BSDF strategy.
+        const float3 contrib = s.throughput * f.mReflectance * als.Li;
+        if (!any(contrib > 0)) return result;
+        if (!(s.pdfW > 0)) return result;
 
-        integrationWeight = 1.0f / samplePdf;
+        // Integration weight encodes the inverse-light-selection-pdf so the
+        // light-count factor flows in correctly via ProcessSample's weight.
+        integrationWeight = 1.0f / (s.pdfW * lightSelectionPdf);
         const float misWeight = 1.0f;  // delta lights: only NEE can sample them
 
         // Build a minimal valid PathSample so ProcessSample accepts it.
         // No light subpath / no rcv data — this is an isolated NEE contribution.
+        const float samplePdf = s.pdfW * lightSelectionPdf;
         PathSuffix suffix = PathSuffix::Create(
-            als.Li * lightSelectionPdf,
+            als.Li,
             samplePdf,
             PackedPathVertex(Ray(rayOrigin, als.dir, 0, als.distance), HitInfo(0), als.distance),
             0,
