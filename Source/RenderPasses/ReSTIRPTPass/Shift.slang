@@ -44,11 +44,12 @@ float3 computeShiftedIntegrandExtraOutput(
 
 float3 computeShiftedIntegrand(
     const RestirPathTracerParams params, inout float dstJacobian, const PackedHitInfo dstPrimaryHitPacked, const ShadingData dstPrimarySd,
-    const ShadingData srcPrimarySd, const PathReservoir srcReservoir, ReconnectionData rcData, bool evalVisibility, bool usePrev = false, bool temporalUpdateForDynamicScene = false)
+    const ShadingData srcPrimarySd, const PathReservoir srcReservoir, ReconnectionData rcData, bool evalVisibility, bool usePrev = false, bool temporalUpdateForDynamicScene = false,
+    uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
     PathReservoir tempReservoir = srcReservoir;
     float3 res = computeShiftedIntegrand_(params, dstJacobian, dstPrimaryHitPacked, dstPrimarySd,
-        srcPrimarySd, tempReservoir, rcData, evalVisibility, usePrev, temporalUpdateForDynamicScene);
+        srcPrimarySd, tempReservoir, rcData, evalVisibility, usePrev, temporalUpdateForDynamicScene, pixel);
     if (PathSamplingMode(kPathSamplingMode) == PathSamplingMode::PathReuse) // for precomputing MIS weights
     {
         dstJacobian = tempReservoir.cachedJacobian[0];
@@ -57,7 +58,8 @@ float3 computeShiftedIntegrand(
 }
 
 float3 computeShiftedIntegrand_(const RestirPathTracerParams params, inout float dstJacobian, const PackedHitInfo dstPrimaryHitPacked, const ShadingData dstPrimarySd,
-    const ShadingData srcPrimarySd, inout PathReservoir srcReservoir, ReconnectionData rcData, bool evalVisibility, bool usePrev = false, bool temporalUpdateForDynamicScene = false)
+    const ShadingData srcPrimarySd, inout PathReservoir srcReservoir, ReconnectionData rcData, bool evalVisibility, bool usePrev = false, bool temporalUpdateForDynamicScene = false,
+    uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
     dstJacobian = 0.f;
 
@@ -66,7 +68,7 @@ float3 computeShiftedIntegrand_(const RestirPathTracerParams params, inout float
     if (ShiftMapping(kShiftStrategy) == ShiftMapping::Reconnection)
     {
 #if BPR
-        float3 res = computeShiftedIntegrandReconnectionPathTree(params, dstJacobian, dstPrimarySd, srcPrimarySd, srcReservoir, evalVisibility);
+        float3 res = computeShiftedIntegrandReconnectionPathTree(params, dstJacobian, dstPrimarySd, srcPrimarySd, srcReservoir, evalVisibility, pixel);
         if (PathSamplingMode(kPathSamplingMode) == PathSamplingMode::PathReuse && all(res == 0)) // Nan, inf
         {
             srcReservoir.cachedJacobian[0] = 0;
@@ -80,7 +82,7 @@ float3 computeShiftedIntegrand_(const RestirPathTracerParams params, inout float
             gPathTracer.traceTemporalUpdate(dstPrimarySd, srcReservoir);
         }
 
-        return computeShiftedIntegrandReconnection(params, dstJacobian, dstPrimarySd, srcPrimarySd, srcReservoir, evalVisibility);
+        return computeShiftedIntegrandReconnection(params, dstJacobian, dstPrimarySd, srcPrimarySd, srcReservoir, evalVisibility, false, false, pixel);
 #endif
     }
     else if (ShiftMapping(kShiftStrategy) == ShiftMapping::RandomReplay)
@@ -89,7 +91,7 @@ float3 computeShiftedIntegrand_(const RestirPathTracerParams params, inout float
     }
     else if (ShiftMapping(kShiftStrategy) == ShiftMapping::Hybrid)
     {
-        return computeShiftedIntegrandHybrid(params, usePrev, temporalUpdateForDynamicScene, dstJacobian, dstPrimaryHitPacked, dstPrimarySd, srcPrimarySd, srcReservoir, rcData, evalVisibility);
+        return computeShiftedIntegrandHybrid(params, usePrev, temporalUpdateForDynamicScene, dstJacobian, dstPrimaryHitPacked, dstPrimarySd, srcPrimarySd, srcReservoir, rcData, evalVisibility, pixel);
     }
 
     return 1.f;
@@ -142,7 +144,8 @@ float3 computeShiftedIntegrandRandomReplay(const RestirPathTracerParams params, 
 }
 
 float3 computeShiftedIntegrandHybrid(const RestirPathTracerParams params, bool usePrev, bool temporalUpdateForDynamicScene, inout float dstJacobian, const PackedHitInfo dstPrimaryHitPacked, const ShadingData dstPrimarySd, const ShadingData srcPrimarySd,
-    inout PathReservoir tempPathReservoir, ReconnectionData rcData, bool evalVisibility)
+    inout PathReservoir tempPathReservoir, ReconnectionData rcData, bool evalVisibility,
+    uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
     dstJacobian = 0.f;
 
@@ -221,7 +224,7 @@ float3 computeShiftedIntegrandHybrid(const RestirPathTracerParams params, bool u
             }
 
             rcTp = computeShiftedIntegrandReconnection(params, reconnectionJacobian, dstRcPrevVertexSd, srcRcPrevVertexSd, srcReservoir,
-                evalVisibility, true, srcReservoir.pathFlags.rcVertexLength() > 1);
+                evalVisibility, true, srcReservoir.pathFlags.rcVertexLength() > 1, pixel);
 
             dstJacobian *= reconnectionJacobian;
 
@@ -266,7 +269,8 @@ void traceDenoiserData(const RestirPathTracerParams params, const PackedHitInfo 
 
 #if BPR
 float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams params, inout float dstJacobian, ShadingData dstPrimarySd,
-    ShadingData srcPrimarySd, inout PathReservoir srcReservoir, bool evalVisibility)
+    ShadingData srcPrimarySd, inout PathReservoir srcReservoir, bool evalVisibility,
+    uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
     dstJacobian = 0.f;
 
@@ -390,7 +394,7 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
     // Reconnection visibility test. Reject shift when occluded.
     if (evalVisibility)
     {
-        bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW);
+        bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW, /*isDirection=*/false, pixel);
         if (!isVisible) return 0.f;
     }
 
@@ -418,7 +422,8 @@ float3 computeShiftedIntegrandReconnectionPathTree(const RestirPathTracerParams 
 // srcPdf / dstJacobian transforms pdf in src space to dst space
 float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, inout float dstJacobian,  ShadingData dstPrimarySd,
                                 ShadingData srcPrimarySd, inout PathReservoir srcReservoir, bool evalVisibility,
-                                bool useHybridShift=false, bool useCachedJacobian = false)
+                                bool useHybridShift=false, bool useCachedJacobian = false,
+                                uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
 
     float3 dstCachedJacobian;
@@ -445,7 +450,7 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
         if (kUseMIS && srcReservoir.pathFlags.lightType() == (uint)PathTracer::LightSampleType::EnvMap && srcReservoir.pathFlags.pathLength() + 1 == rcVertexLength && !srcReservoir.pathFlags.lastVertexNEE())
         {
             float3 wi = rcVertexWi;
-            bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, wi, /*isDirection=*/true);
+            bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, wi, /*isDirection=*/true, pixel);
             if (isVisible)
             {
                 float srcPDF1 = useCachedJacobian ? srcReservoir.cachedJacobian.x : evalPdfBSDF(srcPrimarySd, wi);
@@ -600,7 +605,7 @@ float3 computeShiftedIntegrandReconnection(const RestirPathTracerParams params, 
     // Reconnection visibility test. Reject shift when occluded.
     if (evalVisibility)
     {
-        bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW);
+        bool isVisible = evalSegmentVisibility(dstPrimarySd.posW, rcVertexSd.posW, /*isDirection=*/false, pixel);
         if (!isVisible) return 0.f;
     }
 
