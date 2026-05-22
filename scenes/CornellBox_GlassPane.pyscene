@@ -1,0 +1,38 @@
+# CornellBox_GlassPane.pyscene — Simple Cornell + ceiling light + thin glass
+# pane between camera and light. Tests delta-transmission paths on a
+# camera-facing dielectric surface (simpler than full sphere caustics).
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+light_mat = StandardMaterial('Light')
+light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+light_mat.emissiveColor = float3(80.0, 65.0, 50.0)
+light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
+
+addQuad('CeilingLight', light_mat,
+    float3(-0.25, 1.98, -0.25), float3(0.25, 1.98, -0.25),
+    float3(0.25, 1.98, 0.25), float3(-0.25, 1.98, 0.25),
+    0, -1, 0)
+
+# Thin vertical glass pane
+glass = StandardMaterial('Glass')
+glass.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+glass.roughness = 0.0
+glass.metallic = 0.0
+glass.indexOfRefraction = 1.5
+glass.specularTransmission = 1.0
+glass.doubleSided = False
+
+addQuad('GlassPaneFront', glass,
+    float3(-0.6, 0.1, -0.3), float3(0.6, 0.1, -0.3),
+    float3(0.6, 1.5, -0.3), float3(-0.6, 1.5, -0.3),
+    0, 0, -1)
+addQuad('GlassPaneBack', glass,
+    float3(0.6, 0.1, -0.28), float3(-0.6, 0.1, -0.28),
+    float3(-0.6, 1.5, -0.28), float3(0.6, 1.5, -0.28),
+    0, 0, 1)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = True

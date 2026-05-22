@@ -1,0 +1,33 @@
+# CornellBox_Slit.pyscene — Cornell + ceiling area light hidden behind an
+# occluding wall with a narrow vertical slit (VeachAjar-flavored test).
+# BDPT and PT should converge to the same image; this isolates the
+# "hard-to-sample light through narrow opening" failure mode.
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+light_mat = StandardMaterial('Light')
+light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+light_mat.emissiveColor = float3(400.0, 325.0, 250.0)
+light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
+
+# Bright light tucked into the upper-back-left corner
+addQuad('Light', light_mat,
+    float3(-0.95, 1.7, 0.9), float3(-0.55, 1.7, 0.9),
+    float3(-0.55, 1.7, 0.55), float3(-0.95, 1.7, 0.55),
+    0, -1, 0)
+
+# Vertical occluder partitioning the room — leaves a narrow slit
+# between the wall and the ceiling (slit ~0.06 wide).
+white = StandardMaterial('White')  # re-bind locally in case of scope quirks
+white.baseColor = float4(0.73, 0.73, 0.73, 1.0)
+white.roughness = 1.0
+
+addQuad('Occluder', white,
+    float3(-0.4, 0.0, 0.5), float3(-0.4, 0.0, -0.5),
+    float3(-0.4, 1.9, -0.5), float3(-0.4, 1.9, 0.5),
+    1, 0, 0)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = True

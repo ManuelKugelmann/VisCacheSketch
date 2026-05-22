@@ -1,0 +1,37 @@
+# CornellBox_GlassBall.pyscene — Simple Cornell + small ceiling area light +
+# glass ball sitting on the floor. Caustic-test scene; also useful for
+# validating BDPT's delta-transmission handling vs PT.
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+light_mat = StandardMaterial('Light')
+light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+light_mat.emissiveColor = float3(80.0, 65.0, 50.0)
+light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
+
+addQuad('CeilingLight', light_mat,
+    float3(-0.25, 1.98, -0.25), float3(0.25, 1.98, -0.25),
+    float3(0.25, 1.98, 0.25), float3(-0.25, 1.98, 0.25),
+    0, -1, 0)
+
+# Glass ball
+glass = StandardMaterial('Glass')
+glass.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+glass.roughness = 0.0
+glass.metallic = 0.0
+glass.indexOfRefraction = 1.5
+glass.specularTransmission = 1.0
+glass.doubleSided = False
+
+ball = TriangleMesh.createSphere(0.35, 64, 32)
+ball.name = 'GlassBall'
+ballID = sceneBuilder.addTriangleMesh(ball, glass)
+ballNode = sceneBuilder.addNode('GlassBall', Transform(
+    translation=float3(0.0, 0.4, 0.0),
+))
+sceneBuilder.addMeshInstance(ballNode, ballID)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = True
