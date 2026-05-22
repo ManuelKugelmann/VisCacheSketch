@@ -1042,7 +1042,7 @@ struct PathTracer
         \return true if the light is visible, false if occluded.
     */
     bool traceVisibilityRay(const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
-                            uint callSite = 0u /* VC_RAY_SITE_NEE */)
+                            float3 normalA, uint callSite = 0u /* VC_RAY_SITE_NEE */)
     {
         logTraceRay(PixelStatsRayType::Visibility);
 #if USE_VISCACHE_VISIBILITYCHECK
@@ -1050,7 +1050,11 @@ struct PathTracer
         // Returns soft-V in [0,1]; we binarize to keep PT semantics (caller
         // expects bool). The cache bumps per-site counters internally so
         // rays_traced_{nee,reval,reconnect}_pct populate in the EXR.
-        float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, /*normalA*/ float3(0.f), callSite);
+        // normalA enables normal-aware cell addressing — DI/NEE pass
+        // sd.frame.N here; hardcoding float3(0.f) coarsens addressing and
+        // tanked PT cache trust (only 19% saved on Cornell_3AL — task #82
+        // step 6/N fixes this).
+        float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite);
         return v > 0.5f;
 #else
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
@@ -1549,7 +1553,7 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
-                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), 0u /* NEE */);
+                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u /* NEE */);
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -2027,7 +2031,8 @@ struct PathTracer
             {
                 const Ray ray = ls.getVisibilityRay();
                 // VC_RAY_SITE_REVAL = 1 — temporal-shift V-test (reuse-revalidation).
-                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), 1u /* REVAL */);
+                // rcVertexSd is the reconnection-vertex shading data (loaded above).
+                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), rcVertexSd.frame.N, 1u /* REVAL */);
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {
