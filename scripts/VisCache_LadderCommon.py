@@ -5214,7 +5214,8 @@ def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
                                    mogwai_globals=None, capture_spps=(1, 4),
                                    gt_spp=4096, variant_tag=None,
                                    numNEECandidates=16,
-                                   visibilityCheck=False, lightSelection=False):
+                                   visibilityCheck=False, lightSelection=False,
+                                   extraVCProps=None):
     """Pure K-RIS NEE baseline (no cell reservoirs, NOT ReSTIR).
 
     Streaming K-RIS at every NEE event with no spatial/temporal reuse —
@@ -5237,6 +5238,7 @@ def run_baseline_ReSTIRNEEPass_F16(step_name, frame_configs, scene_file,
             useJitter=True, numNEECandidates=numNEECandidates,
             useNEECells=False,
             visibilityCheck=visibilityCheck, lightSelection=lightSelection,
+            extraVCProps=extraVCProps,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
@@ -5266,7 +5268,8 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
                                       cellReservoirFootprintPx=1,
                                       reservoirK=1,
                                       cellLevelOffsetWrite=0,
-                                      visibilityCheck=False, lightSelection=False):
+                                      visibilityCheck=False, lightSelection=False,
+                                      extraVCProps=None):
     """ReSTIR NEE + 3D cell reservoirs.
 
     Adds the cell-reservoir reuse layer on top of K-RIS NEE — every NEE call
@@ -5292,6 +5295,7 @@ def run_baseline_ReSTIRNEEPass_F16R3d(step_name, frame_configs, scene_file,
             reservoirK=reservoirK,
             cellLevelOffsetWrite=cellLevelOffsetWrite,
             visibilityCheck=visibilityCheck, lightSelection=lightSelection,
+            extraVCProps=extraVCProps,
         )
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"

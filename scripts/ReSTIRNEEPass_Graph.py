@@ -28,7 +28,8 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                                cellLevelOffsetWrite=0,
                                normalACoarse=None,
                                visibilityCheck=False,
-                               lightSelection=False):
+                               lightSelection=False,
+                               extraVCProps=None):
     g = RenderGraph("ReSTIRNEEPass")
 
     vbuf = createPass("VBufferRT", {
@@ -63,6 +64,11 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
                     "enableVisCacheLightSelection":  bool(lightSelection)}
         if normalACoarse is not None:
             vc_props["normalACoarse"] = float(normalACoarse)
+        # extraVCProps: caller-supplied overrides (e.g. CANONICAL_VC_SETTINGS
+        # from VisCache_LadderCommon — bayer4x4, stderr=0.10, qa012 quant).
+        # Applied last so they win over the defaults above.
+        if extraVCProps:
+            vc_props.update(extraVCProps)
         vc = createPass("VisCachePass", vc_props)
         g.addPass(vc, "VisCache")
 
