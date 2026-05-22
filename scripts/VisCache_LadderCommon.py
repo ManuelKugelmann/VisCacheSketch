@@ -584,8 +584,10 @@ _CSV_BASELINE_FIELDS = ["key", "scene", "variant", "spp",
                         "mean_noise_pct",     # mean bilateral CoV — stochastic grain
                         # Cost (cache-amortized per-pixel ray fraction; None for non-cache variants):
                         "rays_traced_pct",        # mean(VisCache.AccumRaysNoiseErrorCold.R) × 100 — rolled-up % rays vs always-trace
-                        "rays_traced_nee_pct",    # mean(R) of vcAccumRaysSplitNeeReval × 100 — NEE shadow-ray fraction
-                        "rays_traced_reval_pct",  # mean(G) of vcAccumRaysSplitNeeReval × 100 — temporal/spatial reuse-revalidation ray fraction
+                        "rays_traced_nee_pct",       # mean(R) of vcAccumRaysSplitNeeReval × 100 — (d) regular visibility shadow-ray fraction
+                        "rays_traced_reval_pct",     # mean(G) of vcAccumRaysSplitNeeReval × 100 — (a) reuse unbiasing V-test fraction
+                        "rays_traced_proposal_pct",  # mean(B) of vcAccumRaysSplitNeeReval × 100 — (b) sample-proposal V-aware target pdf trace fraction
+                        "rays_traced_reconnect_pct", # mean(A) of vcAccumRaysSplitNeeReval × 100 — (c) reconnection-shift V-test fraction
                         # Visible-artifact-area thresholds (paper-comparable):
                         "artifact_3_pct",     # % pixels with err > 3%
                         "artifact_5_pct",     # % pixels with err > 5%
@@ -614,6 +616,8 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
                         rays_traced_pct=None,
                         rays_traced_nee_pct=None,
                         rays_traced_reval_pct=None,
+                        rays_traced_proposal_pct=None,
+                        rays_traced_reconnect_pct=None,
                         artifact_3_pct=None, artifact_5_pct=None, artifact_11_pct=None,
                         mse=None, rmse=None, psnr_db=None, relmse=None,
                         smape=None, mape=None, ms_ssim=None, flip=None,
@@ -637,8 +641,10 @@ def append_baseline_csv(step, scene, spp, mean_err_pct, mean_noise_pct,
         "mean_err_pct":     fmt(mean_err_pct),
         "mean_noise_pct":   fmt(mean_noise_pct),
         "rays_traced_pct":       fmt(rays_traced_pct),
-        "rays_traced_nee_pct":   fmt(rays_traced_nee_pct),
-        "rays_traced_reval_pct": fmt(rays_traced_reval_pct),
+        "rays_traced_nee_pct":       fmt(rays_traced_nee_pct),
+        "rays_traced_reval_pct":     fmt(rays_traced_reval_pct),
+        "rays_traced_proposal_pct":  fmt(rays_traced_proposal_pct),
+        "rays_traced_reconnect_pct": fmt(rays_traced_reconnect_pct),
         "artifact_3_pct":   fmt(artifact_3_pct),
         "artifact_5_pct":   fmt(artifact_5_pct),
         "artifact_11_pct":  fmt(artifact_11_pct),
@@ -3135,8 +3141,13 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
     # absolute call-count is irretrievable from the ratio EXR alone — to
     # recover it we'd need to emit total-count channels too. Punted for
     # now: ratios are the user-facing metric.
-    rays_traced_nee_pct   = None
-    rays_traced_reval_pct = None
+    # vcAccumRaysSplitNeeReval is 4-channel: R=NEE, G=Reval, B=Proposal, A=Reconnect
+    # (4-mode VisCache use accounting). B+A are populated post-2026-05-22; pre-
+    # existing captures have B+A=0 (legacy behaviour preserved).
+    rays_traced_nee_pct       = None
+    rays_traced_reval_pct     = None
+    rays_traced_proposal_pct  = None
+    rays_traced_reconnect_pct = None
     split_exr = os.path.join(captureDir, f"{xN_tag}_{variant_tag}_raysSplit.exr")
     if os.path.exists(split_exr):
         try:
@@ -3145,13 +3156,18 @@ def postprocess_baseline_spp(step_name, captureDir, scene_name,
             if sd is not None and sd.shape[2] >= 2:
                 rays_traced_nee_pct   = float(sd[:, :, 0].mean() * 100)
                 rays_traced_reval_pct = float(sd[:, :, 1].mean() * 100)
+            if sd is not None and sd.shape[2] >= 4:
+                rays_traced_proposal_pct  = float(sd[:, :, 2].mean() * 100)
+                rays_traced_reconnect_pct = float(sd[:, :, 3].mean() * 100)
         except Exception as e:
             print(f"[{step_name}] [raysSplit-extract] {variant_tag}_x{spp}: failed: {e}")
 
     extra = {
-        "rays_traced_pct":       rays_traced_pct,
-        "rays_traced_nee_pct":   rays_traced_nee_pct,
-        "rays_traced_reval_pct": rays_traced_reval_pct,
+        "rays_traced_pct":           rays_traced_pct,
+        "rays_traced_nee_pct":       rays_traced_nee_pct,
+        "rays_traced_reval_pct":     rays_traced_reval_pct,
+        "rays_traced_proposal_pct":  rays_traced_proposal_pct,
+        "rays_traced_reconnect_pct": rays_traced_reconnect_pct,
         "artifact_3_pct":  err_stats.get("artifact_3_pct")  if err_stats else None,
         "artifact_5_pct":  err_stats.get("artifact_5_pct")  if err_stats else None,
         "artifact_11_pct": err_stats.get("artifact_11_pct") if err_stats else None,

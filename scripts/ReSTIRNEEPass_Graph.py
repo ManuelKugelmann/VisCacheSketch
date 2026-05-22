@@ -109,6 +109,8 @@ def render_graph_ReSTIRNEEPass(maxBounces=3, samplesPerPixel=1, useJitter=True,
     # paths silently gated off.
     if need_vc_pass:
         g.markOutput("VisCache.vcAccumMeanVarMatCount")
+        g.markOutput("VisCache.vcAccumRaysSplitNeeReval", TextureChannelFlags.RGBA)
+        g.markOutput("VisCache.vcAccumRaysNoiseErrorCold", TextureChannelFlags.RGBA)
     return g
 
 
