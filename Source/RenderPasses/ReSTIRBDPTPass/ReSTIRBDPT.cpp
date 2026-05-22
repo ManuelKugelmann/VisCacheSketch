@@ -11,6 +11,7 @@ namespace
     const std::string kSpatialReusePassFilename  = "RenderPasses/ReSTIRBDPTPass/SpatialReuse.cs.slang";
     const std::string kReflectTypesFile          = "RenderPasses/ReSTIRBDPTPass/ReflectTypes.cs.slang";
     const std::string kResolveShiftPassFilename  = "RenderPasses/ReSTIRBDPTPass/ResolveLightTraceShift.cs.slang";
+    const std::string kResolveLightTraceFilename = "RenderPasses/ReSTIRBDPTPass/ResolveLightTrace.cs.slang";
 
     // Render pass inputs and outputs.
     const std::string kInputVBuffer       = "vbuffer";
@@ -869,7 +870,11 @@ void ReSTIRBDPT::updatePrograms()
             if (!mpLightReservoirResolvePass)
             {
                 ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kBDPTPassFilename).csEntry("ResolveLightTraceReservoirs");
+                // [Falcor 8 workaround for task #10] Use the standalone
+                // ResolveLightTrace.cs.slang entry which includes the warmup
+                // helpers needed to keep Slang's ParameterBlock reflection
+                // happy with the gShiftLightPathsToPixelCenters branch.
+                desc.addShaderLibrary(kResolveLightTraceFilename).csEntry("main");
                 mpLightReservoirResolvePass = ComputePass::create(mpDevice, desc, defines, false);
             }
             preparePass(mpLightReservoirResolvePass);
@@ -930,8 +935,13 @@ void ReSTIRBDPT::updatePrograms()
         mpCopyRadiancePass = ComputePass::create(mpDevice, desc, defines, false);
     }
 
-    // [Falcor 8 experiment, gated] probe placed AFTER CopyRadiance to test
-    // creation-order hypothesis. Activate with BDPT_SHIFT_PROBE=1.
+    // [Falcor 8 experiment, retired] probe gated behind BDPT_SHIFT_PROBE env
+    // var was used to bisect the ResolveLightTraceReservoirs reflection trip.
+    // Conclusion (commit 544d1053): calling a ComputeSpatialMisWeight-like
+    // helper from the same entry that calls ShiftPath unblocks the Slang
+    // reflector. Fix applied directly to BDPT.cs.slang::ResolveLightTraceReservoirs.
+    // Keeping the probe file + its create-site disabled for future bisects.
+    #if 0
     if (mStaticParams.useResampling && std::getenv("BDPT_SHIFT_PROBE"))
     {
         if (!mpResolveLightTraceShiftPass)
@@ -942,6 +952,7 @@ void ReSTIRBDPT::updatePrograms()
         }
         preparePass(mpResolveLightTraceShiftPass);
     }
+    #endif
     preparePass(mpCopyRadiancePass);
 
     if (!mpReflectTypes)

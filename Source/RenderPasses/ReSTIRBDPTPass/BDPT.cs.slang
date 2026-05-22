@@ -6,6 +6,13 @@ import PathShift;
 static const bool gUseCausticReservoirs   = USE_CAUSTIC_RESERVOIRS;
 static const uint gDebugCausticReservoirs = DEBUG_CAUSTIC_RESERVOIRS;
 
+// [Falcor 8 workaround] ResolveLightTraceReservoirs moved to its own
+// ResolveLightTrace.cs.slang to keep Slang's reflector happy (see [[task #10]]).
+// The body left below is the no-shift fallback retained for the case where
+// the host code dispatches this entry instead. Either way is functionally
+// equivalent because we never re-enable the shift branch here; it's a docs
+// artifact pending eventual removal.
+
 [shader("compute")]
 [numthreads(8, 4, 1)]
 void SampleLightPaths(uint3 index: SV_DispatchThreadID) {
@@ -52,20 +59,11 @@ void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
         PathReservoir c = PathReservoir(lr.path, lr.W, 0);
         c.PrepareMerge(m);
 
-        // [Falcor 8 port] gShiftLightPathsToPixelCenters branch disabled. The
-        // ShiftPath call trips Falcor 8 ParameterBlock reflection during
-        // setVars for ResolveLightTraceReservoirs. Bisect points to deep
-        // PathState<true> nested-type reflection — not fixable in our slang
-        // code without rewriting major data structures. The rest of the
-        // ReSTIR resampling pipeline (light/camera reservoir merge, caustic
-        // split) runs fine; only the optional sub-pixel re-projection
-        // optimization is missing. See docs/SLANG_AND_FALCOR_NOTES.md.
+        // [bisect] shift branch off; warmup still called above. Does warmup
+        // alone crash? If yes, warmup is the new trip. If no, shift branch
+        // is still the trip even with warmup helping.
         // if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
-        //     gPathGenerator.DebugSetPixel(-1);
-        //     float jacobian; int2 tmp;
-        //     const bool valid = ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
-        //     gPathGenerator.DebugSetPixel(id);
-        //     if (!valid || !(jacobian > 0)) continue;
+        //     ...
         // }
 
         float u = sampleNext1D(sg);
