@@ -31,6 +31,13 @@ import LightPool;
 import RenderPasses.ReSTIRCommon.CellPool;   // for the CellPool struct used in lightPool buffer field
 import RenderPasses.CacheCommon.CacheHash;   // pcg3d (was local prPcg3d before Phase C-light migration)
 
+#if USE_VISCACHE
+import RenderPasses.VisCache.VisCachePathTracer;   // vcVisibility_Ray<UseAlphaTest>(...)
+#ifdef VISCACHE_DIAGNOSTICS
+import RenderPasses.VisCache.VisCacheDiagnostics;  // VC_RAY_SITE_* tags + vcDiagCountRay
+#endif
+#endif
+
 #include "Utils/Math/MathConstants.slangh"
 
 __exported import PathState;
@@ -1034,12 +1041,23 @@ struct PathTracer
         \param[in] ray Visibility ray.
         \return true if the light is visible, false if occluded.
     */
-    bool traceVisibilityRay(const Ray ray)
+    bool traceVisibilityRay(const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
+                            uint callSite = 0u /* VC_RAY_SITE_NEE */)
     {
         logTraceRay(PixelStatsRayType::Visibility);
+#if USE_VISCACHE_VISIBILITYCHECK
+        // Route through VisCache: cache-amortized V with trust-gate trace.
+        // Returns soft-V in [0,1]; we binarize to keep PT semantics (caller
+        // expects bool). The cache bumps per-site counters internally so
+        // rays_traced_{nee,reval,reconnect}_pct populate in the EXR.
+        float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, /*normalA*/ float3(0.f), callSite);
+        return v > 0.5f;
+#else
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
         return sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
+#endif
     }
+
 
     /** Handle scattering in homogeneous volumes.
     \return Returns true if a scattering event took place.
@@ -1531,7 +1549,7 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
-                        bool visible = traceVisibilityRay(ray);
+                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), 0u /* NEE */);
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -2008,7 +2026,8 @@ struct PathTracer
             if (validSample)
             {
                 const Ray ray = ls.getVisibilityRay();
-                visible = traceVisibilityRay(ray);
+                // VC_RAY_SITE_REVAL = 1 — temporal-shift V-test (reuse-revalidation).
+                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), 1u /* REVAL */);
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {
