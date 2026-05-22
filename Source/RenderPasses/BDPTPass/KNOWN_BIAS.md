@@ -53,6 +53,43 @@ This closed ~5pp of the gap on VeachAjar (0.654 → 0.704). Cornell was
 already tight (1.004 → 1.000). Direct-only (1-bounce) VeachAjar also
 improved (0.670 → 0.737).
 
+## Strategy decomposition (updated diagnosis)
+
+NEE-vs-BSDF decomposition on VeachAjar at 256 spp (after F8 uv fix):
+
+| Variant                   | mean   |
+|---------------------------|--------|
+| PT NEE+BSDF               | 1.1601 |
+| PT BSDF only (NEE off)    | 1.1609 |
+| BDPT NEE+BSDF             | 0.7916 |
+| BDPT BSDF only (NEE off)  | 0.8170 |
+
+Key insight: PT's NEE adds essentially zero on top of PT's BSDF-only on
+this scene at this SPP (BSDF strategy alone converges). So **the bias
+is NOT in NEE** — it's in **BSDF-strategy emission accumulation**.
+
+Both PT and BDPT use `misWeight = 1` for the BSDF-emission strategy in
+NEE-off mode. Both accumulate `throughput * Le * misWeight`. The
+divergence is in the throughput or pdf accumulation, or in how often
+the BSDF-sampled ray finds the light through the door slit.
+
+Candidate root causes for the remaining ~30pp gap:
+1. BDPT's `BSDFSample.weight` (Falcor convention BRDF*cos/pdf) is being
+   processed differently than Falcor PT's `updatePathThroughput(path,
+   bs.weight)`. BDPT cancels-divide-by-pdf at line 276 then overrides
+   reflectance for non-delta lobes at line 287 — a subtle path that
+   could drift from PT's behavior.
+2. The `s.pdfW` accumulation may diverge from path.pdf in PT due to
+   contProb factor (although the analytic compensation arg suggests
+   this should cancel in expectation).
+3. Path termination on cosOut/cosIn early-outs at AdvanceVertex line
+   1820/1849 may reject paths that PT keeps alive.
+4. The BSDF sample uses `s.sgBsdf` (a separate sample generator) instead
+   of the main `s.sg` — this should only shift sample sequence, not
+   bias, but worth verifying.
+
+Per-pixel pdf+throughput instrumentation remains the path to a fix.
+
 ## What we ruled out (task #13 bisect)
 
 - **Not a port regression.** Original Shmaug/ReSTIR-BDPT has identical MIS
