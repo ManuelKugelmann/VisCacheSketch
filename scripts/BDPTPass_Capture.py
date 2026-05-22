@@ -46,6 +46,15 @@ elif pass_kind == "ptonly":
     # the bias-free baseline test against Falcor's PathTracer.
     bdpt = createPass("BDPT", {'useBPT': False})
     label = "BDPT_ptonly"
+elif pass_kind == "direct":
+    # Direct lighting only (maxBounces=1). Isolates NEE/light visibility
+    # without compounding indirect bounces. Used as part of bias bisection.
+    bdpt = createPass("BDPT", {'useBPT': False, 'maxBounces': 1})
+    label = "BDPT_direct"
+elif pass_kind == "deep":
+    # 100-bounce. Tests if 20 is truncating significant indirect light.
+    bdpt = createPass("BDPT", {'useBPT': False, 'maxBounces': 100})
+    label = "BDPT_deep"
 elif pass_kind == "caustic":
     bdpt = createPass("ReSTIRBDPT", {
         'useBPT': True,

@@ -23,16 +23,16 @@ os.makedirs(out_dir, exist_ok=True)
 
 g = RenderGraph("PathTracerCapture")
 
-# Match BDPT defaults: 20-bounce path budget so bias-comparison vs BDPT
-# is apples-to-apples (Falcor PathTracer default maxDiffuseBounces=3 yields
-# significantly less indirect light and confounds a bias check).
+# PT config (bounce budget + emissive sampler) selectable via env vars
+# so we can do matched comparisons against BDPT at the same bounce count.
+pt_bounces = int(os.environ.get("PT_BOUNCES", "20"))
 pt = createPass("PathTracer", {
     'samplesPerPixel': 1,
-    'maxSurfaceBounces': 20,
-    'maxDiffuseBounces': 20,
-    'maxSpecularBounces': 20,
-    'maxTransmissionBounces': 20,
-    'emissiveSampler': "Power",  # match BDPT default (string form, not enum)
+    'maxSurfaceBounces': pt_bounces,
+    'maxDiffuseBounces': pt_bounces,
+    'maxSpecularBounces': pt_bounces,
+    'maxTransmissionBounces': pt_bounces,
+    'emissiveSampler': "Power",
 })
 g.addPass(pt, "PathTracer")
 
@@ -64,7 +64,7 @@ print(f"[pt-capture] Loading scene: {scene_file}")
 m.loadScene(scene_file)
 
 scene_basename = os.path.splitext(os.path.basename(scene_file))[0]
-stem = f"PathTracer_{scene_basename}_x{num_frames}"
+stem = f"PathTracer_b{pt_bounces}_{scene_basename}_x{num_frames}"
 
 m.frameCapture.outputDir    = out_dir
 m.frameCapture.baseFilename = stem
