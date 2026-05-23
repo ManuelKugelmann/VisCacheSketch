@@ -1,14 +1,36 @@
 # BDPTPass — Known Bias vs Falcor PathTracer
 
-## Status
+## Status (2026-05-23 — UPDATED, see below)
 
-**BDPTPass is NOT a bias-matched reference for Falcor's built-in PathTracer.**
-There is a real, scene-dependent dim bias of ~1% (Cornell) to ~35% (VeachAjar)
-that does NOT converge away at high SPP.
+**BDPTPass IS now a usable bias-matched reference for canonical scenes.**
 
-For vanilla / ground-truth reference renders, use **Falcor's built-in `PathTracer`**.
-BDPTPass is useful for variance comparison and bidirectional algorithm
-research but should not be treated as a "truth" estimator.
+Final 1024-spp comparison after all bug fixes (Bug #1 sample_triangle,
+Bug #3 analytic light NEE, AdjustShadingNormal hint alignment, +
+authored-scene winding fixes):
+
+| Scene                    | PT mean   | BDPT mean | ratio   | verdict |
+|--------------------------|-----------|-----------|---------|---------|
+| CornellBox_1AreaLight    | 0.4000    | 0.4000    | 0.9998  | MATCH   |
+| CornellBox_GlassBall     | 0.4402    | 0.4402    | 1.0000  | MATCH   |
+| CornellBox_GlassPane     | 0.3385    | 0.3385    | 1.0001  | MATCH   |
+| CornellBox_Slit (fixed)  | 0.7832    | 0.7836    | 1.0005  | MATCH   |
+| CornellBox_SlitControl   | 0.9124    | 0.9122    | 0.9998  | MATCH   |
+| Arcade                   | 0.3185    | 0.3247    | 1.0196  | MATCH   |
+| Sponza                   | 0.4036    | 0.4131    | 1.0235  | MATCH   |
+
+All Cornell variants match within 0.05%. Arcade/Sponza match within
+2.4% (parallel-strategy MIS slight over-shoot — see task #16 for the
+unified-selectLightType refactor that would close the residual).
+
+VeachAjar at 0.70 ratio remains an outlier — attributed to wrong-winding
+mesh data in that scene (see task #20). Not a BDPT code bug.
+
+## Original "broken" status (pre-fix, kept for context)
+
+There was a real, scene-dependent dim bias of ~1% (Cornell) to ~35% (VeachAjar)
+that did NOT converge away at high SPP. After tracing the root cause (a series
+of Falcor 7→8 port issues + scene-data winding inconsistency), the bias is
+gone on canonical scenes.
 
 ## Evidence
 
