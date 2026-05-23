@@ -473,6 +473,19 @@ VeachAjar 0.70 ratio at 256 spp is a SEPARATE issue — may be its
 own scene/material quirk, or actual PT undersampling through the
 door slit at moderate spp (per user's earlier hypothesis).
 
+**Update 2026-05-23**: VeachAjar ratio is invariant 256 → 1024 spp
+(0.7043 → 0.7041). Confirmed bias, not variance. Likely the same
+"wrong winding" mechanism applies in the VeachAjar mesh data (light
+quad winding inconsistent with stored normals) — same root cause as
+the slit-bug control scenes. Cannot easily fix without modifying
+the mesh files themselves.
+
+The 30% under-sampling on VeachAjar specifically is consistent with
+PT-vs-BDPT divergence on wrong-winding scenes (PT loses ~44% on
+SlitControl with wrong winding; BDPT loses ~97%). Lower divergence
+on VeachAjar suggests partial winding inconsistency — only some
+emissive surfaces affected.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
