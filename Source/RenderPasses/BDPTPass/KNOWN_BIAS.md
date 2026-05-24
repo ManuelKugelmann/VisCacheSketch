@@ -25,6 +25,29 @@ unified-selectLightType refactor that would close the residual).
 VeachAjar at 0.70 ratio remains an outlier — attributed to wrong-winding
 mesh data in that scene (see task #20). Not a BDPT code bug.
 
+## Task #16 progress: localizing Arcade 2% bias to BSDF-strategy
+
+Decomposition (256 spp):
+
+  Cornell_1AreaLight bsdf-only:  PT 0.40 / BDPT 0.40  ratio 1.000  ✓
+  Arcade           bsdf-only:    PT 0.27 / BDPT 0.32  ratio 1.202  ←
+  Sponza           bsdf-only:    PT 0.04 / BDPT 0.41  ratio 11.20  ←
+
+The bias appears ONLY in scenes with ANALYTIC LIGHTS, even when NEE is
+DISABLED. So the gUseAnalyticLights compile-time define is affecting
+some code path in pure BSDF mode.
+
+Tests ruled out for BSDF-only bias:
+- RR (mTerminationProbability=0 gives same result)
+- maxDiffuseBounces mismatch (matched to PT's 20, same result)
+
+This is a NEW open finding — possibly the same root cause as the
+full-mode Arcade 2% bias (task #16). Both Cornell variants (no analytic)
+work perfectly; both Arcade and Sponza (with analytic) are off.
+
+Next step: find what code path the gUseAnalyticLights define enables
+that contributes to BSDF-strategy result without going through NEE.
+
 ## Original "broken" status (pre-fix, kept for context)
 
 There was a real, scene-dependent dim bias of ~1% (Cornell) to ~35% (VeachAjar)
