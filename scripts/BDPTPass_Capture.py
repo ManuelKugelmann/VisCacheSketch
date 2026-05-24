@@ -79,7 +79,8 @@ elif pass_kind == "matched20":
 elif pass_kind == "bsdf":
     # BSDF-only (NEE disabled). Isolates whether the bias is in NEE.
     # If BDPT bsdf matches Falcor PT useNEE=False, NEE in BDPT is the bug.
-    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False})
+    # maxDiffuseBounces matched to PT default (20) to avoid bounce-count confound.
+    bdpt = createPass("BDPT", {'useBPT': False, 'useNEE': False, 'maxBounces': 20, 'maxDiffuseBounces': 20})
     label = "BDPT_bsdf"
 elif pass_kind == "neeonly":
     # NEE only (no BSDF-direct-emission). PathTracer doesn't expose this
