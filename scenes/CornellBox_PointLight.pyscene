@@ -1,0 +1,14 @@
+# CornellBox_PointLight.pyscene — Cornell with a single analytic point light
+# (no env, no textures, no emissive triangles). Tests if BDPT vs PT bias
+# is from analytic-light handling itself.
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+pl = PointLight('Pt')
+pl.intensity = float3(10.0, 8.0, 6.0)
+pl.position = float3(0.0, 1.8, 0.0)
+sceneBuilder.addLight(pl)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = True
+settings.useEmissiveLights = False

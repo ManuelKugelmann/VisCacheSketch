@@ -181,8 +181,13 @@ struct PathVertex {
             // frontFacing handling — StandardMaterial.slang line ~220 already
             // returns 0 for back-facing hits. PT uses the same pattern.
             return mMaterial.getProperties(mShadingData).emission;
-        } else {
+        } else if (gPathGenerator.gUseEnvLight) {
+            // Gate env eval by USE_ENV_LIGHT (mirrors PT's kUseEnvLight check).
+            // Without this, when no env map is set, envMap.eval may read
+            // uninitialized texture data producing spurious illumination.
             return gScene.envMap.eval(mVertex.mRayDirection, 0);
+        } else {
+            return float3(0);
         }
     }
 
