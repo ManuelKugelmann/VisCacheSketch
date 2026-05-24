@@ -1136,6 +1136,23 @@ Temporal mechanisms (decay, warmup, accelDecay) and indirect illumination (maxBo
 
 ---
 
+## Steps RDI02-05 — per-mode counter session (2026-05-23/24)
+
+Closes the per-mode ray-savings plumbing into ReSTIRDI (4 counters: NEE, REVAL, PROPOSAL, RECONNECT). All wiring landed end-to-end across DI/NEE/PT; this short stage tunes the cross-scene behavior surfaced by the now-correct counters.
+
+| step | sweep | finding |
+|---|---|---|
+| RDI02_CellTune | bootThreshold ∈ {8,16} × posACoarse ∈ {0.12, 0.24, 0.48} | Bistro: pa=0.48 saves 4.7pp aggregate rays @ x16 (85.5→80.8%), no err cost. Sponza: bt=8 saves 2.6pp (98.2→95.6%). Cell-tune levers are scene-specific — coarser cells help Bistro, lower trust threshold helps Sponza. |
+| RDI03_RevalSweep | retraceOnReuseMode ∈ {0,1,2} | Cornell @ x16: ror=2 (CacheCV) is **strict win** vs ror=0 — same rays (54.1 vs 54.4%) AND better err (0.789 vs 0.804). ror=1 (FullTrace) costs +1.7pp rays for same err as ror=2. REVAL counter plumbing validated (drops 33% as cells mature with SPP). |
+| RDI04_RevalLite | ror=2 × cell-tune combo on Cornell + Sponza + Bistro | **Sign-flips cross-scene.** On Sponza/Bistro, ror=2 adds err (Sponza +0.5%, Bistro +2.1%) — cell-tune savings remain but free quality bump doesn't. |
+| RDI05_RorCrossScene | ror ∈ {0,1,2} on Sponza + Bistro | **Sponza** ror=1 IS err-stable (+0.1% vs ror=0), ror=2 hurts (+0.5%) → confirms mu-substitution bias on diverse-mu cells (`vcVisibility_Ray` returns raw `mu` when trusted, not CV-corrected). **Bistro** both ror=1 AND ror=2 hurt (+2.1%) → single-sample reval variance, independent of CV. |
+
+**Cross-scene recipe**: reval is scene-adaptive. ror=2 wins on Cornell-like cache-friendly scenes; ror=0 is the right answer on diverse-occlusion scenes (Sponza/Bistro). No universal "free reval" exists at canonical settings — would need either (a) per-pixel diverse-V detector to gate, or (b) variance reduction inside `vcVisibility_Ray` for trusted-but-noisy cells.
+
+Plumbing details + scene-by-scene per-mode numbers: [`project_per_mode_session_complete_2026_05_23`](../../memory/project_per_mode_session_complete_2026_05_23.md), [`project_cachecv_reval_cross_scene`](../../memory/project_cachecv_reval_cross_scene.md).
+
+---
+
 # Cross-step ladder progress
 
 Per-scene thin lines + bold unweighted "All" across all ladder steps in three panels (rays / error+blob / noise). Red halos mark each step's carried winner; whiskers show per-scene min→max of all variants at that step. One plot per SPP tier.
