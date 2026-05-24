@@ -554,6 +554,38 @@ can't be done in the autonomous /loop.
 For now, BDPT users should treat wrong-winding scenes as out-of-spec.
 Authored test scenes should be checked for winding consistency.
 
+**Update 2026-05-24 (root cause traced)**: Found that Falcor's
+`isValidHemisphereReflectionOrTransmission`
+(Scene/Material/ShadingUtils.slang:214) explicitly checks that wi and
+wo are on the SAME GEOMETRIC SIDE for reflection lobes (line 222-233):
+
+```slang
+bool wiTop = sd.frontFacing;  // dot(wi, faceN) >= 0
+bool woTop = dot(wo, sd.faceN) >= 0;
+if (!isTransmission && wiTop != woTop) return false;
+#if FALCOR_BACKFACE_BLACK
+  bool shadingTop = dot(sf.N, sd.faceN) >= 0;
+  if (wiTop != shadingTop) return false;
+#endif
+```
+
+For wrongly-wound lights (geometric faceN = +y, stored vertex N = -y):
+on back-face hits from below, `wiTop=false` but with AdjustShadingNormal
+flip `shadingTop=true` → REJECT. Without flip, FALCOR_BACKFACE_BLACK
+gate still catches it.
+
+This means **BOTH PT and BDPT** reject these BSDF samples (it's Falcor's
+shared sample function). The asymmetry must be in how PT vs BDPT handle
+the REJECTED case — PT seems more tolerant.
+
+Fixing BDPT to bypass these rejections would diverge from Falcor's
+conventions — not the right direction. The correct fix is to either
+(a) ensure scenes have consistent winding, or
+(b) extend Falcor's helper with a tolerance mode.
+
+For BDPT-as-vanilla-reference: this is a known limitation on
+intentionally-broken scenes. Canonical scenes are unaffected.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
