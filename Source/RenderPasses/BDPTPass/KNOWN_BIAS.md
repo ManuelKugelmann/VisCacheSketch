@@ -654,3 +654,51 @@ createPass("PathTracer", {
 
 with sufficient SPP (≥256 for Cornell; ≥1024 for high-variance scenes
 like VeachAjar/Bistro).
+
+## TASK #16 ROOT CAUSE — 2026-05-24 (HUGE)
+
+**`BDPT::setProperties` in BDPT.cpp (lines 108-123) FORCES `useBPT = true`
+after parsing Python properties**, completely overriding user-specified
+`useBPT: False`:
+
+```cpp
+void BDPT::setProperties(const Properties& props)
+{
+    parseProperties(props);
+    // Re-pin vanilla-BDPT invariants after any property updates.
+    mStaticParams.useBPT                = true;      // <<< FORCES TRUE
+    mStaticParams.useResampling         = false;
+    mStaticParams.useTemporalReuse      = false;
+    mStaticParams.useCausticReservoirs  = false;
+    mStaticParams.useCausticShift       = false;
+    mStaticParams.spatialReusePasses    = 0;
+    ...
+}
+```
+
+Combined with `USE_NEE = (useNEE || useBPT) ? "1" : "0"` (line 1418),
+**`useBPT` being forced to true also forces NEE on**.
+
+Confirmed by writing define values into the output channels on a
+`bsdf` config (intent: useBPT=False, useNEE=False):
+  USE_BIDIRECTIONAL = 1 (should be 0)
+  USE_NEE           = 1 (should be 0)
+  USE_ANALYTIC_LIGHTS = 1 (correct)
+
+So the entire "BSDF-decomposition" investigation of task #16 was based
+on configs that didn't actually disable NEE/BPT. The 0.40 BDPT-bsdf
+result on CornellBox_PointLight was BDPT in FULL mode (NEE+BPT enabled)
+correctly finding the point light via NEE — PT bsdf-only was the
+apples-to-oranges comparison.
+
+**The Arcade 2% / Sponza 2.4% over-shoot is just BDPT vanilla vs PT
+vanilla** — the residual MIS / sample-strategy difference between two
+fully-configured renderers. No further BSDF-side decomposition is
+possible without first relaxing the forced re-pin.
+
+Next steps: either
+(a) remove the forced re-pin in BDPT::setProperties so debug configs work
+(b) make a different BDPT pass class for debug-only configs
+(c) accept that BDPT-bsdf-only is not exposable and investigate the 2%
+    via other means (e.g., examining the BDPT MIS formula vs PT's MIS
+    for the env+emissive+analytic combo).
