@@ -37,7 +37,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel));
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite);
 
     float result;
     bool traced;
@@ -71,7 +71,7 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel));
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite);
 
     if (g.shouldTrace)
     {

@@ -826,7 +826,11 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert, out uint probeSteps)
 // Returns VHFResult with valid=false on cold miss (no mature entry at any
 // level), which tells the caller to trace unconditionally.
 // ---------------------------------------------------------------------------
-VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
+// callSite: VC_RAY_SITE_* tag from VisCacheDiagnostics.slang (default 0 = NEE).
+// Per-mode cell granularity experiment: REVAL site (callSite=1) walks COARSER
+// cells than NEE/PROPOSAL to amortize the diverse-(posA, posB) population a
+// reuse-revalidation query naturally sees. Defaults preserve existing behaviour.
+VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint callSite = 0u)
 {
     VHFResult best;
     best.mu    = 0.5f;   // Default: uncertain (max variance)
@@ -864,12 +868,28 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f))
 
     int startLvl = 0;
     int endLvl   = int(gNumLevels);
-    if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
+    // Per-mode entry footprint (hardcoded experiment — promote to a knob
+    // once direction is validated). REVAL site uses a 16-px footprint
+    // (= 4-px cell edge) as a forced floor on the entry level so REVAL
+    // cells aggregate more samples than NEE. The cascade descent + level
+    // curve remain unchanged — REVAL just starts higher up the cascade.
+    // Applied EVEN when gForceDescendFootprintPx == 0 (canonical), where
+    // NEE walks the full cascade starting at level 0.
+    uint footprintPx = gForceDescendFootprintPx;
+    if (callSite == 1u /* VC_RAY_SITE_REVAL */)
+    {
+        // Use 16× the active footprint (= 4× cell edge); if footprint mode
+        // is off (= 0), default to 256 px² so the REVAL gate has a coarse
+        // entry even when other sites walk the whole cascade. Aggressive
+        // setting to verify per-mode direction sensitivity before tuning.
+        footprintPx = (footprintPx != 0u) ? (footprintPx * 16u) : 256u;
+    }
+    if (footprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
     {
         float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
         float depth = max(length(posA - camPos), 0.001f);
         float pixelSize = depth * gPixelSize1;
-        float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
+        float targetCellSize = pixelSize * sqrt(float(footprintPx));
         float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
         int targetLvl = int(round(t * float(gNumLevels - 1u)));
         // Lookup window: [targetLvl, targetLvl + kWindowFwd].
@@ -1208,10 +1228,11 @@ struct VHFGateResult
 VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f,
                        float3 normalA = float3(0.f),
-                       bool forceWarmup = false)
+                       bool forceWarmup = false,
+                       uint callSite = 0u)
 {
     VHFGateResult g;
-    VHFResult r = vhfLookup(posA, posB, normalA);
+    VHFResult r = vhfLookup(posA, posB, normalA, callSite);
 
     // Copy qa/qb from the cascade-selected level (diagnostics — hash grid vis).
     g.qa = r.qa;

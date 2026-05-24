@@ -1,0 +1,8 @@
+# CornellBox_NoLight.pyscene — Empty Cornell box, no light source.
+# Both PT and BDPT should return 0 mean (black image).
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = False
