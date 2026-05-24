@@ -4169,6 +4169,7 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
                          envCandidateCount=0,                              # RTXDI-parity env-map dedicated K-RIS quota (RTXDI default 8). 0 = off.
                          infiniteCandidateCount=0,                         # RTXDI-parity infinite-analytic dedicated K-RIS quota (RTXDI default 8). 0 = off.
                          brdfCandidateCount=0,                             # RTXDI-parity BRDF dedicated K-RIS quota (RTXDI default 1). Currently shader-side TODO; param plumbed for accounting.
+                         tag_suffix_extra="",                              # caller-supplied suffix appended after the auto-derived tag (e.g. "_bt08_pa24" for cell-tune sweeps). Empty by default — keeps tags stable for canonical wrappers.
                          gt_spp=4096):
     """Shared core for `restir_2d` and `restir_3d`. Both use the same recipe
     (K=8 pool candidates → per-pixel reservoir temporal+spatial reuse) and
@@ -4279,6 +4280,8 @@ def _run_baseline_restir(step_name, frame_configs, scene_file,
         tag_suffix += "_raytraced"
     elif retraceOnReuseMode == 2:
         tag_suffix += "_cachecv"
+    if tag_suffix_extra:
+        tag_suffix += tag_suffix_extra
     scene_name = os.path.splitext(os.path.basename(scene_file))[0]
     captureDir = f"captures/ladder/{step_name}/{scene_name}"
     gt_hdr, noise_floor = _resolve_gt_for_variant(captureDir, gt_spp, f"{resX}x{resY}")

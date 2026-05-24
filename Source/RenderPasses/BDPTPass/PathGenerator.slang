@@ -177,11 +177,10 @@ struct PathVertex {
 
     float3 GetEmission() {
         if (IsFinite()) {
-            if (mShadingData.frontFacing) {
-                return mMaterial.getProperties(mShadingData).emission;
-            } else {
-                return 0;
-            }
+            // Mirror Falcor PathTracer: trust the material's internal
+            // frontFacing handling — StandardMaterial.slang line ~220 already
+            // returns 0 for back-facing hits. PT uses the same pattern.
+            return mMaterial.getProperties(mShadingData).emission;
         } else {
             return gScene.envMap.eval(mVertex.mRayDirection, 0);
         }

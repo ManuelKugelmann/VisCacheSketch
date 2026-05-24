@@ -82,7 +82,7 @@ for scene_file in get_scenes(default=DEFAULT_SCENES):
             run_baseline_ReSTIRDI_R2dP2d_RTXDIBaseline_vc(
                 STEP, [(0, 0, 1)], scene_file,
                 maxBounces=0,
-                variant_tag=f"R2dP2d_RTXDIBaseline{tag_suffix}_vcache",
+                tag_suffix_extra=tag_suffix,
                 extraVCProps={
                     "bootThreshold": bt,
                     "posACoarse":    pa,
