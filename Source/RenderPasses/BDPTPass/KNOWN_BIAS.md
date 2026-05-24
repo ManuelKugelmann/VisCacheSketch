@@ -539,6 +539,21 @@ Needs further investigation — likely a path-termination condition in
 AdvanceVertex that fires more aggressively in BDPT than PT for these
 geometrically-inconsistent surfaces.
 
+**Update 2026-05-24**: Tested AdjustShadingNormal hint on/off — no effect
+(ratio 0.0863 in both cases). So the bug isn't in the shading frame
+adjustment. AdvanceVertex termination conditions reviewed; none of the
+cosOut < kMinCosTheta or cosIn < kMinCosTheta checks fire incorrectly
+for wrongly-wound geometry per static analysis.
+
+The 12× under-sampling vs PT must come from a subtle interaction in
+how throughput / pdfW evolve through paths that bounce off the wrongly-
+wound surface. Further bisection requires headed-mode PixelDebug
+print() to compare BDPT vs PT path-by-path at a specific pixel —
+can't be done in the autonomous /loop.
+
+For now, BDPT users should treat wrong-winding scenes as out-of-spec.
+Authored test scenes should be checked for winding consistency.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
