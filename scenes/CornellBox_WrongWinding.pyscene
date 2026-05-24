@@ -1,0 +1,22 @@
+# CornellBox_WrongWinding.pyscene — DELIBERATELY wrong winding test scene
+# for task #20 (BDPT robustness vs PT on winding/normal-mismatched lights).
+# Light quad vertices are CCW from above, geometric cross product is +y,
+# stored normal is -y. PT loses ~44% of energy here; BDPT loses ~97%.
+import os
+exec(open(os.path.join(os.path.dirname(__file__) or ".", "CornellBox_Simple.py")).read())
+
+light_mat = StandardMaterial('Light')
+light_mat.baseColor = float4(1.0, 1.0, 1.0, 1.0)
+light_mat.emissiveColor = float3(80.0, 65.0, 50.0)
+light_mat.emissiveFactor = 1.0
+light_mat.roughness = 1.0
+
+# Suspended light at y=1.7 with WRONG winding (geometric +y vs stored -y).
+addQuad('Light', light_mat,
+    float3(-0.2, 1.7, 0.175), float3(0.2, 1.7, 0.175),
+    float3(0.2, 1.7, -0.175), float3(-0.2, 1.7, -0.175),
+    0, -1, 0)
+
+settings = sceneBuilder.renderSettings
+settings.useAnalyticLights = False
+settings.useEmissiveLights = True

@@ -508,6 +508,37 @@ SlitControl with wrong winding; BDPT loses ~97%). Lower divergence
 on VeachAjar suggests partial winding inconsistency — only some
 emissive surfaces affected.
 
+## Task #20 progress: visual evidence of wrong-winding divergence
+
+Test scene CornellBox_WrongWinding.pyscene: light suspended at y=1.7
+with vertex winding that produces geometric +y face normal opposite to
+stored -y normal.
+
+PT image: light correctly emits UPWARD (geometric front), illuminates
+ceiling, energy bounces back into room → uniform diffuse lighting.
+
+BDPT image: light reaches ceiling but produces a dark halo around the
+emissive area — energy fails to propagate back into the room.
+
+Numerical decomposition:
+  PT full:     0.13 mean
+  PT bsdf:     0.13 mean (NEE adds nothing — light is mostly above
+                          rays' direct reach)
+  BDPT full:  0.011 mean (12× less than PT)
+  BDPT bsdf:  0.011 mean
+
+So BSDF emission accumulation is the failure mode. PT correctly
+accumulates emission from the geometric +y face. BDPT does the same
+checks (same sd.faceN from geometric cross product, same frontFacing
+test, same material.getProperties.emission) but the visible "dark halo"
+suggests something else is happening — likely path termination after a
+back-face hit on the OPPOSITE side of the light triangle (rays passing
+through the slit between light and ceiling).
+
+Needs further investigation — likely a path-termination condition in
+AdvanceVertex that fires more aggressively in BDPT than PT for these
+geometrically-inconsistent surfaces.
+
 ## Architectural note: parallel vs unified light-type selection
 
 Falcor PT uses **unified** `selectLightType` + `generateLightSample`:
