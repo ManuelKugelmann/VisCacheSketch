@@ -1257,8 +1257,12 @@ extension PathGenerator {
         if (!sampleLight(vertex.GetPosition(), gScene.getLight(lightIndex), sgLocal, als)) return result;
         if (!any(als.Li > 0)) return result;
 
-        // Receiver-side cosine + occlusion.
-        const float cosOut = vertex.GetCosN(als.dir);
+        // Receiver-side cosine + occlusion. Use SIGNED dot (not abs) so we
+        // reject samples in the lower hemisphere — mirrors PT's NdotL test
+        // for upper-hemisphere-only receivers (PathTracer.slang:729).
+        const float cosOut = vertex.HasFaceNormal()
+            ? dot(vertex.GetFaceNormal(), als.dir)
+            : 1.f;
         if (cosOut < kMinCosTheta) return result;
 
         ReflectanceEvalData f = vertex.EvaluateReflectance(s.sg, als.dir, false);
