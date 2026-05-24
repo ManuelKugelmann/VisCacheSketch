@@ -1224,7 +1224,10 @@ extension PathGenerator {
         if (!sampleLight(vertex.GetPosition(), gScene.getLight(lightIndex), sgLocal, als)) return result;
         if (!any(als.Li > 0)) return result;
 
-        const float cosOut = vertex.GetCosN(als.dir);
+        // Signed dot (not abs) — upper-hemisphere only, mirrors PT.
+        const float cosOut = vertex.HasFaceNormal()
+            ? dot(vertex.GetFaceNormal(), als.dir)
+            : 1.f;
         if (cosOut < kMinCosTheta) return result;
 
         ReflectanceEvalData f = vertex.EvaluateReflectance(s.sg, als.dir, false);
