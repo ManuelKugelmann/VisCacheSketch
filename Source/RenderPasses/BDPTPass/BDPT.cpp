@@ -80,8 +80,9 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
     // Vanilla BDPT: force all ReSTIR/temporal/caustic layers off so this
     // pass is a deterministic BDPT estimator (light subpaths + camera
     // subpaths + MIS-weighted connections). Properties on these knobs are
-    // accepted but overridden.
-    mStaticParams.useBPT                  = true;
+    // accepted but overridden. useBPT is intentionally NOT re-pinned so
+    // callers can opt into PT-only mode (useBPT=False) for decomposition
+    // tests / PT-comparison validation.
     mStaticParams.useResampling           = false;
     mStaticParams.useTemporalReuse        = false;
     mStaticParams.unbiasedTemporalReuse   = false;
@@ -108,8 +109,10 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
 void BDPT::setProperties(const Properties& props)
 {
     parseProperties(props);
-    // Re-pin vanilla-BDPT invariants after any property updates.
-    mStaticParams.useBPT                = true;
+    // Re-pin ReSTIR/temporal/caustic invariants — BDPTPass is the bidirectional-
+    // -path-tracer-only pass; ReSTIR layers belong to ReSTIRBDPTPass. Note:
+    // useBPT is intentionally NOT re-pinned, so callers can opt into PT-only
+    // mode (useBPT=False) for decomposition tests and PT-comparison validation.
     mStaticParams.useResampling         = false;
     mStaticParams.useTemporalReuse      = false;
     mStaticParams.useCausticReservoirs  = false;
