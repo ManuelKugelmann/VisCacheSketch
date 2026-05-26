@@ -38,18 +38,16 @@ namespace
     const std::string kEmissiveSampler       = "emissiveSampler";
     const std::string kLightBVHOptions       = "lightBVHOptions";
 
-    const std::string kUseResampling         = "useResampling";
+    // kNumInitialCandidates / kMCap predate the ReSTIR strip but the underlying
+    // params (mParams.mCanonicalSpp, mParams.mMCap) remain in use as canonical-
+    // SPP / temporal-cap knobs; keep them so Python configs that set these still
+    // take effect. The rest of the old ReSTIR knobs (kUseResampling,
+    // kUseTemporalResampling, kSpatial*, kUseReconnectionMis, kUseSuffixShift,
+    // kUseCausticShift, kUseCausticReservoirs, kUnbiasedTemporalReuse) were
+    // dropped in task #21; if a script still passes them they hit the unknown-
+    // property warning in parseProperties.
     const std::string kNumInitialCandidates  = "numInitialCandidates";
     const std::string kMCap                  = "Mcap";
-    const std::string kUnbiasedTemporalReuse = "unbiasedTemporalReuse";
-    const std::string kUseReconnectionMis    = "useReconnectionMis";
-    const std::string kUseSuffixShift        = "useSuffixShift";
-    const std::string kUseCausticShift       = "useCausticShift";
-    const std::string kUseCausticReservoirs  = "useCausticReservoirs";
-    const std::string kUseTemporalResampling = "useTemporalResampling";
-    const std::string kSpatialPasses         = "spatialResamplingPasses";
-    const std::string kSpatialCandidates     = "spatialResamplingCandidates";
-    const std::string kSpatialRadius         = "spatialReuseRadius";
     const std::string kDisableVC             = "disableVC";
     const std::string kRoughnessThreshold    = "rcvRoughness";
 }
