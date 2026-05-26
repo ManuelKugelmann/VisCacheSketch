@@ -368,6 +368,83 @@ Sources: [SPPM (Hachisuka)](https://cs.uwaterloo.ca/~thachisu/sppm.pdf) ·
 
 ---
 
+## 8b. GRIS × photon mapping / vertex merging (the crowded modern space)
+
+Literature check 2026-05 for `docs/GRIS_VCM_KERNEL_COLLAPSE.md` (GRIS×VCM with
+reconnection-shift kernel collapse). The reservoir × photon-mapping space is
+already busy:
+
+**Kern, Brüll & Grosch — ReSTIR FG: Real-Time Reservoir Resampled Photon Final
+Gathering 2024 (EGSR, Falcor, OSS)**. Reservoir resampling + photon final gather;
+real-time caustics. **Fixed** per-scene kernel radius, photons in an AABB BVH, no
+shift maps, no connect+merge MIS. Explicitly **biased due to merging** — confirms
+the merge kernel is the bias source. Closest existing "reservoir + photon merge."
+
+**Hedstrom, Kettunen, Lin, Wyman & Li — ReSTIR BDPT: Bidirectional ReSTIR Path
+Tracing with Caustics 2025 (ACM TOG; OSS = the `Shmaug/ReSTIR-BDPT` repo we port,
+`project_restir_bdpt_port`)**. GRIS in a **sampling-technique-aware extended path
+space** + **bidirectional hybrid shift** + **unbiased caustic reservoirs**. Rejects
+merging as biased; keeps caustics via connections; notes caustic paths *cannot be
+spatially shifted to other pixels*. **This is the main competitor/anchor** — it
+shows the un-shiftable set can be kept unbiased via caustic reservoirs, narrowing
+our biased-merge niche to the irreducible SDS / pure-specular core where even
+bidirectional connection has zero pdf.
+
+**Xing, Li, Luan & Xu — Differentiable Photon Mapping using Generalized Path
+Gradients 2024 (SIGGRAPH Asia, OSS)**. Formalizes the merge as a path-sampling
+technique with a **smooth differentiable density-estimation kernel** and a
+well-defined pdf — exactly the kernel requirement our `r→0` Jacobian-continuity
+limit needs (they need it for gradients; we for the delta limit). Citation that
+"merge = smooth kernel over a measure" is established.
+
+**VCM+ / Hypothesis Testing for Progressive Kernel Estimation 2025 (arXiv
+2504.04411)**. Per-query PPM kernel radius via an F-test (ANOVA); unbiased under
+the null hypothesis; VCM+BDPT via MIS, offline. Prior art for *adaptive per-query
+radius* — but statistical, not feasibility/shift-driven. Could supply the `s_jac`
+bias-detection term in our feasibility map.
+
+**Gradient-Domain VCM (UCSD)**. Shift mappings applied to photons/merges in the
+gradient domain — shift-on-photons is itself not novel.
+
+**Specular-chain recovery (branch 2 — the SDS core is not irreducible to bias):**
+
+- **Zeltner, Georgiev & Jakob — Specular Manifold Sampling 2020 (SIGGRAPH)**.
+  Stochastic Newton walk solving for the specular subpath between two endpoints;
+  unbiased variant via a Bernoulli inverse-probability estimator. Handles SDS +
+  glints. The canonical unbiased SDS recovery.
+- **Fan et al. — Specular Polynomials 2024 (SIGGRAPH/TOG; arXiv 2405.13409, OSS
+  `mollnn/spoly`)**. Newton-FREE; reformulates specular constraints as a univariate
+  polynomial system, finds the *complete* admissible-chain set by root-finding.
+  Deterministic, GPU-friendly; removes SMS init-dependence + missed-root bias.
+- **Fan et al. — Manifold Path Guiding 2023 (arXiv 2311.12818)**. Importance-samples
+  long specular chains; up to 40× variance reduction. **Hanika et al. — Manifold NEE
+  2015** is the single-interface special case.
+- **Hong, Duan, Wang, Yuksel, Zeltner & Lin — PSMS-ReSTIR: Sample Space Partitioning
+  and Spatiotemporal Resampling for SMS 2025 (SIGGRAPH Asia; OSS
+  `Utah-Graphics-Lab/PSMS-ReSTIR`)**. SMS + tile-based sample-space partitioning
+  (bounds the Newton walk, per-frame prior) + ReSTIR reuse → real-time UNBIASED
+  caustics. **Implemented in Falcor 8.0 — same engine as this project**; shares
+  authors (Lin, Zeltner) with our ReSTIR PT port. Branch 2 of GRIS_VCM_KERNEL_COLLAPSE
+  is a study-and-integrate target on the same footing as the DQLin port, not a
+  from-scratch risk.
+
+**What stays novel for us (after the check):** (1) one *continuous* GRIS candidate
+family interpolating connect↔merge per-candidate via the reconnection shift +
+nascent-delta kernel (BDPT separates them, FG is merge-only); (2) reconnection
+*feasibility* (geometry, not VCM+'s statistics) as the radius driver, proven to be
+the indicator set of the `r→0` limit; (3) merge correctly scoped to the SDS core;
+(4) VisCache as the visibility oracle + merge-as-VPL-clamp-replacement.
+
+Sources: [ReSTIR FG (EG DL)](https://diglib.eg.org/items/df98f89d-a0ca-4800-9bc4-74528feaf872) ·
+[ReSTIR FG code](https://github.com/TU-Clausthal-Rendering/ReSTIR-FG) ·
+[ReSTIR BDPT (NVIDIA)](https://research.nvidia.com/labs/rtr/publication/hedstrom2025restir/) ·
+[ReSTIR BDPT (Lin blog)](https://dqlin.xyz/pubs/2025-tog-BDPT/) ·
+[Differentiable PM](https://jkxing.github.io/academic/publication/DPMG) ·
+[VCM+ (arXiv)](https://arxiv.org/abs/2504.04411) ·
+[GRIS (Lin 2022)](https://research.nvidia.com/labs/rtr/publication/lin2022generalized/)
+
+---
+
 ## 9. Denoising — adjacent, mostly orthogonal
 
 **SVGF — Schied et al. 2017** (`Schied2017_SVGF.pdf`). Reference real-time

@@ -130,6 +130,14 @@ reference** to benchmark the finite-`r` fallback against. All four preserve
 `∫ K_r = 1`, so the merge candidate's pdf carries a clean `1/area`-scaled mass that
 becomes the delta normalization in the limit.
 
+This is the same move [Xing et al. 2024] make in Differentiable Photon Mapping:
+they formalize the merge as a path-sampling technique with a **smooth
+differentiable density-estimation kernel** and a well-defined pdf, precisely so the
+merge has derivatives. We need the same smoothness for a *different* reason — the
+`r → 0` Jacobian-continuity limit (§8) — but it is the same kernel requirement, and
+their formalization is a ready citation that "merge = smooth kernel over a measure"
+is established, not invented here.
+
 ### 5.2 Feasibility → radius map
 
 Make `r` a continuous, monotone function of a per-candidate **reconnection
@@ -219,15 +227,77 @@ Net: the scheme is **instant radiosity (connection / VPL branch) + photon mappin
 mediating between the VPL singularity and PM bias.** The reconnection shift is what
 makes `r` per-candidate and feasibility-driven rather than a global clamp.
 
+### 5.7 Specular branch: manifold reconnection — the SDS core is not irreducible
+
+The merge branch was justified (§6, §8) as the only estimator for the
+SDS / pure-specular core, where a specular BSDF is a delta and ordinary connection
+has zero pdf. That core is **smaller than it looks**: you can recover those paths
+*unbiased* by **solving** for the specular chain joining two endpoints instead of
+sampling it.
+
+- **Specular Manifold Sampling** [Zeltner, Georgiev & Jakob 2020] — stochastic
+  Newton walk on the manifold of valid specular subpaths; unbiased variant via a
+  Bernoulli inverse-probability estimator; handles SDS and glints.
+- **Specular Polynomials** [Fan et al. 2024] — Newton-free: reformulates the
+  specular constraint as a univariate polynomial system, finds the *complete* set
+  of admissible chains by root-finding. Deterministic, GPU-friendly; removes SMS's
+  initialization dependence and missed-root bias.
+- **Manifold Path Guiding** [Fan et al. 2023] for importance-sampling long chains;
+  **Manifold NEE** [Hanika et al. 2015] for the single-interface special case.
+
+So the ramp is really a **three-branch kernel-collapse cascade**, each branch
+`r = 0` and unbiased on its own feasibility set:
+
+| branch | feasibility set | operator | `r` | bias |
+|---|---|---|---|---|
+| 1 connection | rough + visible (`{s=1}`, §5.2) | reconnection shift [Lin 2022] | 0 | unbiased |
+| 2 **manifold** | specular chain, root exists + affordable | **manifold reconnection** [SMS / Specular Polynomials] | 0 | unbiased |
+| 3 merge | neither — no real root, or solve cost > bias budget | density kernel (§5.1) | `> 0` | `O(r²)`, consistent |
+
+Branch 2 is a **generalized reconnection shift**: it drives `r → 0` *through* the
+delta-BSDF vertices the simple shift (branch 1) cannot, by solving the constraint
+rather than connecting blindly. It slots into the same GRIS reservoir as another
+candidate with its own shift Jacobian (the manifold/half-vector Jacobian of the
+specular solve). The §8 per-branch argument extends verbatim: branch 2 is unbiased
+on `{solvable specular chain}`, and the biased merge (branch 3) survives only on
+the residual where the polynomial system has no real root in the scene (genuinely
+unreachable geometry) or the solve is too expensive to afford this frame.
+
+**This is real-time-affordable, not an offline luxury, and there is a Falcor-8
+reference.** PSMS-ReSTIR [Hong, Duan, Wang, Yuksel, Zeltner & Lin 2025] = SMS +
+tile-based sample-space partitioning (bounds the Newton walk, builds a per-frame
+prior) + **ReSTIR spatiotemporal reuse** to amortize the solve cost. It is
+implemented as a **Falcor 8.0** module (OSS: `Utah-Graphics-Lab/PSMS-ReSTIR`) —
+same engine as this project, and shares authors (Lin, Zeltner) with the ReSTIR PT
+port we already build on. Branch 2 is therefore a study-and-integrate target on the
+same footing as the DQLin ReSTIR PT port, not a from-scratch research risk.
+
+Caveat: these solve **specular** chains. Rough-glossy "near-specular" is not a
+manifold — it stays in branch 1's `s_rough` gradient region where `r` ramps
+continuously (§5.2).
+
 ---
 
 ## 6. Open proof obligations / risks
 
-- **Jacobian continuity.** Must verify the reconnection-shift Jacobian is the
-  `r → 0` limit of the merge "shift" Jacobian under the chosen parametrization.
-  This is the crux of §4.2 and the paper-grade obligation; if it fails, the MIS
-  weights are discontinuous at the limit and the clean "connection = limit of
-  merge" story breaks. Derive with the Gaussian family first (§5.1).
+- **Jacobian continuity.** The reconnection-shift Jacobian must be the `r → 0`
+  limit of the merge-shift Jacobian, or the MIS weights are discontinuous at the
+  limit and "connection = limit of merge" breaks. This is the crux of §4.2 and the
+  paper-grade obligation. **Sketched in §8** — it holds on the feasibility set and
+  fails exactly on its complement, which turns out to *define* §5.2's feasibility
+  map rather than being a separate heuristic. Full GRIS-unbiasedness across the
+  ramp (not just per-branch consistency) is left open there.
+- **The ReSTIR BDPT challenge — does the merge branch even earn its place?**
+  [Hedstrom et al. 2025] keep the un-shiftable (specular/caustic) set **unbiased**
+  via connection-based *caustic reservoirs* and explicitly call ReSTIR FG biased
+  *because* it merges. And §5.7's manifold reconnection (SMS / Specular Polynomials)
+  recovers most of the SDS/pure-specular set **unbiased** by solving the chain. So
+  the biased merge's honest niche shrinks twice over: it survives only where (a) the
+  path can't be connected (branch 1 fails: specular), AND (b) the specular chain has
+  no real root in the scene or is too costly to solve this frame (branch 2 fails).
+  That residual is genuinely small. The note must scope the merge to it (§5.7, §8)
+  and not oversell it as a general fallback; prefer a caustic reservoir for
+  connectable caustics and a manifold solve for solvable chains.
 - **Target-function choice.** GRIS needs a `p̂` defined on both branches. The
   natural choice is unshadowed path contribution × kernel mass; confirm it keeps
   the support condition (every contributing path reachable) across the ramp.
@@ -236,27 +306,149 @@ makes `r` per-candidate and feasibility-driven rather than a global clamp.
   large; tie the cascade-level selection to `r_max`, not to the per-candidate `r`.
 - **Temporal photon reuse.** Real-time means photons are regenerated/accumulated
   per frame in the world hash; the `r_min` shrink schedule (§5.4) must be driven by
-  the *accumulated* temporal photon count, not per-frame count.
+  the *accumulated* temporal photon count, not per-frame count — with the
+  Knaus–Zwicker rate `r_N → 0`, `N·r_N² → ∞` on the SDS-core branch (§8).
 
 ---
 
-## 7. Relation to prior work and to our stack
+## 7. Relation to prior work (literature check, 2026-05)
 
-- **Anchors:** VCM [Georgiev et al. 2012] already MIS-combines connect + merge;
-  instant radiosity [Keller 1997] is the connection branch; Virtual Sphere/Ray
-  Lights [Hašan 2009; Novák 2012] already place a delta↔kernel continuum on the
-  VPL side. New here: (1) **GRIS resampling** in place of per-path MIS, letting a
-  reservoir carry both techniques; (2) **feasibility-driven adaptive `r` per
-  candidate** driving toward a delta, instead of a global progressive radius or a
-  fixed VPL clamp; (3) the **world-space hashmap as pure accelerator + VisCache as
-  visibility oracle**; (4) the merge kernel reframed as the **principled
-  replacement for VPL bias clamping** (§5.6). Not present in any of the 8 GRIS
-  codebases surveyed in `project_partial_path_cell.md`.
-- **Builds on:** per-cell partial-path storage (the photon payload + replay),
-  reconnection/hybrid shift (the kernel-collapse operator), VisCache CV+RRR (the
-  feasibility/visibility oracle), the multilevel cascade (candidate-set scoping).
-- **Sequencing:** prerequisite is Stage F (ReSTIR PT reconnection-shift V
-  revalidation) landing and the BDPT light-subpath pass existing
-  (`LADDER_PLAN.md` Stage G). Then: store light subpaths in the world hash →
-  add the merge branch with a Wendland kernel → wire the feasibility→radius map →
-  validate the `r → 0` Jacobian continuity on Cornell before scene scaling.
+The reservoir × photon-mapping space is more crowded than the original framing
+assumed. What is already published:
+
+| work | what it does | what it leaves for us |
+|---|---|---|
+| **VCM** [Georgiev et al. 2012] | MIS-combines connection + merge per path | offline, per-path MIS, fixed/progressive global radius |
+| **ReSTIR FG** [Kern, Brüll, Grosch 2024, EGSR; Falcor, OSS] | reservoir resampling + photon final gather; real-time caustics | **fixed** per-scene kernel, AABB-BVH photons, **no shift maps, no connect+merge** — and **biased due to merging** |
+| **ReSTIR BDPT** [Hedstrom, Kettunen, Lin, Wyman, Li 2025, TOG; OSS = the repo we port] | GRIS in **technique-aware extended path space** + **bidirectional hybrid shift** + **unbiased caustic reservoirs** | rejects merging as biased; keeps caustics via connections; notes caustic paths *cannot be spatially shifted* |
+| **Differentiable PM / Generalized Path Gradients** [Xing et al. 2024, SA] | merge as a path-sampling technique with a **smooth differentiable kernel** + pdf | exactly our §5.1 kernel requirement, for gradients not for an `r→0` limit |
+| **VCM+ / hypothesis-testing kernel** [arXiv 2504.04411, 2025] | per-query kernel radius via an F-test; unbiased under the null | adaptive radius, but **statistical**, not feasibility/shift-driven; offline |
+| **Gradient-Domain VCM** [UCSD] | shift mappings applied to photons/merges | shift-on-photons is itself not novel |
+| **SMS / Specular Polynomials** [Zeltner 2020; Fan 2024] | **solve** the specular chain between two endpoints (unbiased) | branch 2 (§5.7): recovers SDS the merge would handle biased |
+| **PSMS-ReSTIR** [Hong, Duan, Wang, Yuksel, Zeltner, Lin 2025, SA; **Falcor 8.0**, OSS] | SMS + sample-space partitioning + **ReSTIR reuse** for real-time unbiased caustics | branch 2 made real-time — and a Falcor-8 reference to study/integrate directly |
+
+**Now-published — drop from the novelty claim:** reservoir+merge final gather
+(ReSTIR FG); GRIS+bidirectional+technique-aware path space+hybrid shift+*unbiased
+caustics* (ReSTIR BDPT); per-query adaptive radius (VCM+); smooth merge kernel with
+a pdf (Differentiable PM); shift-maps on photons (GD-VCM).
+
+**Still novel after the check:**
+1. **One continuous candidate family**, not two techniques. ReSTIR BDPT *separates*
+   connection reservoirs from (rejected) merging; ReSTIR FG is merge-only with a
+   fixed kernel. We make the reconnection shift a **continuous kernel-collapse
+   operator** interpolating merge↔connect *per candidate* inside one GRIS reservoir
+   via a nascent-delta family (§5.1, §8). Nobody has the continuous family.
+2. **Reconnection feasibility as the radius driver** (roughness × VisCache `μ` ×
+   Jacobian bound, §5.2) — geometric and tied to the reservoir's own shift, versus
+   VCM+'s statistical F-test or VCM's global schedule. §8 shows this map is not a
+   heuristic: it is the indicator of the set on which the `r→0` limit exists.
+3. **Three-branch kernel-collapse cascade, correctly scoped merge.** The ramp is
+   connection (branch 1) → manifold reconnection (branch 2, §5.7) → biased merge
+   (branch 3), each `r=0`/unbiased on its own set. The biased merge survives only on
+   the residual that *neither* a connection *nor* a specular-chain solve can reach
+   (§5.7, §6, §8). The shifts' job is to *shrink* that biased set toward its minimum.
+   Composing a continuous-kernel merge with a manifold-solve branch in one GRIS
+   reservoir is itself unpublished.
+4. **VisCache as the visibility oracle** for the feasibility test + connection
+   shadow ray (§5.5), and the **merge-as-VPL-clamp-replacement** framing (§5.6).
+
+**Builds on:** per-cell partial-path storage (photon payload + replay,
+`project_partial_path_cell.md`); reconnection/hybrid shift = the kernel-collapse
+operator; VisCache CV+RRR = feasibility/visibility oracle; the multilevel cascade =
+candidate-set scoping.
+
+**Sequencing.** The prereq is more mature than first thought: ReSTIR BDPT's
+technique-aware path space + bidirectional hybrid shift are **published with open
+source — and that source is the very repo we are already porting**
+(`project_restir_bdpt_port`, `LADDER_PLAN.md` Stage G). Then: store light subpaths
+in the world hash → add the merge branch with a Wendland kernel → wire the
+feasibility→radius map → validate the §8 Jacobian-continuity limit on Cornell, and
+benchmark the SDS-core merge against a ReSTIR-BDPT-style caustic reservoir to
+confirm the merge is only used where connection has zero pdf.
+
+---
+
+## 8. Proof sketch: connection is the `r → 0` limit of the merge
+
+**Goal.** Show that as `r → 0` the merge candidate's *contribution*, *pdf*, and
+*shift Jacobian* each converge to the connection candidate's, so the connection is
+the continuous limit of one family and may sit in the same GRIS reservoir with MIS
+weights defined by continuity. Work in path space with the area-product measure
+`dμ = ∏ dA(xᵢ)`.
+
+**Setup.** Eye subpath ends at query vertex `x`; light subpath's last vertex
+(stored photon) is `y`. Two ways to close the path:
+
+- **Connection (`r=0`).** Deterministically join `x↔y`:
+  `C_con = f_s(x)·G(x,y)·V(x,y)·f_s(y)`, with `G = cosθ_x cosθ_y / ‖x−y‖²`. The
+  light vertex is pinned at `y` — a Dirac measure `δ_y` in the gather coordinate.
+- **Merge (`r>0`).** Accept `y` within `r` of `x`, weighted by `K_r`:
+  `C_mer = f_s(x)·f_s(y)·K_r(‖x⊥ − y⊥‖)`, the kernel acting on the tangent-plane
+  displacement, `∫K_r = 1`.
+
+**Step 1 — kernel → Dirac (nascent delta).** Take `K_r(u) = r⁻²·φ(u/r)` with
+`φ ≥ 0`, `∫φ = 1`, finite second moment (Gaussian / Epanechnikov / Wendland all
+qualify, §5.1). Then for any continuous `g`,
+`∫ K_r(‖x⊥−y⊥‖) g(y⊥) dy⊥ → g(x⊥)` as `r→0`, i.e. `K_r → δ` weakly. So the merge
+gather operator converges to *evaluation at `x`* — the connection's pin. This is
+the classical PPM consistency argument (bias → 0); it handles `C_mer → C_con`. The
+new content is Steps 2–3, which carry the **pdf and Jacobian** through the same
+limit so GRIS stays valid, not just the estimator mean.
+
+**Step 2 — measure unification.** Express the merge pdf in the *same* area-product
+measure as the connection:
+`p_mer(x̄) = p_light(y) · K_r(‖x⊥−y⊥‖) · |Jac: tangent-disk → path measure|`.
+Because `∫K_r = 1`, the kernel is a **probability density over where the merge
+places the connection point**, not an extra weight. As `r→0`,
+`p_mer(x̄) dy⊥ → p_light(y)·δ(x⊥−y⊥) = p_con`. Crucially we never form a literal
+delta numerically: for every `r>0` both candidates are genuine densities w.r.t. the
+*one* measure, so the GRIS support condition (`p̂>0 ⇒ some candidate pdf >0`) holds
+along the whole ramp. **This dissolves the BPT-vs-PM measure mismatch** — once the
+kernel mass is folded into `p_mer`, connect and merge are densities of the same
+measure, and the limit is continuous.
+
+**Step 3 — Jacobian continuity (the crux).** The connection shift's Jacobian
+`J_con(x,y)` is the solid-angle↔area conversion (the `G` term + BSDF measure
+factor). The merge shift maps the photon to a *displaced* connection point
+`x'(u) = x + r·u⊥` in the tangent disk, so
+`J_mer^(r)(x̄) = ∫_{‖u‖≤1} J_con(x + r·u⊥, y) · K̃_r(u) du`.
+`J_con(·,y)` is continuous in its first argument **wherever the connection is
+non-degenerate** — both endpoints rough, `‖x−y‖ > 0`, mutually visible. There, by
+dominated convergence with `K_r → δ`,
+`J_mer^(r) → J_con(x,y)`, uniformly on the set where `J_con` is bounded and
+Lipschitz (rough ⇒ bounded BSDF derivatives; `‖x−y‖ ≥ d_min > 0` ⇒ bounded `G` and
+gradient). **The limit fails exactly where `J_con` is unbounded or undefined:**
+(i) `‖x−y‖→0` — the VPL near-field singularity (§5.6); (ii) a **specular** vertex
+at `x` or `y` — `f_s` is a delta, `J_con` ill-defined; (iii) a **visibility
+discontinuity** inside the kernel footprint — `V` jumps across the disk. These
+three are precisely the complements of `s_jac`, `s_rough`, `s_vis` in §5.2.
+
+**Therefore the feasibility map `s` is not a heuristic — it is the indicator of the
+set on which `J_mer^(r) → J_con` holds.** On `{s = 1}` all three (contribution,
+pdf, Jacobian) converge, so the GRIS resampling weight
+`w^(r) = m^(r)·p̂^(r)·W^(r) → w_con` by continuity; the connection takes the limit
+MIS weight `lim_{r→0} m^(r)` with no special-casing and no second reservoir, and is
+**unbiased** at `r = 0`. Off `{s = 1}` the connection's weight is *defined* to be
+zero (its contribution/pdf does not exist), the merge carries the path with bias
+`O(r²)` (kernel 2nd moment × curvature of `J_con·f`) that vanishes only as the
+temporal photon count `→ ∞`, and that residual-bias set is exactly the
+SDS/specular/near-field core ReSTIR BDPT also cannot shift.
+
+**Branch 2 (manifold reconnection, §5.7) extends this verbatim.** On
+`{specular chain, solvable}` the manifold solve is a deterministic connection
+*through* the specular vertices, with its own half-vector/manifold Jacobian; it is
+`r=0` and unbiased there (SMS's Bernoulli inverse-probability estimator). So branch 2
+removes a sub-region from the off-`{s=1}` complement above — the part where the
+specular system has a real root — and the biased merge (branch 3) inherits only the
+residual where no root exists or the solve is unaffordable. The same per-branch
+limit/Jacobian argument applies to each branch on its own feasibility set.
+
+**Left open (be honest):**
+1. **Full GRIS unbiasedness across the ramp**, not just per-branch consistency.
+   Step 2 gives the support condition and a common measure; a complete proof must
+   write the GRIS contribution weight `W_i` and resampling MIS `m_i` for *all three*
+   branches' shift Jacobians and check Lin 2022's proper-pairwise-MIS + domain-
+   coverage conditions at every fixed `r`.
+2. **Temporal shrink rate** on the SDS-core merge branch: `r_N → 0`, `N·r_N² → ∞`
+   (Knaus–Zwicker) for consistency under real-time accumulation. Irrelevant on
+   `{s=1}` (already `r = 0`); governs only the fallback core.

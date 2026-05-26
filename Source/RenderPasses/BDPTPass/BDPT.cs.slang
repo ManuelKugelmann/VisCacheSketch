@@ -20,9 +20,7 @@ void SampleCameraPaths(uint3 index : SV_DispatchThreadID) {
     if (any(id >= gPathGenerator.mParams.mOutputDim)) return;
     gPathGenerator.DebugSetPixel(id);
 
-    const PathReservoir r = gPathGenerator.SampleCanonicalPaths(PathId(gRandomSeed, id));
-
-    gPathGenerator.StoreReservoir(id, r);
+    gPathGenerator.tracePath(PathId(gRandomSeed, id));
 }
 
 

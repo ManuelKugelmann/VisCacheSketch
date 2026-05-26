@@ -388,10 +388,6 @@ extension PathGenerator {
         if (gUseViewDir) cameraRay.dir = -mViewDir[id];
         return PackedPathVertex(cameraRay, HitInfo(mVbuffer[id]), cameraRay.tMax);
     }
-    // StoreReservoir is a no-op for vanilla BDPT (no resampling layer). Kept
-    // as a stub so SampleCameraPaths in BDPT.cs.slang continues to compile.
-    void StoreReservoir(const uint2 index, const PathReservoir r) {
-    }
 
     // ---------------------------------------------------------------------------------------------------------
     // ------------------------------------------- Emission sampling -------------------------------------------
@@ -1149,7 +1145,7 @@ extension PathGenerator {
     // [Bug #3 fix] Connect to an analytic light (PointLight, DirectionalLight,
     // SpotLight, etc.). BDPT's original ConnectToLight only samples emissive
     // triangles + env map; analytic lights are silently skipped. Added as a
-    // parallel NEE call from SampleCanonicalPaths' loop. For delta-position
+    // parallel NEE call from tracePath's loop. For delta-position
     // lights (point/dir/spot), only NEE can sample them — BSDF importance
     // sampling has probability zero of landing on the delta light direction,
     // so misWeight = 1.
@@ -1965,18 +1961,19 @@ extension PathGenerator {
         }
     }
 
-    // Samples a canonical camera path by connecting to lights, light subpath vertices, and merging with photons.
-    PathReservoir SampleCanonicalPaths(const PathId id) {
+    // Traces a camera path: bounces a ray, optionally connects each vertex to
+    // a light (NEE) and to a stored light subpath vertex (BPT vertex connection),
+    // and accumulates emission at each hit. Mirrors Falcor PathTracer::tracePath.
+    void tracePath(const PathId id) {
         PathVertex vertex = PathVertex(LoadPrimaryVertex(id.mId));
 
         // directly output primary radiance
         mOutputRadiance[id.mId] = float4(vertex.GetEmission(), 1);
 
         if (gLightTraceOnly || !vertex.IsFinite())
-            return {};
+            return;
 
         PathReservoir r = {};
-        r.mM = mParams.mCanonicalSpp;
 
         for (uint i = 0; i < mParams.mCanonicalSpp; i++) {
             if (i > 0) vertex = PathVertex(LoadPrimaryVertex(id.mId));
@@ -2047,12 +2044,6 @@ extension PathGenerator {
             }
         }
 
-        r.mW /= mParams.mCanonicalSpp;
-
-        // output (no resampling layer).
         mOutputRadiance[id.mId].rgb += r.mSample.mContribution / mParams.mCanonicalSpp;
-
-        r.FinalizeMerge();
-        return r;
     }
 }
