@@ -27,78 +27,10 @@ void SampleCameraPaths(uint3 index : SV_DispatchThreadID) {
     gPathGenerator.StoreReservoir(id, r);
 }
 
-[shader("compute")]
-[numthreads(8, 8, 1)]
-void ResolveLightTraceReservoirs(uint3 index: SV_DispatchThreadID) {
-    const uint2 id = index.xy;
-    if (any(id >= gPathGenerator.mParams.mOutputDim)) return;
-    gPathGenerator.DebugSetPixel(id);
-    SampleGenerator sg = MakeSampleGenerator(id, gRandomSeed);
-
-    const PackedPathVertex primaryVertex = gPathGenerator.LoadPrimaryVertex(id);
-
-    const float m = 1 / float(gPathGenerator.mParams.mLightSubpathCount);
-
-    // merge light trace reservoirs in pixel
-
-    uint minid = ~0u;
-
-    PathReservoir r = {};
-    PathReservoir cr = {};
-
-    const uint2 range = gPathGenerator.mLightTraceReservoirs.GetCellDataRange(id.y * gPathGenerator.mParams.mOutputDim.x + id.x);
-    for (uint i = range.x; i < range.y; i++) {
-        const LightTraceReservoir lr = gPathGenerator.mLightTraceReservoirs[i];
-        PathReservoir c = PathReservoir(lr.path, lr.W, 0);
-        c.PrepareMerge(m);
-
-        if (gPathGenerator.gShiftLightPathsToPixelCenters && c.mSample.HasFlag(PathFlags::eNonCausticLightPath)) {
-            gPathGenerator.DebugSetPixel(-1); // dont want messages from this shift
-            // Reject path if it is not samplable from the primary vertex
-            float jacobian;
-            int2 tmp;
-            const bool valid = gPathGenerator.ShiftPath(c.mSample, primaryVertex, tmp, jacobian).IsValid();
-            gPathGenerator.DebugSetPixel(id);
-            if (!valid || !(jacobian > 0))
-                continue;
-        }
-
-        float u = sampleNext1D(sg);
-
-        if (gPathGenerator.gDisableLVC) {
-            uint l = c.mSample.mSuffix.mLightSubpath.mId.mId.y * gPathGenerator.mParams.mOutputDim.x + c.mSample.mSuffix.mLightSubpath.mId.mId.x;
-            if (l < minid) {
-                u = 0; // always pick the lowest ID for deterministic-ness
-                minid = l;
-            } else
-                u = 1;
-        }
-
-        if (gUseCausticReservoirs && c.mSample.HasFlag(PathFlags::eCausticLightPath)) {
-            cr.Merge(u, c);
-        } else {
-            r.Merge(u, c);
-        }
-    }
-
-    // Merge with camera tracing sample
-
-    if (!gPathGenerator.gLightTraceOnly) {
-        PathReservoir c = gPathGenerator.LoadOutputReservoir(id);
-        c.PrepareMerge();
-        r.Merge(sampleNext1D(sg), c);
-    }
-
-    r.mM = 1;
-    r.FinalizeMerge();
-    gPathGenerator.StoreReservoir(id, r);
-
-    if (gUseCausticReservoirs) {
-        cr.mM = 1;
-        cr.FinalizeMerge();
-        gPathGenerator.StoreCausticReservoir(id, cr);
-    }
-}
+// [strip-ReSTIR task #21] ResolveLightTraceReservoirs entry point removed.
+// It merged the per-pixel light-trace reservoir hash-map into pixel reservoirs
+// — only used when useResampling=true, which is impossible in vanilla BDPTPass.
+// ReSTIR layer lives in ReSTIRBDPTPass.
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -111,23 +43,9 @@ void OutputRadiance(uint3 index: SV_DispatchThreadID) {
 
     const uint flatId = id.y * gPathGenerator.mParams.mOutputDim.x + id.x;
 
-    // Copy radiance from the pixel's reservoir to the output buffer.
-
-    if (gPathGenerator.gUseResampling) {
-        if ((gDebugCausticReservoirs & 1) == 0) {
-            const PathReservoir r = gPathGenerator.LoadInputReservoir(id);
-            if (r.mW > 0 && r.mSample.IsValid()) {
-                radiance.rgb += r.GetRadiance();
-            }
-        }
-
-        if (gUseCausticReservoirs && (gDebugCausticReservoirs & 2) == 0) {
-            const PathReservoir r = gPathGenerator.LoadCausticReservoir(id);
-            if (r.mW > 0 && r.mSample.IsValid()) {
-                radiance.rgb += r.GetRadiance();
-            }
-        }
-    } else if (gPathGenerator.gBidirectional && ! gPathGenerator.gDisableCameraConnection) {
+    // [strip-ReSTIR task #21] reservoir-radiance branch removed. Only the
+    // BPT atomic-buffer accumulation remains.
+    if (gPathGenerator.gBidirectional && ! gPathGenerator.gDisableCameraConnection) {
         // Add light trace contribution from atomic buffer
         radiance.rgb += gPathGenerator.mAtomicRadiance.Load<float3>(flatId * sizeof(float3));
     }

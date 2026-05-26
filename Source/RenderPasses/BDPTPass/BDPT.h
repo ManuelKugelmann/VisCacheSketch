@@ -11,7 +11,6 @@
 #include "Rendering/Materials/TexLODTypes.slang"
 #include <fstream>
 
-#include "HashMap.h"
 #include "Params.slang"
 
 using namespace Falcor;

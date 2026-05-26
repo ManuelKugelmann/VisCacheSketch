@@ -10,7 +10,6 @@ import Utils.Sampling.SampleGenerator;
 import Utils.Color.ColorHelpers;
 import Utils.Debug.PixelDebug;
 import LoadShadingData;
-import HashMap;
 import LightVertexCache;
 __exported import Params;
 __exported import PathReservoir;
@@ -61,20 +60,13 @@ struct PathGenerator {
     RWTexture2D<float4> mOutputRadiance;
     RWByteAddressBuffer mOutputCounterData;
 
-    RWStructuredBuffer<PathReservoir> mPathReservoirs0;
-    RWStructuredBuffer<PathReservoir> mPathReservoirs1;
-    RWStructuredBuffer<PathReservoir> mCausticReservoirs;
-    HashMap<LightTraceReservoir>      mLightTraceReservoirs;
-    HashMap<PathReservoir>            mCausticReservoirMap;
+    // [strip-ReSTIR task #21] removed reservoir + temporal buffers. ReSTIR
+    // layer (mPathReservoirs0/1, mLastReservoirs, mCausticReservoirs,
+    // mLastCausticReservoirs, mLightTraceReservoirs, mCausticReservoirMap,
+    // mLastVbuffer, mLastViewDir, mMotionVectors) lives in ReSTIRBDPTPass.
 
     Texture2D<PackedHitInfo> mVbuffer;
     Texture2D<float3>        mViewDir;
-    Texture2D<float2>        mMotionVectors;
-
-    StructuredBuffer<PathReservoir> mLastReservoirs;
-    RWStructuredBuffer<PathReservoir> mLastCausticReservoirs;
-    Texture2D<float3>               mLastViewDir;
-    Texture2D<PackedHitInfo>        mLastVbuffer;
 }
 ParameterBlock<PathGenerator> gPathGenerator;
 
@@ -405,63 +397,10 @@ extension PathGenerator {
         if (gUseViewDir) cameraRay.dir = -mViewDir[id];
         return PackedPathVertex(cameraRay, HitInfo(mVbuffer[id]), cameraRay.tMax);
     }
-    PackedPathVertex LoadPrevPrimaryVertex<let bInPrevFrame : bool>(const uint2 id) {
-        if (any(id > mParams.mOutputDim))
-            return {};
-
-        // if we are tracing with the previous frame's data, then gScene.camera is last frame's camera
-        // but we stil need to use mLastVbuffer and mLastViewDir
-        // [Falcor 8 TODO] Camera::computeRayPinholePrevFrame removed. Fall back to
-        // current-frame pinhole — correct for static cameras only.
-        Ray cameraRay = gScene.camera.computeRayPinhole(id, mParams.mOutputDim);
-        if (gUseViewDir) cameraRay.dir = -mLastViewDir[id];
-        return PackedPathVertex(cameraRay, HitInfo(mLastVbuffer[id]), cameraRay.tMax);
-    }
-
-    PathReservoir LoadPrevReservoir(const uint2 index) {
-        if (!gUseResampling) return {};
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        return mLastReservoirs[flatIndex];
-    }
-    PathReservoir LoadInputReservoir(const uint2 index) {
-        if (!gUseResampling) return {};
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        if (gSwapReservoirs != 0)
-            return mPathReservoirs1[flatIndex];
-        else
-            return mPathReservoirs0[flatIndex];
-    }
-    PathReservoir LoadOutputReservoir(const uint2 index) {
-        if (!gUseResampling) return {};
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        if (gSwapReservoirs != 0)
-            return mPathReservoirs0[flatIndex];
-        else
-            return mPathReservoirs1[flatIndex];
-    }
+    // StoreReservoir is a no-op for vanilla BDPT (no resampling layer). Kept
+    // as a stub so SampleCameraPaths in BDPT.cs.slang continues to compile.
     void StoreReservoir(const uint2 index, const PathReservoir r) {
-        if (!gUseResampling) return;
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        if (gSwapReservoirs != 0)
-            mPathReservoirs0[flatIndex] = r;
-        else
-            mPathReservoirs1[flatIndex] = r;
-    }
-
-    PathReservoir LoadPrevCausticReservoir(const uint2 index) {
-        if (!gUseResampling) return {};
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        return mLastCausticReservoirs[flatIndex];
-    }
-    PathReservoir LoadCausticReservoir(const uint2 index) {
-        if (!gUseResampling) return {};
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        return mCausticReservoirs[flatIndex];
-    }
-    void StoreCausticReservoir(const uint2 index, const PathReservoir r) {
-        if (!gUseResampling) return;
-        const uint flatIndex = index.y * mParams.mOutputDim.x + index.x;
-        mCausticReservoirs[flatIndex] = r;
+        // [strip-ReSTIR task #21] no resampling layer in vanilla BDPT
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -2045,15 +1984,9 @@ extension PathGenerator {
                         DebugSetPixel(-1);
 
                         const uint flatId = pixelCoord.y * mParams.mOutputDim.x + pixelCoord.x;
-                        if (gUseResampling) {
-                            // store path reservoirs for each pixel in a hash map
-                            // these reservoirs are merged into each pixel's reservoir in a later pass
-                            LightTraceReservoir r = {};
-                            r.path = ps;
-                            r.W = weight;
-                            mLightTraceReservoirs.Insert(flatId, r);
-                        } else {
-                            // splat radiance onto output directly, instead of using reservoirs
+                        {
+                            // [strip-ReSTIR task #21] reservoir-store branch removed.
+                            // Splat radiance to the atomic-add buffer (vanilla BDPT path).
                             // [Falcor 8 port] InterlockedAddF32 needs NVAPI which is not
                             // built in this tree. Use CAS-based float atomic-add instead.
                             const float3 v = ps.mContribution * (weight * ps.mMisWeight);

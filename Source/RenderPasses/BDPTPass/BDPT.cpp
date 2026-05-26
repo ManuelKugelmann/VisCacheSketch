@@ -6,8 +6,7 @@
 namespace
 {
     const std::string kBDPTPassFilename           = "RenderPasses/BDPTPass/BDPT.cs.slang";
-    const std::string kTemporalReusePassFilename = "RenderPasses/BDPTPass/TemporalReuse.cs.slang";
-    const std::string kSpatialReusePassFilename  = "RenderPasses/BDPTPass/SpatialReuse.cs.slang";
+    // [strip-ReSTIR task #21] TemporalReuse + SpatialReuse slang files removed.
     const std::string kReflectTypesFile          = "RenderPasses/BDPTPass/ReflectTypes.cs.slang";
 
     // Render pass inputs and outputs.
@@ -783,8 +782,6 @@ void BDPT::prepareResources(RenderContext* pRenderContext, const RenderData& ren
     const size_t maxLightVertices = mParams.mLightSubpathCount * std::max(1u, mParams.mMaxDiffuseBounces);
 
     auto var = mpReflectTypes->getRootVar();
-
-    uint reservoirSize = var["gPathGenerator"]["mPathReservoirs0"].getType()->unwrapArray()->asResourceType()->getSize();
 
     // [strip-ReSTIR task #21] removed reservoir/temporal/caustic resource
     // creation — only mpLightVertices+mpLightImage+mpLightVertexCount needed
