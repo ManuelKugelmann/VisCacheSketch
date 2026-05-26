@@ -81,12 +81,12 @@ interface IVisibilityQuery
     [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
                                           uint sampleIdx, float3 normalA = float3(0.f),
                                           uint callSite = 0u, float contribLuminance = 0.f,
-                                          uint bounceDepth = 0u);
+                                          float effectiveBounceDepth = 0.f);
 #ifdef VISCACHE_DIAGNOSTICS
     [mutating] float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
                                                uint sampleIdx, float3 normalA = float3(0.f),
                                                uint callSite = 0u, float contribLuminance = 0.f,
-                                               uint bounceDepth = 0u);
+                                               float effectiveBounceDepth = 0.f);
 #endif
 #endif
 };
@@ -1015,14 +1015,21 @@ struct PathTracer
 
                     logTraceRay(PixelStatsRayType::Visibility);
 #if USE_VISCACHE_VISIBILITYCHECK
+                    // contribLuminance gates PROPOSAL+REVAL defensive trace (NEE
+                    // here passes 0 → no defensive trace effect, but provided for
+                    // future use). effectiveBounceDepth proxy: vertex idx (0 =
+                    // primary). PathState-tracked cumulative roughness sum is
+                    // a follow-up.
+                    const float vcContribLum  = luminance(Lr);
+                    const float vcBounceDepth = float(path.getVertexIndex());
 #ifdef VISCACHE_DIAGNOSTICS
                     // Write diagnostics only for the primary hit's NEE ray (bounce 0).
                     // Later bounces use the non-diagnostic path to avoid overwriting.
                     float visWeight = (path.getVertexIndex() <= 1)
-                        ? vq.traceVisibilityRayCVDiag(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N)
-                        : vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                        ? vq.traceVisibilityRayCVDiag(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u, vcContribLum, vcBounceDepth)
+                        : vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u, vcContribLum, vcBounceDepth);
 #else
-                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N);
+                    float visWeight = vq.traceVisibilityRayCV(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u, vcContribLum, vcBounceDepth);
 #endif
                     if (visWeight > 0.f) addToPathContribution(path, Lr * visWeight);
 #else

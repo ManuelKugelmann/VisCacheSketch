@@ -153,7 +153,7 @@ Recent sweeps revealed cache behaviour depends on TWO axes — scene class AND b
 
 Step 00 already runs vanilla x{1..16} + x4096 GT, vanilla_b{1,4,8} x{1..16} + x4096 GT, restirpt_b{1,4,8} x{1,4}, rtxdi x{1,4}, and restir_2d/3d x{1,4} — across `ALL_SCENES` ∪ `MULTI_LEVEL_SCENES`. Every later stage reads its references straight from `captures/ladder/00/<scene>/`; no rerun needed unless the metric changes. **Re-emit only the postprocess/CSVs** when the metric changes, never the EXRs.
 
-The post-merge-order multilevel sweep at steps 19–25 lives in `runtime/captures/ladder/archive_post_v2/`. Steps 19/20 below are clean re-curations of that data under the current canonical metric (Reinhard-tonemapped OkLab vs x4096 GT) — no re-render expected.
+The post-merge-order multilevel sweep at steps 19–25 was previously curated from `runtime/captures/ladder/archive_post_v2/`. **That archive has since been deleted** (lessons live in LADDERLOG / DEVLOG) — steps 19/20 must re-render under the current canonical metric (Reinhard-tonemapped OkLab vs x4096 GT) rather than re-curate.
 
 The WS-ReSTIR parity matrix from the *Final canonical config* section of DEVLOG.md is the natural starting point for Stage D step 21; its EXRs live under `runtime/captures/wsrestir/` (not the ladder root). Stage D step 21 imports them by reference rather than re-rendering.
 
@@ -173,7 +173,7 @@ A ReSTIRPT-specific reference harness already exists as `scripts/VisCache_Ladder
 
 **SPPs.** x1, x4, x16. (x4096 GTs already present in step 00.)
 
-**Reuse.** Existing `archive_post_v2/18/` EXRs for 5 scenes. Re-render only Cornell_1AL + Cornell_1PL + Cornell_3AL if those configs weren't in the archive sweep.
+**Reuse.** None — the `archive_post_v2/` EXRs are deleted. Re-render all scenes for this validation step.
 
 **Pass criterion.** `error_delta_blob_pct ≤ 10` on every scene × SPP — no visible cache artifacts.
 
@@ -402,6 +402,57 @@ Open questions (no committed steps yet):
 - **GRIS × VCM kernel collapse** — store light subpaths in the world hash, drive the photon-merge kernel radius toward a delta per-candidate via the reconnection shift; finite kernel survives only where connection is infeasible (specular / VPL near-field singularity). Unifies instant radiosity + photon mapping under GRIS. Full design: `docs/GRIS_VCM_KERNEL_COLLAPSE.md`.
 
 Steps 51+ deferred until stage F lands and the BDPT Falcor pass exists.
+
+---
+
+# Stage H — World-space reservoir (R3d) improvements (Boissé / Zhang imports)
+
+R3d already rides the full VisCache hashmap machinery: footprint→depth→level entry
+via `vhfLevelForFootprint` (constant screen-size cells, Boissé's core), persistent
+cell-reservoir buffer with M-capped streaming merge (`gMCap`, Boissé's decoupled
+world-space temporal), scene-scale base via `autoTuneCells`, pos+normal keying. So
+Boissé 2021's two headline ideas are **already implemented** — the gaps are elsewhere.
+
+## Step H1 — numLevels → 1024 for R3d, **gated on an N-invariant cell-size refactor**
+
+**Goal.** Footprint-based entry level should never clamp for fine/distant geometry
+— more levels extend the cascade range so constant-screen-footprint holds everywhere.
+
+**Blocker found (2026-05-26).** Naively setting `numLevels=1024` is NOT a config
+change. `deriveFine` computes `fine = posACoarse·0.8^(N-1)`, which underflows to ~0
+at N=1024; `vhfInterp` then clamps `fine` to `1e-6` and interpolates `coarse→1e-6`
+geometrically over 1024 levels — collapsing the **per-level granularity from the
+intended 0.8 (20%/level) to ~0.984 (1.6%/level)**. That is finer than the design
+floor (`VisCache.cpp:717` "0.8 is the lower bound … finer creates near-identical
+neighbouring cells with independent fingerprints, fragmenting samples"). So naive
+N=1024 silently fragments cache occupancy — a regression, not the intended win.
+
+**Required fix (prerequisite).** Make `vhfPosASize` **N-invariant** by construction:
+compute `cellSize(lvl) = max(posACoarse · 0.8^lvl, floorCellSize)` directly, instead
+of geometrically interpolating `coarse→gPosAFine`. Then level→size is fixed at 0.8/
+level regardless of N (the property `VisCache.cpp:729` already *claims* but the
+interp+underflow breaks at large N), and N=1024 simply unlocks deeper levels at the
+correct granularity, floored at the smallest meaningful cell. Drop the dependence on
+the underflowing `gPosAFine` for sizing. **Touches the shared cell-size function —
+revalidate visibility-cache + P3d, not just R3d** (step 99 noise floor + a Cornell/
+Sponza/Bistro ladder pass).
+
+**Then.** Set R3d `numLevels=1024` (no upper cap exists — UI already allows it,
+`VisCache.cpp:1375`; only the stale "1..16" doc-comment implied otherwise). Ladder:
+N ∈ {32, 256, 1024} × R3d on multi-level scenes; watch cell occupancy / cold-miss
+and the footprint-match error at distance.
+
+## Step H2 — R3d sub-path reuse from non-primary vertices (Zhang 2023 baseline)
+
+**Import.** Zhang & Wang 2023 cache+reuse sub-paths anchored at **non-primary**
+vertices (16.6–41.9% MSE at 4.4–8.4% extra cost). Our addressing already widens the
+footprint per bounce (`vhfLookup` bounceDepth; `resolveCellForFootprint` "deeper
+bounces"), but R3d only stores/reuses the primary-hit reservoir. Extend cell-reservoir
+storage+reuse to secondary+ vertices — this is Stage F multibounce territory, done
+with our **GRIS hybrid shift + VisCache V-revalidation** (stronger than Zhang's
+ReSTIR-GI shift). Target ≈17–42% MSE vs the R3d-primary-only baseline.
+*Do NOT import:* Zhang's pixel-index indirection storage (rejected for the in-cell
+seed-keyed scheme in `project_partial_path_cell.md`); normal-aware grid (already have).
 
 ---
 

@@ -13,6 +13,8 @@ import LoadShadingData;
 import LightVertexCache;
 __exported import Params;
 __exported import PathReservoir;
+// Shared light-type selection helpers (used by PathTracerX + ReSTIRDI/NEE/PT).
+import RenderPasses.PathTraceCommon.PathTraceCore;
 
 cbuffer CB {
     uint gRandomSeed;
@@ -403,20 +405,18 @@ extension PathGenerator {
     static const float gConcentricDiscPdfA = M_1_PI;
 
     // ---------------------------------------------------------------------------------------------------------
-    // -------------------------- Light-type selection (mirror of Falcor PathTracer) ---------------------------
+    // -------------------------- Light-type selection (shared via PathTraceCommon) ----------------------------
     // ---------------------------------------------------------------------------------------------------------
 
-    /** Probabilities for selecting env / emissive / analytic light at a NEE call.
-        Uniform across whichever types are enabled, matching PathTracer.slang::getLightTypeSelectionProbabilities.
+    /** Probabilities for selecting env / emissive / analytic light at a NEE
+        call. Uniform across whichever types are enabled. Delegates to
+        PathTraceCommon helpers so BDPT, PathTracerX and the ReSTIR variants
+        all use the same logic.
     */
     void getLightTypeSelectionProbabilities(out float p[3]) {
-        p[0] = gUseEnvLight        ? 1.f : 0.f;
-        p[1] = gUseEmissiveLights  ? 1.f : 0.f;
-        p[2] = gUseAnalyticLights  ? 1.f : 0.f;
-        float sum = p[0] + p[1] + p[2];
-        if (sum == 0.f) return;
-        float invSum = 1.f / sum;
-        p[0] *= invSum; p[1] *= invSum; p[2] *= invSum;
+        p[0] = coreGetEnvMapSelectionProbability();
+        p[1] = coreGetEmissiveSelectionProbability();
+        p[2] = coreGetAnalyticSelectionProbability();
     }
 
     /** Select a light type and return the selection pdf. Mirrors PathTracer.slang::selectLightType.

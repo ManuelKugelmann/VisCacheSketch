@@ -207,7 +207,9 @@ public:
         float    varThreshold    = 0.10f;       ///< Bernoulli variance gate for cascaded write depth
         float    pMin            = 0.05f;       ///< Min RR survival probability (floor for CV+RRR)
         float    fireflyBudget   = 0.05f;       ///< Contribution luminance scale for adaptive pMin
-        uint32_t numLevels       = 8u;          ///< Number of LOD levels in the cascade (1..16)
+        uint32_t numLevels       = 8u;          ///< Number of LOD levels in the cascade (1..1024; no hard cap — UI/runtime allow up to 1024).
+                                                ///< NOTE: raising N past ~64 needs the N-invariant cell-size fix (LADDER_PLAN Stage H1) —
+                                                ///< derive+interp currently collapses per-level granularity below the 0.8 design floor at large N.
 
         // --- Per-dimension coarse cell sizes (fine auto-derived from coarse + numLevels) ---
         float    posACoarse     = 10.0f;       ///< posA coarsest cell (world units, auto-tuned from scene)

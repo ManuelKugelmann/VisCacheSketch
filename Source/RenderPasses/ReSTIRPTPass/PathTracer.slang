@@ -1019,7 +1019,8 @@ struct PathTracer
         \return true if the light is visible, false if occluded.
     */
     bool traceVisibilityRay(const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
-                            float3 normalA, uint callSite = 0u /* VC_RAY_SITE_NEE */)
+                            float3 normalA, uint callSite = 0u /* VC_RAY_SITE_NEE */,
+                            float contribLuminance = 0.f, float effectiveBounceDepth = 0.f)
     {
         logTraceRay(PixelStatsRayType::Visibility);
 #if USE_VISCACHE_VISIBILITYCHECK
@@ -1030,8 +1031,10 @@ struct PathTracer
         // normalA enables normal-aware cell addressing — DI/NEE pass
         // sd.frame.N here; hardcoding float3(0.f) coarsens addressing and
         // tanked PT cache trust (only 19% saved on Cornell_3AL — task #82
-        // step 6/N fixes this).
-        float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite);
+        // step 6/N fixes this). contribLuminance gates PROPOSAL+REVAL
+        // defensive trace; effectiveBounceDepth feeds the per-bounce
+        // relaxation in vhfLookup (cumulative roughness sum from PT caller).
+        float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite, contribLuminance, effectiveBounceDepth);
         return v > 0.5f;
 #else
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
@@ -1530,7 +1533,10 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
-                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u /* NEE */);
+                        // effectiveBounceDepth proxy: bounce count (path.length). Treats every
+                        // bounce as full diffuse for relaxation purposes. Roughness-modulated
+                        // cumulative sum requires PathState extension — next iteration.
+                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u /* NEE */, luminance(Lr), float(path.length));
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -2009,7 +2015,8 @@ struct PathTracer
                 const Ray ray = ls.getVisibilityRay();
                 // VC_RAY_SITE_REVAL = 1 — temporal-shift V-test (reuse-revalidation).
                 // rcVertexSd is the reconnection-vertex shading data (loaded above).
-                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), rcVertexSd.frame.N, 1u /* REVAL */);
+                // contribLuminance via ls.Li × pdf rough proxy; bounce depth = rcVertexLength.
+                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), rcVertexSd.frame.N, 1u /* REVAL */, luminance(ls.Li), float(rcVertexLength));
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {

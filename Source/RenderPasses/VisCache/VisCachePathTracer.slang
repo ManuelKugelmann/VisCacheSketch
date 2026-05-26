@@ -33,7 +33,7 @@ SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
 float vcVisibility_Ray<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
     float3 normalA = float3(0.f), uint callSite = 0u,
-    float contribLuminance = 0.f, uint bounceDepth = 0u)
+    float contribLuminance = 0.f, float effectiveBounceDepth = 0.f)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
@@ -48,7 +48,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
     if (callSite == 2u /* PROPOSAL */ || callSite == 1u /* REVAL */)
     {
         SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-        VHFResult r = vhfLookup(posA, posB, normalA, callSite, bounceDepth);
+        VHFResult r = vhfLookup(posA, posB, normalA, callSite, effectiveBounceDepth);
         // doubtfulness ∈ [0,1]: cached mu near 0.5 (high var) + few samples
         // → high doubt. Mature low-var cells trust without trace.
         float maturityFrac = r.valid ? saturate(float(r.N) / max(float(gBootThreshold), 1.f)) : 0.f;
@@ -75,7 +75,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
         return r.mu;  // raw cached mean (0.5 fallback when no entry)
     }
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite, bounceDepth);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite, effectiveBounceDepth);
 
     float result;
     bool traced;
@@ -105,7 +105,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
 float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
     float3 normalA = float3(0.f), uint callSite = 0u,
-    float contribLuminance = 0.f, uint bounceDepth = 0u)
+    float contribLuminance = 0.f, float effectiveBounceDepth = 0.f)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
@@ -113,7 +113,7 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     if (callSite == 2u /* PROPOSAL */ || callSite == 1u /* REVAL */)
     {
         SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-        VHFResult r = vhfLookup(posA, posB, normalA, callSite, bounceDepth);
+        VHFResult r = vhfLookup(posA, posB, normalA, callSite, effectiveBounceDepth);
         float maturityFrac = r.valid ? saturate(float(r.N) / max(float(gBootThreshold), 1.f)) : 0.f;
         float doubtfulness = r.var * (1.f - 0.5f * maturityFrac);
         float p_trace = saturate(doubtfulness * contribLuminance / max(gFireflyBudget, 1e-4f));
@@ -135,7 +135,7 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
         return r.mu;
     }
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite, bounceDepth);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite, effectiveBounceDepth);
 
     if (g.shouldTrace)
     {

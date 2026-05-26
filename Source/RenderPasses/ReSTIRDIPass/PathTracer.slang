@@ -100,12 +100,12 @@ interface IVisibilityQuery
     [mutating] float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
                                           uint sampleIdx, float3 normalA = float3(0.f),
                                           uint callSite = 0u, float contribLuminance = 0.f,
-                                          uint bounceDepth = 0u);
+                                          float effectiveBounceDepth = 0.f);
 #ifdef VISCACHE_DIAGNOSTICS
     [mutating] float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
                                                uint sampleIdx, float3 normalA = float3(0.f),
                                                uint callSite = 0u, float contribLuminance = 0.f,
-                                               uint bounceDepth = 0u);
+                                               float effectiveBounceDepth = 0.f);
 #endif
 #endif
 };

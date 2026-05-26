@@ -827,11 +827,13 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert, out uint probeSteps)
 // level), which tells the caller to trace unconditionally.
 // ---------------------------------------------------------------------------
 // callSite: VC_RAY_SITE_* tag from VisCacheDiagnostics.slang (default 0 = NEE).
-// bounceDepth: PT path length at the call site (0 = primary hit / DI). Per-bounce
-// scaling: deeper bounces tolerate coarser cells / looser convergence — same
-// principle as per-mode (relaxed quality acceptable beyond primary visibility).
-// Defaults preserve existing behaviour at the primary bounce.
-VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint callSite = 0u, uint bounceDepth = 0u)
+// effectiveBounceDepth: cumulative roughness along the path so far (specular
+// bounce contributes +0, perfectly diffuse +1). PT caller maintains the
+// running sum; primary hit / DI passes 0. Mirror sequences keep the count
+// at 0 → strict visibility for caustics. Each diffuse bounce increments by
+// ~1 → cells relax aggressively after diffuse scattering. Defaults preserve
+// existing behaviour at the primary bounce.
+VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint callSite = 0u, float effectiveBounceDepth = 0.f)
 {
     VHFResult best;
     best.mu    = 0.5f;   // Default: uncertain (max variance)
@@ -874,11 +876,11 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
         float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
         float depth = max(length(posA - camPos), 0.001f);
         float pixelSize = depth * gPixelSize1;
-        // Per-bounce footprint growth: each bounce doubles the cell area
-        // (factor (1 + bounceDepth) on footprint, ~√(1+b) on cell edge).
-        // Hardcoded for experiment validation; promote to a runtime knob
-        // once direction is confirmed.
-        float footprintScale = 1.f + float(bounceDepth);
+        // Per-bounce footprint growth: cell area scales linearly with the
+        // accumulated effectiveBounceDepth (sum of per-bounce roughness),
+        // so cell edge ~ √(1 + effectiveBounceDepth). Mirror sequences keep
+        // the entry footprint tight; diffuse bounces coarsen fast.
+        float footprintScale = 1.f + effectiveBounceDepth;
         float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx) * footprintScale);
         float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
         int targetLvl = int(round(t * float(gNumLevels - 1u)));
@@ -1036,12 +1038,12 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
         //     var (the x16-correlation pathology).
         //   varThreshold (legacy): var ≤ gVarThreshold, ignores N.
         // Per-mode + per-bounce convergence relaxation. Primary NEE at
-        // bounce 0 keeps strict; REVAL gets 4× looser; every bounce beyond
-        // primary adds 0.5× looseness. PROPOSAL doesn't reach here (early-
-        // exits via defensive trace). Per user 2026-05-26: "primary ray
-        // visibility tests require very different quality from later
-        // bounces". Hardcoded for experiment validation.
-        float bounceRelax  = 1.f + float(bounceDepth) * 0.5f;
+        // bounce 0 keeps strict; REVAL gets 4× looser; each unit of
+        // effectiveBounceDepth (cumulative roughness sum, from PT caller)
+        // adds 0.5× looseness. Mirror sequences keep strict convergence
+        // even at deep bounces; diffuse bounces relax. PROPOSAL doesn't
+        // reach here (early-exits via defensive trace).
+        float bounceRelax  = 1.f + effectiveBounceDepth * 0.5f;
         float qualityRelax = ((callSite == 1u /* REVAL */) ? 4.f : 1.f) * bounceRelax;
         bool converged;
         if (gWilsonZSquared > 0.f)
@@ -1228,10 +1230,10 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f,
                        float3 normalA = float3(0.f),
                        bool forceWarmup = false,
-                       uint callSite = 0u, uint bounceDepth = 0u)
+                       uint callSite = 0u, float effectiveBounceDepth = 0.f)
 {
     VHFGateResult g;
-    VHFResult r = vhfLookup(posA, posB, normalA, callSite, bounceDepth);
+    VHFResult r = vhfLookup(posA, posB, normalA, callSite, effectiveBounceDepth);
 
     // Copy qa/qb from the cascade-selected level (diagnostics — hash grid vis).
     g.qa = r.qa;
