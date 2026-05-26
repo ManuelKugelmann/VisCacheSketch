@@ -75,14 +75,11 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
         FALCOR_THROW("BDPT requires Raytracing Tier 1.1 support.");
 
     parseProperties(props);
-    // Vanilla BDPT: force all ReSTIR/temporal/caustic layers off so this
-    // pass is a deterministic BDPT estimator (light subpaths + camera
-    // subpaths + MIS-weighted connections). Properties on these knobs are
-    // accepted but overridden. useBPT is intentionally NOT re-pinned so
-    // callers can opt into PT-only mode (useBPT=False) for decomposition
-    // tests / PT-comparison validation.
-    // longer exist on StaticParams; nothing to re-pin.
-
+    // Vanilla BDPT — the ReSTIR/temporal/caustic-reservoir knobs that used
+    // to be force-pinned here were removed from StaticParams in task #21
+    // (strip-ReSTIR). useBPT / useNEE stay user-controlled so debug configs
+    // (e.g. PT-only via useBPT=False, BSDF-only via useNEE=False) actually
+    // take effect — see KNOWN_BIAS.md for the decomposition workflow.
     validateOptions();
 
     // Create sample generator.
