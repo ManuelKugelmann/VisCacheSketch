@@ -325,98 +325,16 @@ void BDPT::execute(RenderContext* pRenderContext, const RenderData& renderData)
         mCurrentSeed += mParams.mCanonicalSpp;
     }
 
-    if (mStaticParams.useResampling) {
+    // [strip-ReSTIR 2026-05-26 task #21] Dead-code block removed. The whole
+    // `if (mStaticParams.useResampling)` branch (resolve-light-reservoir,
+    // temporal reuse, spatial reuse, caustic shift) was guarded by params
+    // that are always forced false in vanilla BDPTPass — see the re-pins
+    // in BDPT::BDPT and BDPT::setProperties. ReSTIR layers live in
+    // ReSTIRBDPTPass.
 
-        // Merge pure light tracing reservoirs with camera reservoirs
-        if (mStaticParams.useBPT)
-        {
-            FALCOR_PROFILE(pRenderContext, "Resolve light trace");
-            mpLightReservoirs->sort(pRenderContext);
-
-            FALCOR_ASSERT(mpLightReservoirResolvePass);
-            preparePass(pRenderContext, renderData, *mpLightReservoirResolvePass);
-            mpLightReservoirResolvePass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
-            mCurrentSeed++;
-        }
-
-        // Temporal reservoir reuse.
-        if (mStaticParams.useTemporalReuse)
-        {
-            FALCOR_ASSERT(mpTemporalReusePass);
-            FALCOR_ASSERT(renderData.getTexture(kInputMotionVectors));
-            preparePass(pRenderContext, renderData, *mpTemporalReusePass);
-            if (mStaticParams.useCausticShift)
-            {
-                FALCOR_ASSERT(mpShiftCausticsPass);
-                preparePass(pRenderContext, renderData, *mpShiftCausticsPass);
-            }
-
-            if (!mVarsChanged)
-            {
-                if (!mResetTemporalHistory) {
-                    // shift samples to last frame
-                    if (mStaticParams.unbiasedTemporalReuse) {
-                        FALCOR_PROFILE(pRenderContext, "Temporal shift");
-                        FALCOR_ASSERT(mpTemporalShiftPass);
-                        ref<Program> program = mpTemporalShiftPass->getProgram();
-                        FALCOR_ASSERT(program);
-                        auto var = mpTemporalShiftPass->getRootVar();
-                        mpPixelDebug->prepareProgram(program, var);
-                        var["CB"]["gSwapReservoirs"] = uint(mSwapReservoirs ? 1u : 0u);
-                        var["gPathGenerator"]["mMotionVectors"] = renderData.getTexture(kInputMotionVectors);
-                        mpTemporalShiftPass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
-                    }
-
-                    // caustic shift
-
-                    if (mStaticParams.useCausticShift)
-                    {
-                        FALCOR_PROFILE(pRenderContext, "Temporal caustic shift");
-
-                        mpShiftCausticsPass->addDefine("SHIFT_SUFFIXES", "1");
-                        mpShiftCausticsPass->addDefine("USE_CAUSTIC_SHIFT", "1");
-                        mpShiftCausticsPass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
-
-                        mpCausticReservoirMap->sort(pRenderContext);
-                    }
-
-                    // reuse pass
-                    {
-                        FALCOR_PROFILE(pRenderContext, "Temporal reuse");
-                        mpTemporalReusePass->addDefine("UNBIASED_TEMPORAL_REUSE", mStaticParams.unbiasedTemporalReuse ? "1" : "0");
-                        mpTemporalReusePass->addDefine("SHIFT_SUFFIXES", mStaticParams.shiftSuffixes ? "1" : "0");
-                        mpTemporalReusePass->addDefine("USE_CAUSTIC_SHIFT", mStaticParams.useCausticShift ? "1" : "0");
-                        mpTemporalReusePass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
-                    }
-                }
-            }
-            mCurrentSeed++;
-            mResetTemporalHistory = false;
-        }
-
-        mSwapReservoirs = !mSwapReservoirs; // swap input and output reservoirs for the next pass
-
-        // Spatial reservoir reuse.
-        if (mStaticParams.spatialReusePasses > 0)
-        {
-            FALCOR_PROFILE(pRenderContext, "Spatial reuse");
-            FALCOR_ASSERT(mpSpatialReusePass);
-
-            mpSpatialReusePass->addDefine("SHIFT_SUFFIXES", mStaticParams.shiftSuffixesSpatial ? "1" : "0");
-            mpSpatialReusePass->addDefine("SPATIAL_RMIS_TYPE", std::to_string(uint(mStaticParams.spatialRMIS)));
-
-            for (uint i = 0; i < mStaticParams.spatialReusePasses; i++)
-            {
-                preparePass(pRenderContext, renderData, *mpSpatialReusePass);
-                mpSpatialReusePass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
-                mCurrentSeed += 2;
-                mSwapReservoirs = !mSwapReservoirs;
-            }
-        }
-    }
-
-    // Copy radiance from reservoirs to output.
-    if (mStaticParams.useResampling || mStaticParams.useBPT)
+    // Copy light-trace contribution from atomic buffer into camera-trace
+    // output. Only needed when BPT light subpaths were traced.
+    if (mStaticParams.useBPT)
     {
         FALCOR_ASSERT(mpCopyRadiancePass);
         preparePass(pRenderContext, renderData, *mpCopyRadiancePass);
