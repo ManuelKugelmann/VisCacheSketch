@@ -36,6 +36,19 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
+    // PROPOSAL site: candidate selection — pure cached mu, no trace, no
+    // correction. Bias is absorbed by the K-RIS unbiasing structure as long
+    // as a base probability stays positive for every candidate. Per user
+    // 2026-05-26: "candidate selection can use a very relaxed quality and
+    // no correction at all".
+    if (callSite == 2u /* VC_RAY_SITE_PROPOSAL */)
+    {
+        VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+#ifdef VISCACHE_DIAGNOSTICS
+        vcDiagCountRay(pixel, false, callSite);  // never traced
+#endif
+        return r.mu;  // raw cached mean (0.5 fallback when no entry)
+    }
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite);
 
@@ -70,6 +83,19 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
+    // PROPOSAL site: see non-Diag variant. Diag wrapper mirrors the early-
+    // exit but still emits the diag-write so the per-pixel plate columns
+    // pick up "trusted, not traced" for these cells.
+    if (callSite == 2u /* VC_RAY_SITE_PROPOSAL */)
+    {
+        VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+        VHFGateResult g;
+        g.shouldTrace = false; g.visWeight = r.mu; g.mu = r.mu; g.invP = 0.f;
+        g.var = r.var; g.level = r.level; g.valid_data = r.valid;
+        g.N = r.N; g.probeSteps = r.probeSteps; g.qa = r.qa; g.qb = r.qb;
+        vcWriteDiag(pixel, g, false, 0.f, posA, posB, callSite);
+        return r.mu;
+    }
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
     VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite);
 

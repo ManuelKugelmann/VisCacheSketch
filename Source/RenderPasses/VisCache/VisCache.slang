@@ -868,28 +868,12 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
 
     int startLvl = 0;
     int endLvl   = int(gNumLevels);
-    // Per-mode entry footprint (hardcoded experiment — promote to a knob
-    // once direction is validated). REVAL site uses a 16-px footprint
-    // (= 4-px cell edge) as a forced floor on the entry level so REVAL
-    // cells aggregate more samples than NEE. The cascade descent + level
-    // curve remain unchanged — REVAL just starts higher up the cascade.
-    // Applied EVEN when gForceDescendFootprintPx == 0 (canonical), where
-    // NEE walks the full cascade starting at level 0.
-    uint footprintPx = gForceDescendFootprintPx;
-    if (callSite == 1u /* VC_RAY_SITE_REVAL */)
-    {
-        // Use 16× the active footprint (= 4× cell edge); if footprint mode
-        // is off (= 0), default to 256 px² so the REVAL gate has a coarse
-        // entry even when other sites walk the whole cascade. Aggressive
-        // setting to verify per-mode direction sensitivity before tuning.
-        footprintPx = (footprintPx != 0u) ? (footprintPx * 16u) : 256u;
-    }
-    if (footprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
+    if (gForceDescendFootprintPx != 0u && gNumLevels > 1u && lookupLogRatio < -1e-6f)
     {
         float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
         float depth = max(length(posA - camPos), 0.001f);
         float pixelSize = depth * gPixelSize1;
-        float targetCellSize = pixelSize * sqrt(float(footprintPx));
+        float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
         float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
         int targetLvl = int(round(t * float(gNumLevels - 1u)));
         // Lookup window: [targetLvl, targetLvl + kWindowFwd].
@@ -1045,6 +1029,16 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
         //     samples" into one. Rejects few-sample cells with spurious low
         //     var (the x16-correlation pathology).
         //   varThreshold (legacy): var ≤ gVarThreshold, ignores N.
+        // Per-mode convergence relaxation. Primary NEE/RECONNECT keep the
+        // strict convergence test the user-set thresholds dictate; REVAL
+        // accepts ~4× looser convergence so the cascade early-stops at
+        // coarser cells instead of descending to fine cells whose mu is
+        // accurate but immature. PROPOSAL doesn't reach here (early-exits
+        // in vcVisibility_Ray with raw mu). Per user 2026-05-26: "primary
+        // ray visibility tests require very different quality from later
+        // bounces". Hardcoded factor for experiment validation; promote
+        // to a per-mode knob once direction is confirmed.
+        float qualityRelax = (callSite == 1u /* VC_RAY_SITE_REVAL */) ? 4.f : 1.f;
         bool converged;
         if (gWilsonZSquared > 0.f)
         {
@@ -1056,18 +1050,19 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
             float radical = sqrt(zsq * (p * (1.f - p) / Nf + zsq / (4.f * Nf * Nf)));
             float LB = (numCenter - radical) * invD;
             float UB = (numCenter + radical) * invD;
-            float eps = gWilsonEps;
+            float eps = gWilsonEps * qualityRelax;
             converged = (LB > 1.f - eps) || (UB < eps);
         }
         else if (gStderrThreshold > 0.f)
         {
             float invN   = 1.f / max(float(total), 1.f);
             float stderr2 = var * invN;
-            converged = stderr2 <= gStderrThreshold * gStderrThreshold;
+            float thr     = gStderrThreshold * qualityRelax;
+            converged = stderr2 <= thr * thr;
         }
         else
         {
-            converged = var <= gVarThreshold;
+            converged = var <= gVarThreshold * qualityRelax;
         }
 
         if (converged)
