@@ -1021,21 +1021,13 @@ DefineList BDPT::StaticParams::getDefines(const BDPT& owner) const
     defines.add("DISABLE_LVC", useBPT && disableLVC ? "1" : "0");
     defines.add("DEBUG_BPT", debugBPT ? "1" : "0");
     defines.add("DEBUG_HEATMAP", debugHeatmap ? "1" : "0");
-    // [strip-ReSTIR task #21] ReSTIR-layer defines pinned to "0". The slang
-    // code paths gated by these are dead (the slang fields they referenced
-    // were removed) but the defines themselves are still referenced via
-    // `static const bool g... = USE_RESAMPLING;` etc in PathGenerator.slang.
-    defines.add("USE_RESAMPLING", "0");
+    // [strip-ReSTIR task #21] USE_RECONNECTION_MIS still referenced as
+    // #if-block guard in PathGenerator.slang + PathReservoir.slang.
+    // Pin to "0" so those blocks compile-out. Other ReSTIR defines
+    // (USE_RESAMPLING etc.) have all their slang references removed
+    // — no longer emitted.
     defines.add("USE_RECONNECTION_MIS", "0");
-    defines.add("SHIFT_LIGHT_PATHS_TO_CENTER", "0");
-    defines.add("DISABLE_EARLY_RECONNECTION", "0");
-    defines.add("USE_CAUSTIC_RESERVOIRS", "0");
-    defines.add("SHIFT_SUFFIXES", "0");
     defines.add("USE_VIEW_DIR", "0"); // placeholder, set by prepareVars
-    defines.add("UNBIASED_TEMPORAL_REUSE", "0");
-    defines.add("USE_CAUSTIC_SHIFT", "0");
-    defines.add("SPATIAL_RMIS_TYPE", "0");
-    defines.add("DEBUG_CAUSTIC_RESERVOIRS", "0");
 
     // Sampling utilities configuration.
     FALCOR_ASSERT(owner.mpSampleGenerator);
