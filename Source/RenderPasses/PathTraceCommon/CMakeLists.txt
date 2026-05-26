@@ -13,6 +13,12 @@ target_sources(PathTraceCommon PRIVATE
     # DI-lineage extensions (LightSampleDI, rebuilders) live in the
     # ReSTIRCommon plugin instead.
     PathTraceCore.slang
+
+    # Shared vertex/shading-data loader — collapses the verbatim-identical
+    # `loadVertexData` + `loadShadingData` bodies that every
+    # Falcor-PathTracer-lineage plugin used to keep its own copy of.
+    # Per-pass stubs still own `getMaterialInstanceHints` (divergent policy).
+    LoadShadingData.slang
 )
 
 target_copy_shaders(PathTraceCommon RenderPasses/PathTraceCommon)
