@@ -27,19 +27,17 @@ extension PathGenerator {
     static const bool  gUseViewDir                    = USE_VIEW_DIR;
     static const bool  gSampleDirectLight             = USE_NEE;
     static const bool  gBidirectional                 = USE_BIDIRECTIONAL;
-    static const bool  gShiftLightPathsToPixelCenters = SHIFT_LIGHT_PATHS_TO_CENTER;
     static const bool  gLightTraceOnly                = LIGHT_TRACE_ONLY;
-    static const bool  gUseResampling                 = USE_RESAMPLING;
-    static const bool  gUseReconnectionMIS            = USE_RECONNECTION_MIS;
-    static const bool  gShiftSuffixes                 = SHIFT_SUFFIXES;
     static const bool  gUseBsdfImportanceSampling     = USE_BSDF_IMPORTANCE_SAMPLING;
     static const bool  gDebugBPT                      = DEBUG_BPT;
     static const bool  gDebugHeatmap                  = DEBUG_HEATMAP;
     static const float gMISPowerExponent              = MIS_POWER_EXPONENT;
     static const bool  gDisableCameraConnection       = DISABLE_CAMERA_CONNECTION;
-    static const bool  gDisableEarlyReconnection      = DISABLE_EARLY_RECONNECTION;
     static const bool  gDisableLVC                    = DISABLE_LVC;
     static const bool  gDisableVC                     = DISABLE_VC;
+    // [strip-ReSTIR task #21] removed gUseResampling, gUseReconnectionMIS,
+    // gShiftSuffixes, gShiftLightPathsToPixelCenters, gDisableEarlyReconnection
+    // — ReSTIR-layer constants live in ReSTIRBDPTPass.
 }
 
 struct LightTraceReservoir {
@@ -934,11 +932,11 @@ extension PathGenerator {
         return v;
     }
 
-    // Merges a canonical sample into the pixel's reservoir
+    // Accumulates a canonical sample's contribution into the per-pixel reservoir.
+    // [strip-ReSTIR task #21] gUseResampling-gated r.Merge branch removed —
+    // reservoir resampling lives in ReSTIRBDPTPass.
     void ProcessSample(inout PathReservoir r, inout SampleGenerator sg, PathSample ps, float weight) {
-        if (gUseResampling) {
-            r.Merge(sampleNext1D(sg), ps, weight * ps.GetTargetPdf(), 0);
-        } else if (ps.IsValid() && weight > 0) {
+        if (ps.IsValid() && weight > 0) {
             print("Found path. contrib:", ps.mContribution);
             print("\tLight subpath vertices:", ps.mSuffix.mLightSubpath.mVertexCount);
             print("\tPrefix bounces:", ps.mPrefixBounces);
@@ -1433,7 +1431,9 @@ extension PathGenerator {
 
         integrationWeight = 1.f / samplePdf;
 
-        if (!gUseResampling) integrationWeight /= mParams.mLightSubpathCount;
+        // [strip-ReSTIR task #21] always normalize by light subpath count
+        // (no resampling layer in vanilla BDPT).
+        integrationWeight /= mParams.mLightSubpathCount;
 
         bool caustic = s.deltaRcv || s.rcvDist < mParams.mReconnectionDistance;
 
@@ -1790,8 +1790,8 @@ extension PathGenerator {
     }
 
     void UpdateReconnectionData<let bShift : bool>(inout PathState<bShift> s, const PathVertex vertex, const bool connectable, const float lastPdfW) {
-        if (gDisableEarlyReconnection)
-            return;
+        // [strip-ReSTIR task #21] gDisableEarlyReconnection gate removed —
+        // vanilla BDPT always runs reconnection-data update.
 
         float cosIn = vertex.GetCosN(vertex.GetDirIn());
 
@@ -1820,15 +1820,9 @@ extension PathGenerator {
             }
         }
 
-        #if USE_RECONNECTION_MIS
-        if (gUseReconnectionMIS && s.rcvFound) {
-            const float cosOut = s.lastVertex.HasNormal() ? abs(dot(s.lastVertex.normal, vertex.GetDirIn())) : 1;
-            s.rcvMis.Update( s.mis,
-                s.lastVertex.scatterFwdPdfW, s.lastVertex.scatterRevPdfW,
-                cosIn, cosOut, vertex.mVertex.mRayDistance,
-                int(s.bounces) - int(s.prefixBounces + 2) );
-        }
-        #endif
+        // [strip-ReSTIR task #21] USE_RECONNECTION_MIS / gUseReconnectionMIS
+        // branch removed — recompute-MIS-during-reconnection is a ReSTIR
+        // resampling feature.
     }
 
     // Sample the BSDF and trace a ray to find the next vertex.
@@ -1972,15 +1966,12 @@ extension PathGenerator {
                     const PathSample ps = ConnectToCamera(s, vertex, pixelCoord, weight);
                     if (ps.IsValid() && weight > 0 && all(pixelCoord >= 0) && all(pixelCoord < mParams.mOutputDim)) {
                         DebugSetPixel(pixelCoord);
-                        if (!gUseResampling)
-                        {
-                            print("Found path. contrib:", luminance(ps.mContribution) * ps.mMisWeight);
-                            print("\tW:", weight);
-                            print("\tLight subpath vertices:", ps.mSuffix.mLightSubpath.mVertexCount);
-                            print("\tPrefix bounces:", ps.mPrefixBounces);
-                            print("\trcv dist:", s.rcvDist);
-                            print("\tcaustic:", ps.HasFlag(PathFlags::eCausticLightPath));
-                        }
+                        print("Found path. contrib:", luminance(ps.mContribution) * ps.mMisWeight);
+                        print("\tW:", weight);
+                        print("\tLight subpath vertices:", ps.mSuffix.mLightSubpath.mVertexCount);
+                        print("\tPrefix bounces:", ps.mPrefixBounces);
+                        print("\trcv dist:", s.rcvDist);
+                        print("\tcaustic:", ps.HasFlag(PathFlags::eCausticLightPath));
                         DebugSetPixel(-1);
 
                         const uint flatId = pixelCoord.y * mParams.mOutputDim.x + pixelCoord.x;
@@ -2110,9 +2101,9 @@ extension PathGenerator {
 
         r.mW /= mParams.mCanonicalSpp;
 
-        if (!gUseResampling) {
-            mOutputRadiance[id.mId].rgb += r.mSample.mContribution / mParams.mCanonicalSpp;
-        }
+        // [strip-ReSTIR task #21] always splat reservoir contribution to
+        // output (no resampling layer).
+        mOutputRadiance[id.mId].rgb += r.mSample.mContribution / mParams.mCanonicalSpp;
 
         r.FinalizeMerge();
         return r;

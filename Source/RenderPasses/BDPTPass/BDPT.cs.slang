@@ -1,10 +1,10 @@
 import Utils.Color.ColorMap;
+import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 import Utils.Debug.PixelDebug;
-import PathShift;
-
-static const bool gUseCausticReservoirs   = USE_CAUSTIC_RESERVOIRS;
-static const uint gDebugCausticReservoirs = DEBUG_CAUSTIC_RESERVOIRS;
+import PathGenerator;
+// [strip-ReSTIR task #21] removed: import PathShift; static gUseCausticReservoirs;
+// static gDebugCausticReservoirs — caustic reservoirs live in ReSTIRBDPTPass.
 
 [shader("compute")]
 [numthreads(8, 4, 1)]
