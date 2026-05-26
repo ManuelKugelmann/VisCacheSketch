@@ -82,15 +82,8 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
     // accepted but overridden. useBPT is intentionally NOT re-pinned so
     // callers can opt into PT-only mode (useBPT=False) for decomposition
     // tests / PT-comparison validation.
-    mStaticParams.useResampling           = false;
-    mStaticParams.useTemporalReuse        = false;
-    mStaticParams.unbiasedTemporalReuse   = false;
-    mStaticParams.useCausticReservoirs    = false;
-    mStaticParams.useCausticShift         = false;
-    mStaticParams.shiftSuffixes           = false;
-    mStaticParams.shiftSuffixesSpatial    = false;
-    mStaticParams.spatialReusePasses      = 0;
-    mStaticParams.shiftLightPathsToPixelCenters = false;
+    // [strip-ReSTIR task #21] re-pin block removed — ReSTIR fields no
+    // longer exist on StaticParams; nothing to re-pin.
 
     validateOptions();
 
@@ -109,11 +102,8 @@ void BDPT::setProperties(const Properties& props)
     // -path-tracer-only pass; ReSTIR layers belong to ReSTIRBDPTPass. Note:
     // useBPT is intentionally NOT re-pinned, so callers can opt into PT-only
     // mode (useBPT=False) for decomposition tests and PT-comparison validation.
-    mStaticParams.useResampling         = false;
-    mStaticParams.useTemporalReuse      = false;
-    mStaticParams.useCausticReservoirs  = false;
-    mStaticParams.useCausticShift       = false;
-    mStaticParams.spatialReusePasses    = 0;
+    // [strip-ReSTIR task #21] re-pin block removed — ReSTIR fields no
+    // longer exist on StaticParams.
     validateOptions();
     if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
         lightBVHSampler->setOptions(mLightBVHOptions);
@@ -136,21 +126,16 @@ void BDPT::parseProperties(const Properties& props)
         else if (key == kNumLightSubpaths) mParams.mLightSubpathCount = value;
         else if (key == kMISPowerExponent) mStaticParams.misPowerExponent = value;
         else if (key == kEmissiveSampler) mStaticParams.emissiveSampler = value;
-        else if (key == kUseResampling) mStaticParams.useResampling = value;
         else if (key == kNumInitialCandidates) mParams.mCanonicalSpp = value;
-        else if (key == kUseTemporalResampling) mStaticParams.useTemporalReuse = value;
-        else if (key == kUnbiasedTemporalReuse) mStaticParams.unbiasedTemporalReuse = value;
-        else if (key == kSpatialPasses) mStaticParams.spatialReusePasses = value;
-        else if (key == kSpatialCandidates) mParams.mSpatialReuseSamples = value;
         else if (key == kMCap) mParams.mMCap = value;
-        else if (key == kUseCausticReservoirs) mStaticParams.useCausticReservoirs = value;
-        else if (key == kUseSuffixShift) mStaticParams.shiftSuffixes = value;
-        else if (key == kUseCausticShift) mStaticParams.useCausticShift = value;
-        else if (key == kUseReconnectionMis) mStaticParams.reconnectionMIS = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kDisableVC) mStaticParams.disableVC = value;
         else if (key == kRoughnessThreshold) mParams.mReconnectionRoughness = value;
-        else if (key == kSpatialRadius) mParams.mSpatialReuseRadius = value;
+        // [strip-ReSTIR task #21] removed parse branches for useResampling,
+        // useTemporalResampling, unbiasedTemporalReuse, spatialPasses,
+        // spatialCandidates, useCausticReservoirs, useSuffixShift,
+        // useCausticShift, useReconnectionMis, spatialRadius — those
+        // properties belong to ReSTIRBDPTPass.
 
         else logWarning("Unknown property '{}' in BDPT properties.", key);
     }
@@ -173,16 +158,8 @@ void BDPT::validateOptions()
         mStaticParams.emissiveSampler = EmissiveLightSamplerType::Power;
     }
 
-    if (!mStaticParams.useResampling)
-    {
-        mStaticParams.useTemporalReuse = false;
-        mStaticParams.spatialReusePasses = 0;
-    }
-
-    if (!mStaticParams.useBPT || mStaticParams.disableCameraConnection) {
-        mStaticParams.useCausticReservoirs = false;
-        mStaticParams.useCausticShift = false;
-    }
+    // [strip-ReSTIR task #21] resampling/caustic validators removed —
+    // those fields no longer exist on StaticParams.
 }
 
 Properties BDPT::getProperties() const
@@ -206,20 +183,11 @@ Properties BDPT::getProperties() const
     props[kMISPowerExponent] = mStaticParams.misPowerExponent;
     props[kEmissiveSampler] = mStaticParams.emissiveSampler;
     if (mStaticParams.emissiveSampler == EmissiveLightSamplerType::LightBVH) props[kLightBVHOptions] = mLightBVHOptions;
-    props[kUseResampling] = mStaticParams.useResampling;
     props[kNumInitialCandidates] = mParams.mCanonicalSpp;
-    props[kUseTemporalResampling] = mStaticParams.useTemporalReuse;
-    props[kUnbiasedTemporalReuse] = mStaticParams.unbiasedTemporalReuse;
-    props[kSpatialPasses] = mStaticParams.spatialReusePasses;
-    props[kSpatialCandidates] = mParams.mSpatialReuseSamples;
     props[kMCap] = mParams.mMCap;
-    props[kUseCausticReservoirs] = mStaticParams.useCausticReservoirs;
-    props[kUseSuffixShift] = mStaticParams.shiftSuffixes;
-    props[kUseCausticShift] = mStaticParams.useCausticShift;
-    props[kUseReconnectionMis] = mStaticParams.reconnectionMIS;
     props[kDisableVC] = mStaticParams.disableVC;
     props[kRoughnessThreshold] = mParams.mReconnectionRoughness;
-    props[kSpatialRadius] = mParams.mSpatialReuseRadius;
+    // [strip-ReSTIR task #21] removed ReSTIR-related properties.
 
     return props;
 }
@@ -325,7 +293,7 @@ void BDPT::execute(RenderContext* pRenderContext, const RenderData& renderData)
     {
         FALCOR_ASSERT(mpCopyRadiancePass);
         preparePass(pRenderContext, renderData, *mpCopyRadiancePass);
-        mpCopyRadiancePass->addDefine("DEBUG_CAUSTIC_RESERVOIRS", mStaticParams.useCausticReservoirs ? std::to_string(mStaticParams.debugCausticReservoirs) : "0");
+        mpCopyRadiancePass->addDefine("DEBUG_CAUSTIC_RESERVOIRS", "0");  // [strip-ReSTIR task #21] never debugs caustics
         mpCopyRadiancePass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
     }
 
@@ -353,7 +321,7 @@ void BDPT::renderUI(Gui::Widgets& widget)
             totalSize += lvcSize;
             widget.text("LVC: " + std::to_string(lvcSize/1024));
             widget.text("stride: " + std::to_string(mpLightVertices->getStructSize()));
-            if (!mStaticParams.useResampling && mpLightImage)
+            if (mpLightImage)
                 totalSize += mpLightImage->getSize();
         }
 
@@ -442,7 +410,7 @@ bool BDPT::renderRenderingUI(Gui::Widgets& widget)
             group.tooltip("Use next-event estimation.\nThis option enables direct illumination sampling at each path vertex.");
         }
 
-        if (mStaticParams.useNEE || mStaticParams.useBPT || mStaticParams.useTemporalReuse || mStaticParams.spatialReusePasses > 0) {
+        if (mStaticParams.useNEE || mStaticParams.useBPT) {
             runtimeDirty |= group.var("Connection roughness threshold", mParams.mReconnectionRoughness, 0.f, 1.f);
             group.tooltip("Minimum roughness for considering connection techniques\nBPT/NEE/VM is only performed on vertices rougher than this.");
         }
@@ -469,81 +437,10 @@ bool BDPT::renderRenderingUI(Gui::Widgets& widget)
 
     }
 
-    if (auto group = widget.group("Resampling options", true)) {
-        dirty |= widget.checkbox("Enable resampling", mStaticParams.useResampling);
-        widget.tooltip("Enables the use of reservoirs.\nWhen disabled, samples are simply added into the\nframebuffer directly");
-
-        if (mStaticParams.useResampling)
-        {
-            if (mStaticParams.useBPT && !mStaticParams.disableCameraConnection) {
-                dirty |= group.checkbox("Shift light paths to pixel centers", mStaticParams.shiftLightPathsToPixelCenters);
-                group.tooltip("Shift non-caustic light subpaths\nto vbuffer vertices during canonical sampling.\nThis can improve temporal reuse");
-            }
-
-            if (mStaticParams.useBPT && !mStaticParams.disableCameraConnection) {
-                dirty |= group.checkbox("Caustic reservoirs", mStaticParams.useCausticReservoirs);
-                group.tooltip("Use caustic reservoirs", true);
-            }
-
-            dirty |= group.checkbox("Reconnection MIS", mStaticParams.reconnectionMIS);
-            group.tooltip("Recompute MIS weights during reconnection.", true);
-
-            group.separator();
-
-            dirty |= group.checkbox("Temporal resampling", mStaticParams.useTemporalReuse);
-            if (mStaticParams.useTemporalReuse)
-            {
-                if (group.button("Reset", true)) mResetTemporalHistory = true;
-
-                dirty |= group.checkbox("Unbiased temporal reuse", mStaticParams.unbiasedTemporalReuse);
-                group.tooltip("Shift paths to the previous frame during temporal reuse.", true);
-
-                dirty |= group.checkbox("Shift path suffixes", mStaticParams.shiftSuffixes);
-                group.tooltip("Retrace whole paths during temporal\nresampling, instead of just the prefix.", true);
-
-                if (mStaticParams.useBPT && !mStaticParams.disableCameraConnection) {
-                    dirty |= group.checkbox("Caustic shift", mStaticParams.useCausticShift);
-                    group.tooltip("Allow caustic light paths to contribute to any\npixel during temporal resampling.", true);
-                }
-            }
-
-            group.separator();
-
-            const uint prevSpatialPasses = mStaticParams.spatialReusePasses;
-            if (group.var("Spatial passes", mStaticParams.spatialReusePasses, 0u, 32u))
-            {
-                if (prevSpatialPasses == 0 && mStaticParams.spatialReusePasses > 0)
-                    dirty = true;
-                else
-                    runtimeDirty = true;
-            }
-            if (mStaticParams.spatialReusePasses > 0)
-            {
-                dirty |= group.dropdown("Spatial RMIS", mStaticParams.spatialRMIS);
-                group.tooltip("Resampling MIS algorithm for spatial reuse.", true);
-                runtimeDirty |= group.var("Spatial candidates", mParams.mSpatialReuseSamples, 1u, 32u);
-                group.tooltip("Number of neighbor pixels to merge with.", true);
-                runtimeDirty |= group.var("Spatial radius", mParams.mSpatialReuseRadius, 1.f);
-                group.tooltip("Spatial reuse radius, in pixels.", true);
-                dirty |= group.checkbox("Shift path suffixes ", mStaticParams.shiftSuffixesSpatial);
-                group.tooltip("Retrace whole paths during spatial\nresampling, instead of just the prefix.", true);
-            }
-
-            group.separator();
-
-            if (mStaticParams.useTemporalReuse || mStaticParams.spatialReusePasses > 0)
-            {
-                runtimeDirty |= group.var("M cap", mParams.mMCap, 0u);
-                group.tooltip("Maximum M value for reservoirs.", true);
-                runtimeDirty |= group.var("Min reconnection distance", mParams.mReconnectionDistance, 0.f, 100.f);
-                if (mStaticParams.useBPT) {
-                    runtimeDirty |= group.var("Caustic reuse radius", mParams.mCausticReuseRadius, 0.f, 10.f);
-                    group.tooltip("Radius in pixels for which caustic paths are allowed to be reused.", true);
-                }
-                group.separator();
-            }
-        }
-    }
+    // [strip-ReSTIR task #21] Removed entire 'Resampling options' UI group.
+    // ReSTIR knobs (resampling toggle, caustic reservoirs/shift, temporal
+    // and spatial reuse, RMIS, M cap, reconnection distance, caustic reuse
+    // radius, shift-suffixes) live in ReSTIRBDPTPass's UI.
 
     if (dirty) mRecompile = true;
     return dirty || runtimeDirty;
@@ -585,29 +482,12 @@ bool BDPT::renderDebugUI(Gui::Widgets& widget)
             group.tooltip("Trace 1 light subpath per pixel, connecting\ncamera subpath vertices to the whole light subpath.", true);
         }
 
-        if (mStaticParams.useResampling) {
-            recompile |= group.checkbox("Disable early reconnection", mStaticParams.disableEarlyReconnection);
-            group.tooltip("Disable reconnection before the light subpath.", true);
-
-            if (mStaticParams.useCausticReservoirs)
-            {
-                group.text("Show:");
-                static const Gui::RadioButtonGroup buttons = {
-                    { 0, "All", true },
-                    { 1, "Caustic", true },
-                    { 2, "Non-caustic", true },
-                };
-                group.radioButtons(buttons, mStaticParams.debugCausticReservoirs);
-            }
-        }
+        // [strip-ReSTIR task #21] removed early-reconnection toggle +
+        // caustic-reservoir debug radio buttons + freeze-history (all
+        // ReSTIR-layer UI).
 
         dirty |= group.checkbox("Fix seed per-frame", mUsePerFrameSeed);
         group.tooltip("Calculate the random seed from the frame index.");
-
-        if (mStaticParams.useTemporalReuse)
-        {
-            group.checkbox("Freeze history", mFreezeHistory);
-        }
 
         recompile |= group.checkbox("Debug BPT", mStaticParams.debugBPT);
         if (mStaticParams.debugBPT)
@@ -802,13 +682,12 @@ void BDPT::prepareResources(RenderContext* pRenderContext, const RenderData& ren
             mVarsChanged = true;
         }
 
-        if (!mStaticParams.useResampling)
+        // [strip-ReSTIR task #21] always create mpLightImage (atomic-add
+        // buffer for BPT light-trace contribution).
+        if (!mpLightImage || mpLightImage->getSize() != sizeof(float3) * screenPixelCount || mVarsChanged)
         {
-            if (!mpLightImage || mpLightImage->getSize() != sizeof(float3) * screenPixelCount || mVarsChanged)
-            {
-                mpLightImage = mpDevice->createBuffer(sizeof(float3) * screenPixelCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
-                mVarsChanged = true;
-            }
+            mpLightImage = mpDevice->createBuffer(sizeof(float3) * screenPixelCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
+            mVarsChanged = true;
         }
     }
 
@@ -977,12 +856,8 @@ void BDPT::bindShaderData(const ShaderVar& var, const RenderData& renderData) co
         if (!pViewDir) logWarning("Depth-of-field requires the '{}' input. Expect incorrect rendering.", kInputViewDir);
     }
 
-    ref<Texture> pMotionVecs;
-    if (mStaticParams.useTemporalReuse)
-    {
-        pMotionVecs = renderData.getTexture(kInputMotionVectors);
-        if (!pMotionVecs) logWarning("Temporal reuse requires the '{}' input. Expect incorrect rendering.", kInputMotionVectors);
-    }
+    // [strip-ReSTIR task #21] motion-vectors input lookup removed (no
+    // temporal reuse in vanilla BDPT).
 
     var["mParams"].setBlob(mParams);
     var["mVbuffer"] = renderData.getTexture(kInputVBuffer);
@@ -1142,21 +1017,25 @@ DefineList BDPT::StaticParams::getDefines(const BDPT& owner) const
     defines.add("USE_BIDIRECTIONAL", useBPT ? "1" : "0");
     defines.add("LIGHT_TRACE_ONLY", (useBPT && lightTraceOnly) ? "1" : "0");
     defines.add("DISABLE_CAMERA_CONNECTION", (useBPT && disableCameraConnection) ? "1" : "0");
-    defines.add("USE_RESAMPLING", (useResampling || useTemporalReuse || spatialReusePasses > 0) ? "1" : "0");
-    defines.add("USE_RECONNECTION_MIS", (useResampling && reconnectionMIS) ? "1" : "0");
-    defines.add("SHIFT_LIGHT_PATHS_TO_CENTER", useResampling && useBPT && shiftLightPathsToPixelCenters ? "1" : "0");
-    defines.add("DISABLE_EARLY_RECONNECTION", useResampling && disableEarlyReconnection ? "1" : "0");
-    defines.add("USE_CAUSTIC_RESERVOIRS", useResampling && useBPT && useCausticReservoirs ? "1" : "0");
     defines.add("DISABLE_VC", useBPT && disableVC ? "1" : "0");
     defines.add("DISABLE_LVC", useBPT && disableLVC ? "1" : "0");
     defines.add("DEBUG_BPT", debugBPT ? "1" : "0");
     defines.add("DEBUG_HEATMAP", debugHeatmap ? "1" : "0");
-    defines.add("SHIFT_SUFFIXES", "0"); // placeholder
-    defines.add("USE_VIEW_DIR", "0"); // placeholder
-    defines.add("UNBIASED_TEMPORAL_REUSE", "0"); // placeholder
-    defines.add("USE_CAUSTIC_SHIFT", "0"); // placeholder
-    defines.add("SPATIAL_RMIS_TYPE", "0"); // placeholder
-    defines.add("DEBUG_CAUSTIC_RESERVOIRS", "0"); // placeholder
+    // [strip-ReSTIR task #21] ReSTIR-layer defines pinned to "0". The slang
+    // code paths gated by these are dead (the slang fields they referenced
+    // were removed) but the defines themselves are still referenced via
+    // `static const bool g... = USE_RESAMPLING;` etc in PathGenerator.slang.
+    defines.add("USE_RESAMPLING", "0");
+    defines.add("USE_RECONNECTION_MIS", "0");
+    defines.add("SHIFT_LIGHT_PATHS_TO_CENTER", "0");
+    defines.add("DISABLE_EARLY_RECONNECTION", "0");
+    defines.add("USE_CAUSTIC_RESERVOIRS", "0");
+    defines.add("SHIFT_SUFFIXES", "0");
+    defines.add("USE_VIEW_DIR", "0"); // placeholder, set by prepareVars
+    defines.add("UNBIASED_TEMPORAL_REUSE", "0");
+    defines.add("USE_CAUSTIC_SHIFT", "0");
+    defines.add("SPATIAL_RMIS_TYPE", "0");
+    defines.add("DEBUG_CAUSTIC_RESERVOIRS", "0");
 
     // Sampling utilities configuration.
     FALCOR_ASSERT(owner.mpSampleGenerator);

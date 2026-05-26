@@ -74,24 +74,17 @@ private:
         bool        useBPT = true;                    ///< Use bidirectional path tracing. Automatically enables NEE.
         bool        lightTraceOnly = false;
         bool        disableCameraConnection = false;
-        bool        disableEarlyReconnection = false;
-        bool        reconnectionMIS = true;
         bool        debugBPT = false;
-        uint        debugCausticReservoirs = 0;
         bool        debugHeatmap = false;
-        bool        useResampling = true;
-        bool        shiftLightPathsToPixelCenters = true;
         bool        disableVC = false;
-        bool        useCausticShift = true;
-        bool        useCausticReservoirs = true;
-        bool        useTemporalReuse = true;
-        bool        unbiasedTemporalReuse = true;
-        bool        shiftSuffixes = true;
-        bool        shiftSuffixesSpatial = false;
-        uint        spatialReusePasses = 1;
         bool        disableLVC = false;
-
-        RMISType spatialRMIS = RMISType::ePairwise;
+        // [strip-ReSTIR task #21] Removed ReSTIR-only fields:
+        //   useResampling, useTemporalReuse, unbiasedTemporalReuse,
+        //   useCausticReservoirs, useCausticShift, shiftSuffixes,
+        //   shiftSuffixesSpatial, spatialReusePasses, spatialRMIS,
+        //   shiftLightPathsToPixelCenters, debugCausticReservoirs,
+        //   disableEarlyReconnection, reconnectionMIS.
+        // Those live in ReSTIRBDPTPass::StaticParams.
 
         EmissiveLightSamplerType emissiveSampler = EmissiveLightSamplerType::Power;
 
