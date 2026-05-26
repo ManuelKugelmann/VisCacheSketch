@@ -1021,12 +1021,9 @@ DefineList BDPT::StaticParams::getDefines(const BDPT& owner) const
     defines.add("DISABLE_LVC", useBPT && disableLVC ? "1" : "0");
     defines.add("DEBUG_BPT", debugBPT ? "1" : "0");
     defines.add("DEBUG_HEATMAP", debugHeatmap ? "1" : "0");
-    // [strip-ReSTIR task #21] USE_RECONNECTION_MIS still referenced as
-    // #if-block guard in PathGenerator.slang + PathReservoir.slang.
-    // Pin to "0" so those blocks compile-out. Other ReSTIR defines
-    // (USE_RESAMPLING etc.) have all their slang references removed
-    // — no longer emitted.
-    defines.add("USE_RECONNECTION_MIS", "0");
+    // [strip-ReSTIR task #21] ReSTIR-layer defines fully removed; the
+    // #if USE_RECONNECTION_MIS blocks that previously needed pinning
+    // are also gone now.
     defines.add("USE_VIEW_DIR", "0"); // placeholder, set by prepareVars
 
     // Sampling utilities configuration.

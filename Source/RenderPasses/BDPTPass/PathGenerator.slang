@@ -868,9 +868,7 @@ extension PathGenerator {
         CachedVertexData lastVertex = {};
 
         RecursiveMisState mis = {};
-        #if USE_RECONNECTION_MIS
-        ReconnectionMisState rcvMis = {};
-        #endif
+        // [strip-ReSTIR task #21] removed #if USE_RECONNECTION_MIS rcvMis state.
 
         PackedPathVertex rcv = {};
         float3 throughputAtRcv = 0;
@@ -1100,15 +1098,8 @@ extension PathGenerator {
         // compute mis weight
         const float misWeight = s.mis.EvalDirectLightMIS(directPdfW, emissionPdfW, f, cosOut, cosLight);
         MisEvalData misEvalArgs = {};
-        #if USE_RECONNECTION_MIS
-        misEvalArgs.reconnectionMis = s.rcvMis;
-        misEvalArgs.directPdfW = directPdfW;
-        misEvalArgs.emissionPdfW = emissionPdfW;
-        misEvalArgs.cameraScatterFwdPdfW = f.mFwdPdfW;
-        misEvalArgs.cameraScatterRevPdfW = f.mRevPdfW;
-        misEvalArgs.cosCam = cosOut;
-        misEvalArgs.cosLight = cosLight;
-        #endif
+        // [strip-ReSTIR task #21] removed misEvalArgs population block —
+        // reconnection-MIS recompute lives in ReSTIRBDPTPass.
 
         float3 suffixContrib;
         float3 suffixDir;
@@ -1324,17 +1315,7 @@ extension PathGenerator {
 
         const float misWeight = s.mis.EvalVertexConnectionMIS(v.mis, r, f, cosCam, cosLight, invDist2);
         MisEvalData misEvalArgs = {};
-        #if USE_RECONNECTION_MIS
-        misEvalArgs.reconnectionMis = s.rcvMis;
-        misEvalArgs.lightSubpathMis = v.mis;
-        misEvalArgs.lightScatterFwdPdfW = r.mFwdPdfW;
-        misEvalArgs.lightScatterRevPdfW = r.mRevPdfW;
-        misEvalArgs.cameraScatterFwdPdfW = f.mFwdPdfW;
-        misEvalArgs.cameraScatterRevPdfW = f.mRevPdfW;
-        misEvalArgs.cosCam = cosCam;
-        misEvalArgs.cosLight = cosLight;
-        misEvalArgs.invDist2 = invDist2;
-        #endif
+        // [strip-ReSTIR task #21] removed reconnection-MIS misEvalArgs population.
 
         float3 suffixContrib;
         float3 suffixDir;
@@ -1439,10 +1420,7 @@ extension PathGenerator {
 
         const float misWeight = s.mis.EvalLightTraceMIS(f.mRevPdfW, cameraPdfA);
         MisEvalData misEvalArgs = {};
-        #if USE_RECONNECTION_MIS
-        misEvalArgs.reconnectionMis = s.rcvMis;
-        misEvalArgs.lightSubpathMis = caustic ? s.mis : s.lastVertex.mis;
-        #endif
+        // [strip-ReSTIR task #21] removed reconnection-MIS misEvalArgs population.
 
         /*{
             const uint2 cached = gPixelDebugPixel;
@@ -1527,13 +1505,7 @@ extension PathGenerator {
 
         float misWeight = s.mis.EvalCameraTraceMIS(s.lastVertex.scatterFwdPdfW, directPdfA, directPdfW, emissionPdfW);
         MisEvalData misEvalArgs = {};
-        #if USE_RECONNECTION_MIS
-        misEvalArgs.reconnectionMis = s.rcvMis;
-        misEvalArgs.cameraScatterFwdPdfW = s.lastVertex.scatterFwdPdfW;
-        misEvalArgs.directPdfA = directPdfA;
-        misEvalArgs.directPdfW = directPdfW;
-        misEvalArgs.emissionPdfW = emissionPdfW;
-        #endif
+        // [strip-ReSTIR task #21] removed reconnection-MIS misEvalArgs population.
 
         PathSuffix suffix = {};
         const bool hasRcv = s.rcvFound;
