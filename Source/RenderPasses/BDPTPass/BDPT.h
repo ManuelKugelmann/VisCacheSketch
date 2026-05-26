@@ -136,25 +136,10 @@ private:
     ref<ComputePass>                mpReflectTypes;              ///< Helper for reflecting structured buffer types.
     ref<ComputePass>                mpSampleCameraPathsPass;     ///< Camera trace pass.
     ref<ComputePass>                mpSampleLightPathsPass;      ///< Light trace pass.
-    ref<ComputePass>                mpTemporalReusePass;         ///< Temporal reservoir reuse pass.
-    ref<ComputePass>                mpTemporalShiftPass;         ///< Temporal shift pass.
-    ref<ComputePass>                mpSpatialReusePass;          ///< Spatial reservoir reuse pass.
-    ref<ComputePass>                mpShiftCausticsPass;         ///< Shift caustic reservoirs pass.
-    ref<ComputePass>                mpLightReservoirResolvePass; ///< Fullscreen compute pass merging light traced reservoirs within each pixel.
-    ref<ComputePass>                mpCopyRadiancePass;          ///< Fullscreen compute pass writing reservoir samples to the output buffer.
-
-    std::unique_ptr<GPUHashMap>     mpLightReservoirs;
-    std::unique_ptr<GPUHashMap>     mpCausticReservoirMap;
+    ref<ComputePass>                mpCopyRadiancePass;          ///< Fullscreen compute pass writing camera-trace reservoir + light-trace atomic image to output.
 
     ref<Buffer>                     mpLightImage;                ///< Light trace image. Light subpath contributions are atomically added to this.
     ref<Buffer>                     mpLightVertices;             ///< Light sub-path vertices.
     ref<Buffer>                     mpLightVertexCount;          ///< Light vertex counter.
-    ref<Buffer>                     mpReservoirs[2];             ///< Per-pixel reservoirs.
-    ref<Buffer>                     mpLastReservoirs;            ///< Per-pixel reservoirs.
-    ref<Buffer>                     mpCausticReservoirs;         ///< Per-pixel reservoirs.
-    ref<Buffer>                     mpLastCausticReservoirs;     ///< Per-pixel reservoirs.
-    ref<Buffer>                     mpPixelCounterData;
-
-    ref<Texture>                    mpLastVbuffer;               ///< Copy of the vbuffer from last frame.
-    ref<Texture>                    mpLastViewDir;               ///< Copy of the view directions from last frame.
+    ref<Buffer>                     mpPixelCounterData;          ///< Debug-heatmap counter.
 };

@@ -101,9 +101,6 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
     // Note: The other programs are lazily created in updatePrograms() because a scene needs to be present when creating them.
 
     mpPixelDebug = std::make_unique<PixelDebug>(mpDevice, 1000);
-
-    mpLightReservoirs = std::make_unique<GPUHashMap>(mpDevice);
-    mpCausticReservoirMap = std::make_unique<GPUHashMap>(mpDevice);
 }
 
 void BDPT::setProperties(const Properties& props)
@@ -285,17 +282,8 @@ void BDPT::execute(RenderContext* pRenderContext, const RenderData& renderData)
         if (mStaticParams.useBPT)
         {
             pRenderContext->clearUAV(mpLightVertexCount->getUAV().get(), uint4(0));
-
-            if (mStaticParams.useResampling)
-            {
-                mpLightReservoirs->clear(pRenderContext);
-                if (mStaticParams.useCausticShift)
-                    mpCausticReservoirMap->clear(pRenderContext);
-            }
-            else
-            {
-                pRenderContext->clearUAV(mpLightImage->getUAV().get(), float4(0.f));
-            }
+            // Light-trace atomic-add output buffer.
+            pRenderContext->clearUAV(mpLightImage->getUAV().get(), float4(0.f));
         }
 
         if (mStaticParams.debugHeatmap)
@@ -357,43 +345,7 @@ void BDPT::renderUI(Gui::Widgets& widget)
 
     if (widget.group("Resource Usage (kb)")) {
         size_t totalSize = 0;
-        if (mStaticParams.useResampling && mpReservoirs[0])
-        {
-            size_t reservoirsSize = 0;
-            reservoirsSize += mpReservoirs[0]->getSize();
-            reservoirsSize += mpReservoirs[1]->getSize();
-            if (mpLastReservoirs) reservoirsSize += mpLastReservoirs->getSize();
-            totalSize += reservoirsSize;
-            widget.text("Reservoirs: " + std::to_string(reservoirsSize/1024));
-            widget.text("stride: " + std::to_string(mpReservoirs[0]->getStructSize()));
-
-            if (mStaticParams.useBPT)
-            {
-                size_t lrmSize = mpLightReservoirs->getTotalSize();
-                totalSize += lrmSize;
-                widget.text("LRM: " + std::to_string(lrmSize/1024));
-
-                if (mStaticParams.useCausticReservoirs)
-                {
-                    size_t crmSize = mpCausticReservoirMap->getTotalSize();
-                    totalSize += crmSize;
-                    widget.text("CRM: " + std::to_string(crmSize/1024));
-                }
-            }
-
-            if (mStaticParams.useTemporalReuse)
-            {
-                if (mStaticParams.useBPT && mStaticParams.useCausticReservoirs && mpCausticReservoirs)
-                {
-                    size_t causticReservoirsSize = 0;
-                    causticReservoirsSize += mpCausticReservoirs->getSize();
-                    causticReservoirsSize += mpLastCausticReservoirs->getSize();
-                    totalSize += causticReservoirsSize;
-                    widget.text("Caustic reservoirs: " + std::to_string(causticReservoirsSize/1024));
-                }
-            }
-        }
-
+        // [strip-ReSTIR task #21] reservoir/caustic usage display removed
         if (mStaticParams.useBPT && mpLightVertices)
         {
             size_t lvcSize = 0;
@@ -747,11 +699,6 @@ void BDPT::resetPrograms()
     mpReflectTypes = nullptr;
     mpSampleCameraPathsPass = nullptr;
     mpSampleLightPathsPass = nullptr;
-    mpLightReservoirResolvePass = nullptr;
-    mpSpatialReusePass = nullptr;
-    mpTemporalReusePass = nullptr;
-    mpTemporalShiftPass = nullptr;
-    mpShiftCausticsPass = nullptr;
     mpCopyRadiancePass = nullptr;
 
     mRecompile = true;
@@ -803,61 +750,11 @@ void BDPT::updatePrograms()
             mpSampleLightPathsPass = ComputePass::create(mpDevice, desc, defines, false);
         }
         preparePass(mpSampleLightPathsPass);
-
-        if (mStaticParams.useResampling)
-        {
-            if (!mpLightReservoirResolvePass)
-            {
-                ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kBDPTPassFilename).csEntry("ResolveLightTraceReservoirs");
-                mpLightReservoirResolvePass = ComputePass::create(mpDevice, desc, defines, false);
-            }
-            preparePass(mpLightReservoirResolvePass);
-        }
     }
 
-    if (mStaticParams.useTemporalReuse)
-    {
-        if (!mpTemporalReusePass)
-        {
-            ProgramDesc desc = baseDesc;
-            desc.addShaderLibrary(kTemporalReusePassFilename).csEntry("main");
-            mpTemporalReusePass = ComputePass::create(mpDevice, desc, defines, false);
-        }
-        preparePass(mpTemporalReusePass);
-
-        if (mStaticParams.unbiasedTemporalReuse) {
-            if (!mpTemporalShiftPass)
-            {
-                ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kTemporalReusePassFilename).csEntry("ShiftToPrevFrame");
-                mpTemporalShiftPass = ComputePass::create(mpDevice, desc, defines, false);
-            }
-            preparePass(mpTemporalShiftPass);
-        }
-
-        if (mStaticParams.useCausticShift)
-        {
-            if (!mpShiftCausticsPass)
-            {
-                ProgramDesc desc = baseDesc;
-                desc.addShaderLibrary(kTemporalReusePassFilename).csEntry("ShiftCaustics");
-                mpShiftCausticsPass = ComputePass::create(mpDevice, desc, defines, false);
-            }
-            preparePass(mpShiftCausticsPass);
-        }
-    }
-
-    if (mStaticParams.spatialReusePasses > 0)
-    {
-        if (!mpSpatialReusePass)
-        {
-            ProgramDesc desc = baseDesc;
-            desc.addShaderLibrary(kSpatialReusePassFilename).csEntry("main");
-            mpSpatialReusePass = ComputePass::create(mpDevice, desc, defines, false);
-        }
-        preparePass(mpSpatialReusePass);
-    }
+    // [strip-ReSTIR task #21] Removed mp{LightReservoirResolve,TemporalReuse,
+    // TemporalShift,ShiftCaustics,SpatialReuse}Pass creation — these are
+    // ReSTIR-layer passes that belong in ReSTIRBDPTPass.
 
     if (!mpCopyRadiancePass)
     {
@@ -889,64 +786,9 @@ void BDPT::prepareResources(RenderContext* pRenderContext, const RenderData& ren
 
     uint reservoirSize = var["gPathGenerator"]["mPathReservoirs0"].getType()->unwrapArray()->asResourceType()->getSize();
 
-    if (mStaticParams.useResampling)
-    {
-        if (!mpReservoirs[0] || mpReservoirs[0]->getElementCount() != screenPixelCount || mpReservoirs[0]->getStructSize() != reservoirSize)
-        {
-            mpReservoirs[0]  = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
-            mpReservoirs[1]  = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
-            mpLastReservoirs = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
-            mVarsChanged = true;
-        }
-
-        if (mStaticParams.useBPT)
-        {
-            if (mpLightReservoirs->prepareResources(var["gPathGenerator"]["mLightTraceReservoirs"], screenPixelCount, maxLightVertices))
-            {
-                mVarsChanged = true;
-            }
-            if (mStaticParams.useCausticShift) {
-                if (mpCausticReservoirMap->prepareResources(var["gPathGenerator"]["mCausticReservoirMap"], screenPixelCount, screenPixelCount))
-                {
-                    mVarsChanged = true;
-                }
-            }
-        }
-
-        if (mStaticParams.useBPT && mStaticParams.useCausticReservoirs) {
-            if (!mpCausticReservoirs || mpCausticReservoirs->getElementCount() != screenPixelCount || mpCausticReservoirs->getStructSize() != reservoirSize)
-            {
-                mpCausticReservoirs = mpDevice->createStructuredBuffer(reservoirSize, screenPixelCount);
-                mVarsChanged = true;
-            }
-        }
-
-        if (mStaticParams.useTemporalReuse)
-        {
-            if (mStaticParams.useBPT && mStaticParams.useCausticReservoirs) {
-                if (!mpLastCausticReservoirs || mpLastCausticReservoirs->getElementCount() != screenPixelCount)
-                {
-                    mpLastCausticReservoirs = mpDevice->createStructuredBuffer(var["gPathGenerator"]["mLastCausticReservoirs"], screenPixelCount, ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess);
-                    mVarsChanged = true;
-                }
-            }
-
-            if (!mpLastVbuffer || mpLastVbuffer->getWidth() != mParams.mOutputDim.x || mpLastVbuffer->getHeight() != mParams.mOutputDim.y)
-            {
-                mpLastVbuffer  = mpDevice->createTexture2D(mParams.mOutputDim.x, mParams.mOutputDim.y, mpScene->getHitInfo().getFormat(), 1, 1);
-                mVarsChanged = true;
-            }
-            if (mpScene->getCamera()->getApertureRadius() > 0.f)
-            {
-                if (!mpLastViewDir || mpLastViewDir->getWidth() != mParams.mOutputDim.x || mpLastViewDir->getHeight() != mParams.mOutputDim.y)
-                {
-                    const auto& pViewDir = renderData.getTexture(kInputViewDir);
-                    mpLastViewDir = mpDevice->createTexture2D(mParams.mOutputDim.x, mParams.mOutputDim.y, pViewDir->getFormat(), 1, 1);
-                    mVarsChanged = true;
-                }
-            }
-        }
-    }
+    // [strip-ReSTIR task #21] removed reservoir/temporal/caustic resource
+    // creation — only mpLightVertices+mpLightImage+mpLightVertexCount needed
+    // for BPT. ReSTIR layer lives in ReSTIRBDPTPass.
 
     if (mStaticParams.useBPT)
     {
@@ -1120,14 +962,11 @@ void BDPT::bindShaderData(const ShaderVar& var, const RenderData& renderData) co
 
         var["mOutputCounterData"] = mpPixelCounterData;
 
-        var["mPathReservoirs0"] = mpReservoirs[0];
-        var["mPathReservoirs1"] = mpReservoirs[1];
-        var["mLastReservoirs"]  = mpLastReservoirs;
-        var["mCausticReservoirs"]  = mpCausticReservoirs;
-        var["mLastCausticReservoirs"]  = mpLastCausticReservoirs;
+        // [strip-ReSTIR task #21] removed bindings for mPathReservoirs0/1,
+        // mLastReservoirs, mCausticReservoirs, mLastCausticReservoirs,
+        // mLightTraceReservoirs, mCausticReservoirMap — ReSTIR layer is
+        // in ReSTIRBDPTPass. Slang field defs to be removed in step 6.
 
-        mpLightReservoirs->bindShaderData(var["mLightTraceReservoirs"]);
-        mpCausticReservoirMap->bindShaderData(var["mCausticReservoirMap"]);
         mpSampleGenerator->bindShaderData(var);
     }
 
@@ -1151,9 +990,8 @@ void BDPT::bindShaderData(const ShaderVar& var, const RenderData& renderData) co
     var["mParams"].setBlob(mParams);
     var["mVbuffer"] = renderData.getTexture(kInputVBuffer);
     var["mViewDir"] = pViewDir; // Can be nullptr
-    var["mLastVbuffer"] = mpLastVbuffer;
-    var["mLastViewDir"] = mpLastViewDir;
-    var["mMotionVectors"] = pMotionVecs; // Required for temporal reuse
+    // [strip-ReSTIR task #21] removed mLastVbuffer, mLastViewDir, mMotionVectors
+    // bindings — temporal reuse is in ReSTIRBDPTPass.
     var["mOutputRadiance"] = renderData.getTexture(kOutputColor);
 }
 
@@ -1242,10 +1080,8 @@ bool BDPT::beginFrame(RenderContext* pRenderContext, const RenderData& renderDat
     } else if (mUsePerFrameSeed) {
         uint seedsPerFrame = mParams.mCanonicalSpp;
         if (mStaticParams.useBPT) seedsPerFrame++; // light subpaths
-        if (mStaticParams.useBPT && mStaticParams.useResampling) seedsPerFrame++; // light trace reservoir resample
-        if (mStaticParams.useTemporalReuse) seedsPerFrame++; // temporal resample
-        seedsPerFrame += mStaticParams.spatialReusePasses*2; // spatial reuse pattern + resample
-
+        // [strip-ReSTIR task #21] removed per-frame seeds for reservoir
+        // resample / temporal reuse / spatial reuse — those live in ReSTIRBDPTPass.
         mCurrentSeed = mFrameCount * seedsPerFrame;
     } else {
         mCurrentSeed = (uint)std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -1259,39 +1095,8 @@ bool BDPT::beginFrame(RenderContext* pRenderContext, const RenderData& renderDat
 
 void BDPT::endFrame(RenderContext* pRenderContext, const RenderData& renderData)
 {
-    // Copy pixel stats to outputs if available.
-    if (mStaticParams.useTemporalReuse && !mFreezeHistory)
-    {
-        auto copyTexture = [pRenderContext](Texture* pDst, const Texture* pSrc)
-        {
-            if (pDst && pSrc)
-            {
-                FALCOR_ASSERT(pDst && pSrc);
-                FALCOR_ASSERT(pDst->getFormat() == pSrc->getFormat());
-                FALCOR_ASSERT(pDst->getWidth() == pSrc->getWidth() && pDst->getHeight() == pSrc->getHeight());
-                pRenderContext->copyResource(pDst, pSrc);
-            }
-            else if (pDst)
-            {
-                pRenderContext->clearUAV(pDst->getUAV().get(), uint4(0, 0, 0, 0));
-            }
-        };
-
-        copyTexture( mpLastVbuffer.get(), renderData.getTexture(kInputVBuffer).get() );
-        copyTexture( mpLastViewDir.get(), renderData.getTexture(kInputViewDir).get() );
-
-        if (mStaticParams.unbiasedTemporalReuse && mpTemporalShiftPass) {
-            preparePass(pRenderContext, renderData, *mpTemporalShiftPass);
-            mpTemporalShiftPass->getProgram()->addDefines(mStaticParams.getDefines(*this));
-            mpTemporalShiftPass->addDefine("UNBIASED_TEMPORAL_REUSE", mStaticParams.unbiasedTemporalReuse ? "1" : "0");
-            mpTemporalShiftPass->addDefine("SHIFT_SUFFIXES", mStaticParams.shiftSuffixes ? "1" : "0");
-            mpTemporalShiftPass->addDefine("USE_CAUSTIC_SHIFT", mStaticParams.useCausticShift ? "1" : "0");
-        }
-
-        pRenderContext->copyResource(mpLastReservoirs.get(), mSwapReservoirs ? mpReservoirs[1].get() : mpReservoirs[0].get());
-        if (mStaticParams.useBPT && mStaticParams.useCausticReservoirs)
-            pRenderContext->copyResource(mpLastCausticReservoirs.get(), mpCausticReservoirs.get());
-    }
+    // [strip-ReSTIR task #21] removed temporal-reuse copy block (mpLast*
+    // resources + mpTemporal*Pass) — ReSTIR layer lives in ReSTIRBDPTPass.
 
     mpPixelDebug->endFrame(pRenderContext);
 
