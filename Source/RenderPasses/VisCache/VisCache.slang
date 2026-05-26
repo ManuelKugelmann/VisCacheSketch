@@ -193,7 +193,7 @@ cbuffer VisCacheParams
     uint   gFlags;           ///< Packed flags: 0=adaptivePMin 1=normalAddr
     // --- Per-dimension LOD cascade (N-invariant: cellSize(lvl)=coarse·step^lvl, floored at *Fine) ---
     float  gPosACoarse;      ///< posA coarsest cell size (world units, auto-tuned from scene)
-    float  gPosAFine;        ///< posA finest-cell FLOOR (hard clamp; NOT level-(N-1) value — see vhfSize)
+    float  gPosAFine;        ///< posA cell-size SAFEGUARD floor (float32 quantization limit ≈ extent/2^22; NOT a refinement budget — numLevels sets fineness)
     float  gPosBCoarse;      ///< posB coarsest cell size (world units, pos×pos modes)
     float  gPosBFine;        ///< posB finest cell size (auto-derived)
     float  gDirBCoarse;      ///< direction coarsest cell size (degrees, dirdist mode)
@@ -1016,6 +1016,17 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
         uint diversityReq = uint(gBootThresholdFactorFootprintPx * log2(max(float(cellPx), 1.f)));
         uint footprintReq = max(ctLvl, diversityReq);
         uint required = uint(float(footprintReq) * (1.f + var * 4.f));
+
+        // Per-bounce maturity relaxation: divide the required-sample count by
+        // (1 + effectiveBounceDepth × 0.5) so deep-bounce queries trust cells
+        // earlier. Floor steps from 2 at shallow bounces to 1 at very deep
+        // bounces (effectiveBounceDepth ≥ 10 ≈ all-diffuse bounce ≥ 5) where
+        // throughput attenuation makes single-observation bias acceptable.
+        // Per user 2026-05-27: "can relax i at deeper bounces, but never < 2
+        // — or is 1 good enough in very deep bounces?"
+        float maturityRelax = 1.f + effectiveBounceDepth * 0.5f;
+        uint  matFloor      = (effectiveBounceDepth >= 10.f) ? 1u : 2u;
+        required = max(matFloor, uint(float(required) / maturityRelax));
 
         // Too sparse: don't trust this level, and finer levels will be sparser
         // still — break and keep `best` from the last mature level (if any).
