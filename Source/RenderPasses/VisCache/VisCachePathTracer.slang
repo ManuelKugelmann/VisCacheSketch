@@ -32,20 +32,44 @@ SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
 // VC_RAY_SITE_RECONNECT for PT reconnection-shift V tests.
 float vcVisibility_Ray<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
-    float3 normalA = float3(0.f), uint callSite = 0u)
+    float3 normalA = float3(0.f), uint callSite = 0u,
+    float contribLuminance = 0.f)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
-    // PROPOSAL site: candidate selection — pure cached mu, no trace, no
-    // correction. Bias is absorbed by the K-RIS unbiasing structure as long
-    // as a base probability stays positive for every candidate. Per user
-    // 2026-05-26: "candidate selection can use a very relaxed quality and
-    // no correction at all".
+    // PROPOSAL site: candidate selection — mostly cached mu, no CV+RRR.
+    // But trace a FEW defensive rays for high-contribution candidates whose
+    // cached mu is questionable (high var × low maturity). Probability is
+    // ∝ doubtfulness × contribLuminance × scale, capped at a small max so
+    // average proposal-trace rate stays low. Per user 2026-05-26:
+    // "add a few proposal rays - but very few, for the most questionable
+    // candidates with high potential contribution".
     if (callSite == 2u /* VC_RAY_SITE_PROPOSAL */)
     {
+        SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
         VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+        // doubtfulness ∈ [0,1]: cached mu near 0.5 (high var) + few samples
+        // → high doubt. Mature low-var cells trust without trace.
+        float maturityFrac = r.valid ? saturate(float(r.N) / max(float(gBootThreshold), 1.f)) : 0.f;
+        float doubtfulness = r.var * (1.f - 0.5f * maturityFrac);
+        // Trace prob: budget × doubtfulness × normalized contribution.
+        // gFireflyBudget reuses the firefly-aware-floor scale (no new knob).
+        // Hardcap 0.10 keeps proposal-trace rate ≤ 10% of calls.
+        float p_trace = saturate(doubtfulness * contribLuminance / max(gFireflyBudget, 1e-4f));
+        p_trace = min(p_trace, 0.10f);
+        if (sampleNext1D(vcSG) < p_trace)
+        {
+            SceneRayQuery<UseAlphaTest> sceneRayQuery;
+            float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
+            // Insert into cache so subsequent reads benefit from the trace.
+            vhfInsert(posA, posB, V, normalA);
 #ifdef VISCACHE_DIAGNOSTICS
-        vcDiagCountRay(pixel, false, callSite);  // never traced
+            vcDiagCountRay(pixel, true, callSite);
+#endif
+            return V;
+        }
+#ifdef VISCACHE_DIAGNOSTICS
+        vcDiagCountRay(pixel, false, callSite);
 #endif
         return r.mu;  // raw cached mean (0.5 fallback when no entry)
     }
@@ -79,20 +103,33 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
 #ifdef VISCACHE_DIAGNOSTICS
 float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
-    float3 normalA = float3(0.f), uint callSite = 0u)
+    float3 normalA = float3(0.f), uint callSite = 0u,
+    float contribLuminance = 0.f)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
-    // PROPOSAL site: see non-Diag variant. Diag wrapper mirrors the early-
-    // exit but still emits the diag-write so the per-pixel plate columns
-    // pick up "trusted, not traced" for these cells.
+    // PROPOSAL site: see non-Diag variant for the defensive-trace policy.
     if (callSite == 2u /* VC_RAY_SITE_PROPOSAL */)
     {
+        SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
         VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+        float maturityFrac = r.valid ? saturate(float(r.N) / max(float(gBootThreshold), 1.f)) : 0.f;
+        float doubtfulness = r.var * (1.f - 0.5f * maturityFrac);
+        float p_trace = saturate(doubtfulness * contribLuminance / max(gFireflyBudget, 1e-4f));
+        p_trace = min(p_trace, 0.10f);
         VHFGateResult g;
-        g.shouldTrace = false; g.visWeight = r.mu; g.mu = r.mu; g.invP = 0.f;
-        g.var = r.var; g.level = r.level; g.valid_data = r.valid;
+        g.mu = r.mu; g.var = r.var; g.level = r.level; g.valid_data = r.valid;
         g.N = r.N; g.probeSteps = r.probeSteps; g.qa = r.qa; g.qb = r.qb;
+        if (sampleNext1D(vcSG) < p_trace)
+        {
+            SceneRayQuery<UseAlphaTest> sceneRayQuery;
+            float V = sceneRayQuery.traceVisibilityRay(ray) ? 1.f : 0.f;
+            vhfInsert(posA, posB, V, normalA);
+            g.shouldTrace = true; g.visWeight = 0.f; g.invP = 1.f / max(p_trace, 1e-4f);
+            vcWriteDiag(pixel, g, true, V, posA, posB, callSite);
+            return V;
+        }
+        g.shouldTrace = false; g.visWeight = r.mu; g.invP = 0.f;
         vcWriteDiag(pixel, g, false, 0.f, posA, posB, callSite);
         return r.mu;
     }

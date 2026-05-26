@@ -827,10 +827,11 @@ int vhfFindSlot(uint addr0, uint fp, bool allowInsert, out uint probeSteps)
 // level), which tells the caller to trace unconditionally.
 // ---------------------------------------------------------------------------
 // callSite: VC_RAY_SITE_* tag from VisCacheDiagnostics.slang (default 0 = NEE).
-// Per-mode cell granularity experiment: REVAL site (callSite=1) walks COARSER
-// cells than NEE/PROPOSAL to amortize the diverse-(posA, posB) population a
-// reuse-revalidation query naturally sees. Defaults preserve existing behaviour.
-VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint callSite = 0u)
+// bounceDepth: PT path length at the call site (0 = primary hit / DI). Per-bounce
+// scaling: deeper bounces tolerate coarser cells / looser convergence — same
+// principle as per-mode (relaxed quality acceptable beyond primary visibility).
+// Defaults preserve existing behaviour at the primary bounce.
+VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint callSite = 0u, uint bounceDepth = 0u)
 {
     VHFResult best;
     best.mu    = 0.5f;   // Default: uncertain (max variance)
@@ -873,7 +874,12 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
         float3 camPos = float3(gCameraPosX, gCameraPosY, gCameraPosZ);
         float depth = max(length(posA - camPos), 0.001f);
         float pixelSize = depth * gPixelSize1;
-        float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx));
+        // Per-bounce footprint growth: each bounce doubles the cell area
+        // (factor (1 + bounceDepth) on footprint, ~√(1+b) on cell edge).
+        // Hardcoded for experiment validation; promote to a runtime knob
+        // once direction is confirmed.
+        float footprintScale = 1.f + float(bounceDepth);
+        float targetCellSize = pixelSize * sqrt(float(gForceDescendFootprintPx) * footprintScale);
         float t = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / lookupLogRatio;
         int targetLvl = int(round(t * float(gNumLevels - 1u)));
         // Lookup window: [targetLvl, targetLvl + kWindowFwd].
