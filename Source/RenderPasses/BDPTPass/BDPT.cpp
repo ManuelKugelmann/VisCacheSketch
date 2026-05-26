@@ -6,7 +6,6 @@
 namespace
 {
     const std::string kBDPTPassFilename           = "RenderPasses/BDPTPass/BDPT.cs.slang";
-    // [strip-ReSTIR task #21] TemporalReuse + SpatialReuse slang files removed.
     const std::string kReflectTypesFile          = "RenderPasses/BDPTPass/ReflectTypes.cs.slang";
 
     // Render pass inputs and outputs.
@@ -82,7 +81,6 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
     // accepted but overridden. useBPT is intentionally NOT re-pinned so
     // callers can opt into PT-only mode (useBPT=False) for decomposition
     // tests / PT-comparison validation.
-    // [strip-ReSTIR task #21] re-pin block removed — ReSTIR fields no
     // longer exist on StaticParams; nothing to re-pin.
 
     validateOptions();
@@ -98,12 +96,6 @@ BDPT::BDPT(ref<Device> pDevice, const Properties& props)
 void BDPT::setProperties(const Properties& props)
 {
     parseProperties(props);
-    // Re-pin ReSTIR/temporal/caustic invariants — BDPTPass is the bidirectional-
-    // -path-tracer-only pass; ReSTIR layers belong to ReSTIRBDPTPass. Note:
-    // useBPT is intentionally NOT re-pinned, so callers can opt into PT-only
-    // mode (useBPT=False) for decomposition tests and PT-comparison validation.
-    // [strip-ReSTIR task #21] re-pin block removed — ReSTIR fields no
-    // longer exist on StaticParams.
     validateOptions();
     if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
         lightBVHSampler->setOptions(mLightBVHOptions);
@@ -131,11 +123,6 @@ void BDPT::parseProperties(const Properties& props)
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kDisableVC) mStaticParams.disableVC = value;
         else if (key == kRoughnessThreshold) mParams.mReconnectionRoughness = value;
-        // [strip-ReSTIR task #21] removed parse branches for useResampling,
-        // useTemporalResampling, unbiasedTemporalReuse, spatialPasses,
-        // spatialCandidates, useCausticReservoirs, useSuffixShift,
-        // useCausticShift, useReconnectionMis, spatialRadius — those
-        // properties belong to ReSTIRBDPTPass.
 
         else logWarning("Unknown property '{}' in BDPT properties.", key);
     }
@@ -158,7 +145,6 @@ void BDPT::validateOptions()
         mStaticParams.emissiveSampler = EmissiveLightSamplerType::Power;
     }
 
-    // [strip-ReSTIR task #21] resampling/caustic validators removed —
     // those fields no longer exist on StaticParams.
 }
 
@@ -187,7 +173,6 @@ Properties BDPT::getProperties() const
     props[kMCap] = mParams.mMCap;
     props[kDisableVC] = mStaticParams.disableVC;
     props[kRoughnessThreshold] = mParams.mReconnectionRoughness;
-    // [strip-ReSTIR task #21] removed ReSTIR-related properties.
 
     return props;
 }
@@ -280,12 +265,6 @@ void BDPT::execute(RenderContext* pRenderContext, const RenderData& renderData)
         mCurrentSeed += mParams.mCanonicalSpp;
     }
 
-    // [strip-ReSTIR 2026-05-26 task #21] Dead-code block removed. The whole
-    // `if (mStaticParams.useResampling)` branch (resolve-light-reservoir,
-    // temporal reuse, spatial reuse, caustic shift) was guarded by params
-    // that are always forced false in vanilla BDPTPass — see the re-pins
-    // in BDPT::BDPT and BDPT::setProperties. ReSTIR layers live in
-    // ReSTIRBDPTPass.
 
     // Copy light-trace contribution from atomic buffer into camera-trace
     // output. Only needed when BPT light subpaths were traced.
@@ -293,7 +272,7 @@ void BDPT::execute(RenderContext* pRenderContext, const RenderData& renderData)
     {
         FALCOR_ASSERT(mpCopyRadiancePass);
         preparePass(pRenderContext, renderData, *mpCopyRadiancePass);
-        mpCopyRadiancePass->addDefine("DEBUG_CAUSTIC_RESERVOIRS", "0");  // [strip-ReSTIR task #21] never debugs caustics
+        mpCopyRadiancePass->addDefine("DEBUG_CAUSTIC_RESERVOIRS", "0");
         mpCopyRadiancePass->execute(pRenderContext, mParams.mOutputDim.x, mParams.mOutputDim.y);
     }
 
@@ -312,7 +291,6 @@ void BDPT::renderUI(Gui::Widgets& widget)
 
     if (widget.group("Resource Usage (kb)")) {
         size_t totalSize = 0;
-        // [strip-ReSTIR task #21] reservoir/caustic usage display removed
         if (mStaticParams.useBPT && mpLightVertices)
         {
             size_t lvcSize = 0;
@@ -437,10 +415,6 @@ bool BDPT::renderRenderingUI(Gui::Widgets& widget)
 
     }
 
-    // [strip-ReSTIR task #21] Removed entire 'Resampling options' UI group.
-    // ReSTIR knobs (resampling toggle, caustic reservoirs/shift, temporal
-    // and spatial reuse, RMIS, M cap, reconnection distance, caustic reuse
-    // radius, shift-suffixes) live in ReSTIRBDPTPass's UI.
 
     if (dirty) mRecompile = true;
     return dirty || runtimeDirty;
@@ -482,9 +456,6 @@ bool BDPT::renderDebugUI(Gui::Widgets& widget)
             group.tooltip("Trace 1 light subpath per pixel, connecting\ncamera subpath vertices to the whole light subpath.", true);
         }
 
-        // [strip-ReSTIR task #21] removed early-reconnection toggle +
-        // caustic-reservoir debug radio buttons + freeze-history (all
-        // ReSTIR-layer UI).
 
         dirty |= group.checkbox("Fix seed per-frame", mUsePerFrameSeed);
         group.tooltip("Calculate the random seed from the frame index.");
@@ -631,9 +602,6 @@ void BDPT::updatePrograms()
         preparePass(mpSampleLightPathsPass);
     }
 
-    // [strip-ReSTIR task #21] Removed mp{LightReservoirResolve,TemporalReuse,
-    // TemporalShift,ShiftCaustics,SpatialReuse}Pass creation — these are
-    // ReSTIR-layer passes that belong in ReSTIRBDPTPass.
 
     if (!mpCopyRadiancePass)
     {
@@ -663,10 +631,6 @@ void BDPT::prepareResources(RenderContext* pRenderContext, const RenderData& ren
 
     auto var = mpReflectTypes->getRootVar();
 
-    // [strip-ReSTIR task #21] removed reservoir/temporal/caustic resource
-    // creation — only mpLightVertices+mpLightImage+mpLightVertexCount needed
-    // for BPT. ReSTIR layer lives in ReSTIRBDPTPass.
-
     if (mStaticParams.useBPT)
     {
         if (!mpLightVertices || mpLightVertices->getElementCount() != maxLightVertices || mVarsChanged)
@@ -682,7 +646,6 @@ void BDPT::prepareResources(RenderContext* pRenderContext, const RenderData& ren
             mVarsChanged = true;
         }
 
-        // [strip-ReSTIR task #21] always create mpLightImage (atomic-add
         // buffer for BPT light-trace contribution).
         if (!mpLightImage || mpLightImage->getSize() != sizeof(float3) * screenPixelCount || mVarsChanged)
         {
@@ -838,10 +801,6 @@ void BDPT::bindShaderData(const ShaderVar& var, const RenderData& renderData) co
 
         var["mOutputCounterData"] = mpPixelCounterData;
 
-        // [strip-ReSTIR task #21] removed bindings for mPathReservoirs0/1,
-        // mLastReservoirs, mCausticReservoirs, mLastCausticReservoirs,
-        // mLightTraceReservoirs, mCausticReservoirMap — ReSTIR layer is
-        // in ReSTIRBDPTPass. Slang field defs to be removed in step 6.
 
         mpSampleGenerator->bindShaderData(var);
     }
@@ -856,14 +815,10 @@ void BDPT::bindShaderData(const ShaderVar& var, const RenderData& renderData) co
         if (!pViewDir) logWarning("Depth-of-field requires the '{}' input. Expect incorrect rendering.", kInputViewDir);
     }
 
-    // [strip-ReSTIR task #21] motion-vectors input lookup removed (no
-    // temporal reuse in vanilla BDPT).
 
     var["mParams"].setBlob(mParams);
     var["mVbuffer"] = renderData.getTexture(kInputVBuffer);
     var["mViewDir"] = pViewDir; // Can be nullptr
-    // [strip-ReSTIR task #21] removed mLastVbuffer, mLastViewDir, mMotionVectors
-    // bindings — temporal reuse is in ReSTIRBDPTPass.
     var["mOutputRadiance"] = renderData.getTexture(kOutputColor);
 }
 
@@ -952,8 +907,6 @@ bool BDPT::beginFrame(RenderContext* pRenderContext, const RenderData& renderDat
     } else if (mUsePerFrameSeed) {
         uint seedsPerFrame = mParams.mCanonicalSpp;
         if (mStaticParams.useBPT) seedsPerFrame++; // light subpaths
-        // [strip-ReSTIR task #21] removed per-frame seeds for reservoir
-        // resample / temporal reuse / spatial reuse — those live in ReSTIRBDPTPass.
         mCurrentSeed = mFrameCount * seedsPerFrame;
     } else {
         mCurrentSeed = (uint)std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -967,8 +920,6 @@ bool BDPT::beginFrame(RenderContext* pRenderContext, const RenderData& renderDat
 
 void BDPT::endFrame(RenderContext* pRenderContext, const RenderData& renderData)
 {
-    // [strip-ReSTIR task #21] removed temporal-reuse copy block (mpLast*
-    // resources + mpTemporal*Pass) — ReSTIR layer lives in ReSTIRBDPTPass.
 
     mpPixelDebug->endFrame(pRenderContext);
 
@@ -1021,7 +972,6 @@ DefineList BDPT::StaticParams::getDefines(const BDPT& owner) const
     defines.add("DISABLE_LVC", useBPT && disableLVC ? "1" : "0");
     defines.add("DEBUG_BPT", debugBPT ? "1" : "0");
     defines.add("DEBUG_HEATMAP", debugHeatmap ? "1" : "0");
-    // [strip-ReSTIR task #21] ReSTIR-layer defines fully removed; the
     // #if USE_RECONNECTION_MIS blocks that previously needed pinning
     // are also gone now.
     defines.add("USE_VIEW_DIR", "0"); // placeholder, set by prepareVars

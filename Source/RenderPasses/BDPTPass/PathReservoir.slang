@@ -122,7 +122,6 @@ struct PathSuffix {
     float            mDist = 0;             ///< Geometry term between the prefix and the suffix.
     LightSubpathData mLightSubpath = {};    ///< Light subpath id
 
-    // [strip-ReSTIR task #21] removed #if USE_RECONNECTION_MIS mMisEvalArgs.
 
     float            mCos = 0;              ///< Geometry term between the prefix and the suffix.
 
@@ -142,7 +141,6 @@ struct PathSuffix {
         s.mDirOut          = reconnectionDirOut;
         s.mDist            = reconnectionDistance;
         s.mLightSubpath    = lightSubpath;
-        // [strip-ReSTIR task #21] removed misData assignment.
         s.mCos             = reconnectionCos;
         return s;
     }

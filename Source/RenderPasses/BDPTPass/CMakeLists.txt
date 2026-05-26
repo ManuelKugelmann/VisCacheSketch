@@ -1,10 +1,8 @@
 add_plugin(BDPTPass)
 
-# Vanilla bidirectional path tracer extracted from ReSTIRBDPTPass.
-# Camera-trace + light-trace + MIS-weighted connections — the same role
-# for BDPT that Falcor's PathTracer plays for unidirectional PT.
-# ReSTIR layers (temporal / spatial reuse, caustic shift, reservoir
-# resampling) live in ReSTIRBDPTPass.
+# Vanilla bidirectional path tracer.
+# Camera-trace + light-trace + MIS-weighted connections — the BDPT
+# analog of Falcor's built-in PathTracer for unidirectional PT.
 
 target_sources(BDPTPass PRIVATE
     BitfieldMacros.slangh

@@ -399,6 +399,7 @@ Open questions (no committed steps yet):
 - Eye-cache addressing — pos+normal at sensor vertex, or pos+normal+wo?
 - Sensor-side reconnection unbiasedness under MIS — same argument as paper §12 V-revalidation, applied at the eye end.
 - Bidirectional reservoir merge inside per-pixel reservoir, or as a separate eye-side cell pool?
+- **GRIS × VCM kernel collapse** — store light subpaths in the world hash, drive the photon-merge kernel radius toward a delta per-candidate via the reconnection shift; finite kernel survives only where connection is infeasible (specular / VPL near-field singularity). Unifies instant radiosity + photon mapping under GRIS. Full design: `docs/GRIS_VCM_KERNEL_COLLAPSE.md`.
 
 Steps 51+ deferred until stage F lands and the BDPT Falcor pass exists.
 

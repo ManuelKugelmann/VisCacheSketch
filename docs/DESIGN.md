@@ -103,3 +103,6 @@ Richer than binary — captures partial occlusion, useful for participating medi
 
 ### Independent per-endpoint LOD (2D cascade)
 Replace single `lvl` in hash key with `(lvlA, lvlB)`. Each endpoint quantized at its own level's cell size. 3-way split variance cascade: when (a, b) has high variance, spawn (a+1, b), (a, b+1), (a+1, b+1). Coarse entries with many samples + high variance skipped on insert (decay revalidates). BFS over N×N grid, variance-gated pruning. Current 1D cascade is the diagonal. See `docs/INDEPENDENT_ENDPOINT_LOD.md` for full design.
+
+### GRIS × VCM with reconnection-shift kernel collapse
+Store light subpaths (photons) in the world hash as a pure lookup accelerator; make the VCM merge kernel radius per-candidate and drive it toward zero via the ReSTIR PT reconnection shift. Where the shift is feasible the kernel collapses to a delta (exact connection / VPL gather, zero bias); where not (specular, near-field singularity) a finite density-estimation kernel survives. GRIS resampling-MIS combines both branches; a nascent-delta kernel family (`K_r → δ`) makes the connection the continuous `r → 0` limit of the merge. Subsumes instant radiosity (connection branch) + photon mapping (merge branch). See `docs/GRIS_VCM_KERNEL_COLLAPSE.md` for full design.

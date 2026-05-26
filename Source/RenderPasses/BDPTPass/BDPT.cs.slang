@@ -3,8 +3,6 @@ import Utils.Math.MathHelpers;
 import Utils.Sampling.SampleGenerator;
 import Utils.Debug.PixelDebug;
 import PathGenerator;
-// [strip-ReSTIR task #21] removed: import PathShift; static gUseCausticReservoirs;
-// static gDebugCausticReservoirs — caustic reservoirs live in ReSTIRBDPTPass.
 
 [shader("compute")]
 [numthreads(8, 4, 1)]
@@ -27,10 +25,6 @@ void SampleCameraPaths(uint3 index : SV_DispatchThreadID) {
     gPathGenerator.StoreReservoir(id, r);
 }
 
-// [strip-ReSTIR task #21] ResolveLightTraceReservoirs entry point removed.
-// It merged the per-pixel light-trace reservoir hash-map into pixel reservoirs
-// — only used when useResampling=true, which is impossible in vanilla BDPTPass.
-// ReSTIR layer lives in ReSTIRBDPTPass.
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -43,7 +37,6 @@ void OutputRadiance(uint3 index: SV_DispatchThreadID) {
 
     const uint flatId = id.y * gPathGenerator.mParams.mOutputDim.x + id.x;
 
-    // [strip-ReSTIR task #21] reservoir-radiance branch removed. Only the
     // BPT atomic-buffer accumulation remains.
     if (gPathGenerator.gBidirectional && ! gPathGenerator.gDisableCameraConnection) {
         // Add light trace contribution from atomic buffer

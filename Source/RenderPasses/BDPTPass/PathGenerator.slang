@@ -35,9 +35,6 @@ extension PathGenerator {
     static const bool  gDisableCameraConnection       = DISABLE_CAMERA_CONNECTION;
     static const bool  gDisableLVC                    = DISABLE_LVC;
     static const bool  gDisableVC                     = DISABLE_VC;
-    // [strip-ReSTIR task #21] removed gUseResampling, gUseReconnectionMIS,
-    // gShiftSuffixes, gShiftLightPathsToPixelCenters, gDisableEarlyReconnection
-    // — ReSTIR-layer constants live in ReSTIRBDPTPass.
 }
 
 struct LightTraceReservoir {
@@ -58,10 +55,6 @@ struct PathGenerator {
     RWTexture2D<float4> mOutputRadiance;
     RWByteAddressBuffer mOutputCounterData;
 
-    // [strip-ReSTIR task #21] removed reservoir + temporal buffers. ReSTIR
-    // layer (mPathReservoirs0/1, mLastReservoirs, mCausticReservoirs,
-    // mLastCausticReservoirs, mLightTraceReservoirs, mCausticReservoirMap,
-    // mLastVbuffer, mLastViewDir, mMotionVectors) lives in ReSTIRBDPTPass.
 
     Texture2D<PackedHitInfo> mVbuffer;
     Texture2D<float3>        mViewDir;
@@ -398,7 +391,6 @@ extension PathGenerator {
     // StoreReservoir is a no-op for vanilla BDPT (no resampling layer). Kept
     // as a stub so SampleCameraPaths in BDPT.cs.slang continues to compile.
     void StoreReservoir(const uint2 index, const PathReservoir r) {
-        // [strip-ReSTIR task #21] no resampling layer in vanilla BDPT
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -868,7 +860,6 @@ extension PathGenerator {
         CachedVertexData lastVertex = {};
 
         RecursiveMisState mis = {};
-        // [strip-ReSTIR task #21] removed #if USE_RECONNECTION_MIS rcvMis state.
 
         PackedPathVertex rcv = {};
         float3 throughputAtRcv = 0;
@@ -931,8 +922,6 @@ extension PathGenerator {
     }
 
     // Accumulates a canonical sample's contribution into the per-pixel reservoir.
-    // [strip-ReSTIR task #21] gUseResampling-gated r.Merge branch removed —
-    // reservoir resampling lives in ReSTIRBDPTPass.
     void ProcessSample(inout PathReservoir r, inout SampleGenerator sg, PathSample ps, float weight) {
         if (ps.IsValid() && weight > 0) {
             print("Found path. contrib:", ps.mContribution);
@@ -1098,8 +1087,6 @@ extension PathGenerator {
         // compute mis weight
         const float misWeight = s.mis.EvalDirectLightMIS(directPdfW, emissionPdfW, f, cosOut, cosLight);
         MisEvalData misEvalArgs = {};
-        // [strip-ReSTIR task #21] removed misEvalArgs population block —
-        // reconnection-MIS recompute lives in ReSTIRBDPTPass.
 
         float3 suffixContrib;
         float3 suffixDir;
@@ -1315,7 +1302,6 @@ extension PathGenerator {
 
         const float misWeight = s.mis.EvalVertexConnectionMIS(v.mis, r, f, cosCam, cosLight, invDist2);
         MisEvalData misEvalArgs = {};
-        // [strip-ReSTIR task #21] removed reconnection-MIS misEvalArgs population.
 
         float3 suffixContrib;
         float3 suffixDir;
@@ -1412,15 +1398,12 @@ extension PathGenerator {
 
         integrationWeight = 1.f / samplePdf;
 
-        // [strip-ReSTIR task #21] always normalize by light subpath count
-        // (no resampling layer in vanilla BDPT).
         integrationWeight /= mParams.mLightSubpathCount;
 
         bool caustic = s.deltaRcv || s.rcvDist < mParams.mReconnectionDistance;
 
         const float misWeight = s.mis.EvalLightTraceMIS(f.mRevPdfW, cameraPdfA);
         MisEvalData misEvalArgs = {};
-        // [strip-ReSTIR task #21] removed reconnection-MIS misEvalArgs population.
 
         /*{
             const uint2 cached = gPixelDebugPixel;
@@ -1505,7 +1488,6 @@ extension PathGenerator {
 
         float misWeight = s.mis.EvalCameraTraceMIS(s.lastVertex.scatterFwdPdfW, directPdfA, directPdfW, emissionPdfW);
         MisEvalData misEvalArgs = {};
-        // [strip-ReSTIR task #21] removed reconnection-MIS misEvalArgs population.
 
         PathSuffix suffix = {};
         const bool hasRcv = s.rcvFound;
@@ -1762,8 +1744,6 @@ extension PathGenerator {
     }
 
     void UpdateReconnectionData<let bShift : bool>(inout PathState<bShift> s, const PathVertex vertex, const bool connectable, const float lastPdfW) {
-        // [strip-ReSTIR task #21] gDisableEarlyReconnection gate removed —
-        // vanilla BDPT always runs reconnection-data update.
 
         float cosIn = vertex.GetCosN(vertex.GetDirIn());
 
@@ -1792,8 +1772,6 @@ extension PathGenerator {
             }
         }
 
-        // [strip-ReSTIR task #21] USE_RECONNECTION_MIS / gUseReconnectionMIS
-        // branch removed — recompute-MIS-during-reconnection is a ReSTIR
         // resampling feature.
     }
 
@@ -1948,8 +1926,6 @@ extension PathGenerator {
 
                         const uint flatId = pixelCoord.y * mParams.mOutputDim.x + pixelCoord.x;
                         {
-                            // [strip-ReSTIR task #21] reservoir-store branch removed.
-                            // Splat radiance to the atomic-add buffer (vanilla BDPT path).
                             // [Falcor 8 port] InterlockedAddF32 needs NVAPI which is not
                             // built in this tree. Use CAS-based float atomic-add instead.
                             const float3 v = ps.mContribution * (weight * ps.mMisWeight);
@@ -2073,7 +2049,6 @@ extension PathGenerator {
 
         r.mW /= mParams.mCanonicalSpp;
 
-        // [strip-ReSTIR task #21] always splat reservoir contribution to
         // output (no resampling layer).
         mOutputRadiance[id.mId].rgb += r.mSample.mContribution / mParams.mCanonicalSpp;
 

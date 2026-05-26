@@ -17,16 +17,14 @@ using namespace Falcor;
 
 /** Vanilla bidirectional path tracer.
 
-    Extracted from ReSTIRBDPTPass as a baseline analogous to Falcor's
-    built-in PathTracer (which is the baseline for ReSTIRPTPass /
-    ReSTIRDIPass). Forces the ReSTIR resampling / temporal / caustic
-    layers off so only the BDPT estimator runs: light subpaths +
-    camera subpaths + deterministic MIS-weighted vertex connections.
+    Bidirectional path tracing reference pass — light subpaths + camera
+    subpaths + deterministic MIS-weighted vertex connections. The BDPT
+    analog of Falcor's built-in PathTracer for unidirectional PT.
 */
 class BDPT : public RenderPass
 {
 public:
-    FALCOR_PLUGIN_CLASS(BDPT, "BDPT", "Vanilla bidirectional path tracer (extracted from ReSTIR-BDPT).");
+    FALCOR_PLUGIN_CLASS(BDPT, "BDPT", "Vanilla bidirectional path tracer.");
 
     static ref<BDPT> create(ref<Device> pDevice, const Properties& props) { return make_ref<BDPT>(pDevice, props); }
 
@@ -78,13 +76,6 @@ private:
         bool        debugHeatmap = false;
         bool        disableVC = false;
         bool        disableLVC = false;
-        // [strip-ReSTIR task #21] Removed ReSTIR-only fields:
-        //   useResampling, useTemporalReuse, unbiasedTemporalReuse,
-        //   useCausticReservoirs, useCausticShift, shiftSuffixes,
-        //   shiftSuffixesSpatial, spatialReusePasses, spatialRMIS,
-        //   shiftLightPathsToPixelCenters, debugCausticReservoirs,
-        //   disableEarlyReconnection, reconnectionMIS.
-        // Those live in ReSTIRBDPTPass::StaticParams.
 
         EmissiveLightSamplerType emissiveSampler = EmissiveLightSamplerType::Power;
 
