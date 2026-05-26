@@ -115,7 +115,7 @@ struct PathVertex {
             HitInfo hit = HitInfo(v.mPackedHit);
 
             let lod = ExplicitLodTextureSampler(0.f);
-            mShadingData = loadShadingData(hit, v.mRayOrigin, v.mRayDirection, lod);
+            mShadingData = loadShadingData(hit, v.mRayOrigin, v.mRayDirection);
 
             let hints = getMaterialInstanceHints(hit, false);
             mMaterial = gScene.materials.getMaterialInstance(mShadingData, lod, hints);
