@@ -1533,10 +1533,11 @@ struct PathTracer
                     if (any(Lr > 0.f))
                     {
                         const Ray ray = ls.getVisibilityRay();
-                        // effectiveBounceDepth proxy: bounce count (path.length). Treats every
-                        // bounce as full diffuse for relaxation purposes. Roughness-modulated
-                        // cumulative sum requires PathState extension — next iteration.
-                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u /* NEE */, luminance(Lr), float(path.length));
+                        // effectiveBounceDepth proxy: cumulative Fibonacci of bounce idx,
+                        // assuming all-diffuse (roughness=1) per bounce. Deep diffuse paths
+                        // relax exponentially. Roughness-modulated PathState cumsum is next
+                        // iteration.
+                        bool visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), sd.frame.N, 0u /* NEE */, luminance(Lr), vcFibBounce(path.length));
                         if (visible)
                         {
                             if (!path.enableRandomReplay || terminateRandomReplayForNEE)
@@ -2015,8 +2016,9 @@ struct PathTracer
                 const Ray ray = ls.getVisibilityRay();
                 // VC_RAY_SITE_REVAL = 1 — temporal-shift V-test (reuse-revalidation).
                 // rcVertexSd is the reconnection-vertex shading data (loaded above).
-                // contribLuminance via ls.Li × pdf rough proxy; bounce depth = rcVertexLength.
-                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), rcVertexSd.frame.N, 1u /* REVAL */, luminance(ls.Li), float(rcVertexLength));
+                // effectiveBounceDepth = cumulative-Fibonacci of rcVertexLength (all-diffuse
+                // proxy; deep-rc paths relax aggressively).
+                visible = traceVisibilityRay(ray, path.sg, path.getPixel(), path.getSampleIdx(), rcVertexSd.frame.N, 1u /* REVAL */, luminance(ls.Li), vcFibBounce(uint(rcVertexLength)));
 
                 if (ls.lightType == (uint)LightSampleType::Analytic && ls.pdf == 0.f)
                 {

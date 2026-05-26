@@ -191,9 +191,9 @@ cbuffer VisCacheParams
     float  gFireflyBudget;   ///< Contribution scale for adaptive pMin
     uint   gNumLevels;       ///< Number of LOD levels (runtime, arbitrary N)
     uint   gFlags;           ///< Packed flags: 0=adaptivePMin 1=normalAddr
-    // --- Per-dimension LOD cascade (coarse → fine, geometric interpolation) ---
+    // --- Per-dimension LOD cascade (N-invariant: cellSize(lvl)=coarse·step^lvl, floored at *Fine) ---
     float  gPosACoarse;      ///< posA coarsest cell size (world units, auto-tuned from scene)
-    float  gPosAFine;        ///< posA finest cell size (auto-derived from coarse + numLevels)
+    float  gPosAFine;        ///< posA finest-cell FLOOR (hard clamp; NOT level-(N-1) value — see vhfSize)
     float  gPosBCoarse;      ///< posB coarsest cell size (world units, pos×pos modes)
     float  gPosBFine;        ///< posB finest cell size (auto-derived)
     float  gDirBCoarse;      ///< direction coarsest cell size (degrees, dirdist mode)
@@ -322,13 +322,24 @@ cbuffer VisCacheParams
 // t = 0 → coarse (level 0), t = 1 → fine (level N-1).
 // When numLevels == 1, returns coarse.
 // ---------------------------------------------------------------------------
-float vhfInterp(float coarse, float fine, int lvl)
+// N-INVARIANT cell size: level L maps to coarse · step^L, clamped at the
+// finest-cell FLOOR carried in gXxxFine (now a hard floor, NOT the level-(N-1)
+// value — see VisCache.cpp). The cascade range [coarse, floor] is independent of
+// gNumLevels; raising N only adds deeper levels at the SAME per-level granularity,
+// never collapsing it. (The old coarse→fine geometric interp tied granularity to N
+// and underflowed the derived fine past N≈64 — LADDER_PLAN Stage H1.)
+// step constants MUST match VisCache.cpp kStepFactor / kBRampScale:
+//   kVhfStepA = kStepFactor            = 0.8     (posA + posB: full-rate)
+//   kVhfStepB = pow(kStepFactor, 0.5)  ≈ 0.8944  (dirB + distB: half-rate ramp)
+static const float kVhfStepA = 0.8f;
+static const float kVhfStepB = 0.894427191f;
+
+float vhfSize(float coarse, float step, float floorSize, int lvl)
 {
-    float t = (gNumLevels <= 1u) ? 0.f : float(lvl) / float(gNumLevels - 1u);
-    return coarse * exp(t * log(max(fine, 1e-6f) / max(coarse, 1e-6f)));
+    return max(coarse * pow(step, float(lvl)), max(floorSize, 1e-6f));
 }
 
-float vhfPosASize(int lvl)      { return vhfInterp(gPosACoarse,  gPosAFine,  lvl); }
+float vhfPosASize(int lvl)      { return vhfSize(gPosACoarse,  kVhfStepA, gPosAFine,  lvl); }
 
 /// Estimated screen-space pixel count for a cell at the given level and depth.
 /// cellSize² / pixelSize² where pixelSize = depth * gPixelSize1.
@@ -361,20 +372,16 @@ int vhfLevelForFootprint(float3 posA, float targetFootprintPx)
     float depth = max(length(posA - camPos), 0.001f);
     float pixelSize = depth * gPixelSize1;
     float targetCellSize = sqrt(max(targetFootprintPx, 1.f)) * max(pixelSize, 1e-6f);
-    // Solve vhfPosASize(lvl) ≈ targetCellSize for lvl. Geometric interp:
-    //   cellSize(t) = posACoarse · (posAFine/posACoarse)^t,  t = lvl/(N-1)
-    //   t = log(targetCellSize/posACoarse) / log(posAFine/posACoarse)
-    float lo = log(max(gPosACoarse, 1e-6f));
-    float hi = log(max(gPosAFine,   1e-6f));
-    float denom = (hi - lo);
-    if (abs(denom) < 1e-6f) return 0;
-    float t = (log(max(targetCellSize, 1e-6f)) - lo) / denom;
-    int lvl = int(round(t * float(gNumLevels - 1u)));
-    return clamp(lvl, 0, int(gNumLevels) - 1);
+    // N-invariant inverse of vhfPosASize: cellSize(lvl) = posACoarse · kVhfStepA^lvl
+    //   ⇒ lvl = log(targetCellSize / posACoarse) / log(kVhfStepA)
+    // kVhfStepA < 1 ⇒ log negative; targets finer than coarse give lvl > 0. The
+    // absolute level is independent of gNumLevels — N only sets the clamp ceiling.
+    float lvl = log(max(targetCellSize, 1e-6f) / max(gPosACoarse, 1e-6f)) / log(kVhfStepA);
+    return clamp(int(round(lvl)), 0, int(gNumLevels) - 1);
 }
-float vhfPosBSize(int lvl)      { return vhfInterp(gPosBCoarse,  gPosBFine,  lvl); }
-float vhfDirBSize(int lvl)      { return vhfInterp(gDirBCoarse,  gDirBFine,  lvl); }
-float vhfDistSize(int lvl)      { return vhfInterp(gDistBCoarse, gDistBFine, lvl); }
+float vhfPosBSize(int lvl)      { return vhfSize(gPosBCoarse,  kVhfStepA, gPosBFine,  lvl); }  // posB full-rate (matches cpp comment)
+float vhfDirBSize(int lvl)      { return vhfSize(gDirBCoarse,  kVhfStepB, gDirBFine,  lvl); }
+float vhfDistSize(int lvl)      { return vhfSize(gDistBCoarse, kVhfStepB, gDistBFine, lvl); }
 
 /// The hash table — RWStructuredBuffer so all threads can read and atomically
 /// update entries concurrently. Bound by the host via dict["vhfTable"].

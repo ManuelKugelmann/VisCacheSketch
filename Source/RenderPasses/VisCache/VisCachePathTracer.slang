@@ -26,6 +26,20 @@ SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
     return SampleGenerator(pixel, gFrameCount * gSpp + sampleIdx + 0x7C000000u);
 }
 
+/// Cumulative Fibonacci weight for the per-bounce effectiveBounceDepth proxy.
+/// Returns fib(1)+fib(2)+...+fib(n) = fib(n+2)-1. Each bounce contributes
+/// fib(idx) (scaled by per-bounce roughness when PT tracks it); deep diffuse
+/// paths relax exponentially while mirror sequences (roughness=0) stay strict.
+/// Saturates at n=16 to avoid runaway values on pathological deep paths.
+float vcFibBounce(uint n)
+{
+    const float kCumFib[17] = {
+        0.f, 1.f, 2.f, 4.f, 7.f, 12.f, 20.f, 33.f, 54.f, 88.f,
+        143.f, 232.f, 376.f, 609.f, 986.f, 1596.f, 2583.f
+    };
+    return (n < 17u) ? kCumFib[n] : 2583.f;
+}
+
 // callSite: VC_RAY_SITE_* tag (see VisCacheDiagnostics.slang). Default
 // VC_RAY_SITE_NEE matches the historical behaviour for all NEE shadow rays;
 // pass VC_RAY_SITE_PROPOSAL for V-aware target-pdf cache reads and

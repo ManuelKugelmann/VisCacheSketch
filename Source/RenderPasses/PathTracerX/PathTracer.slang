@@ -1017,11 +1017,12 @@ struct PathTracer
 #if USE_VISCACHE_VISIBILITYCHECK
                     // contribLuminance gates PROPOSAL+REVAL defensive trace (NEE
                     // here passes 0 → no defensive trace effect, but provided for
-                    // future use). effectiveBounceDepth proxy: vertex idx (0 =
-                    // primary). PathState-tracked cumulative roughness sum is
+                    // future use). effectiveBounceDepth proxy: cumulative Fibonacci
+                    // of vertex idx (all-diffuse roughness=1 assumed). Deep diffuse
+                    // paths relax exponentially; PathState-tracked roughness sum is
                     // a follow-up.
                     const float vcContribLum  = luminance(Lr);
-                    const float vcBounceDepth = float(path.getVertexIndex());
+                    const float vcBounceDepth = vcFibBounce(path.getVertexIndex());
 #ifdef VISCACHE_DIAGNOSTICS
                     // Write diagnostics only for the primary hit's NEE ray (bounce 0).
                     // Later bounces use the non-diagnostic path to avoid overwriting.
