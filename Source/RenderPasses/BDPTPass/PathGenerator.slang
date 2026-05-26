@@ -917,13 +917,13 @@ extension PathGenerator {
         return v;
     }
 
-    // Accumulates a canonical sample's contribution into the per-pixel reservoir.
-    void ProcessSample(inout PathReservoir r, inout SampleGenerator sg, PathSample ps, float weight) {
+    // Adds a path sample's MIS-weighted contribution to the per-pixel accumulator.
+    void ProcessSample(inout PathContribution path, inout SampleGenerator sg, PathSample ps, float weight) {
         if (ps.IsValid() && weight > 0) {
             print("Found path. contrib:", ps.mContribution);
             print("\tLight subpath vertices:", ps.mSuffix.mLightSubpath.mVertexCount);
             print("\tPrefix bounces:", ps.mPrefixBounces);
-            r.mSample.mContribution += ps.mContribution * (ps.mMisWeight * weight);
+            path.add(ps.mContribution * (ps.mMisWeight * weight));
         }
     }
 
@@ -1973,7 +1973,7 @@ extension PathGenerator {
         if (gLightTraceOnly || !vertex.IsFinite())
             return;
 
-        PathReservoir r = {};
+        PathContribution path = {};  // accumulated radiance across this pixel's spp loop
 
         for (uint i = 0; i < mParams.mCanonicalSpp; i++) {
             if (i > 0) vertex = PathVertex(LoadPrimaryVertex(id.mId));
@@ -1986,7 +1986,7 @@ extension PathGenerator {
                         // connect to a random light (env / emissive)
                         float weight = 0;
                         const PathSample ps = ConnectToLight(s, vertex, weight);
-                        ProcessSample(r, s.sg, ps, weight);
+                        ProcessSample(path, s.sg, ps, weight);
 
                         // [Bug #3 fix] also connect to a random analytic light
                         // (point / directional / spot). BDPT's ConnectToLight
@@ -1994,7 +1994,7 @@ extension PathGenerator {
                         if (gUseAnalyticLights) {
                             float analWeight = 0;
                             const PathSample analPs = ConnectToAnalyticLight(s, vertex, analWeight);
-                            ProcessSample(r, s.sg, analPs, analWeight);
+                            ProcessSample(path, s.sg, analPs, analWeight);
                         }
                     }
 
@@ -2014,7 +2014,7 @@ extension PathGenerator {
                                     const LightSubpathVertex v = mLightVertexCache[i + b*mParams.mOutputDim.x * mParams.mOutputDim.y];
                                     float weight = 0;
                                     PathSample ps = ConnectToLightSubpath(s, vertex, v, weight);
-                                    ProcessSample(r, s.sg, ps, weight * count);
+                                    ProcessSample(path, s.sg, ps, weight * count);
                                 }
                             } else {
                                 // connect to a random light subpath vertex in the LVC
@@ -2024,7 +2024,7 @@ extension PathGenerator {
 
                                     float weight = 0;
                                     PathSample ps = ConnectToLightSubpath(s, vertex, v, weight);
-                                    ProcessSample(r, s.sg, ps, weight * (count / (float)mParams.mLightSubpathCount));
+                                    ProcessSample(path, s.sg, ps, weight * (count / (float)mParams.mLightSubpathCount));
                                 }
                             }
                         }
@@ -2039,11 +2039,11 @@ extension PathGenerator {
                     float weight = 0;
                     const PathSample ps = EvalLightContribution(s, vertex, weight);
                     if (ps.IsValid())
-                        ProcessSample(r, s.sg, ps, weight);
+                        ProcessSample(path, s.sg, ps, weight);
                 }
             }
         }
 
-        mOutputRadiance[id.mId].rgb += r.mSample.mContribution / mParams.mCanonicalSpp;
+        mOutputRadiance[id.mId].rgb += path.L / mParams.mCanonicalSpp;
     }
 }

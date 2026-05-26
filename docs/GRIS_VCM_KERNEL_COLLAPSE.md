@@ -276,6 +276,46 @@ Caveat: these solve **specular** chains. Rough-glossy "near-specular" is not a
 manifold — it stays in branch 1's `s_rough` gradient region where `r` ramps
 continuously (§5.2).
 
+### 5.8 Mutations: decorrelating the cell reservoir
+
+Cell-based storage trades per-pixel independence for cross-pixel reuse, which
+**correlates** the resampled population and lets a reservoir fill with duplicate
+samples (impoverishment). `project_partial_path_cell.md` payoff #1 attacks this
+*structurally* — dedup by `initRandomSeed`, the `slot.M` field replacing Lin 2026's
+duplication maps. Metropolis mutation is the **alternative (or complementary)
+decorrelation mechanism**, and it is the better fit for the regime our cascade
+handles worst.
+
+- **Screen-space precedent.** [Sawhney, Lin et al. 2024] interleave
+  Metropolis–Hastings mutations as a block inside ReSTIR, mutating each reservoir
+  sample against the *same per-pixel target* RIS uses. **Unbiased**, one mutation
+  per sample per frame, and it helps most on **glossy materials and hard-to-sample
+  lighting** — precisely the `s_rough` gradient region (§5.2) where neither a clean
+  connection (branch 1) nor a manifold solve (branch 2) fully applies and the kernel
+  is mid-ramp. A mutation step is the natural decorrelator there.
+- **The grid gap — open direction.** That work is screen-space (per-pixel target).
+  World-space reservoir reuse exists separately [Boissé 2021] but **without
+  mutations**. **MCMC mutations on world-space / grid-cell reservoirs are
+  unpublished** — and that is exactly our setting. The cell's stored target (cached
+  contribution × kernel mass, §6) plays the role of the per-pixel target; an MH
+  accept/reject over the cell turns the cache into a **grid-localized Markov chain**.
+- **Our shift maps are the mutation proposals.** Branches 1–3 are already
+  deterministic mutations without accept/reject: branch 1 ≈ Veach–Guibas
+  lens/caustic perturbation; branch 2's manifold solve has an exact Metropolis twin
+  in **Manifold Exploration MLT** [Jakob & Marschner 2012] (MEMLT walks the same
+  specular manifold SMS solves one-shot). So branch 2 can run as a solve *or* a
+  chain. Adding the MH layer reuses the cascade's kernels as proposals — no new
+  proposal machinery.
+- **Mutation vs. seed-dedup is a design choice, not a conflict.** Seed-dedup removes
+  duplicates by construction (cheap, structural); mutation moves duplicates apart
+  (handles correlation seed-dedup can't see, e.g. distinct seeds landing on the same
+  glossy lobe). They compose: dedup the slot table, then mutate survivors. This also
+  revives the 2006 thesis's Metropolis-mutation lineage (`LADDER_PLAN.md` Stage G).
+
+Open: detailed balance under a *cell-shared* target (the target a sample is mutated
+against differs from the one it was inserted under — needs the same care as the
+GRIS cross-domain MIS in §8), and mutation cost vs. the structural-dedup baseline.
+
 ---
 
 ## 6. Open proof obligations / risks

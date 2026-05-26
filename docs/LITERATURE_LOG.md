@@ -428,6 +428,22 @@ gradient domain — shift-on-photons is itself not novel.
   is a study-and-integrate target on the same footing as the DQLin port, not a
   from-scratch risk.
 
+**Metropolis-like mutations in the reservoir / grid (branch decorrelation, §5.8):**
+
+- **Sawhney, Lin et al. — Decorrelating ReSTIR Samplers via MCMC Mutations 2024
+  (ACM TOG; arXiv 2211.00166)**. Interleaves Metropolis–Hastings mutations as a block
+  inside ReSTIR, mutating each reservoir sample against the *same per-pixel target*
+  as RIS. Unbiased; one mutation/sample/frame; helps most on **glossy + hard-to-sample
+  lighting** = our `s_rough` mid-ramp region. **Screen-space.**
+- **Boissé — World-Space Spatiotemporal Reservoir Reuse 2021 (SA Tech Comm)**.
+  World-space/grid reservoirs — but **no mutations**. Combining MCMC mutations with
+  world-space/grid-cell reservoirs is **unpublished** = the open direction for our
+  cell cache; complements the structural seed-dedup of `project_partial_path_cell.md`.
+- **Jakob & Marschner — Manifold Exploration MLT 2012**. The MCMC twin of branch 2
+  (SMS): walks the same specular manifold SMS solves one-shot. So our shift maps
+  (branches 1–3) ARE mutation proposals; adding an MH accept/reject = grid-localized
+  Markov chain reusing the cascade kernels. Revives the 2006 thesis Metropolis lineage.
+
 **What stays novel for us (after the check):** (1) one *continuous* GRIS candidate
 family interpolating connect↔merge per-candidate via the reconnection shift +
 nascent-delta kernel (BDPT separates them, FG is merge-only); (2) reconnection

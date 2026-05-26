@@ -1035,16 +1035,14 @@ VHFResult vhfLookup(float3 posA, float3 posB, float3 normalA = float3(0.f), uint
         //     samples" into one. Rejects few-sample cells with spurious low
         //     var (the x16-correlation pathology).
         //   varThreshold (legacy): var ≤ gVarThreshold, ignores N.
-        // Per-mode convergence relaxation. Primary NEE/RECONNECT keep the
-        // strict convergence test the user-set thresholds dictate; REVAL
-        // accepts ~4× looser convergence so the cascade early-stops at
-        // coarser cells instead of descending to fine cells whose mu is
-        // accurate but immature. PROPOSAL doesn't reach here (early-exits
-        // in vcVisibility_Ray with raw mu). Per user 2026-05-26: "primary
-        // ray visibility tests require very different quality from later
-        // bounces". Hardcoded factor for experiment validation; promote
-        // to a per-mode knob once direction is confirmed.
-        float qualityRelax = (callSite == 1u /* VC_RAY_SITE_REVAL */) ? 4.f : 1.f;
+        // Per-mode + per-bounce convergence relaxation. Primary NEE at
+        // bounce 0 keeps strict; REVAL gets 4× looser; every bounce beyond
+        // primary adds 0.5× looseness. PROPOSAL doesn't reach here (early-
+        // exits via defensive trace). Per user 2026-05-26: "primary ray
+        // visibility tests require very different quality from later
+        // bounces". Hardcoded for experiment validation.
+        float bounceRelax  = 1.f + float(bounceDepth) * 0.5f;
+        float qualityRelax = ((callSite == 1u /* REVAL */) ? 4.f : 1.f) * bounceRelax;
         bool converged;
         if (gWilsonZSquared > 0.f)
         {
@@ -1230,10 +1228,10 @@ VHFGateResult vhfGate(float3 posA, float3 posB,
                        float xi, float contribLuminance = 0.f,
                        float3 normalA = float3(0.f),
                        bool forceWarmup = false,
-                       uint callSite = 0u)
+                       uint callSite = 0u, uint bounceDepth = 0u)
 {
     VHFGateResult g;
-    VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+    VHFResult r = vhfLookup(posA, posB, normalA, callSite, bounceDepth);
 
     // Copy qa/qb from the cascade-selected level (diagnostics — hash grid vis).
     g.qa = r.qa;

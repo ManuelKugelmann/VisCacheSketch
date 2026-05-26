@@ -146,6 +146,17 @@ struct PathSuffix {
     }
 };
 
+// Accumulator for radiance contributions over a pixel's samples-per-pixel loop.
+// Single member by default so the compiler can collapse it to a float3; kept
+// as a struct so derived/extending passes (ReSTIR, NRD, AOV split, etc.) can
+// add fields without touching the BDPT call sites. PathTracerX could use the
+// same shape.
+struct PathContribution {
+    float3 L = float3(0);
+
+    [mutating] void add(float3 v) { L += v; }
+}
+
 enum PathFlags : uint {
     eNone                = 0,
     eCausticLightPath    = 1,
@@ -218,57 +229,3 @@ struct PathSample {
 	}
 };
 
-// Represents a path sample and its weight for integration/resampling.
-struct PathReservoir {
-    PathSample mSample = {};
-    float mW = 0;
-    float mM = 0;
-
-    __init(const PathSample s, const float W, const float M) {
-        mSample = s;
-        mW = W;
-        mM = M;
-    }
-
-    float3 GetRadiance() {
-        return mSample.mContribution * (mW * mSample.mMisWeight);
-    }
-
-    [mutating]
-    void PrepareMerge(float misWeight = 1, float jacobian = 1) {
-        mW *= mSample.GetTargetPdf() * misWeight * jacobian;
-    }
-
-    // note: PrepareMerge must be called on both reservoirs prior to calling Merge.
-    [mutating]
-    bool Merge(const float rnd, const PathSample s, const float W, const float M) {
-        mM += M;
-
-        if (W <= 0 || isnan(W) || isinf(W))
-            return false;
-
-        mW += W;
-        if (rnd * mW < W) {
-            mSample = s;
-            return true;
-        }
-        return false;
-    }
-
-    // note: PrepareMerge must be called on both reservoirs prior to calling Merge.
-    [mutating]
-    bool Merge(const float rnd, const PathReservoir r) {
-        return Merge(rnd, r.mSample, r.mW, r.mM);
-    }
-
-    // After calling this function, the reservoir can be used for integration.
-    [mutating]
-    void FinalizeMerge() {
-        const float p = mSample.GetTargetPdf();
-        if (p > 0)
-            mW /= p;
-        else
-            mW = 0;
-    }
-}
-static const uint PathReservoirSize = sizeof(PathReservoir);

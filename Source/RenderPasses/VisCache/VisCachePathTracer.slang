@@ -33,21 +33,22 @@ SampleGenerator vcCreateSG(uint2 pixel, uint sampleIdx)
 float vcVisibility_Ray<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
     float3 normalA = float3(0.f), uint callSite = 0u,
-    float contribLuminance = 0.f)
+    float contribLuminance = 0.f, uint bounceDepth = 0u)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
-    // PROPOSAL site: candidate selection — mostly cached mu, no CV+RRR.
-    // But trace a FEW defensive rays for high-contribution candidates whose
-    // cached mu is questionable (high var × low maturity). Probability is
-    // ∝ doubtfulness × contribLuminance × scale, capped at a small max so
-    // average proposal-trace rate stays low. Per user 2026-05-26:
-    // "add a few proposal rays - but very few, for the most questionable
-    // candidates with high potential contribution".
-    if (callSite == 2u /* VC_RAY_SITE_PROPOSAL */)
+    // PROPOSAL + REVAL (callSite=2 / 1) — "lazy" sites with defensive trace.
+    // Mostly cached mu, no CV+RRR. Trace a FEW defensive rays for high-
+    // contribution candidates whose cached mu is questionable (high var ×
+    // low maturity). Probability ∝ doubtfulness × contribLuminance × scale,
+    // capped at 10% so trace rate stays low. Per user 2026-05-26: "candidate
+    // selection can use a very relaxed quality and no correction at all",
+    // and "reval is often not traced (RTXDI default) — be a bit lazy there
+    // too, stay below vanilla NEE budget".
+    if (callSite == 2u /* PROPOSAL */ || callSite == 1u /* REVAL */)
     {
         SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-        VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+        VHFResult r = vhfLookup(posA, posB, normalA, callSite, bounceDepth);
         // doubtfulness ∈ [0,1]: cached mu near 0.5 (high var) + few samples
         // → high doubt. Mature low-var cells trust without trace.
         float maturityFrac = r.valid ? saturate(float(r.N) / max(float(gBootThreshold), 1.f)) : 0.f;
@@ -74,7 +75,7 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
         return r.mu;  // raw cached mean (0.5 fallback when no entry)
     }
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite, bounceDepth);
 
     float result;
     bool traced;
@@ -104,15 +105,15 @@ float vcVisibility_Ray<let UseAlphaTest : int>(
 float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
     const Ray ray, inout SampleGenerator sg, uint2 pixel, uint sampleIdx,
     float3 normalA = float3(0.f), uint callSite = 0u,
-    float contribLuminance = 0.f)
+    float contribLuminance = 0.f, uint bounceDepth = 0u)
 {
     float3 posA = ray.origin;
     float3 posB = vhfAddressPosB(posA, ray.dir, ray.tMax);
-    // PROPOSAL site: see non-Diag variant for the defensive-trace policy.
-    if (callSite == 2u /* VC_RAY_SITE_PROPOSAL */)
+    // PROPOSAL + REVAL: see non-Diag variant for the defensive-trace policy.
+    if (callSite == 2u /* PROPOSAL */ || callSite == 1u /* REVAL */)
     {
         SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-        VHFResult r = vhfLookup(posA, posB, normalA, callSite);
+        VHFResult r = vhfLookup(posA, posB, normalA, callSite, bounceDepth);
         float maturityFrac = r.valid ? saturate(float(r.N) / max(float(gBootThreshold), 1.f)) : 0.f;
         float doubtfulness = r.var * (1.f - 0.5f * maturityFrac);
         float p_trace = saturate(doubtfulness * contribLuminance / max(gFireflyBudget, 1e-4f));
@@ -134,7 +135,7 @@ float vcVisibility_Ray_Diag<let UseAlphaTest : int>(
         return r.mu;
     }
     SampleGenerator vcSG = vcCreateSG(pixel, sampleIdx);
-    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite);
+    VHFGateResult g = vhfGate(posA, posB, sampleNext1D(vcSG), 0.f, normalA, vhfBayerWarmup(pixel), callSite, bounceDepth);
 
     if (g.shouldTrace)
     {

@@ -147,16 +147,18 @@ struct VisibilityQuery : IVisibilityQuery
     /// cache reads, VC_RAY_SITE_REVAL for reservoir-reuse revalidation, etc.
     float traceVisibilityRayCV(const Ray ray, inout SampleGenerator sg, uint2 pixel,
                                uint sampleIdx, float3 normalA = float3(0.f),
-                               uint callSite = 0u, float contribLuminance = 0.f)
+                               uint callSite = 0u, float contribLuminance = 0.f,
+                               uint bounceDepth = 0u)
     {
-        return vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite, contribLuminance);
+        return vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite, contribLuminance, bounceDepth);
     }
 #ifdef VISCACHE_DIAGNOSTICS
     float traceVisibilityRayCVDiag(const Ray ray, inout SampleGenerator sg, uint2 pixel,
                                     uint sampleIdx, float3 normalA = float3(0.f),
-                                    uint callSite = 0u, float contribLuminance = 0.f)
+                                    uint callSite = 0u, float contribLuminance = 0.f,
+                                    uint bounceDepth = 0u)
     {
-        return vcVisibility_Ray_Diag<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite, contribLuminance);
+        return vcVisibility_Ray_Diag<kUseAlphaTest>(ray, sg, pixel, sampleIdx, normalA, callSite, contribLuminance, bounceDepth);
     }
 #endif
 #endif
