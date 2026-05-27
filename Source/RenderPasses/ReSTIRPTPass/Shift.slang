@@ -705,12 +705,21 @@ bool mergeReservoir(const RestirPathTracerParams params, float3 dstIntegrand, fl
 // PathTree → evalSegmentVisibility).
 bool traceVisibilityRay(const Ray ray, uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu))
 {
+#if USE_VISCACHE_VISIBILITYCHECK
+    // Route RECONNECT through the cache — same strict-path treatment as
+    // primary NEE. Counter bumped internally by vcVisibility_Ray; binarize
+    // soft V for the bool semantics shift kernels expect.
+    SampleGenerator sg = vcCreateSG(pixel, 0u);
+    float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, 0u, float3(0.f), VC_RAY_SITE_RECONNECT);
+    return v > 0.5f;
+#else
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 #if defined(VISCACHE_DIAGNOSTICS) && USE_VISCACHE
     if (pixel.x != 0xFFFFFFFFu) vcDiagCountRay(pixel, true, VC_RAY_SITE_RECONNECT);
 #endif
     return visible;
+#endif
 }
 
 bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
@@ -731,11 +740,17 @@ bool evalSegmentVisibility(const float3 sourceVertex, const float3 targetVertex,
         tMax *= 0.999f;  // prevent intersection with target surface
     }
     Ray ray = Ray(sourceVertex, dir, 0.f, tMax);
+#if USE_VISCACHE_VISIBILITYCHECK
+    SampleGenerator sg = vcCreateSG(pixel, 0u);
+    float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, 0u, float3(0.f), VC_RAY_SITE_RECONNECT);
+    return v > 0.5f;
+#else
     SceneRayQuery<kUseAlphaTest> sceneRayQuery;
     bool visible = sceneRayQuery.traceVisibilityRay(ray, RAY_FLAG_NONE, 0xff);
 #if defined(VISCACHE_DIAGNOSTICS) && USE_VISCACHE
     if (pixel.x != 0xFFFFFFFFu) vcDiagCountRay(pixel, true, VC_RAY_SITE_RECONNECT);
 #endif
     return visible;
+#endif
 }
 
