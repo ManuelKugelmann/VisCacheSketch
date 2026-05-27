@@ -128,8 +128,15 @@ struct VisibilityQuery : IVisibilityQuery
 {
     bool traceVisibilityRay(const Ray ray)
     {
+#if USE_VISCACHE_VISIBILITYCHECK
+        uint2 pixel = uint2(0xFFFFFFFFu, 0xFFFFFFFFu);
+        SampleGenerator sg = vcCreateSG(uint2(asuint(ray.origin.x), asuint(ray.dir.x)), 0u);
+        float v = vcVisibility_Ray<kUseAlphaTest>(ray, sg, pixel, 0u, float3(0.f), 0u /* NEE */);
+        return v > 0.5f;
+#else
         SceneRayQuery<kUseAlphaTest> sceneRayQuery;
         return sceneRayQuery.traceVisibilityRay(ray);
+#endif
     }
 
 #if USE_VISCACHE_VISIBILITYCHECK

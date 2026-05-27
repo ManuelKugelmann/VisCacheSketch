@@ -2035,16 +2035,13 @@ struct PathTracer
                                         }
                                         else
                                         {
+                                            // FullTrace — routes through cache via wrapper
+                                            // (commits V on trace). Diag counter bumped
+                                            // inside vcVisibility_Ray; no manual bump.
                                             vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                            vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);   // FullTrace retrace-on-reuse (temporal)
-#endif
                                         }
 #else
                                         vR = vq.traceVisibilityRay(vrayR) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                        vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);
-#endif
 #endif
                                         pHatPrev *= vR;
                                     }
@@ -2219,16 +2216,11 @@ struct PathTracer
                                 }
                                 else
                                 {
+                                    // FullTrace — wrapper now cache-routes.
                                     vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                    vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);   // FullTrace retrace-on-reuse (spatial)
-#endif
                                 }
 #else
                                 vN = vq.traceVisibilityRay(vrayN) ? 1.f : 0.f;
-#if USE_VISCACHE && VISCACHE_DIAGNOSTICS
-                                vcDiagCountRay(path.getPixel(), true, VC_RAY_SITE_REVAL);
-#endif
 #endif
                                 pHatN *= vN;
                             }
