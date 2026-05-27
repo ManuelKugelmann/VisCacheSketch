@@ -209,3 +209,15 @@ struct PathState
         return Ray(origin, dir, 0.f, kRayTMax);
     }
 };
+
+// IPathStateNRD conformance — lets the shared
+// RenderPasses.PathTraceCommon.NRDHelpers functions take PathState
+// via generic-over-interface dispatch. The other 7 methods listed in
+// IPathStateNRD already exist on PathState as regular methods; we only
+// need accessor methods for the two raw fields (L and sceneLength).
+import RenderPasses.PathTraceCommon.IPathStateNRD;
+extension PathState : IPathStateNRD
+{
+    float3 getL()              { return L; }
+    float  getSceneLengthF32() { return float(sceneLength); }
+}

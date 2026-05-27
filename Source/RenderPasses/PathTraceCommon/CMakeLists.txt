@@ -29,6 +29,16 @@ target_sources(PathTraceCommon PRIVATE
     # per-plugin `COLOR_FORMAT` preprocessor macro that each consumer
     # plugin's C++ injects via `defines.add("COLOR_FORMAT", ...)`.
     ColorType.slang
+
+    # IPathStateNRD interface — the minimal surface NRDHelpers needs from
+    # a PathState. Lets the bit-identical NRD-write functions live in
+    # PathTraceCommon as generics, while each plugin's concrete PathState
+    # stays divergent (NEE adds K-RIS state, etc.).
+    IPathStateNRD.slang
+
+    # Generic-over-IPathStateNRD NRD-buffer writers. Each consumer plugin's
+    # NRDHelpers.slang collapses to a one-line `__exported import` stub.
+    NRDHelpers.slang
 )
 
 target_copy_shaders(PathTraceCommon RenderPasses/PathTraceCommon)
