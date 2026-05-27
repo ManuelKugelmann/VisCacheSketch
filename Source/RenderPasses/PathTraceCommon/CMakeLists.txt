@@ -19,6 +19,16 @@ target_sources(PathTraceCommon PRIVATE
     # Falcor-PathTracer-lineage plugin used to keep its own copy of.
     # Per-pass stubs still own `getMaterialInstanceHints` (divergent policy).
     LoadShadingData.slang
+
+    # Shared `GuideData` struct (denoising guide channels). Pure packed-data
+    # struct with no plugin-local imports; bit-identical copies used to live
+    # in each PT-lineage plugin.
+    GuideData.slang
+
+    # Shared `ColorType` struct (per-pixel HDR output). Dispatches on the
+    # per-plugin `COLOR_FORMAT` preprocessor macro that each consumer
+    # plugin's C++ injects via `defines.add("COLOR_FORMAT", ...)`.
+    ColorType.slang
 )
 
 target_copy_shaders(PathTraceCommon RenderPasses/PathTraceCommon)
