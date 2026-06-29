@@ -2,7 +2,7 @@
   <img src="viscache.png" alt="VisCache logo" width="400">
 </p>
 
-# Unbiased Visibility Prediction-with-Correction for Real-Time Path Tracing
+# Unbiased Visibility Prediction-with-Correction
 
 **Shadow Ray Reduction using a Filtered Adaptive Multi-Level Hash Cache**
 
